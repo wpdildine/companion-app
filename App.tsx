@@ -9,7 +9,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  LayoutChangeEvent,
   Platform,
   Pressable,
   StatusBar,
@@ -23,130 +22,6 @@ import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
-
-// Throttle ms: only notify parent at most this often during drag to avoid UI freeze
-const SLIDER_THROTTLE_MS = 120;
-
-// Simple slider built with View + touch so we don't depend on native Slider linking.
-// Uses local state during drag and throttles parent onValueChange to avoid setState storm.
-function SimpleSlider({
-  value,
-  onValueChange,
-  minimumValue,
-  maximumValue,
-  step,
-  minimumTrackTintColor,
-  maximumTrackTintColor,
-  thumbTintColor,
-}: {
-  value: number;
-  onValueChange: (v: number) => void;
-  minimumValue: number;
-  maximumValue: number;
-  step: number;
-  minimumTrackTintColor: string;
-  maximumTrackTintColor: string;
-  thumbTintColor: string;
-}) {
-  const trackWidthRef = useRef(0);
-  const lastParentCallRef = useRef(0);
-  const isDraggingRef = useRef(false);
-  const lastValueRef = useRef(value);
-  const [liveValue, setLiveValue] = useState(value);
-
-  const clamp = useCallback(
-    (v: number) => {
-      const stepped = Math.round((v - minimumValue) / step) * step + minimumValue;
-      return Math.min(maximumValue, Math.max(minimumValue, stepped));
-    },
-    [minimumValue, maximumValue, step]
-  );
-
-  useEffect(() => {
-    if (!isDraggingRef.current) setLiveValue(value);
-  }, [value]);
-
-  const onTrackLayout = useCallback((e: LayoutChangeEvent) => {
-    trackWidthRef.current = e.nativeEvent.layout.width;
-  }, []);
-
-  const commit = useCallback(
-    (v: number, force: boolean) => {
-      const now = Date.now();
-      if (force || now - lastParentCallRef.current >= SLIDER_THROTTLE_MS) {
-        lastParentCallRef.current = now;
-        onValueChange(v);
-      }
-    },
-    [onValueChange]
-  );
-
-  const onTouch = useCallback(
-    (evt: { nativeEvent: { locationX?: number } }) => {
-      const trackWidth = trackWidthRef.current;
-      if (trackWidth <= 0) return;
-      const x = Math.max(0, Math.min(trackWidth, evt.nativeEvent.locationX ?? 0));
-      const fraction = x / trackWidth;
-      const raw = minimumValue + fraction * (maximumValue - minimumValue);
-      const v = clamp(raw);
-      lastValueRef.current = v;
-      setLiveValue(v);
-      commit(v, false);
-    },
-    [minimumValue, maximumValue, clamp, commit]
-  );
-
-  const onResponderRelease = useCallback(() => {
-    isDraggingRef.current = false;
-    commit(lastValueRef.current, true);
-  }, [commit]);
-
-  const onResponderGrant = useCallback(() => {
-    isDraggingRef.current = true;
-  }, []);
-
-  const fraction = (liveValue - minimumValue) / (maximumValue - minimumValue);
-  const percent = Math.max(0, Math.min(1, fraction)) * 100;
-  const THUMB_SIZE = 24;
-
-  return (
-    <View
-      style={styles.sliderTrackWrap}
-      onLayout={onTrackLayout}
-      onStartShouldSetResponder={() => true}
-      onResponderGrant={onResponderGrant}
-      onResponderMove={onTouch}
-      onResponderRelease={onResponderRelease}
-      onResponderTerminate={onResponderRelease}
-    >
-      <View style={[styles.sliderTrack, { backgroundColor: maximumTrackTintColor }]}>
-        <View
-          style={[
-            styles.sliderFill,
-            {
-              width: `${percent}%`,
-              backgroundColor: minimumTrackTintColor,
-            },
-          ]}
-        />
-      </View>
-      <View
-        pointerEvents="none"
-        style={[
-          styles.sliderThumb,
-          {
-            left: `${percent}%`,
-            marginLeft: -THUMB_SIZE / 2,
-            width: THUMB_SIZE,
-            height: THUMB_SIZE,
-            borderRadius: THUMB_SIZE / 2,
-            backgroundColor: thumbTintColor,
-          },
-        ]}
-      />
-    </View>
-  );
-}
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
@@ -181,7 +56,6 @@ type TtsModule = {
 function VoiceScreen() {
   const insets = useSafeAreaInsets();
   const isDarkMode = useColorScheme() === 'dark';
-  // Longer phrase makes lengthScale/speed differences obvious; compare audioSampleCount in logs (e.g. lengthScale 0.30 vs 2.50).
   const [transcribedText, setTranscribedText] = useState(
     "Hello, how are you doing today? I'm testing pacing, emphasis, and clarity. Please read this at a natural speed."
   );
@@ -196,12 +70,6 @@ function VoiceScreen() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [piperAvailable, setPiperAvailable] = useState<boolean | null>(null);
   const [piperDebugInfo, setPiperDebugInfo] = useState<string | null>(null);
-
-  // Piper voice knobs (only used when piperAvailable); recommended defaults
-  const [lengthScale, setLengthScale] = useState(1.08);
-  const [noiseScale, setNoiseScale] = useState(0.62);
-  const [noiseW, setNoiseW] = useState(0.8);
-  const [gainDb, setGainDb] = useState(0);
 
   const textColor = isDarkMode ? '#e5e5e5' : '#1a1a1a';
   const mutedColor = isDarkMode ? '#888' : '#666';
@@ -359,7 +227,7 @@ function VoiceScreen() {
     // Prefer Piper (offline) as the main TTS voice when the model is available
     if (piperAvailable) {
       const PiperTts = require('piper-tts').default;
-      const options = { lengthScale, noiseScale, noiseW, gainDb, interSentenceSilenceMs: 250, interCommaSilenceMs: 125 };
+      const options = { lengthScale: 1.08, noiseScale: 0.62, noiseW: 0.8, gainDb: 0, interSentenceSilenceMs: 250, interCommaSilenceMs: 125 };
       console.log('[Playback] Piper: setOptions before speak', options);
       PiperTts.setOptions(options);
       console.log('[Playback] Piper path: starting speak', { textLength: text.length, preview: text.slice(0, 40) });
@@ -408,7 +276,7 @@ function VoiceScreen() {
       setError(e instanceof Error ? e.message : 'TTS playback failed');
       setIsSpeaking(false);
     }
-  }, [partialText, transcribedText, piperAvailable, lengthScale, noiseScale, noiseW, gainDb]);
+  }, [partialText, transcribedText, piperAvailable]);
 
   const displayText = partialText || transcribedText;
 
@@ -472,74 +340,6 @@ function VoiceScreen() {
           >
             {piperDebugInfo}
           </Text>
-        </View>
-      ) : null}
-
-      {piperAvailable === true ? (
-        <View style={[styles.sliderSection, { backgroundColor: inputBg, borderColor }]}>
-          <Text style={[styles.sliderSectionTitle, { color: textColor }]}>
-            Voice settings
-          </Text>
-          <View style={styles.sliderRow}>
-            <Text style={[styles.sliderLabel, { color: mutedColor }]}>
-              Speed (length): {lengthScale.toFixed(2)}
-            </Text>
-            <SimpleSlider
-              value={lengthScale}
-              onValueChange={setLengthScale}
-              minimumValue={0.7}
-              maximumValue={1.4}
-              step={0.01}
-              minimumTrackTintColor={isDarkMode ? '#78c2a9' : '#0a7ea4'}
-              maximumTrackTintColor={mutedColor}
-              thumbTintColor={isDarkMode ? '#78c2a9' : '#0a7ea4'}
-            />
-          </View>
-          <View style={styles.sliderRow}>
-            <Text style={[styles.sliderLabel, { color: mutedColor }]}>
-              Variation (noise): {noiseScale.toFixed(2)}
-            </Text>
-            <SimpleSlider
-              value={noiseScale}
-              onValueChange={setNoiseScale}
-              minimumValue={0.4}
-              maximumValue={0.9}
-              step={0.01}
-              minimumTrackTintColor={isDarkMode ? '#78c2a9' : '#0a7ea4'}
-              maximumTrackTintColor={mutedColor}
-              thumbTintColor={isDarkMode ? '#78c2a9' : '#0a7ea4'}
-            />
-          </View>
-          <View style={styles.sliderRow}>
-            <Text style={[styles.sliderLabel, { color: mutedColor }]}>
-              Energy (noise W): {noiseW.toFixed(2)}
-            </Text>
-            <SimpleSlider
-              value={noiseW}
-              onValueChange={setNoiseW}
-              minimumValue={0.5}
-              maximumValue={1.1}
-              step={0.01}
-              minimumTrackTintColor={isDarkMode ? '#78c2a9' : '#0a7ea4'}
-              maximumTrackTintColor={mutedColor}
-              thumbTintColor={isDarkMode ? '#78c2a9' : '#0a7ea4'}
-            />
-          </View>
-          <View style={styles.sliderRow}>
-            <Text style={[styles.sliderLabel, { color: mutedColor }]}>
-              Volume (dB): {gainDb.toFixed(1)}
-            </Text>
-            <SimpleSlider
-              value={gainDb}
-              onValueChange={setGainDb}
-              minimumValue={-6}
-              maximumValue={6}
-              step={0.5}
-              minimumTrackTintColor={isDarkMode ? '#78c2a9' : '#0a7ea4'}
-              maximumTrackTintColor={mutedColor}
-              thumbTintColor={isDarkMode ? '#78c2a9' : '#0a7ea4'}
-            />
-          </View>
         </View>
       ) : null}
 
@@ -673,50 +473,6 @@ const styles = StyleSheet.create({
   piperDebugText: {
     fontSize: 11,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  sliderSection: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-  },
-  sliderSectionTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 10,
-  },
-  sliderRow: {
-    marginBottom: 4,
-  },
-  sliderLabel: {
-    fontSize: 13,
-    marginBottom: 2,
-  },
-  sliderTrackWrap: {
-    width: '100%',
-    height: 36,
-    justifyContent: 'center',
-  },
-  sliderTrack: {
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-    width: '100%',
-  },
-  sliderFill: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    borderRadius: 3,
-  },
-  sliderThumb: {
-    position: 'absolute',
-    top: (36 - 24) / 2,
-  },
-  slider: {
-    width: '100%',
-    height: 28,
   },
   textBox: {
     borderWidth: 1,
