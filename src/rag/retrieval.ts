@@ -9,30 +9,25 @@ import type { IndexMeta } from './types';
 import type { RetrievalHit } from './types';
 import { ragError } from './errors';
 
-/** Decode little-endian float16 buffer to Float32Array. */
-function decodeF16(buffer: ArrayBuffer): Float32Array {
-  const u16 = new Uint16Array(buffer);
-  const n = u16.length;
-  const out = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const x = u16[i]!;
-    const sign = (x >> 15) & 1;
-    const exp = (x >> 10) & 0x1f;
-    const frac = x & 0x3ff;
-    if (exp === 0) {
-      out[i] = frac === 0 ? 0 : (sign ? -1 : 1) * Math.pow(2, -14) * (frac / 1024);
-    } else if (exp === 0x1f) {
-      out[i] = frac ? NaN : (sign ? -Infinity : Infinity);
-    } else {
-      out[i] = (sign ? -1 : 1) * Math.pow(2, exp - 15) * (1 + frac / 1024);
-    }
+/** Decode one little-endian float16 at index i in u16 to float. Keeps vectors in f16 to avoid ~22s full decode. */
+function f16ToFloat(u16: Uint16Array, i: number): number {
+  const x = u16[i]!;
+  const sign = (x >> 15) & 1;
+  const exp = (x >> 10) & 0x1f;
+  const frac = x & 0x3ff;
+  if (exp === 0) {
+    return frac === 0 ? 0 : (sign ? -1 : 1) * Math.pow(2, -14) * (frac / 1024);
   }
-  return out;
+  if (exp === 0x1f) {
+    return frac ? NaN : (sign ? -Infinity : Infinity);
+  }
+  return (sign ? -1 : 1) * Math.pow(2, exp - 15) * (1 + frac / 1024);
 }
 
 export interface VectorIndex {
   meta: IndexMeta;
-  vectors: Float32Array;
+  /** Raw f16 vectors (dim * nRows elements). Decode per-row in L2 to avoid full f16→f32 decode. */
+  f16Data: Uint16Array;
   dim: number;
   nRows: number;
 }
@@ -44,7 +39,7 @@ function cacheKey(indexKey: string, path: string): string {
 }
 
 /**
- * Load and decode vectors.f16 once; cache by (indexKey, path).
+ * Load vectors.f16 once and cache by (indexKey, path). Keeps raw f16; no full decode (avoids ~22s).
  */
 export async function loadVectors(
   reader: PackFileReader,
@@ -62,17 +57,23 @@ export async function loadVectors(
   if (meta.max_rows != null && nRows > meta.max_rows) {
     throw ragError('E_RETRIEVAL', `Index exceeds max_rows: ${nRows} > ${meta.max_rows}`);
   }
-  const vectors = decodeF16(buf);
-  const index: VectorIndex = { meta, vectors, dim, nRows };
+  const f16Data = new Uint16Array(buf);
+  const index: VectorIndex = { meta, f16Data, dim, nRows };
   vectorCache.set(key, index);
   return index;
 }
 
-/** L2 distance between a and b (same length). */
-function l2(a: Float32Array, b: Float32Array): number {
+/** L2 distance between query (float32) and one row stored in f16 (decode on the fly). */
+function l2QueryF16Row(
+  query: Float32Array,
+  f16Data: Uint16Array,
+  dim: number,
+  row: number
+): number {
+  const base = row * dim;
   let sum = 0;
-  for (let i = 0; i < a.length; i++) {
-    const d = a[i]! - b[i]!;
+  for (let i = 0; i < dim; i++) {
+    const d = query[i]! - f16ToFloat(f16Data, base + i);
     sum += d * d;
   }
   return Math.sqrt(sum);
@@ -80,6 +81,7 @@ function l2(a: Float32Array, b: Float32Array): number {
 
 /**
  * Brute-force L2 top-k over rows. queryVector length must equal index.dim.
+ * Uses f16 storage; decodes per row to avoid full f16→f32 decode.
  */
 export function searchL2(
   index: VectorIndex,
@@ -89,7 +91,7 @@ export function searchL2(
   if (queryVector.length !== index.dim) {
     throw ragError('E_RETRIEVAL', `Query dim ${queryVector.length} !== index dim ${index.dim}`);
   }
-  const { vectors, dim, nRows } = index;
+  const { f16Data, dim, nRows } = index;
   const heap: Array<{ rowId: number; score: number }> = [];
   const push = (rowId: number, score: number) => {
     heap.push({ rowId, score });
@@ -97,8 +99,7 @@ export function searchL2(
     if (heap.length > k) heap.pop();
   };
   for (let row = 0; row < nRows; row++) {
-    const offset = row * dim;
-    const dist = l2(queryVector, vectors.subarray(offset, offset + dim));
+    const dist = l2QueryF16Row(queryVector, f16Data, dim, row);
     if (heap.length < k || dist < heap[heap.length - 1]!.score) {
       push(row, dist);
     }

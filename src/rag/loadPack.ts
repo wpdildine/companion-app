@@ -107,15 +107,21 @@ export async function loadPack(
   reader: PackFileReader,
   params: RagInitParams
 ): Promise<PackState> {
+  const t0 = Date.now();
+  const mark = (msg: string) => console.log(`[RAG][${Date.now() - t0}ms] ${msg}`);
+  mark('pack load start');
   const { packRoot, embedModelId } = params;
   const manifest = await loadManifest(reader, packRoot);
+  mark('manifest read end');
 
   const validate = manifest.sidecars!.capabilities!.validate!;
   const rulesRuleIdsPath = validate.files.rules_rule_ids.path;
   const cardsNameLookupPath = validate.files.cards_name_lookup.path;
+  mark('rule_ids/name_lookup paths resolved');
 
   const rulesMeta = await loadIndexMeta(reader, 'rules');
   const cardsMeta = await loadIndexMeta(reader, 'cards');
+  mark('index_meta loaded end');
 
   if (rulesMeta.embed_model_id !== embedModelId) {
     throw ragError('E_EMBED_MISMATCH', `Pack embed_model_id does not match app config`, {
@@ -139,6 +145,7 @@ export async function loadPack(
     }
   }
 
+  mark('pack load end');
   return {
     packRoot,
     manifest,

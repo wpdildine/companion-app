@@ -17,7 +17,9 @@ export type RagErrorCode =
   | 'E_NOT_INITIALIZED'
   | 'E_EMBED'
   | 'E_RETRIEVAL'
-  | 'E_COMPLETION';
+  | 'E_COMPLETION'
+  | 'E_MODEL_PATH'
+  | 'E_OLLAMA';
 
 export function ragError(
   code: RagErrorCode,

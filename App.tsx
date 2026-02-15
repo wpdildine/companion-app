@@ -21,6 +21,7 @@ import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
+import { NativeModules } from 'react-native';
 import {
   init as ragInit,
   ask as ragAsk,
@@ -28,8 +29,52 @@ import {
   getPackEmbedModelId,
   createThrowReader,
   createBundlePackReader,
+  BUNDLE_PACK_ROOT,
   type ValidationSummary,
 } from './src/rag';
+
+/** Bundle-relative paths for GGUF models in the content pack (assets/content_pack/models/...). */
+const BUNDLE_EMBED_PATH = (BUNDLE_PACK_ROOT ? BUNDLE_PACK_ROOT + '/' : '') + 'models/embed/embed.gguf';
+const BUNDLE_LLM_PATH = (BUNDLE_PACK_ROOT ? BUNDLE_PACK_ROOT + '/' : '') + 'models/llm/model.gguf';
+
+/** Fallback GGUF filenames when using getAppModelsPath (writable dir). */
+const EMBED_MODEL_FILENAME = 'nomic-embed-text.gguf';
+const CHAT_MODEL_FILENAME = 'llama3.2-3b-Q4_K_M.gguf';
+
+/** Resolves embed and chat model file paths for on-device RAG. Prefers bundled pack models (assets/content_pack/models/...), then app models dir. */
+async function getOnDeviceModelPaths(): Promise<{ embedModelPath: string; chatModelPath: string }> {
+  const RagPackReader = NativeModules.RagPackReader ?? NativeModules.RagPackReaderModule;
+  if (!RagPackReader) return { embedModelPath: '', chatModelPath: '' };
+
+  try {
+    if (typeof RagPackReader.getBundleFilePath === 'function') {
+      const [embedPath, llmPath] = await Promise.all([
+        RagPackReader.getBundleFilePath(BUNDLE_EMBED_PATH),
+        RagPackReader.getBundleFilePath(BUNDLE_LLM_PATH),
+      ]);
+      if (embedPath && llmPath) {
+        console.log('[RAG] Model paths resolved (bundle): embed=', embedPath, 'chat=', llmPath);
+        return { embedModelPath: embedPath, chatModelPath: llmPath };
+      }
+    }
+  } catch (e) {
+    console.log('[RAG] Bundle model paths not available:', e instanceof Error ? e.message : e);
+  }
+
+  try {
+    if (!RagPackReader.getAppModelsPath) return { embedModelPath: '', chatModelPath: '' };
+    const modelsDir = await RagPackReader.getAppModelsPath();
+    if (!modelsDir || typeof modelsDir !== 'string') return { embedModelPath: '', chatModelPath: '' };
+    const dir = modelsDir.replace(/\/+$/, '');
+    const embedModelPath = `${dir}/${EMBED_MODEL_FILENAME}`;
+    const chatModelPath = `${dir}/${CHAT_MODEL_FILENAME}`;
+    console.log('[RAG] Model paths resolved (app dir): embed=', embedModelPath, 'chat=', chatModelPath);
+    return { embedModelPath, chatModelPath };
+  } catch (e) {
+    console.log('[RAG] App models path not available:', e instanceof Error ? e.message : e);
+    return { embedModelPath: '', chatModelPath: '' };
+  }
+}
 
 function errorMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
@@ -72,7 +117,7 @@ function VoiceScreen() {
   const insets = useSafeAreaInsets();
   const isDarkMode = useColorScheme() === 'dark';
   const [transcribedText, setTranscribedText] = useState(
-    "Hello, how are you doing today? I'm testing pacing, emphasis, and clarity. Please read this at a natural speed."
+    "How does blood moon work in layers?"
   );
   const [partialText, setPartialText] = useState('');
   const [isListening, setIsListening] = useState(false);
@@ -90,8 +135,6 @@ function VoiceScreen() {
   const [validationSummary, setValidationSummary] = useState<ValidationSummary | null>(null);
   const [packStatus, setPackStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [packError, setPackError] = useState<string | null>(null);
-  const packLoadStartedRef = useRef(false);
-
   const textColor = isDarkMode ? '#e5e5e5' : '#1a1a1a';
   const mutedColor = isDarkMode ? '#888' : '#666';
   const bgColor = isDarkMode ? '#1a1a1a' : '#f5f5f5';
@@ -102,7 +145,6 @@ function VoiceScreen() {
   // Do not mutate NativeModules (e.g. NativeModules.Voice = ...) — the bridge forbids inserting into the native module proxy.
   useEffect(() => {
     try {
-      const { NativeModules } = require('react-native');
       const VoiceNative = NativeModules?.Voice ?? NativeModules?.RCTVoice ?? null;
       if (!VoiceNative) {
         setError('Speech recognition not available (native Voice module not linked).');
@@ -197,50 +239,9 @@ function VoiceScreen() {
     };
   }, [voiceReady]);
 
-  // Load bundled content pack once on mount when native reader is available. Never reload.
+  // Defer pack load to first Submit so boot stays fast. Only sync status if already inited.
   useEffect(() => {
-    let cancelled = false;
-    const reader = createBundlePackReader();
-    if (!reader) {
-      setPackStatus('idle');
-      return;
-    }
-    if (getPackState()) {
-      setPackStatus('ready');
-      return;
-    }
-    if (packLoadStartedRef.current) {
-      return;
-    }
-    packLoadStartedRef.current = true;
-    setPackStatus('loading');
-    setPackError(null);
-    (async () => {
-      try {
-        const embedModelId = await getPackEmbedModelId(reader);
-        await ragInit(
-          {
-            embedModelId,
-            embedModelPath: '',
-            chatModelPath: '',
-            packRoot: '',
-          },
-          reader
-        );
-        if (!cancelled) {
-          setPackStatus('ready');
-          setPackError(null);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setPackStatus('error');
-          setPackError(errorMessage(e) || 'Unknown error');
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    if (getPackState()) setPackStatus('ready');
   }, []);
 
   const startListening = useCallback(async () => {
@@ -280,19 +281,23 @@ function VoiceScreen() {
     setIsAsking(true);
     try {
       if (!getPackState()) {
+        setPackStatus('loading');
+        setPackError(null);
         const reader = createBundlePackReader() ?? createThrowReader(
           'Pack not configured. Add the content pack to assets/content_pack and rebuild the app.'
         );
         const embedModelId = await getPackEmbedModelId(reader);
+        const { embedModelPath, chatModelPath } = await getOnDeviceModelPaths();
         await ragInit(
           {
             embedModelId,
-            embedModelPath: '',
-            chatModelPath: '',
+            embedModelPath,
+            chatModelPath,
             packRoot: '',
           },
           reader
         );
+        setPackStatus('ready');
       }
       const result = await ragAsk(question);
       setResponseText(result.nudged);
@@ -301,6 +306,10 @@ function VoiceScreen() {
       const msg = errorMessage(e);
       const code = e && typeof e === 'object' && 'code' in e ? (e as { code: string }).code : '';
       setError(code ? `[${code}] ${msg}` : msg);
+      if (!getPackState()) {
+        setPackStatus('error');
+        setPackError(msg);
+      }
     } finally {
       setIsAsking(false);
     }
@@ -464,10 +473,11 @@ function VoiceScreen() {
         )}
       </View>
 
+      <Text style={[styles.sectionLabel, { color: mutedColor }]}>Question</Text>
       <View style={[styles.textBox, { backgroundColor: inputBg, borderColor }]}>
         <TextInput
           style={[styles.textInput, { color: textColor }]}
-          placeholder="Tap the mic and speak..."
+          placeholder="Type or speak your question..."
           placeholderTextColor={mutedColor}
           value={displayText}
           onChangeText={t => {
@@ -510,24 +520,33 @@ function VoiceScreen() {
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
+      <Text style={[styles.sectionLabel, { color: mutedColor }]}>Response</Text>
       {isAsking ? (
         <View style={[styles.responseBox, styles.responseLoadingRow, { backgroundColor: inputBg, borderColor }]}>
           <ActivityIndicator size="small" color={textColor} />
           <Text style={[styles.responseLabel, styles.responseLabelInline, { color: mutedColor }]}>Loading…</Text>
         </View>
-      ) : responseText != null ? (
+      ) : (
         <View style={[styles.responseBox, { backgroundColor: inputBg, borderColor }]}>
           <Text style={[styles.responseLabel, { color: mutedColor }]}>Answer</Text>
-          <Text style={[styles.responseText, { color: textColor }]} selectable>
-            {responseText}
-          </Text>
-          {validationSummary && (validationSummary.stats.unknownCardCount > 0 || validationSummary.stats.invalidRuleCount > 0) ? (
-            <Text style={[styles.validationHint, { color: mutedColor }]}>
-              Corrected {validationSummary.stats.unknownCardCount} name(s), {validationSummary.stats.invalidRuleCount} rule(s) invalid.
+          {responseText != null ? (
+            <>
+              <Text style={[styles.responseText, { color: textColor }]} selectable>
+                {responseText}
+              </Text>
+              {validationSummary && (validationSummary.stats.unknownCardCount > 0 || validationSummary.stats.invalidRuleCount > 0) ? (
+                <Text style={[styles.validationHint, { color: mutedColor }]}>
+                  Corrected {validationSummary.stats.unknownCardCount} name(s), {validationSummary.stats.invalidRuleCount} rule(s) invalid.
+                </Text>
+              ) : null}
+            </>
+          ) : (
+            <Text style={[styles.responsePlaceholder, { color: mutedColor }]}>
+              Submit a question to see the answer here.
             </Text>
-          ) : null}
+          )}
         </View>
-      ) : null}
+      )}
 
       <View style={styles.buttons}>
         <Pressable
@@ -640,6 +659,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   textBox: {
     borderWidth: 1,
     borderRadius: 12,
@@ -707,6 +733,11 @@ const styles = StyleSheet.create({
   responseText: {
     fontSize: 15,
     lineHeight: 22,
+  },
+  responsePlaceholder: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontStyle: 'italic',
   },
   validationHint: {
     fontSize: 12,

@@ -157,10 +157,15 @@ export async function nudgeResponse(
   packState: PackState,
   reader: PackFileReader
 ): Promise<NudgeResult> {
+  const t0 = Date.now();
+  const mark = (msg: string) => console.log(`[RAG][${Date.now() - t0}ms] ${msg}`);
+  mark('nudgeResponse start');
   const [validRuleIds, normToCanonical] = await Promise.all([
     loadRuleIds(reader, packState.validate.rulesRuleIdsPath),
     loadNameLookup(reader, packState.validate.cardsNameLookupPath),
   ]);
+  mark('rule_ids loaded end');
+  mark('name_lookup loaded end');
 
   const normalizedInput = normalize(rawText);
   const ruleMentions = extractRuleMentions(rawText);

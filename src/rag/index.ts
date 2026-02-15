@@ -28,6 +28,9 @@ let packState: PackState | null = null;
 let initParams: RagInitParams | null = null;
 let fileReader: PackFileReader | null = null;
 
+/** Guard: only one ask() at a time to avoid concurrent inference and duplicate class issues. */
+let askInFlight = false;
+
 /**
  * Initialize the RAG layer: load pack, validate capability, enforce embed_model_id.
  * Call with a PackFileReader that reads paths relative to packRoot (e.g. from app document dir or assets).
@@ -37,10 +40,15 @@ export async function init(
   params: RagInitParams,
   reader: PackFileReader
 ): Promise<PackState> {
+  const t0 = Date.now();
+  const mark = (msg: string) => console.log(`[RAG][${Date.now() - t0}ms] ${msg}`);
+  mark('init start');
   if (packState && initParams && fileReader && initParams.packRoot === params.packRoot) {
+    mark('init end (cached)');
     return packState;
   }
   const state = await loadPack(reader, params);
+  mark('init end (pack loaded)');
   packState = state;
   initParams = params;
   fileReader = reader;
@@ -73,25 +81,33 @@ export async function ask(
   if (!packState || !fileReader || !initParams) {
     throw ragError('E_NOT_INITIALIZED', 'RAG layer not initialized; call init() first.');
   }
-  const validateModule = await import('./validate');
-  const { runRagFlow } = await import('./ask');
-  const result = await runRagFlow(
+  if (askInFlight) {
+    throw ragError('E_RETRIEVAL', 'Another ask is already in progress. Wait for it to finish.');
+  }
+  askInFlight = true;
+  try {
+    const validateModule = await import('./validate');
+    const { runRagFlow } = await import('./ask');
+    const result = await runRagFlow(
     packState,
     initParams,
     fileReader,
     _question,
     _options
   );
-  const nudgeResult = await validateModule.nudgeResponse(
-    result.raw,
-    packState,
-    fileReader
-  );
-  return {
-    raw: result.raw,
-    nudged: nudgeResult.nudgedText,
-    validationSummary: nudgeResult.summary,
-  };
+    const nudgeResult = await validateModule.nudgeResponse(
+      result.raw,
+      packState,
+      fileReader
+    );
+    return {
+      raw: result.raw,
+      nudged: nudgeResult.nudgedText,
+      validationSummary: nudgeResult.summary,
+    };
+  } finally {
+    askInFlight = false;
+  }
 }
 
 /** Release pack state (e.g. on logout or pack change). */

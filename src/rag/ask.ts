@@ -1,5 +1,6 @@
 /**
  * RAG flow: embed → retrieve → merge → context → completion. Returns raw response.
+ * Supports either on-device llama.rn (GGUF paths) or Ollama HTTP API.
  */
 
 import type { PackState, PackFileReader, RagInitParams } from './types';
@@ -9,9 +10,10 @@ import { ragError } from './errors';
 
 const RULES_WEIGHT = 0.6;
 const CARDS_WEIGHT = 0.4;
-const TOP_K_RULES = 6;
-const TOP_K_CARDS = 4;
-const TOP_K_MERGE = 8;
+/** Reduced for mobile: smaller prompt, ~500–700 tokens target. */
+const TOP_K_RULES = 4;
+const TOP_K_CARDS = 3;
+const TOP_K_MERGE = 6;
 
 export interface RunRagFlowResult {
   raw: string;
@@ -20,11 +22,53 @@ export interface RunRagFlowResult {
 let embedContext: import('llama.rn').LlamaContext | null = null;
 let chatContext: import('llama.rn').LlamaContext | null = null;
 
+function useOllama(params: RagInitParams): boolean {
+  return !!(
+    params.ollamaHost &&
+    params.ollamaEmbedModel &&
+    params.ollamaChatModel
+  );
+}
+
+async function ollamaEmbedding(host: string, model: string, prompt: string): Promise<number[]> {
+  const base = host.replace(/\/$/, '');
+  const res = await fetch(`${base}/api/embeddings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, prompt }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw ragError('E_OLLAMA', `Ollama embeddings failed: ${res.status} ${text}`);
+  }
+  const data = (await res.json()) as { embedding?: number[] };
+  if (!Array.isArray(data.embedding)) {
+    throw ragError('E_OLLAMA', 'Ollama embeddings response missing embedding array');
+  }
+  return data.embedding;
+}
+
+async function ollamaGenerate(host: string, model: string, prompt: string): Promise<string> {
+  const base = host.replace(/\/$/, '');
+  const res = await fetch(`${base}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, prompt, stream: false }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw ragError('E_OLLAMA', `Ollama generate failed: ${res.status} ${text}`);
+  }
+  const data = (await res.json()) as { response?: string };
+  return typeof data.response === 'string' ? data.response : '';
+}
+
 async function getEmbedContext(embedModelPath: string): Promise<import('llama.rn').LlamaContext> {
   if (embedContext) return embedContext;
   const { initLlama } = require('llama.rn');
   const ctx = await initLlama({
     model: embedModelPath,
+    embedding: true,
     pooling_type: 'mean',
     n_ctx: 512,
   });
@@ -37,7 +81,7 @@ async function getChatContext(chatModelPath: string): Promise<import('llama.rn')
   const { initLlama } = require('llama.rn');
   const ctx = await initLlama({
     model: chatModelPath,
-    n_ctx: 2048,
+    n_ctx: 1024,
   });
   chatContext = ctx;
   return ctx;
@@ -67,12 +111,14 @@ export async function runRagFlow(
   question: string,
   _options?: { signal?: AbortSignal }
 ): Promise<RunRagFlowResult> {
+  const t0 = Date.now();
+  const mark = (msg: string) => console.log(`[RAG][${Date.now() - t0}ms] ${msg}`);
+  mark('runRagFlow start');
+
   const listResult = runListPreClassifier(question, packState);
   if (listResult?.useListPath) {
     return { raw: '[Deterministic list path not yet implemented]' };
   }
-  const embedCtx = await getEmbedContext(params.embedModelPath);
-  const chatCtx = await getChatContext(params.chatModelPath);
 
   const rulesMeta = packState.rules.indexMeta;
   const cardsMeta = packState.cards.indexMeta;
@@ -80,54 +126,145 @@ export async function runRagFlow(
     throw ragError('E_RETRIEVAL', 'Rules and cards index dim mismatch');
   }
 
-  const queryEmbedding = await embedCtx.embedding(question);
-  const queryVec = new Float32Array(queryEmbedding.embedding);
-  if (queryVec.length !== rulesMeta.dim) {
-    throw ragError('E_EMBED_MISMATCH', `Query embedding dim ${queryVec.length} !== index dim ${rulesMeta.dim}`);
+  let queryVec: Float32Array;
+  let raw: string;
+
+  if (useOllama(params)) {
+    const host = params.ollamaHost!;
+    const embedModel = params.ollamaEmbedModel!;
+    const chatModel = params.ollamaChatModel!;
+    const embedding = await ollamaEmbedding(host, embedModel, question);
+    queryVec = new Float32Array(embedding);
+    if (queryVec.length !== rulesMeta.dim) {
+      throw ragError('E_EMBED_MISMATCH', `Ollama embedding dim ${queryVec.length} !== index dim ${rulesMeta.dim}. Use model that matches pack (e.g. nomic-embed-text).`);
+    }
+
+    mark('vectors load start');
+    const [rulesIndex, cardsIndex] = await Promise.all([
+      loadVectors(reader, packState.rules.vectorsPath, rulesMeta, 'rules'),
+      loadVectors(reader, packState.cards.vectorsPath, cardsMeta, 'cards'),
+    ]);
+    mark('vectors load end');
+    mark('retrieval start');
+    const rulesTopK = Math.min(TOP_K_RULES, rulesIndex.nRows);
+    const cardsTopK = Math.min(TOP_K_CARDS, cardsIndex.nRows);
+    const rulesHits = searchL2(rulesIndex, queryVec, rulesTopK);
+    const cardsHits = searchL2(cardsIndex, queryVec, cardsTopK);
+    const merged = mergeHits(rulesHits, cardsHits);
+    const topMerged = merged.slice(0, TOP_K_MERGE);
+    mark('retrieval end');
+    const rulesRowIds = topMerged.filter((h) => h.source_type === 'rules').map((h) => h.rowId);
+    const cardsRowIds = topMerged.filter((h) => h.source_type === 'cards').map((h) => h.rowId);
+    mark('chunks load start');
+    const [rulesChunks, cardsChunks] = await Promise.all([
+      loadChunksForRows(reader, packState.rules.chunksPath, rulesRowIds),
+      loadChunksForRows(reader, packState.cards.chunksPath, cardsRowIds),
+    ]);
+    mark('chunks load end');
+    const chunksForPrompt = topMerged.map((h) => {
+      const map = h.source_type === 'rules' ? rulesChunks : cardsChunks;
+      const c = map.get(h.rowId);
+      return {
+        doc_id: c?.doc_id ?? h.doc_id,
+        source_type: h.source_type,
+        title: c?.title,
+        text: c?.text,
+      };
+    });
+    mark('context build start');
+    const contextBlock = buildContextBlock(chunksForPrompt);
+    const prompt = buildPrompt(contextBlock, question);
+    mark('context build end');
+    mark('completion start');
+    raw = await ollamaGenerate(host, chatModel, prompt);
+    mark('completion end');
+  } else {
+    if (!params.embedModelPath?.trim() || !params.chatModelPath?.trim()) {
+      throw ragError(
+        'E_MODEL_PATH',
+        'On-device models not configured. Set embedModelPath and chatModelPath to local GGUF file paths (e.g. in app documents or bundled assets). Pack expects an embed model matching index dim (e.g. nomic-embed-text) and a chat model for completion.'
+      );
+    }
+    mark('embed model load start');
+    let embedCtx: import('llama.rn').LlamaContext;
+    try {
+      embedCtx = await getEmbedContext(params.embedModelPath);
+      mark('embed model load end');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      mark('embed model load failed');
+      throw ragError('E_MODEL_PATH', `Embed model load failed: ${msg} Path: ${params.embedModelPath}`);
+    }
+
+    mark('embedding start');
+    const embRes = await embedCtx.embedding(question);
+    queryVec = new Float32Array(embRes.embedding);
+    if (queryVec.length !== rulesMeta.dim) {
+      throw ragError('E_EMBED_MISMATCH', `Query embedding dim ${queryVec.length} !== index dim ${rulesMeta.dim}`);
+    }
+    mark('embedding end');
+
+    mark('vectors load start');
+    const [rulesIndex, cardsIndex] = await Promise.all([
+      loadVectors(reader, packState.rules.vectorsPath, rulesMeta, 'rules'),
+      loadVectors(reader, packState.cards.vectorsPath, cardsMeta, 'cards'),
+    ]);
+    mark('vectors load end');
+
+    mark('retrieval start');
+    const rulesTopK = Math.min(TOP_K_RULES, rulesIndex.nRows);
+    const cardsTopK = Math.min(TOP_K_CARDS, cardsIndex.nRows);
+    const rulesHits = searchL2(rulesIndex, queryVec, rulesTopK);
+    const cardsHits = searchL2(cardsIndex, queryVec, cardsTopK);
+    const merged = mergeHits(rulesHits, cardsHits);
+    const topMerged = merged.slice(0, TOP_K_MERGE);
+    mark('retrieval end');
+
+    const rulesRowIds = topMerged.filter((h) => h.source_type === 'rules').map((h) => h.rowId);
+    const cardsRowIds = topMerged.filter((h) => h.source_type === 'cards').map((h) => h.rowId);
+    mark('chunks load start');
+    const [rulesChunks, cardsChunks] = await Promise.all([
+      loadChunksForRows(reader, packState.rules.chunksPath, rulesRowIds),
+      loadChunksForRows(reader, packState.cards.chunksPath, cardsRowIds),
+    ]);
+    mark('chunks load end');
+
+    mark('context build start');
+    const chunksForPrompt = topMerged.map((h) => {
+      const map = h.source_type === 'rules' ? rulesChunks : cardsChunks;
+      const c = map.get(h.rowId);
+      return {
+        doc_id: c?.doc_id ?? h.doc_id,
+        source_type: h.source_type,
+        title: c?.title,
+        text: c?.text,
+      };
+    });
+    const contextBlock = buildContextBlock(chunksForPrompt);
+    const prompt = buildPrompt(contextBlock, question);
+    mark('context build end');
+
+    mark('chat model load start');
+    let chatCtx: import('llama.rn').LlamaContext;
+    try {
+      chatCtx = await getChatContext(params.chatModelPath);
+      mark('chat model load end');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      mark('chat model load failed');
+      throw ragError('E_MODEL_PATH', `Chat model load failed: ${msg} Path: ${params.chatModelPath}`);
+    }
+
+    mark('completion start');
+    const result = await chatCtx.completion({
+      prompt,
+      n_predict: 512,
+      temperature: 0.3,
+    });
+    raw = result?.text ?? result?.content ?? '';
+    mark('completion end');
   }
 
-  const [rulesIndex, cardsIndex] = await Promise.all([
-    loadVectors(reader, packState.rules.vectorsPath, rulesMeta, 'rules'),
-    loadVectors(reader, packState.cards.vectorsPath, cardsMeta, 'cards'),
-  ]);
-
-  const rulesTopK = Math.min(TOP_K_RULES, rulesIndex.nRows);
-  const cardsTopK = Math.min(TOP_K_CARDS, cardsIndex.nRows);
-  const rulesHits = searchL2(rulesIndex, queryVec, rulesTopK);
-  const cardsHits = searchL2(cardsIndex, queryVec, cardsTopK);
-
-  const merged = mergeHits(rulesHits, cardsHits);
-  const topMerged = merged.slice(0, TOP_K_MERGE);
-
-  const rulesRowIds = topMerged.filter((h) => h.source_type === 'rules').map((h) => h.rowId);
-  const cardsRowIds = topMerged.filter((h) => h.source_type === 'cards').map((h) => h.rowId);
-
-  const [rulesChunks, cardsChunks] = await Promise.all([
-    loadChunksForRows(reader, packState.rules.chunksPath, rulesRowIds),
-    loadChunksForRows(reader, packState.cards.chunksPath, cardsRowIds),
-  ]);
-
-  const chunksForPrompt = topMerged.map((h) => {
-    const map = h.source_type === 'rules' ? rulesChunks : cardsChunks;
-    const c = map.get(h.rowId);
-    return {
-      doc_id: c?.doc_id ?? h.doc_id,
-      source_type: h.source_type,
-      title: c?.title,
-      text: c?.text,
-    };
-  });
-
-  const contextBlock = buildContextBlock(chunksForPrompt);
-  const prompt = buildPrompt(contextBlock, question);
-
-  const result = await chatCtx.completion({
-    prompt,
-    n_predict: 512,
-    temperature: 0.3,
-  });
-
-  const raw = result?.text ?? result?.content ?? '';
   return { raw };
 }
 

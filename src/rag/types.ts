@@ -118,6 +118,12 @@ export interface RagInitParams {
   embedModelPath: string;
   chatModelPath: string;
   packRoot: string;
+  /** When set, use Ollama HTTP API for embed + completion instead of llama.rn (e.g. "http://10.0.2.2:11434" or "http://localhost:11434"). */
+  ollamaHost?: string;
+  /** Ollama model name for embeddings (must match pack dim, e.g. nomic-embed-text). */
+  ollamaEmbedModel?: string;
+  /** Ollama model name for chat completion (e.g. llama3.2, mistral). */
+  ollamaChatModel?: string;
 }
 
 /** Structured error for hard-fail (pack invalid, embed mismatch, etc.). */
