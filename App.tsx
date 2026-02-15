@@ -189,6 +189,7 @@ function VoiceScreen() {
   const [isListening, setIsListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [voiceReady, setVoiceReady] = useState(false);
+  const [voiceAvailable, setVoiceAvailable] = useState(false);
   const voiceRef = useRef<VoiceModule | null>(null);
   const ttsRef = useRef<TtsModule | null>(null);
   const committedTextRef = useRef('');
@@ -208,12 +209,23 @@ function VoiceScreen() {
   const inputBg = isDarkMode ? '#2a2a2a' : '#fff';
   const borderColor = isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)';
 
-  // Lazy-load Voice only after mount so we don't touch native before runtime is ready (RN 0.84)
+  // Lazy-load Voice only after mount so we don't touch native before runtime is ready (RN 0.84).
+  // Do not mutate NativeModules (e.g. NativeModules.Voice = ...) — the bridge forbids inserting into the native module proxy.
   useEffect(() => {
     try {
+      const { NativeModules } = require('react-native');
+      const VoiceNative = NativeModules?.Voice ?? NativeModules?.RCTVoice ?? null;
+      if (!VoiceNative) {
+        setError('Speech recognition not available (native Voice module not linked).');
+        setVoiceReady(true);
+        voiceRef.current = null;
+        setVoiceAvailable(false);
+        return;
+      }
       const Voice = require('@react-native-voice/voice').default as VoiceModule;
       voiceRef.current = Voice;
       setVoiceReady(true);
+      setVoiceAvailable(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Voice module failed to load');
     }
@@ -586,7 +598,7 @@ function VoiceScreen() {
             !voiceReady && styles.buttonDisabled,
           ]}
           onPress={isListening ? stopListening : startListening}
-          disabled={!voiceReady}
+          disabled={!voiceReady || !voiceAvailable}
         >
           {isListening ? (
             <ActivityIndicator color="#fff" />

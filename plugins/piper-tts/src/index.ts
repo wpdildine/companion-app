@@ -68,12 +68,14 @@ export default {
     try {
       await NativePiperTts.speak(text);
       emit({ type: 'speak_end' });
-      /* Bubble native buffer/format diagnostics to JS console (no Xcode needed). */
-      const debug = await NativePiperTts.getDebugInfo();
-      if (debug && typeof debug === 'string') {
-        const lastSection = debug.split('--- Last playback buffer check')[1];
-        if (lastSection) {
-          console.log('[PiperTts] Last playback buffer check' + lastSection.trim());
+      /* Bubble native buffer/format diagnostics to JS console when available (iOS; Android does not implement getDebugInfo). */
+      if (typeof NativePiperTts.getDebugInfo === 'function') {
+        const debug = await NativePiperTts.getDebugInfo();
+        if (debug && typeof debug === 'string') {
+          const lastSection = debug.split('--- Last playback buffer check')[1];
+          if (lastSection) {
+            console.log('[PiperTts] Last playback buffer check' + lastSection.trim());
+          }
         }
       }
     } catch (e) {
@@ -94,6 +96,9 @@ export default {
 
   getDebugInfo(): Promise<string> {
     if (NativePiperTts == null) return Promise.resolve(MODULE_MISSING_MSG);
+    if (typeof NativePiperTts.getDebugInfo !== 'function') {
+      return Promise.resolve('getDebugInfo not implemented on this platform.');
+    }
     return NativePiperTts.getDebugInfo().then((s: string | null) => s ?? MODULE_MISSING_MSG);
   },
 };

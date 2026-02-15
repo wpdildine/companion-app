@@ -12,6 +12,7 @@ import com.facebook.react.bridge.ReadableMap
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executors
+import java.util.regex.Pattern
 
 class PiperTtsModule(reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -48,30 +49,37 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
                     promise.reject("E_NO_ESPEAK_DATA", "espeak-ng-data not found. Run scripts/download-espeak-ng-data.sh")
                     return@execute
                 }
-                Log.d(TAG, "speak: synthesizing (length ${text.length}) via native")
-                val result = nativeSynthesize(modelPath, configPath, espeakPath, text)
-                if (result == null || result.size < 2) {
-                    Log.e(TAG, "[E_SYNTHESIS] Native synthesize returned invalid result")
-                    promise.reject("E_SYNTHESIS", "Synthesis failed. Native Piper pipeline returned no result.")
-                    return@execute
-                }
-                val first = result[0]
-                val second = result[1]
-                // Failure: native returns [null, errorMessage]
-                if (first == null && second is String) {
-                    Log.e(TAG, "[E_SYNTHESIS] $second")
-                    promise.reject("E_SYNTHESIS", second)
-                    return@execute
-                }
-                @Suppress("UNCHECKED_CAST")
-                val pcm = first as? ByteArray ?: run {
-                    promise.reject("E_SYNTHESIS", "Native synthesize returned no audio.")
-                    return@execute
-                }
-                val sampleRate = (second as? Number)?.toInt() ?: 0
-                if (pcm.isEmpty() || sampleRate <= 0) {
-                    promise.reject("E_SYNTHESIS", "Native synthesize returned empty audio")
-                    return@execute
+                val sentenceMs = getOptionInt("interSentenceSilenceMs", 0)
+                val commaMs = getOptionInt("interCommaSilenceMs", 0)
+                val segments = segmentsWithSilenceFromText(text.trim(), sentenceMs, commaMs)
+                val (pcm, sampleRate) = if (segments.size > 1 && (sentenceMs > 0 || commaMs > 0)) {
+                    synthesizeSegmentsWithSilence(modelPath, configPath, espeakPath, segments, promise)
+                        ?: return@execute
+                } else {
+                    val result = nativeSynthesize(modelPath, configPath, espeakPath, text)
+                    if (result == null || result.size < 2) {
+                        Log.e(TAG, "[E_SYNTHESIS] Native synthesize returned invalid result")
+                        promise.reject("E_SYNTHESIS", "Synthesis failed. Native Piper pipeline returned no result.")
+                        return@execute
+                    }
+                    val first = result[0]
+                    val second = result[1]
+                    if (first == null && second is String) {
+                        Log.e(TAG, "[E_SYNTHESIS] $second")
+                        promise.reject("E_SYNTHESIS", second)
+                        return@execute
+                    }
+                    @Suppress("UNCHECKED_CAST")
+                    val pcmBytes = first as? ByteArray ?: run {
+                        promise.reject("E_SYNTHESIS", "Native synthesize returned no audio.")
+                        return@execute
+                    }
+                    val rate = (second as? Number)?.toInt() ?: 0
+                    if (pcmBytes.isEmpty() || rate <= 0) {
+                        promise.reject("E_SYNTHESIS", "Native synthesize returned empty audio")
+                        return@execute
+                    }
+                    Pair(pcmBytes, rate)
                 }
                 playPcm(pcm, sampleRate, promise)
             } catch (e: Exception) {
@@ -125,6 +133,105 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
         } catch (e: Exception) {
             promise.resolve(false)
         }
+    }
+
+    /** Pairs of (segment text, silence ms to insert after). Comma -> 125ms, sentence end (.!?) -> 250ms on iOS. */
+    private fun segmentsWithSilenceFromText(
+        text: String,
+        sentenceMs: Int,
+        commaMs: Int
+    ): List<Pair<String, Int>> {
+        if (text.isEmpty() || (sentenceMs <= 0 && commaMs <= 0)) return emptyList()
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        // Match runs of text ending in , or .!? (with optional trailing space) — same as iOS
+        val regex = Pattern.compile("[^,.!?]+[,.!?]\\s*")
+        val matcher = regex.matcher(trimmed)
+        val result = mutableListOf<Pair<String, Int>>()
+        var lastEnd = 0
+        while (matcher.find()) {
+            val seg = matcher.group()?.trim() ?: continue
+            if (seg.isEmpty()) {
+                lastEnd = matcher.end()
+                continue
+            }
+            val lastChar = seg[seg.length - 1]
+            val silence = when (lastChar) {
+                ',' -> commaMs
+                '.', '!', '?' -> sentenceMs
+                else -> 0
+            }
+            result.add(Pair(seg, silence))
+            lastEnd = matcher.end()
+        }
+        if (lastEnd < trimmed.length) {
+            val tail = trimmed.substring(lastEnd).trim()
+            if (tail.isNotEmpty()) result.add(Pair(tail, 0))
+        }
+        return if (result.isEmpty()) listOf(Pair(trimmed, 0)) else result
+    }
+
+    /** Synthesize each segment, concatenate PCM, insert silence (zero samples) after each segment. Returns null if error (promise already rejected). */
+    private fun synthesizeSegmentsWithSilence(
+        modelPath: String,
+        configPath: String,
+        espeakPath: String,
+        segments: List<Pair<String, Int>>,
+        promise: Promise
+    ): Pair<ByteArray, Int>? {
+        var combinedRate = 0
+        val combined = mutableListOf<ByteArray>()
+        for ((i, seg) in segments.withIndex()) {
+            val (segText, silenceMs) = seg
+            val result = nativeSynthesize(modelPath, configPath, espeakPath, segText)
+                ?: run {
+                    promise.reject("E_SYNTHESIS", "Native synthesize returned null for segment ${i + 1}")
+                    return null
+                }
+            if (result.size < 2) {
+                promise.reject("E_SYNTHESIS", "Synthesis failed for segment ${i + 1}: invalid result")
+                return null
+            }
+            val first = result[0]
+            val second = result[1]
+            if (first == null && second is String) {
+                promise.reject("E_SYNTHESIS", "Segment ${i + 1}: $second")
+                return null
+            }
+            val pcm = first as? ByteArray ?: run {
+                promise.reject("E_SYNTHESIS", "Segment ${i + 1}: no audio")
+                return null
+            }
+            val rate = (second as? Number)?.toInt() ?: 0
+            if (pcm.isEmpty() || rate <= 0) {
+                promise.reject("E_SYNTHESIS", "Segment ${i + 1}: empty audio or invalid sample rate")
+                return null
+            }
+            if (combinedRate == 0) combinedRate = rate
+            combined.add(pcm)
+            if (silenceMs > 0 && combinedRate > 0) {
+                val silenceSamples = (combinedRate.toLong() * silenceMs / 1000).toInt()
+                combined.add(ByteArray(silenceSamples * 2)) // 16-bit = 2 bytes per sample
+            }
+        }
+        if (combinedRate <= 0) {
+            promise.reject("E_SYNTHESIS", "No audio produced")
+            return null
+        }
+        val totalBytes = combined.sumOf { it.size }
+        val out = ByteArray(totalBytes)
+        var offset = 0
+        for (chunk in combined) {
+            chunk.copyInto(out, offset)
+            offset += chunk.size
+        }
+        Log.d(TAG, "segments: ${segments.size} parts, commas=${segments.any { it.second in 1..124 }}, sentences=${segments.any { it.second >= 125 }}")
+        return Pair(out, combinedRate)
+    }
+
+    private fun getOptionInt(key: String, default: Int): Int {
+        val opts = lastSpeakOptions ?: return default
+        return if (opts.hasKey(key)) opts.getDouble(key).toInt() else default
     }
 
     private fun getModelPaths(): Pair<String, String>? {
