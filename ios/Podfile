@@ -33,5 +33,16 @@ target 'CompanionApp' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+    # Optional: enable espeak-ng phonemization in Piper TTS (requires app to link libespeak-ng, e.g. SPM espeak-ng-spm)
+    if ENV['PIPER_USE_ESPEAK'] == '1'
+      installer.pods_project.targets.each do |target|
+        if target.name == 'PiperTts'
+          target.build_configurations.each do |config|
+            config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+            config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'PIPER_ENGINE_USE_ESPEAK=1'
+          end
+        end
+      end
+    end
   end
 end

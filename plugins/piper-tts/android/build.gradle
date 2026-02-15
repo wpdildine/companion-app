@@ -10,6 +10,37 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "0.0.1"
+        externalNativeBuild {
+            cmake {
+                arguments "-DONNXRUNTIME_DIR=${file("${buildDir}/onnxruntime").absolutePath}"
+            }
+        }
+    }
+    externalNativeBuild {
+        cmake {
+            path "src/main/jni/CMakeLists.txt"
+        }
+    }
+    ndkVersion rootProject.ext.ndkVersion
+}
+
+// Unpack onnxruntime-android AAR so CMake can use headers + libonnxruntime.so (single ORT per plan)
+def ortUnpackDir = file("${buildDir}/onnxruntime")
+tasks.register("unpackOnnxRuntimeAar", Copy) {
+    from {
+        def dep = configurations.implementation.find { it.name.startsWith("onnxruntime-android") }
+        if (dep == null) {
+            throw new GradleException("onnxruntime-android dependency not found. Add implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.18.0'")
+        }
+        zipTree(dep)
+    }
+    into ortUnpackDir
+    include "headers/**", "jni/**"
+}
+tasks.named("preBuild").configure { it.dependsOn("unpackOnnxRuntimeAar") }
+tasks.configureEach {
+    if (it.name.startsWith("configureCMake") || it.name.contains("ConfigureCMake")) {
+        it.dependsOn("unpackOnnxRuntimeAar")
     }
 }
 

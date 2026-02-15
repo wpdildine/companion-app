@@ -12,6 +12,9 @@ Offline Piper TTS plugin for React Native (iOS + Android). Regeneration-safe loc
    Then `npx react-native config` will list piper-tts and `pod install` / Android will use `plugins/piper-tts` for native code and assets.
 3. **iOS**: From repo root, run `cd ios && pod install`.
 4. **Voice model**: Run `./scripts/download-piper-voice.sh` (or `pnpm run download-piper`) from repo root. Without this, `isModelAvailable()` is false and playback falls back to system TTS.
+5. **iOS phonemization (espeak-ng)**: The plugin uses a C++ pipeline (Piper + espeak-ng) for synthesis. To enable phonemization on iOS:
+   - **espeak-ng-data**: Run `./scripts/download-espeak-ng-data.sh` so the plugin bundle includes espeak-ng data.
+   - The app project already references the [espeak-ng-spm](https://github.com/espeak-ng/espeak-ng-spm) Swift package and links `libespeak-ng`. To enable the C++ espeak path, run `PIPER_USE_ESPEAK=1 pod install` so the PiperTts pod is built with `PIPER_ENGINE_USE_ESPEAK=1`. Without this, `speak()` will reject with a synthesis error.
 
 ## API
 
@@ -20,12 +23,8 @@ Offline Piper TTS plugin for React Native (iOS + Android). Regeneration-safe loc
 
 ## Implementation status
 
-- **Phase 1–2**: Plugin scaffold, autolinking, assets, path plumbing, `isModelAvailable`, `speak` stub.
-- **Phase 3**: ONNX Runtime session load on Android and iOS (smoke test).
-- **Phase 4**: Full pipeline on both platforms: minimal character-level phonemization, ONNX inference (Piper VITS), PCM playback via AudioTrack (Android) and AVAudioEngine (iOS). Promise resolves when playback ends.
-- **Phase 5**: App uses Piper when model is available and falls back to system TTS otherwise.
-
-**Note:** Phonemization is minimal (character-to-phoneme-id from config). For better quality, integrate espeak-style phonemization (e.g. piper-phonemize) in a future iteration.
+- **Route A (iOS)**: Native layer resolves paths (model, config, espeak-ng-data), calls C++ `piper::synthesize()` (espeak-ng phonemize → phoneme_id_map → ONNX C API → int16 PCM), and plays PCM via AVAudioEngine. Single ORT (onnxruntime-c). No Obj-C ONNX or character phoneme mapping. espeak-ng enabled when `PIPER_USE_ESPEAK=1` and app links libespeak-ng (espeak-ng-spm).
+- **Route A (Android)**: Thin Kotlin module: path resolution (model/config from assets→filesDir, espeak-ng-data from assets→filesDir once), JNI `nativeSynthesize(modelPath, configPath, espeakPath, text)` → PCM + sample rate, play via AudioTrack. ORT from onnxruntime-android AAR (unpacked for CMake); Piper C++ shared with iOS (`ios/cpp`). Single ORT per plan. No Kotlin ORT/phoneme code. **Note:** `PIPER_ENGINE_USE_ESPEAK` is not defined on Android yet, so native `synthesize()` returns false until espeak-ng is built for Android; app will get a clear synthesis error until then.
 
 ## Layout
 

@@ -28,12 +28,8 @@ PODS:
     - ReactNativeDependencies
     - Yoga
   - onnxruntime-c (1.24.1)
-  - onnxruntime-objc (1.24.1):
-    - onnxruntime-objc/Core (= 1.24.1)
-  - onnxruntime-objc/Core (1.24.1):
-    - onnxruntime-c (= 1.24.1)
   - PiperTts (0.0.1):
-    - onnxruntime-objc
+    - onnxruntime-c
     - React-Core
     - ReactCodegen
   - RCTDeprecation (0.84.0)
@@ -1977,7 +1973,6 @@ DEPENDENCIES:
 SPEC REPOS:
   trunk:
     - onnxruntime-c
-    - onnxruntime-objc
 
 EXTERNAL SOURCES:
   FBLazyVector:
@@ -2143,8 +2138,7 @@ SPEC CHECKSUMS:
   hermes-engine: e9c7ba4257185c052fb27241b5c19a21536f168d
   llama-rn: e1c26363deecf6c48c716cb6ddc8159356894a82
   onnxruntime-c: f48d98ac3179b177d158353213055667893a01f4
-  onnxruntime-objc: 5deab12dc3e14e7b26c5a324dc5d66efa32e6258
-  PiperTts: 33e2357a8a20197ddba2dd4ffc648d37f856703a
+  PiperTts: 4fcf6dac52da2720990bed9b86b70ff9d96ec6db
   RCTDeprecation: 3280799c14232a56e5a44f92981a8ee33bc69fd9
   RCTRequired: 9854a51b0f65ccf43ea0b744df4d70fce339db32
   RCTSwiftUI: 96986e49a4fdc2c2103929dee2641e1b57edf33d
@@ -2220,6 +2214,6 @@ SPEC CHECKSUMS:
   TextToSpeech: 89b239221ec378d213af422d14789a729705360b
   Yoga: 772166513f9cd2d61a6251d0dacbbfaa5b537479
 
-PODFILE CHECKSUM: fe9ffc4b5309ecb0d1a637e45d34178ddf857827
+PODFILE CHECKSUM: d63a3499858be5063fa6f57c19d221244869900b
 
 COCOAPODS: 1.16.2

@@ -8,17 +8,9 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
-import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.FloatBuffer
-import java.nio.LongBuffer
 import java.util.concurrent.Executors
-import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtSession
 
 class PiperTtsModule(reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -41,62 +33,27 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
                     promise.reject("E_NO_MODEL", "Piper model not found. Run scripts/download-piper-voice.sh")
                     return@execute
                 }
-                Log.d(TAG, "speak: synthesizing (length ${text.length})")
-                val config = loadConfig(configPath) ?: run {
-                    Log.e(TAG, "[E_CONFIG] Failed to load model config")
-                    promise.reject("E_CONFIG", "Failed to load model config")
+                val espeakPath = getEspeakDataPath()
+                if (espeakPath == null) {
+                    Log.e(TAG, "[E_NO_ESPEAK_DATA] espeak-ng-data not found. Run scripts/download-espeak-ng-data.sh and copy to android assets.")
+                    promise.reject("E_NO_ESPEAK_DATA", "espeak-ng-data not found. Run scripts/download-espeak-ng-data.sh")
                     return@execute
                 }
-                val phonemeIds = textToPhonemeIds(config, text)
-                if (phonemeIds.isEmpty()) {
-                    Log.e(TAG, "[E_PHONEME] Could not convert text to phoneme IDs")
-                    promise.reject("E_PHONEME", "Could not convert text to phoneme IDs")
+                Log.d(TAG, "speak: synthesizing (length ${text.length}) via native")
+                val result = nativeSynthesize(modelPath, configPath, espeakPath, text)
+                if (result == null || result.size < 2) {
+                    Log.e(TAG, "[E_SYNTHESIS] Native synthesize failed (espeak-ng not built for Android yet)")
+                    promise.reject("E_SYNTHESIS", "Synthesis failed. Native Piper pipeline returned no audio.")
                     return@execute
                 }
-                val env = OrtEnvironment.getEnvironment()
-                val sessionOptions = OrtSession.SessionOptions()
-                val session = env.createSession(modelPath, sessionOptions)
-                try {
-                    val sampleRate = config.getJSONObject("audio").getInt("sample_rate")
-                    val inference = config.getJSONObject("inference")
-                    val noiseScale = inference.optDouble("noise_scale", 0.667).toFloat()
-                    val lengthScale = inference.optDouble("length_scale", 1.0).toFloat()
-                    val noiseW = inference.optDouble("noise_w", 0.8).toFloat()
-
-                    val inputTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(phonemeIds.toLongArray()), longArrayOf(1, phonemeIds.size.toLong()))
-                    val inputLengthsTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(longArrayOf(phonemeIds.size.toLong())), longArrayOf(1))
-                    val scalesTensor = OnnxTensor.createTensor(env, java.nio.FloatBuffer.wrap(floatArrayOf(noiseScale, lengthScale, noiseW)), longArrayOf(3))
-                    val numSpeakers = config.optInt("num_speakers", 1)
-                    val inputs = mutableMapOf<String, OnnxTensor>(
-                        "input" to inputTensor,
-                        "input_lengths" to inputLengthsTensor,
-                        "scales" to scalesTensor
-                    )
-                    var sidTensor: OnnxTensor? = null
-                    if (numSpeakers > 1) {
-                        sidTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(longArrayOf(0)), longArrayOf(1))
-                        inputs["sid"] = sidTensor
-                    }
-                    try {
-                        val results = session.run(inputs)
-                        try {
-                            val output = results.get(0) as OnnxTensor
-                            val floatData = output.getFloatBuffer()
-                            val pcm = floatToInt16(floatData)
-                            playPcm(pcm, sampleRate, promise)
-                        } finally {
-                            results.close()
-                        }
-                    } finally {
-                        inputTensor.close()
-                        inputLengthsTensor.close()
-                        scalesTensor.close()
-                        sidTensor?.close()
-                    }
-                } finally {
-                    session.close()
-                    sessionOptions.close()
+                @Suppress("UNCHECKED_CAST")
+                val pcm = result[0] as ByteArray
+                val sampleRate = (result[1] as Number).toInt()
+                if (pcm.isEmpty() || sampleRate <= 0) {
+                    promise.reject("E_SYNTHESIS", "Native synthesize returned empty audio")
+                    return@execute
                 }
+                playPcm(pcm, sampleRate, promise)
             } catch (e: Exception) {
                 Log.e(TAG, "[E_PIPER] Piper speak failed", e)
                 promise.reject("E_PIPER", e.message ?: "Piper synthesis failed")
@@ -104,51 +61,12 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
         }
     }
 
-    private fun loadConfig(configPath: String): JSONObject? {
-        return try {
-            JSONObject(File(configPath).readText())
-        } catch (e: Exception) {
-            Log.e(TAG, "[E_CONFIG] Load config failed", e)
-            null
-        }
-    }
-
-    private fun textToPhonemeIds(config: JSONObject, text: String): List<Long> {
-        val idMap = config.getJSONObject("phoneme_id_map")
-        fun idFor(key: String): Long {
-            if (!idMap.has(key)) return 3
-            val arr = idMap.getJSONArray(key)
-            return if (arr.length() > 0) arr.getLong(0) else 3
-        }
-        val bos = idFor("^")
-        val eos = idFor("$")
-        val pad = idFor("_")
-        val space = idFor(" ")
-        val ids = mutableListOf<Long>()
-        ids.add(bos)
-        for (c in text.lowercase()) {
-            val ch = c.toString()
-            if (idMap.has(ch)) {
-                ids.add(idFor(ch))
-            } else if (c == ' ' || c == '\n' || c == '\t') {
-                ids.add(space)
-            }
-        }
-        ids.add(pad)
-        ids.add(eos)
-        return ids
-    }
-
-    private fun floatToInt16(floatBuffer: FloatBuffer): ByteArray {
-        val n = floatBuffer.remaining()
-        val buffer = ByteBuffer.allocate(n * 2).order(ByteOrder.nativeOrder())
-        val shortBuf = buffer.asShortBuffer()
-        while (floatBuffer.hasRemaining()) {
-            val s = (floatBuffer.get().coerceIn(-1f, 1f) * 32767).toInt().toShort()
-            shortBuf.put(s)
-        }
-        return buffer.array()
-    }
+    private external fun nativeSynthesize(
+        modelPath: String,
+        configPath: String,
+        espeakPath: String,
+        text: String
+    ): Array<Any>?
 
     private fun playPcm(pcm: ByteArray, sampleRate: Int, promise: Promise) {
         val bufferSize = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
@@ -200,12 +118,45 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
         return if (onnx.exists()) Pair(onnx.absolutePath, json.absolutePath) else null
     }
 
+    /** Copy espeak-ng-data from assets to filesDir once; return path to directory or null. */
+    private fun getEspeakDataPath(): String? {
+        val destDir = reactApplicationContext.filesDir.resolve("espeak-ng-data")
+        val marker = destDir.resolve(".copied")
+        if (marker.exists()) return destDir.absolutePath
+        destDir.mkdirs()
+        return try {
+            if (reactApplicationContext.assets.list("espeak-ng-data").isNullOrEmpty()) return null
+            copyAssetDirRecursive("espeak-ng-data", destDir)
+            marker.writeText("1")
+            destDir.absolutePath
+        } catch (e: Exception) {
+            Log.e(TAG, "[E_NO_ESPEAK_DATA] Copy espeak-ng-data failed", e)
+            null
+        }
+    }
+
+    private fun copyAssetDirRecursive(assetPath: String, destDir: File) {
+        val names = reactApplicationContext.assets.list(assetPath) ?: return
+        for (name in names) {
+            val subPath = "$assetPath/$name"
+            val destFile = destDir.resolve(name)
+            val list = reactApplicationContext.assets.list(subPath)
+            if (!list.isNullOrEmpty()) {
+                destFile.mkdirs()
+                copyAssetDirRecursive(subPath, destFile)
+            } else {
+                destFile.parentFile?.mkdirs()
+                reactApplicationContext.assets.open(subPath).use { input ->
+                    FileOutputStream(destFile).use { output -> input.copyTo(output) }
+                }
+            }
+        }
+    }
+
     private fun copyAssetToFile(assetPath: String, dest: File): Boolean {
         return try {
             reactApplicationContext.assets.open(assetPath).use { input ->
-                FileOutputStream(dest).use { output ->
-                    input.copyTo(output)
-                }
+                FileOutputStream(dest).use { output -> input.copyTo(output) }
             }
             true
         } catch (e: Exception) {
@@ -215,6 +166,9 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
     }
 
     companion object {
+        init {
+            System.loadLibrary("piper_tts")
+        }
         private const val TAG = "PiperTts"
     }
 }

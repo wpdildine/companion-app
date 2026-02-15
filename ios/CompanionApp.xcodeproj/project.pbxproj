@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 54;
+	objectVersion = 56;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -11,6 +11,7 @@
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
+		ESPK001A2B3C4D5E6F7890AB /* libespeak-ng in Frameworks */ = {isa = PBXBuildFile; productRef = ESPK001A2B3C4D5E6F7890AC /* libespeak-ng */; };
 		FDC231951099F7CECF20EAAE /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
@@ -36,6 +37,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				0C80B921A6F3F58F76C31292 /* libPods-CompanionApp.a in Frameworks */,
+				ESPK001A2B3C4D5E6F7890AB /* libespeak-ng in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -128,12 +130,16 @@
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */,
 				E235C05ADACE081382539298 /* [CP] Copy Pods Resources */,
+				B2C3D4E5F60718293A4B5D00 /* Copy espeak-ng-data */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			name = CompanionApp;
+			packageProductDependencies = (
+				ESPK001A2B3C4D5E6F7890AC /* libespeak-ng */,
+			);
 			productName = CompanionApp;
 			productReference = 13B07F961A680F5B00A75B9A /* CompanionApp.app */;
 			productType = "com.apple.product-type.application";
@@ -160,6 +166,9 @@
 				Base,
 			);
 			mainGroup = 83CBB9F61A601CBA00E9B192;
+			packageReferences = (
+				ESPK002A2B3C4D5E6F7890AD /* XCRemoteSwiftPackageReference "espeak-ng-spm" */,
+			);
 			productRefGroup = 83CBBA001A601CBA00E9B192 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -229,6 +238,21 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -e\nPIPER_SRC=\"${SRCROOT}/../plugins/piper-tts/ios/Resources/piper\"\nDST=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nif [ ! -d \"$PIPER_SRC\" ]; then echo \"warning: Piper source missing at $PIPER_SRC\"; exit 0; fi\nif [ ! -f \"${PIPER_SRC}/model.onnx\" ]; then echo \"warning: ${PIPER_SRC}/model.onnx not found\"; exit 0; fi\nmkdir -p \"${DST}/piper\"\ncp -f \"${PIPER_SRC}\"/model.onnx \"${PIPER_SRC}\"/model.onnx.json \"${DST}/piper/\"\necho \"Piper model copied to ${DST}/piper\"\n";
+			showEnvVarsInLog = 0;
+		};
+		B2C3D4E5F60718293A4B5D00 /* Copy espeak-ng-data */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Copy espeak-ng-data";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nESPEAK_SRC=\"${SRCROOT}/../plugins/piper-tts/ios/Resources/espeak-ng-data\"\nDST=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nif [ ! -d \"$ESPEAK_SRC\" ]; then echo \"warning: espeak-ng-data missing at $ESPEAK_SRC (run scripts/download-espeak-ng-data.sh)\"; exit 0; fi\nmkdir -p \"${DST}/espeak-ng-data\"\ncp -R \"${ESPEAK_SRC}\"/* \"${DST}/espeak-ng-data/\"\necho \"espeak-ng-data copied to ${DST}/espeak-ng-data\"\n";
 			showEnvVarsInLog = 0;
 		};
 		C38B50BA6285516D6DCD4F65 /* [CP] Check Pods Manifest.lock */ = {
@@ -530,6 +554,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		ESPK002A2B3C4D5E6F7890AD /* XCRemoteSwiftPackageReference "espeak-ng-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/espeak-ng/espeak-ng-spm";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		ESPK001A2B3C4D5E6F7890AC /* libespeak-ng */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = ESPK002A2B3C4D5E6F7890AD /* XCRemoteSwiftPackageReference "espeak-ng-spm" */;
+			productName = "libespeak-ng";
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 83CBB9F71A601CBA00E9B192 /* Project object */;
 }
