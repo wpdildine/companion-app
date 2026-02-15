@@ -13,6 +13,7 @@
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		ESPK001A2B3C4D5E6F7890AB /* libespeak-ng in Frameworks */ = {isa = PBXBuildFile; productRef = ESPK001A2B3C4D5E6F7890AC /* libespeak-ng */; };
 		FDC231951099F7CECF20EAAE /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
+		RAGRDR01M2CA45674006654EE /* RagPackReaderModule.m in Sources */ = {isa = PBXBuildFile; fileRef = RAGRDR02M2CA45674006654EE /* RagPackReaderModule.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -29,6 +30,8 @@
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		P1P3R0M0D3L0NNX00001 /* model.onnx */ = {isa = PBXFileReference; lastKnownFileType = file; path = model.onnx; sourceTree = "<group>"; };
 		P1P3R0M0D3L0NNX00002 /* model.onnx.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = model.onnx.json; sourceTree = "<group>"; };
+		RAGRDR02M2CA45674006654EE /* RagPackReaderModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CompanionApp/RagPackReaderModule.m; sourceTree = "<group>"; };
+		RAGRDR03M2CA45674006654EE /* RagPackReaderModule.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CompanionApp/RagPackReaderModule.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -54,6 +57,8 @@
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
 				P1P3R0M0D3L0NNX00005 /* PiperModel */,
+				RAGRDR02M2CA45674006654EE /* RagPackReaderModule.m */,
+				RAGRDR03M2CA45674006654EE /* RagPackReaderModule.h */,
 			);
 			name = CompanionApp;
 			sourceTree = "<group>";
@@ -127,6 +132,7 @@
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				A1B2C3D4E5F60718293A4B5C /* Copy Piper TTS model */,
+				RAGPACKCOPY001A2B3C4D5E6F7 /* Copy content pack */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */,
 				E235C05ADACE081382539298 /* [CP] Copy Pods Resources */,
@@ -255,6 +261,21 @@
 			shellScript = "set -e\nESPEAK_SRC=\"${SRCROOT}/../plugins/piper-tts/ios/Resources/espeak-ng-data\"\nDST=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nif [ ! -d \"$ESPEAK_SRC\" ]; then echo \"warning: espeak-ng-data missing at $ESPEAK_SRC (run scripts/download-espeak-ng-data.sh)\"; exit 0; fi\nmkdir -p \"${DST}/espeak-ng-data\"\ncp -R \"${ESPEAK_SRC}\"/* \"${DST}/espeak-ng-data/\"\necho \"espeak-ng-data copied to ${DST}/espeak-ng-data\"\n";
 			showEnvVarsInLog = 0;
 		};
+		RAGPACKCOPY001A2B3C4D5E6F7 /* Copy content pack */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Copy content pack";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nPACK_SRC=\"${SRCROOT}/../assets/content_pack\"\nDST=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nif [ ! -d \"$PACK_SRC\" ]; then echo \"warning: content_pack missing at $PACK_SRC\"; exit 0; fi\nif [ ! -f \"${PACK_SRC}/manifest.json\" ]; then echo \"warning: manifest.json not found in $PACK_SRC\"; exit 0; fi\nmkdir -p \"${DST}/content_pack\"\ncp -R \"${PACK_SRC}\"/* \"${DST}/content_pack/\"\necho \"content_pack copied to ${DST}/content_pack\"\n";
+			showEnvVarsInLog = 0;
+		};
 		C38B50BA6285516D6DCD4F65 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -302,6 +323,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
+				RAGRDR01M2CA45674006654EE /* RagPackReaderModule.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

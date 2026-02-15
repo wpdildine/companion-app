@@ -8,7 +8,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   Pressable,
   StatusBar,
@@ -22,6 +21,22 @@ import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
+import {
+  init as ragInit,
+  ask as ragAsk,
+  getPackState,
+  getPackEmbedModelId,
+  createThrowReader,
+  createBundlePackReader,
+  type ValidationSummary,
+} from './src/rag';
+
+function errorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === 'object' && e !== null && 'message' in e)
+    return String((e as { message: unknown }).message);
+  return String(e);
+}
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
@@ -70,6 +85,12 @@ function VoiceScreen() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [piperAvailable, setPiperAvailable] = useState<boolean | null>(null);
   const [piperDebugInfo, setPiperDebugInfo] = useState<string | null>(null);
+  const [responseText, setResponseText] = useState<string | null>(null);
+  const [isAsking, setIsAsking] = useState(false);
+  const [validationSummary, setValidationSummary] = useState<ValidationSummary | null>(null);
+  const [packStatus, setPackStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [packError, setPackError] = useState<string | null>(null);
+  const packLoadStartedRef = useRef(false);
 
   const textColor = isDarkMode ? '#e5e5e5' : '#1a1a1a';
   const mutedColor = isDarkMode ? '#888' : '#666';
@@ -176,6 +197,52 @@ function VoiceScreen() {
     };
   }, [voiceReady]);
 
+  // Load bundled content pack once on mount when native reader is available. Never reload.
+  useEffect(() => {
+    let cancelled = false;
+    const reader = createBundlePackReader();
+    if (!reader) {
+      setPackStatus('idle');
+      return;
+    }
+    if (getPackState()) {
+      setPackStatus('ready');
+      return;
+    }
+    if (packLoadStartedRef.current) {
+      return;
+    }
+    packLoadStartedRef.current = true;
+    setPackStatus('loading');
+    setPackError(null);
+    (async () => {
+      try {
+        const embedModelId = await getPackEmbedModelId(reader);
+        await ragInit(
+          {
+            embedModelId,
+            embedModelPath: '',
+            chatModelPath: '',
+            packRoot: '',
+          },
+          reader
+        );
+        if (!cancelled) {
+          setPackStatus('ready');
+          setPackError(null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setPackStatus('error');
+          setPackError(errorMessage(e) || 'Unknown error');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const startListening = useCallback(async () => {
     const V = voiceRef.current;
     if (!V) return;
@@ -204,10 +271,38 @@ function VoiceScreen() {
     setPartialText('');
   }, []);
 
-  const handleSubmit = useCallback(() => {
-    const text = transcribedText.trim();
-    if (text) {
-      Alert.alert('Submitted', `Text: ${text}`, [{ text: 'OK' }]);
+  const handleSubmit = useCallback(async () => {
+    const question = transcribedText.trim();
+    if (!question) return;
+    setError(null);
+    setResponseText(null);
+    setValidationSummary(null);
+    setIsAsking(true);
+    try {
+      if (!getPackState()) {
+        const reader = createBundlePackReader() ?? createThrowReader(
+          'Pack not configured. Add the content pack to assets/content_pack and rebuild the app.'
+        );
+        const embedModelId = await getPackEmbedModelId(reader);
+        await ragInit(
+          {
+            embedModelId,
+            embedModelPath: '',
+            chatModelPath: '',
+            packRoot: '',
+          },
+          reader
+        );
+      }
+      const result = await ragAsk(question);
+      setResponseText(result.nudged);
+      setValidationSummary(result.validationSummary);
+    } catch (e) {
+      const msg = errorMessage(e);
+      const code = e && typeof e === 'object' && 'code' in e ? (e as { code: string }).code : '';
+      setError(code ? `[${code}] ${msg}` : msg);
+    } finally {
+      setIsAsking(false);
     }
   }, [transcribedText]);
 
@@ -343,6 +438,32 @@ function VoiceScreen() {
         </View>
       ) : null}
 
+      <View style={styles.packStatusRow}>
+        <Text style={[styles.packStatusLabel, { color: mutedColor }]}>
+          Content pack:{' '}
+        </Text>
+        {packStatus === 'loading' ? (
+          <View style={styles.packStatusValueRow}>
+            <ActivityIndicator size="small" color={mutedColor} />
+            <Text style={[styles.packStatusValue, { color: mutedColor }]}>
+              Loading…
+            </Text>
+          </View>
+        ) : packStatus === 'ready' ? (
+          <Text style={[styles.packStatusValue, styles.packStatusOk]}>
+            Ready
+          </Text>
+        ) : packStatus === 'error' ? (
+          <Text style={[styles.packStatusValue, styles.packStatusMissing]} numberOfLines={2}>
+            Error: {packError ?? 'Unknown'}
+          </Text>
+        ) : (
+          <Text style={[styles.packStatusValue, { color: mutedColor }]}>
+            Not loaded
+          </Text>
+        )}
+      </View>
+
       <View style={[styles.textBox, { backgroundColor: inputBg, borderColor }]}>
         <TextInput
           style={[styles.textInput, { color: textColor }]}
@@ -389,6 +510,25 @@ function VoiceScreen() {
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
+      {isAsking ? (
+        <View style={[styles.responseBox, styles.responseLoadingRow, { backgroundColor: inputBg, borderColor }]}>
+          <ActivityIndicator size="small" color={textColor} />
+          <Text style={[styles.responseLabel, styles.responseLabelInline, { color: mutedColor }]}>Loading…</Text>
+        </View>
+      ) : responseText != null ? (
+        <View style={[styles.responseBox, { backgroundColor: inputBg, borderColor }]}>
+          <Text style={[styles.responseLabel, { color: mutedColor }]}>Answer</Text>
+          <Text style={[styles.responseText, { color: textColor }]} selectable>
+            {responseText}
+          </Text>
+          {validationSummary && (validationSummary.stats.unknownCardCount > 0 || validationSummary.stats.invalidRuleCount > 0) ? (
+            <Text style={[styles.validationHint, { color: mutedColor }]}>
+              Corrected {validationSummary.stats.unknownCardCount} name(s), {validationSummary.stats.invalidRuleCount} rule(s) invalid.
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
       <View style={styles.buttons}>
         <Pressable
           style={[
@@ -419,8 +559,9 @@ function VoiceScreen() {
         <Pressable
           style={[styles.button, styles.submitButton, { borderColor }]}
           onPress={handleSubmit}
+          disabled={isAsking}
         >
-          <Text style={styles.submitButtonLabel}>Submit</Text>
+          <Text style={styles.submitButtonLabel}>{isAsking ? '…' : 'Submit'}</Text>
         </Pressable>
       </View>
     </View>
@@ -460,6 +601,31 @@ const styles = StyleSheet.create({
   },
   piperStatusOk: {
     color: '#16a34a',
+  },
+  packStatusRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  packStatusLabel: {
+    fontSize: 14,
+  },
+  packStatusValue: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  packStatusValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  packStatusOk: {
+    color: '#16a34a',
+  },
+  packStatusMissing: {
+    color: '#dc2626',
+    flex: 1,
   },
   piperStatusMissing: {
     color: '#b45309',
@@ -519,6 +685,32 @@ const styles = StyleSheet.create({
     color: '#dc2626',
     fontSize: 14,
     marginBottom: 8,
+  },
+  responseBox: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+  },
+  responseLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  responseLabel: {
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  responseLabelInline: {
+    marginBottom: 0,
+  },
+  responseText: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  validationHint: {
+    fontSize: 12,
+    marginTop: 8,
   },
   buttons: {
     gap: 12,

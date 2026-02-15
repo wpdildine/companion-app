@@ -78,6 +78,14 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
 
     namespace "com.companionapp"
+
+    // Include content pack from assets/content_pack so it is bundled in the APK.
+    sourceSets {
+        main {
+            assets.srcDirs += ["${project.projectDir}/../../assets/content_pack"]
+        }
+    }
+
     defaultConfig {
         applicationId "com.companionapp"
         minSdkVersion rootProject.ext.minSdkVersion
