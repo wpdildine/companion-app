@@ -35,6 +35,10 @@
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string></string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app uses the microphone for speech recognition.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>This app uses speech recognition to convert your voice to text.</string>
 	<!-- New Architecture (Fabric + TurboModules) - required for e.g. llama.rn -->
 	<key>RCTNewArchEnabled</key>
 	<true/>

@@ -1493,6 +1493,8 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - react-native-voice (3.2.4):
+    - React-Core
   - React-NativeModulesApple (0.84.0):
     - hermes-engine
     - React-callinvoker
@@ -1922,6 +1924,7 @@ DEPENDENCIES:
   - React-Mapbuffer (from `../node_modules/react-native/ReactCommon`)
   - React-microtasksnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
+  - "react-native-voice (from `../node_modules/@react-native-voice/voice`)"
   - React-NativeModulesApple (from `../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)
   - React-networking (from `../node_modules/react-native/ReactCommon/react/networking`)
   - React-oscompat (from `../node_modules/react-native/ReactCommon/oscompat`)
@@ -2040,6 +2043,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/react/nativemodule/microtasks"
   react-native-safe-area-context:
     :path: "../node_modules/react-native-safe-area-context"
+  react-native-voice:
+    :path: "../node_modules/@react-native-voice/voice"
   React-NativeModulesApple:
     :path: "../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios"
   React-networking:
@@ -2152,6 +2157,7 @@ SPEC CHECKSUMS:
   React-Mapbuffer: 92b99e450e8ff598b27d6e4db3a75e04fd45e9a9
   React-microtasksnativemodule: 2fe0f2bd2840dedbd66c0ac249c64f977f39cc18
   react-native-safe-area-context: 37e680fc4cace3c0030ee46e8987d24f5d3bdab2
+  react-native-voice: 908a0eba96c8c3d643e4f98b7232c6557d0a6f9c
   React-NativeModulesApple: 44a9474594566cd03659f92e38f42599c6b9dee4
   React-networking: db73d91466cb134fcbdaaa579fb2de14e2c2ea01
   React-oscompat: b924b8609d06899f00ab1aa813b0cde9c5e12771

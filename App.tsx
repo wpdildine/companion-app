@@ -1,23 +1,22 @@
 /**
  * CompanionApp
  * @format
+ * Voice: @react-native-voice/voice (lazy-loaded to avoid "runtime not ready" on RN 0.84)
  */
 
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   useColorScheme,
   View,
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-
-const DEPENDENCIES = [
-  { name: 'react', version: '19.2.3' },
-  { name: 'react-native', version: '0.84.0' },
-  { name: 'react-native-safe-area-context', version: '^5.5.2' },
-  { name: 'llama.rn', version: '^0.11.0' },
-] as const;
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
@@ -25,30 +24,197 @@ function App() {
   return (
     <SafeAreaProvider>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <SpecificationsScreen />
+      <VoiceScreen />
     </SafeAreaProvider>
   );
 }
 
-function SpecificationsScreen() {
+type VoiceModule = {
+  start: (locale: string) => Promise<void>;
+  stop: () => Promise<void>;
+  destroy: () => Promise<void>;
+  removeAllListeners: () => void;
+  onSpeechResults: ((e: { value?: string[] }) => void) | null;
+  onSpeechPartialResults: ((e: { value?: string[] }) => void) | null;
+  onSpeechError: ((e: { error?: { message?: string } }) => void) | null;
+  onSpeechEnd: (() => void) | null;
+};
+
+function VoiceScreen() {
   const insets = useSafeAreaInsets();
   const isDarkMode = useColorScheme() === 'dark';
+  const [transcribedText, setTranscribedText] = useState('');
+  const [partialText, setPartialText] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [voiceReady, setVoiceReady] = useState(false);
+  const voiceRef = useRef<VoiceModule | null>(null);
+  const committedTextRef = useRef('');
+
   const textColor = isDarkMode ? '#e5e5e5' : '#1a1a1a';
   const mutedColor = isDarkMode ? '#888' : '#666';
-  const borderColor = isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
+  const bgColor = isDarkMode ? '#1a1a1a' : '#f5f5f5';
+  const inputBg = isDarkMode ? '#2a2a2a' : '#fff';
+  const borderColor = isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)';
+
+  // Lazy-load Voice only after mount so we don't touch native before runtime is ready (RN 0.84)
+  useEffect(() => {
+    try {
+      const Voice = require('@react-native-voice/voice').default as VoiceModule;
+      voiceRef.current = Voice;
+      setVoiceReady(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Voice module failed to load');
+    }
+    return () => {
+      const V = voiceRef.current;
+      if (V) {
+        V.destroy().then(() => V.removeAllListeners());
+        voiceRef.current = null;
+      }
+    };
+  }, []);
+
+  // Attach event handlers when Voice is ready
+  useEffect(() => {
+    const V = voiceRef.current;
+    if (!V) return;
+
+    V.onSpeechResults = (e) => {
+      const next = (e.value?.[0] ?? '').trim();
+      setPartialText('');
+      if (!next) return;
+      const committed = committedTextRef.current.trim();
+      setTranscribedText(committed ? `${committed} ${next}` : next);
+    };
+    V.onSpeechPartialResults = (e) => {
+      setPartialText(e.value?.[0] ?? '');
+    };
+    V.onSpeechError = (e) => {
+      setError(e.error?.message ?? 'Speech recognition error');
+      setIsListening(false);
+    };
+    V.onSpeechEnd = () => {
+      setIsListening(false);
+      setPartialText('');
+    };
+
+    return () => {
+      V.onSpeechResults = null;
+      V.onSpeechPartialResults = null;
+      V.onSpeechError = null;
+      V.onSpeechEnd = null;
+    };
+  }, [voiceReady]);
+
+  const startListening = useCallback(async () => {
+    const V = voiceRef.current;
+    if (!V) return;
+    setError(null);
+    setPartialText('');
+    committedTextRef.current = transcribedText;
+    try {
+      await V.start('en-US');
+      setIsListening(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to start voice');
+      setIsListening(false);
+    }
+  }, [transcribedText]);
+
+  const stopListening = useCallback(async () => {
+    const V = voiceRef.current;
+    if (V) {
+      try {
+        await V.stop();
+      } catch {
+        // ignore
+      }
+    }
+    setIsListening(false);
+    setPartialText('');
+  }, []);
+
+  const handleSubmit = useCallback(() => {
+    const text = transcribedText.trim();
+    if (text) {
+      Alert.alert('Submitted', `Text: ${text}`, [{ text: 'OK' }]);
+    }
+  }, [transcribedText]);
+
+  const handleClear = useCallback(() => {
+    setTranscribedText('');
+    setPartialText('');
+  }, []);
+
+  const displayText = partialText || transcribedText;
+
+  if (!voiceReady && !error) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: bgColor }]}>
+        <Text style={[styles.title, { color: textColor }]}>Voice</Text>
+        <ActivityIndicator size="large" color={isDarkMode ? '#78c2a9' : '#0a7ea4'} style={styles.loader} />
+        <Text style={[styles.hint, { color: mutedColor }]}>Loading speech recognition…</Text>
+      </View>
+    );
+  }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <Text style={[styles.title, { color: textColor }]}>Specifications</Text>
-      <View style={[styles.section, { borderBottomColor: borderColor }]}>
-        <Text style={[styles.sectionTitle, { color: mutedColor }]}>Dependencies</Text>
-        {DEPENDENCIES.map((dep) => (
-          <View key={dep.name} style={styles.row}>
-            <Text style={styles.checkmark}>✓</Text>
-            <Text style={[styles.depName, { color: textColor }]}>{dep.name}</Text>
-            <Text style={[styles.depVersion, { color: mutedColor }]}>{dep.version}</Text>
-          </View>
-        ))}
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom, backgroundColor: bgColor }]}>
+      <Text style={[styles.title, { color: textColor }]}>Voice to text</Text>
+
+      <View style={[styles.textBox, { backgroundColor: inputBg, borderColor }]}>
+        <TextInput
+          style={[styles.textInput, { color: textColor }]}
+          placeholder="Tap the mic and speak..."
+          placeholderTextColor={mutedColor}
+          value={displayText}
+          onChangeText={(t) => {
+            if (!partialText) setTranscribedText(t);
+          }}
+          editable={!isListening}
+          multiline
+        />
+        {partialText ? (
+          <Text style={[styles.partialHint, { color: mutedColor }]}>Listening...</Text>
+        ) : null}
+      </View>
+
+      {error ? (
+        <Text style={styles.errorText}>{error}</Text>
+      ) : null}
+
+      <View style={styles.buttons}>
+        <Pressable
+          style={[
+            styles.button,
+            styles.micButton,
+            isListening && styles.micButtonActive,
+            !voiceReady && styles.buttonDisabled,
+          ]}
+          onPress={isListening ? stopListening : startListening}
+          disabled={!voiceReady}
+        >
+          {isListening ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.micButtonLabel}>Start voice</Text>
+          )}
+        </Pressable>
+
+        <Pressable
+          style={[styles.button, { borderColor }]}
+          onPress={handleClear}
+        >
+          <Text style={[styles.submitButtonLabel, { color: textColor }]}>Clear</Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.button, styles.submitButton, { borderColor }]}
+          onPress={handleSubmit}
+        >
+          <Text style={styles.submitButtonLabel}>Submit</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -58,41 +224,73 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 32,
+    paddingTop: 24,
+  },
+  loader: {
+    marginTop: 24,
+  },
+  hint: {
+    marginTop: 12,
+    fontSize: 15,
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
-    marginBottom: 24,
+    marginBottom: 16,
   },
-  section: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  textBox: {
+    borderWidth: 1,
+    borderRadius: 12,
+    minHeight: 120,
+    padding: 14,
     marginBottom: 12,
   },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    gap: 10,
-  },
-  checkmark: {
+  textInput: {
     fontSize: 16,
-    color: '#22c55e',
+    minHeight: 90,
+    textAlignVertical: 'top',
+  },
+  partialHint: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  errorText: {
+    color: '#dc2626',
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  buttons: {
+    gap: 12,
+  },
+  button: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 52,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  micButton: {
+    backgroundColor: '#0a7ea4',
+  },
+  micButtonActive: {
+    backgroundColor: '#c53030',
+  },
+  micButtonLabel: {
+    color: '#fff',
+    fontSize: 17,
     fontWeight: '600',
   },
-  depName: {
-    fontSize: 16,
-    flex: 1,
+  submitButton: {
+    backgroundColor: '#22c55e',
+    borderWidth: 1,
   },
-  depVersion: {
-    fontSize: 14,
+  submitButtonLabel: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
   },
 });
 
