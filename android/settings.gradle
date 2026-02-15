@@ -3,4 +3,6 @@ plugins { id("com.facebook.react.settings") }
 extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
 rootProject.name = 'CompanionApp'
 include ':app'
+include ':piper-tts'
+project(':piper-tts').projectDir = new File(rootProject.projectDir, '../plugins/piper-tts/android')
 includeBuild('../node_modules/@react-native/gradle-plugin')

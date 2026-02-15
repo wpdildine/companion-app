@@ -17,6 +17,9 @@ importers:
       llama.rn:
         specifier: ^0.11.0
         version: 0.11.0(react-native@0.84.0(@babel/core@7.29.0)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.0(@babel/core@7.29.0))(@types/react@19.2.14)(react@19.2.3))(react@19.2.3)
+      piper-tts:
+        specifier: file:./plugins/piper-tts
+        version: file:plugins/piper-tts
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -2895,6 +2898,9 @@ packages:
   picomatch@4.0.3:
     resolution: {integrity: sha512-5gTmgEY/sqK6gFXLIsQNH19lWb4ebPDLA4SdLP7dsWkIXHWlG66oPuVvXSGFPppYZz8ZDZq0dYYrbHfBCVUb1Q==}
     engines: {node: '>=12'}
+
+  piper-tts@file:plugins/piper-tts:
+    resolution: {directory: plugins/piper-tts, type: directory}
 
   pirates@4.0.7:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
@@ -7378,6 +7384,8 @@ snapshots:
   picomatch@2.3.1: {}
 
   picomatch@4.0.3: {}
+
+  piper-tts@file:plugins/piper-tts: {}
 
   pirates@4.0.7: {}
 

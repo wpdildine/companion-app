@@ -2,7 +2,7 @@
  * CompanionApp
  * @format
  * Voice: @react-native-voice/voice (lazy-loaded to avoid "runtime not ready" on RN 0.84)
- * TTS: react-native-tts (lazy-loaded)
+ * TTS: Piper (offline) as main voice; fallback to react-native-tts when model not installed
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -18,7 +18,10 @@ import {
   useColorScheme,
   View,
 } from 'react-native';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
@@ -62,6 +65,8 @@ function VoiceScreen() {
   const ttsRef = useRef<TtsModule | null>(null);
   const committedTextRef = useRef('');
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [piperAvailable, setPiperAvailable] = useState<boolean | null>(null);
+  const [piperDebugInfo, setPiperDebugInfo] = useState<string | null>(null);
 
   const textColor = isDarkMode ? '#e5e5e5' : '#1a1a1a';
   const mutedColor = isDarkMode ? '#888' : '#666';
@@ -87,22 +92,60 @@ function VoiceScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    console.log('piperAvailable', piperAvailable);
+    console.log('piperDebugInfo', piperDebugInfo);
+  }, [piperAvailable, piperDebugInfo]);
+  // Check Piper TTS availability and fetch debug info when not found
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const PiperTts = require('piper-tts').default;
+        const available = await PiperTts.isModelAvailable();
+        if (!cancelled) setPiperAvailable(available);
+        if (!cancelled && !available && PiperTts.getDebugInfo) {
+          const info = await PiperTts.getDebugInfo();
+          if (!cancelled) setPiperDebugInfo(info ?? null);
+        } else if (available) {
+          setPiperDebugInfo(null);
+        }
+      } catch {
+        if (!cancelled) setPiperAvailable(false);
+        if (!cancelled) {
+          try {
+            const PiperTts = require('piper-tts').default;
+            if (PiperTts.getDebugInfo) {
+              const info = await PiperTts.getDebugInfo();
+              setPiperDebugInfo(info ?? null);
+            }
+          } catch {
+            setPiperDebugInfo(null);
+          }
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Attach event handlers when Voice is ready
   useEffect(() => {
     const V = voiceRef.current;
     if (!V) return;
 
-    V.onSpeechResults = (e) => {
+    V.onSpeechResults = e => {
       const next = (e.value?.[0] ?? '').trim();
       setPartialText('');
       if (!next) return;
       const committed = committedTextRef.current.trim();
       setTranscribedText(committed ? `${committed} ${next}` : next);
     };
-    V.onSpeechPartialResults = (e) => {
+    V.onSpeechPartialResults = e => {
       setPartialText(e.value?.[0] ?? '');
     };
-    V.onSpeechError = (e) => {
+    V.onSpeechError = e => {
       setError(e.error?.message ?? 'Speech recognition error');
       setIsListening(false);
     };
@@ -161,20 +204,45 @@ function VoiceScreen() {
 
   const handlePlayback = useCallback(async () => {
     const text = (partialText || transcribedText).trim();
-    if (!text) return;
+    if (!text) {
+      console.log('[Playback] no text, skipping');
+      return;
+    }
+    setError(null);
+    console.log('[Playback] start', { piperAvailable, textLength: text.length });
+    // Prefer Piper (offline) as the main TTS voice when the model is available
+    if (piperAvailable) {
+      const PiperTts = require('piper-tts').default;
+      console.log('[Playback] Piper path: starting speak', { textLength: text.length, preview: text.slice(0, 40) });
+      setIsSpeaking(true);
+      try {
+        console.log('[Playback] Piper: calling PiperTts.speak()…');
+        await PiperTts.speak(text);
+        console.log('[Playback] Piper: speak() resolved (playback finished)');
+      } catch (e) {
+        console.log('[Playback] Piper: speak() rejected', e);
+        setError(e instanceof Error ? e.message : 'Piper playback failed');
+      } finally {
+        setIsSpeaking(false);
+        console.log('[Playback] Piper: isSpeaking set to false');
+      }
+      return;
+    }
+    // Fallback to system TTS when Piper model is not installed
+    console.log('[Playback] using system TTS');
     let Tts: TtsModule;
     try {
       Tts = require('react-native-tts').default as TtsModule;
       ttsRef.current = Tts;
     } catch (e) {
+      console.log('[Playback] system TTS failed to load', e);
       setError(e instanceof Error ? e.message : 'TTS failed to load');
       return;
     }
-    setError(null);
     try {
       await Tts.getInitStatus();
       if (Platform.OS === 'android') {
-        Tts.stop(); // iOS stop() has a bridge bug (BOOL* arg), so only stop on Android
+        Tts.stop();
       }
       const onFinish = () => {
         setIsSpeaking(false);
@@ -184,28 +252,79 @@ function VoiceScreen() {
       Tts.addEventListener('tts-finish', onFinish);
       Tts.addEventListener('tts-cancel', onFinish);
       setIsSpeaking(true);
+      console.log('[Playback] system TTS: calling speak()');
       Tts.speak(text);
     } catch (e) {
+      console.log('[Playback] system TTS error', e);
       setError(e instanceof Error ? e.message : 'TTS playback failed');
       setIsSpeaking(false);
     }
-  }, [partialText, transcribedText]);
+  }, [partialText, transcribedText, piperAvailable]);
 
   const displayText = partialText || transcribedText;
 
   if (!voiceReady && !error) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top, backgroundColor: bgColor }]}>
+      <View
+        style={[
+          styles.container,
+          { paddingTop: insets.top, backgroundColor: bgColor },
+        ]}
+      >
         <Text style={[styles.title, { color: textColor }]}>Voice</Text>
-        <ActivityIndicator size="large" color={isDarkMode ? '#78c2a9' : '#0a7ea4'} style={styles.loader} />
-        <Text style={[styles.hint, { color: mutedColor }]}>Loading speech recognition…</Text>
+        <ActivityIndicator
+          size="large"
+          color={isDarkMode ? '#78c2a9' : '#0a7ea4'}
+          style={styles.loader}
+        />
+        <Text style={[styles.hint, { color: mutedColor }]}>
+          Loading speech recognition…
+        </Text>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom, backgroundColor: bgColor }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom,
+          backgroundColor: bgColor,
+        },
+      ]}
+    >
       <Text style={[styles.title, { color: textColor }]}>Voice to text</Text>
+
+      <View style={styles.piperStatusRow}>
+        <Text style={[styles.piperStatusLabel, { color: mutedColor }]}>
+          Piper model:{' '}
+        </Text>
+        {piperAvailable === null ? (
+          <Text style={[styles.piperStatusValue, { color: mutedColor }]}>
+            Checking…
+          </Text>
+        ) : piperAvailable === true ? (
+          <Text style={[styles.piperStatusValue, styles.piperStatusOk]}>
+            ✓ File present
+          </Text>
+        ) : (
+          <Text style={[styles.piperStatusValue, styles.piperStatusMissing]}>
+            Not found — run: pnpm run download-piper then rebuild (ios/android).
+          </Text>
+        )}
+      </View>
+      {piperAvailable === false && piperDebugInfo ? (
+        <View style={styles.piperDebugBox}>
+          <Text
+            style={[styles.piperDebugText, { color: mutedColor }]}
+            selectable
+          >
+            {piperDebugInfo}
+          </Text>
+        </View>
+      ) : null}
 
       <View style={[styles.textBox, { backgroundColor: inputBg, borderColor }]}>
         <TextInput
@@ -213,14 +332,16 @@ function VoiceScreen() {
           placeholder="Tap the mic and speak..."
           placeholderTextColor={mutedColor}
           value={displayText}
-          onChangeText={(t) => {
+          onChangeText={t => {
             if (!partialText) setTranscribedText(t);
           }}
           editable={!isListening}
           multiline
         />
         {partialText ? (
-          <Text style={[styles.partialHint, { color: mutedColor }]}>Listening...</Text>
+          <Text style={[styles.partialHint, { color: mutedColor }]}>
+            Listening...
+          </Text>
         ) : null}
         <Pressable
           style={[styles.playbackButton, { borderColor }]}
@@ -230,14 +351,21 @@ function VoiceScreen() {
           {isSpeaking ? (
             <ActivityIndicator size="small" color={textColor} />
           ) : (
-            <Text style={[styles.playbackLabel, { color: textColor }]}>▶ Playback</Text>
+            <View style={styles.playbackButtonContent}>
+              <Text style={[styles.playbackLabel, { color: textColor }]}>
+                ▶ {piperAvailable ? 'Play (Piper)' : 'Playback'}
+              </Text>
+              {piperAvailable === true && (
+                <Text style={[styles.playbackHint, { color: mutedColor }]}>
+                  Offline voice
+                </Text>
+              )}
+            </View>
           )}
         </Pressable>
       </View>
 
-      {error ? (
-        <Text style={styles.errorText}>{error}</Text>
-      ) : null}
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       <View style={styles.buttons}>
         <Pressable
@@ -261,7 +389,9 @@ function VoiceScreen() {
           style={[styles.button, { borderColor }]}
           onPress={handleClear}
         >
-          <Text style={[styles.submitButtonLabel, { color: textColor }]}>Clear</Text>
+          <Text style={[styles.submitButtonLabel, { color: textColor }]}>
+            Clear
+          </Text>
         </Pressable>
 
         <Pressable
@@ -293,6 +423,35 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 16,
   },
+  piperStatusRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  piperStatusLabel: {
+    fontSize: 14,
+  },
+  piperStatusValue: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  piperStatusOk: {
+    color: '#16a34a',
+  },
+  piperStatusMissing: {
+    color: '#b45309',
+  },
+  piperDebugBox: {
+    marginBottom: 12,
+    padding: 8,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    borderRadius: 6,
+  },
+  piperDebugText: {
+    fontSize: 11,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
   textBox: {
     borderWidth: 1,
     borderRadius: 12,
@@ -317,9 +476,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignSelf: 'flex-start',
   },
+  playbackButtonContent: {
+    gap: 2,
+  },
   playbackLabel: {
     fontSize: 15,
     fontWeight: '600',
+  },
+  playbackHint: {
+    fontSize: 11,
   },
   errorText: {
     color: '#dc2626',

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Convenience wrapper: run from repo root: ./scripts/download-piper
+cd "$(dirname "$0")/.." && ./scripts/download-piper-voice.sh "$@"

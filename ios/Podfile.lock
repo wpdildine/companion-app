@@ -27,6 +27,15 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - onnxruntime-c (1.24.1)
+  - onnxruntime-objc (1.24.1):
+    - onnxruntime-objc/Core (= 1.24.1)
+  - onnxruntime-objc/Core (1.24.1):
+    - onnxruntime-c (= 1.24.1)
+  - PiperTts (0.0.1):
+    - onnxruntime-objc
+    - React-Core
+    - ReactCodegen
   - RCTDeprecation (0.84.0)
   - RCTRequired (0.84.0)
   - RCTSwiftUI (0.84.0)
@@ -1888,6 +1897,7 @@ DEPENDENCIES:
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
   - llama-rn (from `../node_modules/llama.rn`)
+  - PiperTts (from `../plugins/piper-tts`)
   - RCTDeprecation (from `../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
   - RCTRequired (from `../node_modules/react-native/Libraries/Required`)
   - RCTSwiftUI (from `../node_modules/react-native/ReactApple/RCTSwiftUI`)
@@ -1964,6 +1974,11 @@ DEPENDENCIES:
   - TextToSpeech (from `../node_modules/react-native-tts`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
+SPEC REPOS:
+  trunk:
+    - onnxruntime-c
+    - onnxruntime-objc
+
 EXTERNAL SOURCES:
   FBLazyVector:
     :path: "../node_modules/react-native/Libraries/FBLazyVector"
@@ -1972,6 +1987,8 @@ EXTERNAL SOURCES:
     :tag: hermes-v250829098.0.8
   llama-rn:
     :path: "../node_modules/llama.rn"
+  PiperTts:
+    :path: "../plugins/piper-tts"
   RCTDeprecation:
     :path: "../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation"
   RCTRequired:
@@ -2125,6 +2142,9 @@ SPEC CHECKSUMS:
   FBLazyVector: c12d2108050e27952983d565a232f6f7b1ad5e69
   hermes-engine: e9c7ba4257185c052fb27241b5c19a21536f168d
   llama-rn: e1c26363deecf6c48c716cb6ddc8159356894a82
+  onnxruntime-c: f48d98ac3179b177d158353213055667893a01f4
+  onnxruntime-objc: 5deab12dc3e14e7b26c5a324dc5d66efa32e6258
+  PiperTts: 33e2357a8a20197ddba2dd4ffc648d37f856703a
   RCTDeprecation: 3280799c14232a56e5a44f92981a8ee33bc69fd9
   RCTRequired: 9854a51b0f65ccf43ea0b744df4d70fce339db32
   RCTSwiftUI: 96986e49a4fdc2c2103929dee2641e1b57edf33d
@@ -2200,6 +2220,6 @@ SPEC CHECKSUMS:
   TextToSpeech: 89b239221ec378d213af422d14789a729705360b
   Yoga: 772166513f9cd2d61a6251d0dacbbfaa5b537479
 
-PODFILE CHECKSUM: 36c154164f46c934b69c867028645c4a784fa98c
+PODFILE CHECKSUM: fe9ffc4b5309ecb0d1a637e45d34178ddf857827
 
 COCOAPODS: 1.16.2

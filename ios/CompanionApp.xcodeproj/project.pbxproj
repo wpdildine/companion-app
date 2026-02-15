@@ -26,6 +26,8 @@
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = CompanionApp/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		E1E2E3E42CA45674006654EF /* CompanionApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CompanionApp.entitlements; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
+		P1P3R0M0D3L0NNX00001 /* model.onnx */ = {isa = PBXFileReference; lastKnownFileType = file; path = model.onnx; sourceTree = "<group>"; };
+		P1P3R0M0D3L0NNX00002 /* model.onnx.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = model.onnx.json; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -49,6 +51,7 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
+				P1P3R0M0D3L0NNX00005 /* PiperModel */,
 			);
 			name = CompanionApp;
 			sourceTree = "<group>";
@@ -100,6 +103,16 @@
 			path = Pods;
 			sourceTree = "<group>";
 		};
+		P1P3R0M0D3L0NNX00005 /* PiperModel */ = {
+			isa = PBXGroup;
+			children = (
+				P1P3R0M0D3L0NNX00001 /* model.onnx */,
+				P1P3R0M0D3L0NNX00002 /* model.onnx.json */,
+			);
+			name = PiperModel;
+			path = "../plugins/piper-tts/ios/Resources/piper";
+			sourceTree = SOURCE_ROOT;
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -111,6 +124,7 @@
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
+				A1B2C3D4E5F60718293A4B5C /* Copy Piper TTS model */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */,
 				E235C05ADACE081382539298 /* [CP] Copy Pods Resources */,
@@ -200,6 +214,21 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-CompanionApp/Pods-CompanionApp-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		A1B2C3D4E5F60718293A4B5C /* Copy Piper TTS model */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Copy Piper TTS model";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nPIPER_SRC=\"${SRCROOT}/../plugins/piper-tts/ios/Resources/piper\"\nDST=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nif [ ! -d \"$PIPER_SRC\" ]; then echo \"warning: Piper source missing at $PIPER_SRC\"; exit 0; fi\nif [ ! -f \"${PIPER_SRC}/model.onnx\" ]; then echo \"warning: ${PIPER_SRC}/model.onnx not found\"; exit 0; fi\nmkdir -p \"${DST}/piper\"\ncp -f \"${PIPER_SRC}\"/model.onnx \"${PIPER_SRC}\"/model.onnx.json \"${DST}/piper/\"\necho \"Piper model copied to ${DST}/piper\"\n";
 			showEnvVarsInLog = 0;
 		};
 		C38B50BA6285516D6DCD4F65 /* [CP] Check Pods Manifest.lock */ = {

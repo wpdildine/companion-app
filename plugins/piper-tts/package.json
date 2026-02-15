@@ -1,0 +1,19 @@
+{
+  "name": "piper-tts",
+  "version": "0.0.1",
+  "main": "src/index.ts",
+  "react-native": "src/index.ts",
+  "peerDependencies": {
+    "react-native": "*"
+  },
+  "codegenConfig": {
+    "name": "PiperTts",
+    "type": "modules",
+    "jsSrcsDir": "src",
+    "ios": {
+      "modulesProvider": {
+        "PiperTts": "PiperTtsModule"
+      }
+    }
+  }
+}
