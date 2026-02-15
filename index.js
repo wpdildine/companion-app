@@ -10,7 +10,7 @@ import { name as appName } from './app.json';
 function logError(label, error) {
   const msg = error?.message ?? String(error);
   const stack = error?.stack ?? '';
-  console.error(`\n--- ${label} ---\n${msg}\n${stack}\n---\n`);
+  console.error('\n--- ' + label + ' ---\n' + msg + '\n' + stack + '\n---\n');
 }
 
 // Set up global error handler only if ErrorUtils exists (can be undefined before runtime is ready)

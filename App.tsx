@@ -2,12 +2,14 @@
  * CompanionApp
  * @format
  * Voice: @react-native-voice/voice (lazy-loaded to avoid "runtime not ready" on RN 0.84)
+ * TTS: react-native-tts (lazy-loaded)
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   StatusBar,
   StyleSheet,
@@ -40,6 +42,14 @@ type VoiceModule = {
   onSpeechEnd: (() => void) | null;
 };
 
+type TtsModule = {
+  getInitStatus: () => Promise<void>;
+  speak: (text: string, options?: object) => void;
+  stop: () => void;
+  addEventListener: (event: string, handler: () => void) => void;
+  removeEventListener: (event: string, handler: () => void) => void;
+};
+
 function VoiceScreen() {
   const insets = useSafeAreaInsets();
   const isDarkMode = useColorScheme() === 'dark';
@@ -49,7 +59,9 @@ function VoiceScreen() {
   const [error, setError] = useState<string | null>(null);
   const [voiceReady, setVoiceReady] = useState(false);
   const voiceRef = useRef<VoiceModule | null>(null);
+  const ttsRef = useRef<TtsModule | null>(null);
   const committedTextRef = useRef('');
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const textColor = isDarkMode ? '#e5e5e5' : '#1a1a1a';
   const mutedColor = isDarkMode ? '#888' : '#666';
@@ -147,6 +159,38 @@ function VoiceScreen() {
     setPartialText('');
   }, []);
 
+  const handlePlayback = useCallback(async () => {
+    const text = (partialText || transcribedText).trim();
+    if (!text) return;
+    let Tts: TtsModule;
+    try {
+      Tts = require('react-native-tts').default as TtsModule;
+      ttsRef.current = Tts;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'TTS failed to load');
+      return;
+    }
+    setError(null);
+    try {
+      await Tts.getInitStatus();
+      if (Platform.OS === 'android') {
+        Tts.stop(); // iOS stop() has a bridge bug (BOOL* arg), so only stop on Android
+      }
+      const onFinish = () => {
+        setIsSpeaking(false);
+        Tts.removeEventListener('tts-finish', onFinish);
+        Tts.removeEventListener('tts-cancel', onFinish);
+      };
+      Tts.addEventListener('tts-finish', onFinish);
+      Tts.addEventListener('tts-cancel', onFinish);
+      setIsSpeaking(true);
+      Tts.speak(text);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'TTS playback failed');
+      setIsSpeaking(false);
+    }
+  }, [partialText, transcribedText]);
+
   const displayText = partialText || transcribedText;
 
   if (!voiceReady && !error) {
@@ -178,6 +222,17 @@ function VoiceScreen() {
         {partialText ? (
           <Text style={[styles.partialHint, { color: mutedColor }]}>Listening...</Text>
         ) : null}
+        <Pressable
+          style={[styles.playbackButton, { borderColor }]}
+          onPress={handlePlayback}
+          disabled={!displayText.trim() || isSpeaking}
+        >
+          {isSpeaking ? (
+            <ActivityIndicator size="small" color={textColor} />
+          ) : (
+            <Text style={[styles.playbackLabel, { color: textColor }]}>▶ Playback</Text>
+          )}
+        </Pressable>
       </View>
 
       {error ? (
@@ -253,6 +308,18 @@ const styles = StyleSheet.create({
   partialHint: {
     fontSize: 12,
     marginTop: 4,
+  },
+  playbackButton: {
+    marginTop: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+  },
+  playbackLabel: {
+    fontSize: 15,
+    fontWeight: '600',
   },
   errorText: {
     color: '#dc2626',
