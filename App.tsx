@@ -3,7 +3,6 @@
  * @format
  */
 
-import 'llama.rn';
 import {
   StatusBar,
   StyleSheet,
