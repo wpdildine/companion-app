@@ -108,37 +108,43 @@
   return dir ?: @"";
 }
 
-// Split text into sentences for inter-sentence silence. Keeps trailing fragment if no final .!?
-+ (NSArray<NSString *> *)sentencesFromText:(NSString *)text
+// Pairs of (segment text, silence ms to insert after). Used for comma (125ms) and sentence (250ms) pauses.
++ (NSArray<NSDictionary<NSString *, id> *> *)segmentsWithSilenceFromText:(NSString *)text
+                                                    interSentenceSilenceMs:(NSInteger)sentenceMs
+                                                      interCommaSilenceMs:(NSInteger)commaMs
 {
-  if (!text.length) return @[];
+  if (!text.length || (sentenceMs <= 0 && commaMs <= 0)) return @[];
   NSString *trimmed = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
   if (!trimmed.length) return @[];
   NSError *err = nil;
-  NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"[^.!?]+[.!?]\\s*"
+  // Match runs of text ending in , or .!? (with optional trailing space)
+  NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"[^,.!?]+[,.!?]\\s*"
                                                                          options:0
                                                                            error:&err];
-  if (err || !regex) return @[ trimmed ];
-  NSMutableArray<NSString *> *sentences = [NSMutableArray array];
-  NSArray<NSTextCheckingResult *> *matches = [regex matchesInString:trimmed options:0 range:NSMakeRange(0, trimmed.length)];
-  if (matches.count == 0) {
-    [sentences addObject:trimmed];
-    return sentences;
+  if (err || !regex) {
+    return @[ @{ @"text": trimmed, @"silenceMs": @0 } ];
   }
+  NSMutableArray<NSDictionary<NSString *, id> *> *result = [NSMutableArray array];
+  NSArray<NSTextCheckingResult *> *matches = [regex matchesInString:trimmed options:0 range:NSMakeRange(0, trimmed.length)];
   NSUInteger lastEnd = 0;
   for (NSTextCheckingResult *match in matches) {
     NSRange r = [match range];
-    NSString *sent = [trimmed substringWithRange:r];
-    sent = [sent stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-    if (sent.length) [sentences addObject:sent];
+    NSString *seg = [trimmed substringWithRange:r];
+    seg = [seg stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    if (!seg.length) { lastEnd = NSMaxRange(r); continue; }
+    unichar lastChar = [seg characterAtIndex:seg.length - 1];
+    NSInteger silence = 0;
+    if (lastChar == ',') silence = commaMs;
+    else if (lastChar == '.' || lastChar == '!' || lastChar == '?') silence = sentenceMs;
+    [result addObject:@{ @"text": seg, @"silenceMs": @(silence) }];
     lastEnd = NSMaxRange(r);
   }
   if (lastEnd < trimmed.length) {
     NSString *tail = [trimmed substringFromIndex:lastEnd];
     tail = [tail stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-    if (tail.length) [sentences addObject:tail];
+    if (tail.length) [result addObject:@{ @"text": tail, @"silenceMs": @0 }];
   }
-  return sentences;
+  return result;
 }
 
 RCT_EXPORT_MODULE(PiperTts)
@@ -152,8 +158,8 @@ RCT_EXPORT_METHOD(setOptions:(NSDictionary *)options)
     return;
   }
   self.lastSpeakOptions = [options copy];
-  RCTLogInfo(@"[PiperTts] setOptions: stored keys=%@ noiseScale=%@ lengthScale=%@ noiseW=%@ gainDb=%@ interSentenceSilenceMs=%@",
-             [options allKeys], options[@"noiseScale"], options[@"lengthScale"], options[@"noiseW"], options[@"gainDb"], options[@"interSentenceSilenceMs"]);
+  RCTLogInfo(@"[PiperTts] setOptions: stored keys=%@ noiseScale=%@ lengthScale=%@ noiseW=%@ gainDb=%@ interSentenceSilenceMs=%@ interCommaSilenceMs=%@",
+             [options allKeys], options[@"noiseScale"], options[@"lengthScale"], options[@"noiseW"], options[@"gainDb"], options[@"interSentenceSilenceMs"], options[@"interCommaSilenceMs"]);
 }
 
 // Selectors must match TurboModule spec: resolve:/reject: (not resolver:/rejecter:)
@@ -217,51 +223,56 @@ RCT_EXPORT_METHOD(speak:(NSString *)text
     if (ns != nil && [ns isKindOfClass:[NSNumber class]]) { overrides.gain_db = [ns floatValue]; useOverrides = true; }
   }
   NSInteger interSentenceSilenceMs = 0;
+  NSInteger interCommaSilenceMs = 0;
   if (opts != nil) {
-    NSNumber *silence = opts[@"interSentenceSilenceMs"];
-    if (silence != nil && [silence isKindOfClass:[NSNumber class]]) interSentenceSilenceMs = [silence integerValue];
+    NSNumber *n = opts[@"interSentenceSilenceMs"];
+    if (n != nil && [n isKindOfClass:[NSNumber class]]) interSentenceSilenceMs = [n integerValue];
+    n = opts[@"interCommaSilenceMs"];
+    if (n != nil && [n isKindOfClass:[NSNumber class]]) interCommaSilenceMs = [n integerValue];
   }
-  RCTLogInfo(@"[PiperTts] speakOffMain: lastSpeakOptions=%@ useOverrides=%d noise_scale=%.3f length_scale=%.3f noise_w=%.3f gain_db=%.1f interSentenceSilenceMs=%ld",
-             opts != nil ? @"(set)" : @"nil", useOverrides, overrides.noise_scale, overrides.length_scale, overrides.noise_w, overrides.gain_db, (long)interSentenceSilenceMs);
+  RCTLogInfo(@"[PiperTts] speakOffMain: lastSpeakOptions=%@ useOverrides=%d noise_scale=%.3f length_scale=%.3f noise_w=%.3f gain_db=%.1f interSentenceSilenceMs=%ld interCommaSilenceMs=%ld",
+             opts != nil ? @"(set)" : @"nil", useOverrides, overrides.noise_scale, overrides.length_scale, overrides.noise_w, overrides.gain_db, (long)interSentenceSilenceMs, (long)interCommaSilenceMs);
   const piper::SynthesizeOverrides *overridesPtr = useOverrides ? &overrides : nullptr;
 
-  if (interSentenceSilenceMs > 0) {
-    NSArray<NSString *> *sentences = [PiperTtsModule sentencesFromText:text];
-    if (sentences.count <= 1) {
-      interSentenceSilenceMs = 0;
-    } else {
+  BOOL usedSegmentPath = NO;
+  if (interSentenceSilenceMs > 0 || interCommaSilenceMs > 0) {
+    NSArray<NSDictionary<NSString *, id> *> *segments = [PiperTtsModule segmentsWithSilenceFromText:text
+                                                                              interSentenceSilenceMs:interSentenceSilenceMs
+                                                                                interCommaSilenceMs:interCommaSilenceMs];
+    if (segments.count > 1) {
+      usedSegmentPath = YES;
       std::vector<int16_t> combinedPcm;
       int combinedRate = 0;
-      size_t silenceSamples = 0;
-      for (NSUInteger i = 0; i < sentences.count; i++) {
-        NSString *sent = sentences[i];
-        std::string sent_utf8([sent UTF8String]);
+      for (NSUInteger i = 0; i < segments.count; i++) {
+        NSDictionary<NSString *, id> *seg = segments[i];
+        NSString *segText = seg[@"text"];
+        NSNumber *silenceNum = seg[@"silenceMs"];
+        NSInteger silenceMs = silenceNum != nil ? [silenceNum integerValue] : 0;
+        std::string seg_utf8([segText UTF8String]);
         std::vector<int16_t> segPcm;
         int segRate = 0;
         piper::SynthesizeError segErr = piper::SynthesizeError::kNone;
-        bool segOk = piper::synthesize(model_path, config_path, espeak_path, sent_utf8, segPcm, segRate, &segErr, overridesPtr);
+        bool segOk = piper::synthesize(model_path, config_path, espeak_path, seg_utf8, segPcm, segRate, &segErr, overridesPtr);
         if (!segOk || segPcm.empty() || segRate <= 0) {
-          NSString *message = [NSString stringWithFormat:@"Synthesis failed for sentence %lu: %@", (unsigned long)(i + 1), sent];
+          NSString *message = [NSString stringWithFormat:@"Synthesis failed for segment %lu: %@", (unsigned long)(i + 1), segText];
           RCTLogError(@"[PiperTts][E_SYNTHESIS] %@", message);
           reject(@"E_SYNTHESIS", message, nil);
           return;
         }
-        if (combinedRate == 0) {
-          combinedRate = segRate;
-          silenceSamples = (size_t)((double)combinedRate * (double)interSentenceSilenceMs / 1000.0);
-        }
+        if (combinedRate == 0) combinedRate = segRate;
         combinedPcm.insert(combinedPcm.end(), segPcm.begin(), segPcm.end());
-        if (i < sentences.count - 1) {
+        if (silenceMs > 0) {
+          size_t silenceSamples = (size_t)((double)combinedRate * (double)silenceMs / 1000.0);
           for (size_t j = 0; j < silenceSamples; j++) combinedPcm.push_back(0);
         }
       }
       pcm = std::move(combinedPcm);
       sample_rate = combinedRate;
-      RCTLogInfo(@"[PiperTts] inter-sentence: %lu sentences, %zu total samples, %zu silence between", (unsigned long)sentences.count, pcm.size(), silenceSamples);
+      RCTLogInfo(@"[PiperTts] segments: %lu parts, %zu total samples (commas=%@ms, sentences=%@ms)", (unsigned long)segments.count, pcm.size(), @(interCommaSilenceMs), @(interSentenceSilenceMs));
     }
   }
 
-  if (interSentenceSilenceMs <= 0) {
+  if (!usedSegmentPath) {
   bool ok = piper::synthesize(model_path, config_path, espeak_path, text_utf8, pcm, sample_rate, &synthError, overridesPtr);
   if (!ok || pcm.empty() || sample_rate <= 0) {
     NSString *message = nil;

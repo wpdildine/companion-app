@@ -34,6 +34,8 @@ export type SpeakOptions = {
   gainDb?: number;
   /** Insert this many ms of silence between sentences (0 = off). E.g. 250 for a clear pause. */
   interSentenceSilenceMs?: number;
+  /** Insert this many ms of silence after commas (0 = off). E.g. 125 for a short pause. */
+  interCommaSilenceMs?: number;
 };
 
 /** Subscribe to Piper TTS events (speak_start, speak_end, error). Returns unsubscribe. */

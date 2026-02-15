@@ -347,7 +347,7 @@ function VoiceScreen() {
     // Prefer Piper (offline) as the main TTS voice when the model is available
     if (piperAvailable) {
       const PiperTts = require('piper-tts').default;
-      const options = { lengthScale, noiseScale, noiseW, gainDb, interSentenceSilenceMs: 250 };
+      const options = { lengthScale, noiseScale, noiseW, gainDb, interSentenceSilenceMs: 250, interCommaSilenceMs: 125 };
       console.log('[Playback] Piper: setOptions before speak', options);
       PiperTts.setOptions(options);
       console.log('[Playback] Piper path: starting speak', { textLength: text.length, preview: text.slice(0, 40) });
