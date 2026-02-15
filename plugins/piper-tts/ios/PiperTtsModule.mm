@@ -12,6 +12,8 @@
 @interface PiperTtsModule ()
 @property (nonatomic, strong) AVAudioEngine *playbackEngine;
 @property (nonatomic, strong) AVAudioPlayerNode *playbackPlayer;
+/** Options set via setOptions(); used by the next speak(). Copy of the last dict. */
+@property (atomic, copy) NSDictionary *lastSpeakOptions;
 /* Last playback buffer/format diagnostics (bubbled to JS via getDebugInfo). */
 @property (nonatomic) NSUInteger lastAudioSampleCount;
 @property (nonatomic) NSUInteger lastSampleRate;
@@ -106,7 +108,53 @@
   return dir ?: @"";
 }
 
+// Split text into sentences for inter-sentence silence. Keeps trailing fragment if no final .!?
++ (NSArray<NSString *> *)sentencesFromText:(NSString *)text
+{
+  if (!text.length) return @[];
+  NSString *trimmed = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  if (!trimmed.length) return @[];
+  NSError *err = nil;
+  NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"[^.!?]+[.!?]\\s*"
+                                                                         options:0
+                                                                           error:&err];
+  if (err || !regex) return @[ trimmed ];
+  NSMutableArray<NSString *> *sentences = [NSMutableArray array];
+  NSArray<NSTextCheckingResult *> *matches = [regex matchesInString:trimmed options:0 range:NSMakeRange(0, trimmed.length)];
+  if (matches.count == 0) {
+    [sentences addObject:trimmed];
+    return sentences;
+  }
+  NSUInteger lastEnd = 0;
+  for (NSTextCheckingResult *match in matches) {
+    NSRange r = [match range];
+    NSString *sent = [trimmed substringWithRange:r];
+    sent = [sent stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    if (sent.length) [sentences addObject:sent];
+    lastEnd = NSMaxRange(r);
+  }
+  if (lastEnd < trimmed.length) {
+    NSString *tail = [trimmed substringFromIndex:lastEnd];
+    tail = [tail stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    if (tail.length) [sentences addObject:tail];
+  }
+  return sentences;
+}
+
 RCT_EXPORT_MODULE(PiperTts)
+
+// Expose setOptions to the bridge so JS can invoke it (TurboModule + legacy).
+RCT_EXPORT_METHOD(setOptions:(NSDictionary *)options)
+{
+  if (![options isKindOfClass:[NSDictionary class]] || options.count == 0) {
+    self.lastSpeakOptions = nil;
+    RCTLogInfo(@"[PiperTts] setOptions: cleared (nil or empty)");
+    return;
+  }
+  self.lastSpeakOptions = [options copy];
+  RCTLogInfo(@"[PiperTts] setOptions: stored keys=%@ noiseScale=%@ lengthScale=%@ noiseW=%@ gainDb=%@ interSentenceSilenceMs=%@",
+             [options allKeys], options[@"noiseScale"], options[@"lengthScale"], options[@"noiseW"], options[@"gainDb"], options[@"interSentenceSilenceMs"]);
+}
 
 // Selectors must match TurboModule spec: resolve:/reject: (not resolver:/rejecter:)
 RCT_EXPORT_METHOD(speak:(NSString *)text
@@ -118,7 +166,9 @@ RCT_EXPORT_METHOD(speak:(NSString *)text
     reject(@"E_INVALID", @"Text is empty", nil);
     return;
   }
-  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+  // espeak-ng is not thread-safe; run synthesis on main thread to avoid EXC_BAD_ACCESS.
+  RCTLogInfo(@"[PiperTts] speak: dispatching to main (espeak not thread-safe)");
+  dispatch_async(dispatch_get_main_queue(), ^{
     [self speakOffMain:text resolver:resolve rejecter:reject];
   });
 }
@@ -128,7 +178,6 @@ RCT_EXPORT_METHOD(speak:(NSString *)text
             rejecter:(RCTPromiseRejectBlock)reject
 {
   NSBundle *appBundle = [NSBundle mainBundle];
-  RCTLogInfo(@"[PiperTts] speak: checking bundle %@", appBundle.bundlePath);
   NSString *modelPath = [PiperTtsModule piperModelPathInBundle:appBundle];
   NSString *configPath = [PiperTtsModule piperConfigPathInBundle:appBundle];
   NSString *espeakDataPath = [PiperTtsModule espeakDataPathInBundle:appBundle];
@@ -154,7 +203,66 @@ RCT_EXPORT_METHOD(speak:(NSString *)text
   int sample_rate = 0;
   piper::SynthesizeError synthError = piper::SynthesizeError::kNone;
 
-  bool ok = piper::synthesize(model_path, config_path, espeak_path, text_utf8, pcm, sample_rate, &synthError);
+  piper::SynthesizeOverrides overrides;
+  bool useOverrides = false;
+  NSDictionary *opts = self.lastSpeakOptions;
+  if (opts != nil && opts.count > 0) {
+    NSNumber *ns = opts[@"noiseScale"];
+    if (ns != nil && [ns isKindOfClass:[NSNumber class]]) { overrides.noise_scale = [ns floatValue]; useOverrides = true; }
+    ns = opts[@"lengthScale"];
+    if (ns != nil && [ns isKindOfClass:[NSNumber class]]) { overrides.length_scale = [ns floatValue]; useOverrides = true; }
+    ns = opts[@"noiseW"];
+    if (ns != nil && [ns isKindOfClass:[NSNumber class]]) { overrides.noise_w = [ns floatValue]; useOverrides = true; }
+    ns = opts[@"gainDb"];
+    if (ns != nil && [ns isKindOfClass:[NSNumber class]]) { overrides.gain_db = [ns floatValue]; useOverrides = true; }
+  }
+  NSInteger interSentenceSilenceMs = 0;
+  if (opts != nil) {
+    NSNumber *silence = opts[@"interSentenceSilenceMs"];
+    if (silence != nil && [silence isKindOfClass:[NSNumber class]]) interSentenceSilenceMs = [silence integerValue];
+  }
+  RCTLogInfo(@"[PiperTts] speakOffMain: lastSpeakOptions=%@ useOverrides=%d noise_scale=%.3f length_scale=%.3f noise_w=%.3f gain_db=%.1f interSentenceSilenceMs=%ld",
+             opts != nil ? @"(set)" : @"nil", useOverrides, overrides.noise_scale, overrides.length_scale, overrides.noise_w, overrides.gain_db, (long)interSentenceSilenceMs);
+  const piper::SynthesizeOverrides *overridesPtr = useOverrides ? &overrides : nullptr;
+
+  if (interSentenceSilenceMs > 0) {
+    NSArray<NSString *> *sentences = [PiperTtsModule sentencesFromText:text];
+    if (sentences.count <= 1) {
+      interSentenceSilenceMs = 0;
+    } else {
+      std::vector<int16_t> combinedPcm;
+      int combinedRate = 0;
+      size_t silenceSamples = 0;
+      for (NSUInteger i = 0; i < sentences.count; i++) {
+        NSString *sent = sentences[i];
+        std::string sent_utf8([sent UTF8String]);
+        std::vector<int16_t> segPcm;
+        int segRate = 0;
+        piper::SynthesizeError segErr = piper::SynthesizeError::kNone;
+        bool segOk = piper::synthesize(model_path, config_path, espeak_path, sent_utf8, segPcm, segRate, &segErr, overridesPtr);
+        if (!segOk || segPcm.empty() || segRate <= 0) {
+          NSString *message = [NSString stringWithFormat:@"Synthesis failed for sentence %lu: %@", (unsigned long)(i + 1), sent];
+          RCTLogError(@"[PiperTts][E_SYNTHESIS] %@", message);
+          reject(@"E_SYNTHESIS", message, nil);
+          return;
+        }
+        if (combinedRate == 0) {
+          combinedRate = segRate;
+          silenceSamples = (size_t)((double)combinedRate * (double)interSentenceSilenceMs / 1000.0);
+        }
+        combinedPcm.insert(combinedPcm.end(), segPcm.begin(), segPcm.end());
+        if (i < sentences.count - 1) {
+          for (size_t j = 0; j < silenceSamples; j++) combinedPcm.push_back(0);
+        }
+      }
+      pcm = std::move(combinedPcm);
+      sample_rate = combinedRate;
+      RCTLogInfo(@"[PiperTts] inter-sentence: %lu sentences, %zu total samples, %zu silence between", (unsigned long)sentences.count, pcm.size(), silenceSamples);
+    }
+  }
+
+  if (interSentenceSilenceMs <= 0) {
+  bool ok = piper::synthesize(model_path, config_path, espeak_path, text_utf8, pcm, sample_rate, &synthError, overridesPtr);
   if (!ok || pcm.empty() || sample_rate <= 0) {
     NSString *message = nil;
     switch (synthError) {
@@ -193,6 +301,7 @@ RCT_EXPORT_METHOD(speak:(NSString *)text
     reject(@"E_SYNTHESIS", message, nil);
     return;
   }
+  }
 
   NSUInteger sampleCount = pcm.size();
   NSData *pcmData = [NSData dataWithBytes:pcm.data() length:sampleCount * sizeof(int16_t)];
@@ -206,9 +315,7 @@ RCT_EXPORT_METHOD(speak:(NSString *)text
   self.lastEngineOutputSampleRate = 0; /* set in playPcm */
 
   NSData *pcmCopy = [pcmData copy];
-  dispatch_async(dispatch_get_main_queue(), ^{
-    [self playPcm:pcmCopy sampleRate:(unsigned)sample_rate resolver:resolve rejecter:reject];
-  });
+  [self playPcm:pcmCopy sampleRate:(unsigned)sample_rate resolver:resolve rejecter:reject];
 }
 
 // Reusable engine/player; resample to ACTUAL engine output sample rate (no hardcoded 48k).

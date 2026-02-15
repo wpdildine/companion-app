@@ -8,6 +8,7 @@ import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.ReadableMap
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executors
@@ -18,6 +19,14 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
     override fun getName(): String = "PiperTts"
 
     private val executor = Executors.newSingleThreadExecutor()
+
+    @Volatile
+    private var lastSpeakOptions: ReadableMap? = null
+
+    @ReactMethod
+    fun setOptions(options: ReadableMap?) {
+        lastSpeakOptions = options
+    }
 
     @ReactMethod
     fun speak(text: String, promise: Promise) {

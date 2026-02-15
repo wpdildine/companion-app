@@ -26,6 +26,16 @@ function emit(event: PluginEventPayload): void {
 export type { PiperErrorCode, PiperPluginError } from './errors';
 export { toPiperError } from './errors';
 
+/** Voice tuning; applied via setOptions(), used by the next speak(). */
+export type SpeakOptions = {
+  noiseScale?: number;
+  lengthScale?: number;
+  noiseW?: number;
+  gainDb?: number;
+  /** Insert this many ms of silence between sentences (0 = off). E.g. 250 for a clear pause. */
+  interSentenceSilenceMs?: number;
+};
+
 /** Subscribe to Piper TTS events (speak_start, speak_end, error). Returns unsubscribe. */
 export function subscribe(callback: EventListener): () => void {
   listeners.push(callback);
@@ -38,7 +48,16 @@ export function subscribe(callback: EventListener): () => void {
 export default {
   subscribe,
 
-  async speak(text: string): Promise<void> {
+  setOptions(options?: SpeakOptions | null): void {
+    if (NativePiperTts == null) {
+      throw new Error('PiperTts TurboModule not loaded. Rebuild the app (clean + pod install).');
+    }
+    if (options == null) return;
+    console.log('[PiperTts] setOptions called', options);
+    NativePiperTts.setOptions(options as Parameters<typeof NativePiperTts.setOptions>[0]);
+  },
+
+  async speak(text: string, _options?: SpeakOptions | null): Promise<void> {
     if (NativePiperTts == null) {
       emit({ type: 'error', message: MODULE_MISSING_MSG, data: { code: 'E_NOT_LINKED' } });
       return Promise.reject(new Error(MODULE_MISSING_MSG));

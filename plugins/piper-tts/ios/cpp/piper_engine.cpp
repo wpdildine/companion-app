@@ -156,7 +156,10 @@ bool synthesize(const std::string& model_path,
                 const std::string& text,
                 std::vector<int16_t>& pcm_out,
                 int& sample_rate_out,
-                SynthesizeError* out_error) {
+                SynthesizeError* out_error,
+                const SynthesizeOverrides* overrides) {
+  std::fprintf(stderr, "[Piper] synthesize: start\n");
+  std::fflush(stderr);
   pcm_out.clear();
   sample_rate_out = 22050;
   auto set_err = [out_error](SynthesizeError e) { if (out_error) *out_error = e; };
@@ -179,18 +182,26 @@ bool synthesize(const std::string& model_path,
     set_err(SynthesizeError::kConfigParseFailed);
     return false;
   }
+  std::fprintf(stderr, "[Piper] synthesize: config loaded\n");
+  std::fflush(stderr);
 
   int sample_rate = 22050;
   if (config.contains("audio") && config["audio"].contains("sample_rate"))
     sample_rate = config["audio"]["sample_rate"].get<int>();
   sample_rate_out = sample_rate;
 
-  float noise_scale = 0.667f, length_scale = 1.0f, noise_w = 0.8f;
+  // Recommended defaults: slightly slower, less warbly (length_scale=1.08, noise_scale=0.62, noise_w=0.8)
+  float noise_scale = 0.62f, length_scale = 1.08f, noise_w = 0.8f;
   if (config.contains("inference")) {
     auto& inf = config["inference"];
     if (inf.contains("noise_scale")) noise_scale = inf["noise_scale"].get<float>();
     if (inf.contains("length_scale")) length_scale = inf["length_scale"].get<float>();
     if (inf.contains("noise_w")) noise_w = inf["noise_w"].get<float>();
+  }
+  if (overrides) {
+    if (overrides->noise_scale >= 0.f) noise_scale = overrides->noise_scale;
+    if (overrides->length_scale >= 0.f) length_scale = overrides->length_scale;
+    if (overrides->noise_w >= 0.f) noise_w = overrides->noise_w;
   }
 
   std::string voice = "en-us";
@@ -204,10 +215,14 @@ bool synthesize(const std::string& model_path,
     default_id = space_it->second[0];
 
   // Phonemize
+  std::fprintf(stderr, "[Piper] synthesize: phonemize start\n");
+  std::fflush(stderr);
   std::string phonemes;
 #ifdef PIPER_ENGINE_USE_ESPEAK
   if (!phonemize_espeak(text, voice, espeak_data_path, phonemes, out_error))
     return false;
+  std::fprintf(stderr, "[Piper] synthesize: phonemize done\n");
+  std::fflush(stderr);
 #else
   (void)voice;
   (void)espeak_data_path;
@@ -226,6 +241,8 @@ bool synthesize(const std::string& model_path,
     speaker_id = 0;  // default speaker
 
   // Run ONNX (cached session)
+  std::fprintf(stderr, "[Piper] synthesize: runInference start\n");
+  std::fflush(stderr);
   piper_ort::PiperOrtSession* session = nullptr;
   {
     std::lock_guard<std::mutex> lock(g_session_mutex);
@@ -248,9 +265,18 @@ bool synthesize(const std::string& model_path,
 
   std::vector<float> audio_float = piper_ort::runInference(
       session, phoneme_ids, noise_scale, length_scale, noise_w, speaker_id);
+  std::fprintf(stderr, "[Piper] synthesize: runInference done (samples=%zu)\n", audio_float.size());
+  std::fflush(stderr);
   if (audio_float.empty()) {
     set_err(SynthesizeError::kOrtRunInferenceFailed);
     return false;
+  }
+
+  // Gain (dB): multiply samples by 10^(gain_db/20) before peak normalization
+  float gain_linear = 1.f;
+  if (overrides && overrides->gain_db >= -100.f) {
+    gain_linear = std::pow(10.f, overrides->gain_db / 20.f);
+    for (float& v : audio_float) v *= gain_linear;
   }
 
   // Scale and convert to int16 (same as Piper)

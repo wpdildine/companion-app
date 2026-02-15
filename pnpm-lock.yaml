@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@react-native-community/slider':
+        specifier: ^5.1.2
+        version: 5.1.2
       '@react-native-voice/voice':
         specifier: ^3.2.4
         version: 3.2.4(react-native@0.84.0(@babel/core@7.29.0)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.0(@babel/core@7.29.0))(@types/react@19.2.14)(react@19.2.3))
@@ -19,7 +22,7 @@ importers:
         version: 0.11.0(react-native@0.84.0(@babel/core@7.29.0)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.0(@babel/core@7.29.0))(@types/react@19.2.14)(react@19.2.3))(react@19.2.3)
       piper-tts:
         specifier: file:./plugins/piper-tts
-        version: file:plugins/piper-tts
+        version: file:plugins/piper-tts(react-native@0.84.0(@babel/core@7.29.0)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.0(@babel/core@7.29.0))(@types/react@19.2.14)(react@19.2.3))
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -954,6 +957,9 @@ packages:
     resolution: {integrity: sha512-441WsVtRe4nGJ9OzA+QMU1+22lA6Q2hRWqqIMKD0wjEMLqcSfOZyu2UL9a/yRpL/dRpyUsU4n7AxqKfTKO/Csg==}
     engines: {node: '>=20.19.4'}
     hasBin: true
+
+  '@react-native-community/slider@5.1.2':
+    resolution: {integrity: sha512-UV/MjCyCtSjS5BQDrrGIMmCXm309xEG6XbR0Dj65kzTraJSVDxSjQS2uBUXgX+5SZUOCzCxzv3OufOZBdtQY4w==}
 
   '@react-native-voice/voice@3.2.4':
     resolution: {integrity: sha512-4i3IpB/W5VxCI7BQZO5Nr2VB0ecx0SLvkln2Gy29cAQKqgBl+1ZsCwUBChwHlPbmja6vA3tp/+2ADQGwB1OhHg==}
@@ -2901,6 +2907,8 @@ packages:
 
   piper-tts@file:plugins/piper-tts:
     resolution: {directory: plugins/piper-tts, type: directory}
+    peerDependencies:
+      react-native: '*'
 
   pirates@4.0.7:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
@@ -4865,6 +4873,8 @@ snapshots:
       - supports-color
       - typescript
       - utf-8-validate
+
+  '@react-native-community/slider@5.1.2': {}
 
   '@react-native-voice/voice@3.2.4(react-native@0.84.0(@babel/core@7.29.0)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.0(@babel/core@7.29.0))(@types/react@19.2.14)(react@19.2.3))':
     dependencies:
@@ -7385,7 +7395,9 @@ snapshots:
 
   picomatch@4.0.3: {}
 
-  piper-tts@file:plugins/piper-tts: {}
+  piper-tts@file:plugins/piper-tts(react-native@0.84.0(@babel/core@7.29.0)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.0(@babel/core@7.29.0))(@types/react@19.2.14)(react@19.2.3)):
+    dependencies:
+      react-native: 0.84.0(@babel/core@7.29.0)(@react-native-community/cli@20.1.0(typescript@5.9.3))(@react-native/metro-config@0.84.0(@babel/core@7.29.0))(@types/react@19.2.14)(react@19.2.3)
 
   pirates@4.0.7: {}
 
