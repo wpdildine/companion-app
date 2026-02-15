@@ -51,13 +51,24 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
                 Log.d(TAG, "speak: synthesizing (length ${text.length}) via native")
                 val result = nativeSynthesize(modelPath, configPath, espeakPath, text)
                 if (result == null || result.size < 2) {
-                    Log.e(TAG, "[E_SYNTHESIS] Native synthesize failed (espeak-ng not built for Android yet)")
-                    promise.reject("E_SYNTHESIS", "Synthesis failed. Native Piper pipeline returned no audio.")
+                    Log.e(TAG, "[E_SYNTHESIS] Native synthesize returned invalid result")
+                    promise.reject("E_SYNTHESIS", "Synthesis failed. Native Piper pipeline returned no result.")
+                    return@execute
+                }
+                val first = result[0]
+                val second = result[1]
+                // Failure: native returns [null, errorMessage]
+                if (first == null && second is String) {
+                    Log.e(TAG, "[E_SYNTHESIS] $second")
+                    promise.reject("E_SYNTHESIS", second)
                     return@execute
                 }
                 @Suppress("UNCHECKED_CAST")
-                val pcm = result[0] as ByteArray
-                val sampleRate = (result[1] as Number).toInt()
+                val pcm = first as? ByteArray ?: run {
+                    promise.reject("E_SYNTHESIS", "Native synthesize returned no audio.")
+                    return@execute
+                }
+                val sampleRate = (second as? Number)?.toInt() ?: 0
                 if (pcm.isEmpty() || sampleRate <= 0) {
                     promise.reject("E_SYNTHESIS", "Native synthesize returned empty audio")
                     return@execute

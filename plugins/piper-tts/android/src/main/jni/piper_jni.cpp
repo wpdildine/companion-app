@@ -5,13 +5,25 @@
 
 extern "C" {
 
-// Returns: jshortArray (PCM) and jint (sample rate) via callback or direct return.
-// We return a single jobject that is a two-element array: [byte[] pcm, int sampleRate].
-// Actually JNI convention: we can return a Java class that holds (byte[] pcm, int sampleRate).
-// Simpler: pass a direct ByteBuffer and return sample rate as jint; or return a wrapper.
-// Easiest: JNI method that takes modelPath, configPath, espeakPath, text and returns
-// a jintArray where first element is sample rate and rest are int16 PCM (as ints). That's wasteful.
-// Better: return jobject (Object[]) where [0] = byte[] pcm, [1] = Integer sampleRate.
+// Returns Object[] of length 2:
+// - Success: [byte[] pcm, Integer sampleRate]
+// - Failure: [null, String errorMessage] so Kotlin can reject with the real pipeline error.
+static const char* synthesizeErrorToString(piper::SynthesizeError e) {
+  switch (e) {
+    case piper::SynthesizeError::kNone: return "None";
+    case piper::SynthesizeError::kInvalidArgs: return "Invalid arguments";
+    case piper::SynthesizeError::kConfigOpenFailed: return "Config file could not be opened";
+    case piper::SynthesizeError::kConfigParseFailed: return "Config JSON parse failed";
+    case piper::SynthesizeError::kEspeakNotLinked: return "Phonemization unavailable: espeak-ng is not linked on this platform (Android). Run scripts/download-espeak-ng-data.sh and ensure the native library is built with PIPER_ENGINE_USE_ESPEAK.";
+    case piper::SynthesizeError::kEspeakInitFailed: return "espeak-ng initialization failed";
+    case piper::SynthesizeError::kEspeakSetVoiceFailed: return "espeak-ng set voice failed";
+    case piper::SynthesizeError::kPhonemeIdsEmpty: return "Phoneme id sequence empty";
+    case piper::SynthesizeError::kOrtCreateSessionFailed: return "ONNX Runtime session creation failed";
+    case piper::SynthesizeError::kOrtRunInferenceFailed: return "ONNX inference failed";
+    default: return "Synthesis failed";
+  }
+}
+
 JNIEXPORT jobject JNICALL
 Java_com_pipertts_PiperTtsModule_nativeSynthesize(JNIEnv* env, jclass clazz,
                                                    jstring j_model_path,
@@ -32,20 +44,26 @@ Java_com_pipertts_PiperTtsModule_nativeSynthesize(JNIEnv* env, jclass clazz,
 
   std::vector<int16_t> pcm;
   int sample_rate = 0;
-  bool ok = piper::synthesize(model_path, config_path, espeak_path ? espeak_path : "", text, pcm, sample_rate);
+  piper::SynthesizeError synth_error = piper::SynthesizeError::kNone;
+  bool ok = piper::synthesize(model_path, config_path, espeak_path ? espeak_path : "", text, pcm, sample_rate, &synth_error);
 
   env->ReleaseStringUTFChars(j_model_path, model_path);
   env->ReleaseStringUTFChars(j_config_path, config_path);
   if (espeak_path && j_espeak_path) env->ReleaseStringUTFChars(j_espeak_path, espeak_path);
   env->ReleaseStringUTFChars(j_text, text);
 
-  if (!ok || pcm.empty()) return nullptr;
-
-  // Build result: Object[] { byte[] pcm, Integer sampleRate }
   jclass objectArrayClass = env->FindClass("[Ljava/lang/Object;");
   if (!objectArrayClass) return nullptr;
   jobjectArray result = env->NewObjectArray(2, env->FindClass("java/lang/Object"), nullptr);
   if (!result) return nullptr;
+
+  if (!ok || pcm.empty()) {
+    const char* err_msg = synthesizeErrorToString(synth_error);
+    jstring j_err = env->NewStringUTF(err_msg);
+    env->SetObjectArrayElement(result, 0, nullptr);
+    env->SetObjectArrayElement(result, 1, j_err);
+    return result;
+  }
 
   jbyteArray pcmArray = env->NewByteArray(static_cast<jsize>(pcm.size() * 2));
   if (!pcmArray) return nullptr;

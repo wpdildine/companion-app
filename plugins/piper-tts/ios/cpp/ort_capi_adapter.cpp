@@ -316,14 +316,14 @@ std::vector<float> runInference(
     return out;
   }
 
-  const float* data = nullptr;
-  status = api->GetTensorData(output_value, reinterpret_cast<const void**>(&data));
+  float* data = nullptr;
+  status = api->GetTensorMutableData(output_value, reinterpret_cast<void**>(&data));
   if (status || !data) {
     if (status) {
-      PIPER_ORT_LOG("GetTensorData failed:");
+      PIPER_ORT_LOG("GetTensorMutableData failed:");
       logOrtStatus(api, status);
     } else {
-      PIPER_ORT_LOG("GetTensorData returned null pointer");
+      PIPER_ORT_LOG("GetTensorMutableData returned null pointer");
     }
     releaseOrtValues(api, memory_info, input_value, input_lengths_value, scales_value, sid_value, output_value);
     return out;

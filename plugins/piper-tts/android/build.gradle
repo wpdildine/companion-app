@@ -24,13 +24,16 @@ android {
     ndkVersion rootProject.ext.ndkVersion
 }
 
+// Resolvable config for unpacking ONNX Runtime AAR (implementation is canBeResolved=false in modern Gradle)
+configurations { onnxRuntimeAar }
+
 // Unpack onnxruntime-android AAR so CMake can use headers + libonnxruntime.so (single ORT per plan)
 def ortUnpackDir = file("${buildDir}/onnxruntime")
 tasks.register("unpackOnnxRuntimeAar", Copy) {
     from {
-        def dep = configurations.implementation.find { it.name.startsWith("onnxruntime-android") }
+        def dep = configurations.onnxRuntimeAar.find { it.name.startsWith("onnxruntime-android") }
         if (dep == null) {
-            throw new GradleException("onnxruntime-android dependency not found. Add implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.18.0'")
+            throw new GradleException("onnxruntime-android dependency not found. Add onnxRuntimeAar 'com.microsoft.onnxruntime:onnxruntime-android:1.18.0'")
         }
         zipTree(dep)
     }
@@ -47,4 +50,5 @@ tasks.configureEach {
 dependencies {
     implementation "com.facebook.react:react-native:+"
     implementation "com.microsoft.onnxruntime:onnxruntime-android:1.18.0"
+    onnxRuntimeAar "com.microsoft.onnxruntime:onnxruntime-android:1.18.0"
 }
