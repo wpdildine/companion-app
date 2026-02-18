@@ -14,6 +14,12 @@ export interface ChunkForPrompt {
 /** Default max context characters for mobile (~500–700 tokens). */
 export const DEFAULT_MAX_CONTEXT_CHARS = 12_000;
 
+/** Hard cap on prompt size so we stay under n_ctx (e.g. 1024) with room for generation. ~850 tokens ≈ 3400 chars. */
+export const MAX_PROMPT_CHARS = 3400;
+
+/** Rough chars-per-token for prompt sizing. */
+export const CHARS_PER_TOKEN_EST = 4;
+
 /**
  * Build context string for completion: "Rules excerpts (doc_id …):" and "Cards excerpts (doc_id …):".
  * If maxChars is set, truncates from the end to stay under cap.
@@ -52,4 +58,24 @@ export function buildContextBlock(
 export function buildPrompt(contextBlock: string, question: string): string {
   const system = 'Answer based only on the provided rules and card excerpts. Cite doc_id when you use a specific excerpt.';
   return `${system}\n\n${contextBlock}\n\nQuestion: ${question}\n\nAnswer:`;
+}
+
+/**
+ * Preflight: drop chunks from the end until the full prompt fits within maxPromptChars.
+ * Returns { contextBlock, prompt } so completion stays under n_ctx with room for generation.
+ */
+export function trimChunksToFitPrompt(
+  chunks: ChunkForPrompt[],
+  question: string,
+  maxPromptChars: number = MAX_PROMPT_CHARS
+): { contextBlock: string; prompt: string } {
+  let list = [...chunks];
+  let contextBlock = buildContextBlock(list);
+  let prompt = buildPrompt(contextBlock, question);
+  while (prompt.length > maxPromptChars && list.length > 0) {
+    list = list.slice(0, -1);
+    contextBlock = buildContextBlock(list);
+    prompt = buildPrompt(contextBlock, question);
+  }
+  return { contextBlock, prompt };
 }

@@ -1,32 +1,46 @@
-# Fix: “Class RCTSwiftUIContainerView is implemented in both React.framework and CompanionApp.debug.dylib”
+# Fix: "Class RCTSwiftUIContainerView is implemented in both React.framework and CompanionApp.debug.dylib"
 
 This warning can cause **mysterious crashes** because the Obj-C runtime may pick the wrong class at runtime.
 
-## Cause
+## Checklist (in order)
 
-React (or the SwiftUI bridge) is linked/embedded **twice**: once in the app binary and again in an injected debug dylib.
+### 1. Don't build React as a dynamic framework in Debug
 
-## What to do
+- In **ios/Podfile**: we only use `use_frameworks! :linkage => :static` when `ENV['USE_FRAMEWORKS']` is set (never dynamic).
+- After any Podfile change, run:
+  ```bash
+  cd ios
+  rm -rf Pods Podfile.lock
+  pod install
+  ```
+- Dynamic frameworks make it easier to accidentally embed duplicates.
 
-### 1. Xcode Build Phases
+### 2. Confirm you're not embedding React.framework twice
 
-- Open the **CompanionApp** target → **Build Phases**.
-- **Link Binary With Libraries**: ensure `React.framework` (or any React-related framework) appears **only once**. Remove duplicates.
-- **Embed Frameworks**: ensure `React.framework` is embedded **only once**. Remove duplicates.
+In **Xcode** → **CompanionApp** target → **Build Phases**:
 
-### 2. Don’t mix manual framework with CocoaPods
+- **Link Binary With Libraries**: `React.framework` should appear **once**. Remove any duplicate or extra `React*.framework`.
+- **Embed Frameworks**: `React.framework` should appear **once** (and only if it must be embedded). If React is already pulled in by another framework that contains it, you get the duplicate.
 
-- If you use **CocoaPods** (this project does: `libPods-CompanionApp.a`, “[CP] Embed Pods Frameworks”), do **not** manually add `React.framework` to the target. Pods already bring React.
-- If you recently added something that embeds or links React (e.g. a Swift package or a second copy of RN), remove the duplicate.
+### 3. Check for CompanionApp.debug.dylib being embedded improperly
 
-### 3. Clean and rebuild
+The log may show `.../CompanionApp.app/CompanionApp.debug.dylib`. That file can be normal for some debug setups, but it should **not** contain React's SwiftUI classes if React.framework is already in the app.
+
+- Look for a **custom build phase** that copies or embeds a `.debug.dylib`.
+- Look for scripts from a template that embed debug artifacts.
+- If you have a phase like **"Embed Debug Dylib"**, try disabling it and re-run. At minimum, confirm it's not pulling React sources into that dylib.
+
+(This project's **project.pbxproj** has no custom "Embed Debug Dylib" phase; only standard "[CP] Embed Pods Frameworks". If the duplicate persists, the dylib may be coming from React Native's own tooling; fixing (1) and (2) usually resolves it.)
+
+### 4. Don't mix "React as framework" with normal pods
+
+- If you have **USE_REACT_AS_FRAMEWORK** or custom "React.framework" packaging anywhere (env, script, or Xcode), remove it.
+- Standard RN iOS expects React to come from **pods (static libs)** unless you have a specific reason to use frameworks.
+
+### 5. Clean and rebuild
 
 - **Product → Clean Build Folder** (⇧⌘K).
-- Delete **DerivedData** for this project (e.g. `~/Library/Developer/Xcode/DerivedData/CompanionApp-*`).
+- Delete **DerivedData** (e.g. `~/Library/Developer/Xcode/DerivedData/CompanionApp-*`).
 - `cd ios && pod install` then build again.
 
-### 4. If you use `use_frameworks!`
-
-- The Podfile only enables `use_frameworks!` when `ENV['USE_FRAMEWORKS']` is set. With static linking (default), the duplicate is often from a **debug/injection dylib** that also links React (e.g. React Native dev tools). Ensuring the app target does not link or embed React twice (steps 1–2) is the main fix.
-
-After fixing, the “implemented in both” warning should disappear and random crashes from this cause should stop.
+After fixing, the "implemented in both" warning should disappear and random crashes from this cause should stop.

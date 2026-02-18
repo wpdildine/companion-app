@@ -8,10 +8,11 @@ require Pod::Executable.execute_command('node', ['-p',
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
-linkage = ENV['USE_FRAMEWORKS']
-if linkage != nil
-  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
-  use_frameworks! :linkage => linkage.to_sym
+# Never build React as a dynamic framework (avoids "class implemented in both React.framework and CompanionApp.debug.dylib").
+# If USE_FRAMEWORKS is set, force static linkage only.
+if ENV['USE_FRAMEWORKS']
+  Pod::UI.puts "Configuring Pod with static frameworks (dynamic would cause duplicate RCTSwiftUI class).".green
+  use_frameworks! :linkage => :static
 end
 
 target 'CompanionApp' do

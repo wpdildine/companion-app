@@ -17,12 +17,22 @@ export { getPackEmbedModelId } from './loadPack';
 import type { ValidationSummary } from './validate';
 import type { RetrievalHit } from './types';
 
+/** Options for ask(). */
+export interface AskOptions {
+  signal?: AbortSignal;
+  /** When true, skip nudgeResponse (return raw as nudged, empty validation). Use to match CLI/local output for debugging. */
+  debugSkipNudge?: boolean;
+}
+
 /** Result of ask(question). */
 export interface AskResult {
   raw: string;
   nudged: string;
   validationSummary: ValidationSummary;
 }
+
+/** Set to true to disable nudge globally (for debugging prompt/chunks vs CLI). */
+export let RAG_DEBUG_SKIP_NUDGE = true;
 
 let packState: PackState | null = null;
 let initParams: RagInitParams | null = null;
@@ -73,10 +83,11 @@ export function getFileReader(): PackFileReader | null {
 /**
  * Ask a question: optional list pre-classifier → embed → retrieve → context → completion → validate → nudge.
  * Returns { raw, nudged, validationSummary }. Throws if not initialized or on embed/retrieval/completion error.
+ * Use options.debugSkipNudge or RAG_DEBUG_SKIP_NUDGE to disable nudge for debugging (match CLI output).
  */
 export async function ask(
   _question: string,
-  _options?: { signal?: AbortSignal }
+  options?: AskOptions
 ): Promise<AskResult> {
   if (!packState || !fileReader || !initParams) {
     throw ragError('E_NOT_INITIALIZED', 'RAG layer not initialized; call init() first.');
@@ -84,17 +95,29 @@ export async function ask(
   if (askInFlight) {
     throw ragError('E_RETRIEVAL', 'Another ask is already in progress. Wait for it to finish.');
   }
+  const skipNudge = options?.debugSkipNudge ?? RAG_DEBUG_SKIP_NUDGE;
   askInFlight = true;
   try {
-    const validateModule = await import('./validate');
     const { runRagFlow } = await import('./ask');
     const result = await runRagFlow(
-    packState,
-    initParams,
-    fileReader,
-    _question,
-    _options
-  );
+      packState,
+      initParams,
+      fileReader,
+      _question,
+      options
+    );
+    if (skipNudge) {
+      return {
+        raw: result.raw,
+        nudged: result.raw,
+        validationSummary: {
+          cards: [],
+          rules: [],
+          stats: { cardHitRate: 0, ruleHitRate: 0, unknownCardCount: 0, invalidRuleCount: 0 },
+        },
+      };
+    }
+    const validateModule = await import('./validate');
     const nudgeResult = await validateModule.nudgeResponse(
       result.raw,
       packState,

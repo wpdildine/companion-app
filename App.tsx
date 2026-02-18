@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Platform,
   Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -300,8 +301,11 @@ function VoiceScreen() {
         setPackStatus('ready');
       }
       const result = await ragAsk(question);
-      setResponseText(result.nudged);
+      const nudged = result.nudged;
+      setResponseText(nudged);
       setValidationSummary(result.validationSummary);
+      console.log('[RAG] Full response (raw):', result.raw);
+      console.log('[RAG] Full response (nudged):', nudged);
     } catch (e) {
       const msg = errorMessage(e);
       const code = e && typeof e === 'object' && 'code' in e ? (e as { code: string }).code : '';
@@ -406,15 +410,14 @@ function VoiceScreen() {
   }
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          paddingTop: insets.top,
-          paddingBottom: insets.bottom,
-          backgroundColor: bgColor,
-        },
-      ]}
+    <ScrollView
+      style={[styles.container, { backgroundColor: bgColor }]}
+      contentContainerStyle={{
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom,
+      }}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator
     >
       <Text style={[styles.title, { color: textColor }]}>Voice to text</Text>
 
@@ -583,7 +586,7 @@ function VoiceScreen() {
           <Text style={styles.submitButtonLabel}>{isAsking ? '…' : 'Submit'}</Text>
         </Pressable>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 

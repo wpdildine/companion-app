@@ -5,7 +5,7 @@
 
 import type { PackState, PackFileReader, RagInitParams } from './types';
 import { loadVectors, searchL2, loadChunksForRows } from './retrieval';
-import { buildContextBlock, buildPrompt } from './prompt';
+import { trimChunksToFitPrompt } from './prompt';
 import { ragError } from './errors';
 
 const RULES_WEIGHT = 0.6;
@@ -14,6 +14,17 @@ const CARDS_WEIGHT = 0.4;
 const TOP_K_RULES = 4;
 const TOP_K_CARDS = 3;
 const TOP_K_MERGE = 6;
+
+/** Deterministic params to match CLI; set temperature=0, top_p=1, top_k=1 for reproducible debugging. */
+const DEBUG_GENERATION_PARAMS = {
+  temperature: 0,
+  top_p: 1,
+  top_k: 1,
+  penalty_repeat: 1,
+};
+
+const DEBUG_EXCERPT_LEN = 200;
+const DEBUG_PROMPT_PREVIEW_LEN = 500;
 
 export interface RunRagFlowResult {
   raw: string;
@@ -85,6 +96,40 @@ async function getChatContext(chatModelPath: string): Promise<import('llama.rn')
   });
   chatContext = ctx;
   return ctx;
+}
+
+/** Chunk shape used for prompt (for debug logging). */
+interface ChunkForPromptLog {
+  doc_id: string;
+  source_type: 'rules' | 'cards';
+  title?: string;
+  text?: string;
+}
+
+function logDebugPromptAndChunks(
+  chunks: ChunkForPromptLog[],
+  prompt: string,
+  generationParams: Record<string, unknown> | null,
+  chatModelPathOrLabel: string
+): void {
+  console.log('[RAG][DEBUG] --- final prompt ---');
+  console.log('[RAG][DEBUG] prompt length (chars):', prompt.length);
+  const preview = prompt.length <= DEBUG_PROMPT_PREVIEW_LEN
+    ? prompt
+    : prompt.slice(0, DEBUG_PROMPT_PREVIEW_LEN) + '...';
+  console.log('[RAG][DEBUG] prompt preview:', preview);
+  console.log('[RAG][DEBUG] --- retrieved chunks (top K) ---');
+  chunks.forEach((c, i) => {
+    const excerpt = (c.text ?? '').slice(0, DEBUG_EXCERPT_LEN);
+    const excerptSuffix = (c.text?.length ?? 0) > DEBUG_EXCERPT_LEN ? '...' : '';
+    console.log(`[RAG][DEBUG] chunk ${i + 1}: doc_id=${c.doc_id} source_type=${c.source_type} title=${c.title ?? '(none)'}`);
+    console.log(`[RAG][DEBUG]   excerpt: ${excerpt}${excerptSuffix}`);
+  });
+  if (generationParams) {
+    console.log('[RAG][DEBUG] --- generation params ---', JSON.stringify(generationParams));
+  }
+  console.log('[RAG][DEBUG] --- chat model ---', chatModelPathOrLabel);
+  console.log('[RAG][DEBUG] (Compute SHA256 of model file locally to confirm same artifact as CLI.)');
 }
 
 /**
@@ -172,9 +217,9 @@ export async function runRagFlow(
       };
     });
     mark('context build start');
-    const contextBlock = buildContextBlock(chunksForPrompt);
-    const prompt = buildPrompt(contextBlock, question);
+    const { prompt } = trimChunksToFitPrompt(chunksForPrompt, question);
     mark('context build end');
+    logDebugPromptAndChunks(chunksForPrompt, prompt, null, `Ollama model=${chatModel} (params server-side)`);
     mark('completion start');
     raw = await ollamaGenerate(host, chatModel, prompt);
     mark('completion end');
@@ -240,9 +285,15 @@ export async function runRagFlow(
         text: c?.text,
       };
     });
-    const contextBlock = buildContextBlock(chunksForPrompt);
-    const prompt = buildPrompt(contextBlock, question);
+    const { prompt } = trimChunksToFitPrompt(chunksForPrompt, question);
     mark('context build end');
+
+    logDebugPromptAndChunks(
+      chunksForPrompt,
+      prompt,
+      DEBUG_GENERATION_PARAMS,
+      params.chatModelPath ?? '(none)'
+    );
 
     mark('chat model load start');
     let chatCtx: import('llama.rn').LlamaContext;
@@ -259,7 +310,7 @@ export async function runRagFlow(
     const result = await chatCtx.completion({
       prompt,
       n_predict: 512,
-      temperature: 0.3,
+      ...DEBUG_GENERATION_PARAMS,
     });
     raw = result?.text ?? result?.content ?? '';
     mark('completion end');
