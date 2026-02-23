@@ -2211,7 +2211,7 @@ SPEC CHECKSUMS:
   hermes-engine: e9c7ba4257185c052fb27241b5c19a21536f168d
   llama-rn: e1c26363deecf6c48c716cb6ddc8159356894a82
   onnxruntime-c: f48d98ac3179b177d158353213055667893a01f4
-  PiperTts: c4a14928f1f61fbd64fef59aee820b572bd331ff
+  PiperTts: 4fcf6dac52da2720990bed9b86b70ff9d96ec6db
   RCTDeprecation: 3280799c14232a56e5a44f92981a8ee33bc69fd9
   RCTRequired: 9854a51b0f65ccf43ea0b744df4d70fce339db32
   RCTSwiftUI: 96986e49a4fdc2c2103929dee2641e1b57edf33d
