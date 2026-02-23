@@ -8,6 +8,7 @@ import {
   PACK_SCHEMA_VERSION,
   VALIDATE_CAPABILITY_SCHEMA_VERSION,
   RETRIEVAL_FORMAT_VERSION,
+  RAG_USE_DETERMINISTIC_CONTEXT_ONLY,
   type Manifest,
   type IndexMeta,
   type PackState,
@@ -67,6 +68,14 @@ export async function loadManifest(
   return manifest;
 }
 
+/** Stub index_meta when pack has no vector artifacts (deterministic-only / new structure). */
+const STUB_INDEX_META: IndexMeta = {
+  embed_model_id: 'deterministic-only',
+  dim: 0,
+  metric: 'l2',
+  normalize: false,
+};
+
 /**
  * Load index_meta.json for an index (rules or cards). Validates embed contract fields.
  */
@@ -88,10 +97,35 @@ export async function loadIndexMeta(
 }
 
 /**
+ * Load index_meta for an index, or return stub when file is missing and deterministic-only.
+ * Allows the new pack structure (no rules/index_meta.json, cards/index_meta.json) to load.
+ */
+async function loadIndexMetaOrStub(
+  reader: PackFileReader,
+  indexDir: string
+): Promise<IndexMeta> {
+  if (!RAG_USE_DETERMINISTIC_CONTEXT_ONLY) {
+    return loadIndexMeta(reader, indexDir);
+  }
+  try {
+    return await loadIndexMeta(reader, indexDir);
+  } catch {
+    return STUB_INDEX_META;
+  }
+}
+
+/** Sentinel when RAG_USE_DETERMINISTIC_CONTEXT_ONLY: no embed model is used. */
+export const PACK_EMBED_MODEL_ID_DETERMINISTIC_ONLY = 'deterministic-only';
+
+/**
  * Read the pack's embed_model_id from rules/index_meta.json (no full load).
  * Use this so the app can init with the pack's id and avoid E_EMBED_MISMATCH.
+ * When RAG_USE_DETERMINISTIC_CONTEXT_ONLY, returns a sentinel; embeddings are not present.
  */
 export async function getPackEmbedModelId(reader: PackFileReader): Promise<string> {
+  if (RAG_USE_DETERMINISTIC_CONTEXT_ONLY) {
+    return PACK_EMBED_MODEL_ID_DETERMINISTIC_ONLY;
+  }
   const meta = await loadIndexMeta(reader, 'rules');
   if (!meta.embed_model_id) {
     throw ragError('E_INDEX_META', 'rules/index_meta.json has no embed_model_id');
@@ -119,22 +153,25 @@ export async function loadPack(
   const cardsNameLookupPath = validate.files.cards_name_lookup.path;
   mark('rule_ids/name_lookup paths resolved');
 
-  const rulesMeta = await loadIndexMeta(reader, 'rules');
-  const cardsMeta = await loadIndexMeta(reader, 'cards');
+  const rulesMeta = await loadIndexMetaOrStub(reader, 'rules');
+  const cardsMeta = await loadIndexMetaOrStub(reader, 'cards');
   mark('index_meta loaded end');
 
-  if (rulesMeta.embed_model_id !== embedModelId) {
-    throw ragError('E_EMBED_MISMATCH', `Pack embed_model_id does not match app config`, {
-      pack: rulesMeta.embed_model_id,
-      app: embedModelId,
-    });
+  if (!RAG_USE_DETERMINISTIC_CONTEXT_ONLY) {
+    if (rulesMeta.embed_model_id !== embedModelId) {
+      throw ragError('E_EMBED_MISMATCH', `Pack embed_model_id does not match app config`, {
+        pack: rulesMeta.embed_model_id,
+        app: embedModelId,
+      });
+    }
+    if (cardsMeta.embed_model_id !== embedModelId) {
+      throw ragError('E_EMBED_MISMATCH', `Pack (cards) embed_model_id does not match app config`, {
+        pack: cardsMeta.embed_model_id,
+        app: embedModelId,
+      });
+    }
   }
-  if (cardsMeta.embed_model_id !== embedModelId) {
-    throw ragError('E_EMBED_MISMATCH', `Pack (cards) embed_model_id does not match app config`, {
-      pack: cardsMeta.embed_model_id,
-      app: embedModelId,
-    });
-  }
+  // When RAG_USE_DETERMINISTIC_CONTEXT_ONLY, embeddings are not used; embed_model_id check is skipped.
 
   if (validate.counts?.rules != null && manifest.indices?.rules?.chunk_count != null) {
     if (validate.counts.rules !== manifest.indices.rules.chunk_count) {
@@ -146,6 +183,17 @@ export async function loadPack(
   }
 
   mark('pack load end');
+
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    try {
+      const identityJson = await reader.readFile('pack_identity.json');
+      const identity = JSON.parse(identityJson) as Record<string, unknown>;
+      console.log('[RAG] pack_identity', identity);
+    } catch {
+      // pack_identity.json optional (e.g. pack not from sync-pack-small)
+    }
+  }
+
   return {
     packRoot,
     manifest,

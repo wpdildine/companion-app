@@ -4,8 +4,9 @@
  */
 
 import type { PackState, PackFileReader, RagInitParams } from './types';
+import { RAG_USE_DETERMINISTIC_CONTEXT_ONLY } from './types';
 import { loadVectors, searchL2, loadChunksForRows } from './retrieval';
-import { trimChunksToFitPrompt } from './prompt';
+import { trimChunksToFitPrompt, buildPrompt } from './prompt';
 import { ragError } from './errors';
 
 const RULES_WEIGHT = 0.6;
@@ -224,6 +225,87 @@ export async function runRagFlow(
     raw = await ollamaGenerate(host, chatModel, prompt);
     mark('completion end');
   } else {
+    if (RAG_USE_DETERMINISTIC_CONTEXT_ONLY) {
+      const packRoot = params.packRoot;
+      let bundleText = '';
+
+      try {
+        const runtime = await import('@mtg/runtime');
+        const getContext = runtime.getContext ?? (runtime as { default?: { getContext?: typeof runtime.getContext } }).default?.getContext;
+        if (typeof getContext === 'function') {
+          mark('getContext start');
+          const result = await getContext(question, packRoot);
+          mark('getContext end');
+          bundleText =
+            typeof result === 'string'
+              ? result
+              : (result as { final_context_bundle_canonical?: string })?.final_context_bundle_canonical ?? '';
+        }
+      } catch (e) {
+        const err = e as { code?: string; message?: string };
+        const msg = e instanceof Error ? e.message : String(e);
+        if (packRoot && reader) {
+          // Runtime getContext is a stub on RN; we use in-app getContextRN. Log as debug, not error.
+          console.log('[RAG] getContext (runtime stub), using getContextRN');
+        } else {
+          console.error('[RAG] getContext failed:', msg, e);
+        }
+        if (err && typeof err === 'object' && typeof err.code === 'string') throw e;
+        if (packRoot && reader) {
+          try {
+            const { getContextRN } = await import('./getContextRN');
+            mark('getContext start');
+            const result = await getContextRN(question, packRoot, reader);
+            mark('getContext end');
+            bundleText = result.final_context_bundle_canonical ?? '';
+          } catch (rnErr) {
+            console.error('[RAG] getContextRN failed:', rnErr);
+            throw ragError(
+              'E_DETERMINISTIC_ONLY',
+              `Deterministic context provider not available: ${msg}. Ensure @mtg/runtime is installed with RN entrypoint and getContext is exported.`
+            );
+          }
+        } else {
+          throw ragError(
+            'E_DETERMINISTIC_ONLY',
+            `Deterministic context provider not available: ${msg}. Ensure pack is copied to device (packRoot set) and @mtg/runtime or in-app getContextRN is used.`
+          );
+        }
+      }
+
+      if (!bundleText?.trim() && packRoot && reader) {
+        try {
+          const { getContextRN } = await import('./getContextRN');
+          mark('getContext start');
+          const result = await getContextRN(question, packRoot, reader);
+          mark('getContext end');
+          bundleText = result.final_context_bundle_canonical ?? '';
+        } catch {
+          // ignore
+        }
+      }
+      if (!bundleText?.trim()) {
+        throw ragError('E_RETRIEVAL', 'Deterministic context provider returned empty bundle.');
+      }
+      mark('context build start');
+      const prompt = buildPrompt(bundleText, question);
+      mark('context build end');
+      if (!params.chatModelPath?.trim()) {
+        throw ragError('E_MODEL_PATH', 'chatModelPath required for deterministic path.');
+      }
+      mark('chat model load start');
+      const chatCtx = await getChatContext(params.chatModelPath);
+      mark('chat model load end');
+      mark('completion start');
+      const completionResult = await chatCtx.completion({
+        prompt,
+        n_predict: 512,
+        ...DEBUG_GENERATION_PARAMS,
+      });
+      raw = completionResult?.text ?? (completionResult as { content?: string })?.content ?? '';
+      mark('completion end');
+      return { raw };
+    }
     if (!params.embedModelPath?.trim() || !params.chatModelPath?.trim()) {
       throw ragError(
         'E_MODEL_PATH',

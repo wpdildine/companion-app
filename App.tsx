@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  NativeModules,
   Platform,
   Pressable,
   ScrollView,
@@ -22,30 +23,41 @@ import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
-import { NativeModules } from 'react-native';
 import {
-  init as ragInit,
-  ask as ragAsk,
-  getPackState,
-  getPackEmbedModelId,
-  createThrowReader,
-  createBundlePackReader,
   BUNDLE_PACK_ROOT,
+  copyBundlePackToDocuments,
+  createBundlePackReader,
+  createDocumentsPackReader,
+  createThrowReader,
+  getContentPackPathInDocuments,
+  getPackEmbedModelId,
+  getPackState,
+  ask as ragAsk,
+  init as ragInit,
   type ValidationSummary,
 } from './src/rag';
 
-/** Bundle-relative paths for GGUF models in the content pack (assets/content_pack/models/...). */
-const BUNDLE_EMBED_PATH = (BUNDLE_PACK_ROOT ? BUNDLE_PACK_ROOT + '/' : '') + 'models/embed/embed.gguf';
-const BUNDLE_LLM_PATH = (BUNDLE_PACK_ROOT ? BUNDLE_PACK_ROOT + '/' : '') + 'models/llm/model.gguf';
+/** Bundle-relative paths for GGUF models in the content pack (assets/content_pack/models/...). Present only if you ship a full pack with models/; symlink and sync-pack-small do not include models/. */
+const BUNDLE_EMBED_PATH =
+  (BUNDLE_PACK_ROOT ? BUNDLE_PACK_ROOT + '/' : '') + 'models/embed/embed.gguf';
+const BUNDLE_LLM_PATH =
+  (BUNDLE_PACK_ROOT ? BUNDLE_PACK_ROOT + '/' : '') + 'models/llm/model.gguf';
 
-/** Fallback GGUF filenames when using getAppModelsPath (writable dir). */
+/** Fallback GGUF filenames when using getAppModelsPath (Documents/models). Required when the pack has no models/ (e.g. symlinked or sync-pack-small). */
 const EMBED_MODEL_FILENAME = 'nomic-embed-text.gguf';
 const CHAT_MODEL_FILENAME = 'llama3.2-3b-Q4_K_M.gguf';
 
-/** Resolves embed and chat model file paths for on-device RAG. Prefers bundled pack models (assets/content_pack/models/...), then app models dir. */
-async function getOnDeviceModelPaths(): Promise<{ embedModelPath: string; chatModelPath: string }> {
-  const RagPackReader = NativeModules.RagPackReader ?? NativeModules.RagPackReaderModule;
+/** Resolves embed and chat model file paths for on-device RAG. Uses bundle paths when present in assets/content_pack/models/, else Documents/models with fallback filenames. Resolves each model independently so a pack with only LLM (no embed) still gets chat from bundle. */
+async function getOnDeviceModelPaths(): Promise<{
+  embedModelPath: string;
+  chatModelPath: string;
+}> {
+  const RagPackReader =
+    NativeModules.RagPackReader ?? NativeModules.RagPackReaderModule;
   if (!RagPackReader) return { embedModelPath: '', chatModelPath: '' };
+
+  let embedModelPath = '';
+  let chatModelPath = '';
 
   try {
     if (typeof RagPackReader.getBundleFilePath === 'function') {
@@ -53,28 +65,49 @@ async function getOnDeviceModelPaths(): Promise<{ embedModelPath: string; chatMo
         RagPackReader.getBundleFilePath(BUNDLE_EMBED_PATH),
         RagPackReader.getBundleFilePath(BUNDLE_LLM_PATH),
       ]);
-      if (embedPath && llmPath) {
-        console.log('[RAG] Model paths resolved (bundle): embed=', embedPath, 'chat=', llmPath);
-        return { embedModelPath: embedPath, chatModelPath: llmPath };
+      if (embedPath) embedModelPath = embedPath;
+      if (llmPath) chatModelPath = llmPath;
+      if (embedModelPath || chatModelPath) {
+        console.log(
+          '[RAG] Model paths (bundle): embed=',
+          embedModelPath || '(none)',
+          'chat=',
+          chatModelPath || '(none)',
+        );
       }
     }
   } catch (e) {
-    console.log('[RAG] Bundle model paths not available:', e instanceof Error ? e.message : e);
+    console.log(
+      '[RAG] Bundle model paths not available:',
+      e instanceof Error ? e.message : e,
+    );
   }
 
   try {
-    if (!RagPackReader.getAppModelsPath) return { embedModelPath: '', chatModelPath: '' };
-    const modelsDir = await RagPackReader.getAppModelsPath();
-    if (!modelsDir || typeof modelsDir !== 'string') return { embedModelPath: '', chatModelPath: '' };
-    const dir = modelsDir.replace(/\/+$/, '');
-    const embedModelPath = `${dir}/${EMBED_MODEL_FILENAME}`;
-    const chatModelPath = `${dir}/${CHAT_MODEL_FILENAME}`;
-    console.log('[RAG] Model paths resolved (app dir): embed=', embedModelPath, 'chat=', chatModelPath);
-    return { embedModelPath, chatModelPath };
+    if (RagPackReader.getAppModelsPath) {
+      const modelsDir = await RagPackReader.getAppModelsPath();
+      if (modelsDir && typeof modelsDir === 'string') {
+        const dir = modelsDir.replace(/\/+$/, '');
+        if (!embedModelPath) embedModelPath = `${dir}/${EMBED_MODEL_FILENAME}`;
+        if (!chatModelPath) chatModelPath = `${dir}/${CHAT_MODEL_FILENAME}`;
+      }
+    }
   } catch (e) {
-    console.log('[RAG] App models path not available:', e instanceof Error ? e.message : e);
-    return { embedModelPath: '', chatModelPath: '' };
+    console.log(
+      '[RAG] App models path not available:',
+      e instanceof Error ? e.message : e,
+    );
   }
+
+  if (embedModelPath || chatModelPath) {
+    console.log(
+      '[RAG] Model paths resolved: embed=',
+      embedModelPath || '(none)',
+      'chat=',
+      chatModelPath || '(none)',
+    );
+  }
+  return { embedModelPath, chatModelPath };
 }
 
 function errorMessage(e: unknown): string {
@@ -117,9 +150,7 @@ type TtsModule = {
 function VoiceScreen() {
   const insets = useSafeAreaInsets();
   const isDarkMode = useColorScheme() === 'dark';
-  const [transcribedText, setTranscribedText] = useState(
-    "How does blood moon work in layers?"
-  );
+  const [transcribedText, setTranscribedText] = useState('What is a trigger?');
   const [partialText, setPartialText] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -133,8 +164,11 @@ function VoiceScreen() {
   const [piperDebugInfo, setPiperDebugInfo] = useState<string | null>(null);
   const [responseText, setResponseText] = useState<string | null>(null);
   const [isAsking, setIsAsking] = useState(false);
-  const [validationSummary, setValidationSummary] = useState<ValidationSummary | null>(null);
-  const [packStatus, setPackStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [validationSummary, setValidationSummary] =
+    useState<ValidationSummary | null>(null);
+  const [packStatus, setPackStatus] = useState<
+    'idle' | 'loading' | 'ready' | 'error'
+  >('idle');
   const [packError, setPackError] = useState<string | null>(null);
   const textColor = isDarkMode ? '#e5e5e5' : '#1a1a1a';
   const mutedColor = isDarkMode ? '#888' : '#666';
@@ -146,9 +180,12 @@ function VoiceScreen() {
   // Do not mutate NativeModules (e.g. NativeModules.Voice = ...) — the bridge forbids inserting into the native module proxy.
   useEffect(() => {
     try {
-      const VoiceNative = NativeModules?.Voice ?? NativeModules?.RCTVoice ?? null;
+      const VoiceNative =
+        NativeModules?.Voice ?? NativeModules?.RCTVoice ?? null;
       if (!VoiceNative) {
-        setError('Speech recognition not available (native Voice module not linked).');
+        setError(
+          'Speech recognition not available (native Voice module not linked).',
+        );
         setVoiceReady(true);
         voiceRef.current = null;
         setVoiceAvailable(false);
@@ -284,9 +321,25 @@ function VoiceScreen() {
       if (!getPackState()) {
         setPackStatus('loading');
         setPackError(null);
-        const reader = createBundlePackReader() ?? createThrowReader(
-          'Pack not configured. Add the content pack to assets/content_pack and rebuild the app.'
-        );
+        let packRoot = await getContentPackPathInDocuments();
+        if (!packRoot) {
+          try {
+            packRoot = await copyBundlePackToDocuments();
+          } catch (e) {
+            console.log(
+              '[RAG] Copy pack to Documents failed, using bundle:',
+              e instanceof Error ? e.message : e,
+            );
+            packRoot = '';
+          }
+        }
+        const reader =
+          (packRoot ? createDocumentsPackReader(packRoot) : null) ??
+          createBundlePackReader() ??
+          createThrowReader(
+            'Pack not configured. Add the content pack to assets/content_pack and rebuild the app.',
+          );
+        console.log('[RAG] Pack root:', packRoot || '(bundle)');
         const embedModelId = await getPackEmbedModelId(reader);
         const { embedModelPath, chatModelPath } = await getOnDeviceModelPaths();
         await ragInit(
@@ -294,9 +347,9 @@ function VoiceScreen() {
             embedModelId,
             embedModelPath,
             chatModelPath,
-            packRoot: '',
+            packRoot: packRoot || '',
           },
-          reader
+          reader,
         );
         setPackStatus('ready');
       }
@@ -308,7 +361,10 @@ function VoiceScreen() {
       console.log('[RAG] Full response (nudged):', nudged);
     } catch (e) {
       const msg = errorMessage(e);
-      const code = e && typeof e === 'object' && 'code' in e ? (e as { code: string }).code : '';
+      const code =
+        e && typeof e === 'object' && 'code' in e
+          ? (e as { code: string }).code
+          : '';
       setError(code ? `[${code}] ${msg}` : msg);
       if (!getPackState()) {
         setPackStatus('error');
@@ -331,14 +387,27 @@ function VoiceScreen() {
       return;
     }
     setError(null);
-    console.log('[Playback] start', { piperAvailable, textLength: text.length });
+    console.log('[Playback] start', {
+      piperAvailable,
+      textLength: text.length,
+    });
     // Prefer Piper (offline) as the main TTS voice when the model is available
     if (piperAvailable) {
       const PiperTts = require('piper-tts').default;
-      const options = { lengthScale: 1.08, noiseScale: 0.62, noiseW: 0.8, gainDb: 0, interSentenceSilenceMs: 250, interCommaSilenceMs: 125 };
+      const options = {
+        lengthScale: 1.08,
+        noiseScale: 0.62,
+        noiseW: 0.8,
+        gainDb: 0,
+        interSentenceSilenceMs: 250,
+        interCommaSilenceMs: 125,
+      };
       console.log('[Playback] Piper: setOptions before speak', options);
       PiperTts.setOptions(options);
-      console.log('[Playback] Piper path: starting speak', { textLength: text.length, preview: text.slice(0, 40) });
+      console.log('[Playback] Piper path: starting speak', {
+        textLength: text.length,
+        preview: text.slice(0, 40),
+      });
       setIsSpeaking(true);
       try {
         console.log('[Playback] Piper: calling PiperTts.speak()…');
@@ -466,7 +535,10 @@ function VoiceScreen() {
             Ready
           </Text>
         ) : packStatus === 'error' ? (
-          <Text style={[styles.packStatusValue, styles.packStatusMissing]} numberOfLines={2}>
+          <Text
+            style={[styles.packStatusValue, styles.packStatusMissing]}
+            numberOfLines={2}
+          >
             Error: {packError ?? 'Unknown'}
           </Text>
         ) : (
@@ -500,9 +572,17 @@ function VoiceScreen() {
           disabled={!displayText.trim() || isSpeaking}
         >
           {isSpeaking ? (
-            <View style={[styles.playbackButtonContent, styles.playbackSpeakingRow]}>
+            <View
+              style={[styles.playbackButtonContent, styles.playbackSpeakingRow]}
+            >
               <ActivityIndicator size="small" color={textColor} />
-              <Text style={[styles.playbackHint, styles.playbackSpeakingHint, { color: mutedColor }]}>
+              <Text
+                style={[
+                  styles.playbackHint,
+                  styles.playbackSpeakingHint,
+                  { color: mutedColor },
+                ]}
+              >
                 Synthesizing…
               </Text>
             </View>
@@ -525,21 +605,48 @@ function VoiceScreen() {
 
       <Text style={[styles.sectionLabel, { color: mutedColor }]}>Response</Text>
       {isAsking ? (
-        <View style={[styles.responseBox, styles.responseLoadingRow, { backgroundColor: inputBg, borderColor }]}>
+        <View
+          style={[
+            styles.responseBox,
+            styles.responseLoadingRow,
+            { backgroundColor: inputBg, borderColor },
+          ]}
+        >
           <ActivityIndicator size="small" color={textColor} />
-          <Text style={[styles.responseLabel, styles.responseLabelInline, { color: mutedColor }]}>Loading…</Text>
+          <Text
+            style={[
+              styles.responseLabel,
+              styles.responseLabelInline,
+              { color: mutedColor },
+            ]}
+          >
+            Loading…
+          </Text>
         </View>
       ) : (
-        <View style={[styles.responseBox, { backgroundColor: inputBg, borderColor }]}>
-          <Text style={[styles.responseLabel, { color: mutedColor }]}>Answer</Text>
+        <View
+          style={[
+            styles.responseBox,
+            { backgroundColor: inputBg, borderColor },
+          ]}
+        >
+          <Text style={[styles.responseLabel, { color: mutedColor }]}>
+            Answer
+          </Text>
           {responseText != null ? (
             <>
-              <Text style={[styles.responseText, { color: textColor }]} selectable>
+              <Text
+                style={[styles.responseText, { color: textColor }]}
+                selectable
+              >
                 {responseText}
               </Text>
-              {validationSummary && (validationSummary.stats.unknownCardCount > 0 || validationSummary.stats.invalidRuleCount > 0) ? (
+              {validationSummary &&
+              (validationSummary.stats.unknownCardCount > 0 ||
+                validationSummary.stats.invalidRuleCount > 0) ? (
                 <Text style={[styles.validationHint, { color: mutedColor }]}>
-                  Corrected {validationSummary.stats.unknownCardCount} name(s), {validationSummary.stats.invalidRuleCount} rule(s) invalid.
+                  Corrected {validationSummary.stats.unknownCardCount} name(s),{' '}
+                  {validationSummary.stats.invalidRuleCount} rule(s) invalid.
                 </Text>
               ) : null}
             </>
@@ -583,7 +690,9 @@ function VoiceScreen() {
           onPress={handleSubmit}
           disabled={isAsking}
         >
-          <Text style={styles.submitButtonLabel}>{isAsking ? '…' : 'Submit'}</Text>
+          <Text style={styles.submitButtonLabel}>
+            {isAsking ? '…' : 'Submit'}
+          </Text>
         </Pressable>
       </View>
     </ScrollView>

@@ -1429,6 +1429,28 @@ PODS:
     - React-RCTFBReactNativeSpec
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
+  - react-native-quick-sqlite (8.2.7):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - react-native-safe-area-context (5.6.2):
     - hermes-engine
     - RCTRequired
@@ -1976,6 +1998,7 @@ DEPENDENCIES:
   - React-logger (from `../node_modules/react-native/ReactCommon/logger`)
   - React-Mapbuffer (from `../node_modules/react-native/ReactCommon`)
   - React-microtasksnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)
+  - react-native-quick-sqlite (from `../node_modules/react-native-quick-sqlite`)
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
   - "react-native-slider (from `../node_modules/@react-native-community/slider`)"
   - "react-native-voice (from `../node_modules/@react-native-voice/voice`)"
@@ -2102,6 +2125,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon"
   React-microtasksnativemodule:
     :path: "../node_modules/react-native/ReactCommon/react/nativemodule/microtasks"
+  react-native-quick-sqlite:
+    :path: "../node_modules/react-native-quick-sqlite"
   react-native-safe-area-context:
     :path: "../node_modules/react-native-safe-area-context"
   react-native-slider:
@@ -2186,7 +2211,7 @@ SPEC CHECKSUMS:
   hermes-engine: e9c7ba4257185c052fb27241b5c19a21536f168d
   llama-rn: e1c26363deecf6c48c716cb6ddc8159356894a82
   onnxruntime-c: f48d98ac3179b177d158353213055667893a01f4
-  PiperTts: 4fcf6dac52da2720990bed9b86b70ff9d96ec6db
+  PiperTts: c4a14928f1f61fbd64fef59aee820b572bd331ff
   RCTDeprecation: 3280799c14232a56e5a44f92981a8ee33bc69fd9
   RCTRequired: 9854a51b0f65ccf43ea0b744df4d70fce339db32
   RCTSwiftUI: 96986e49a4fdc2c2103929dee2641e1b57edf33d
@@ -2223,6 +2248,7 @@ SPEC CHECKSUMS:
   React-logger: 9e51e01455f15cb3ef87a09a1ec773cdb22d56c1
   React-Mapbuffer: 92b99e450e8ff598b27d6e4db3a75e04fd45e9a9
   React-microtasksnativemodule: 2fe0f2bd2840dedbd66c0ac249c64f977f39cc18
+  react-native-quick-sqlite: ef5b0117b3882204f404cad7d5789dc7634d8979
   react-native-safe-area-context: 37e680fc4cace3c0030ee46e8987d24f5d3bdab2
   react-native-slider: 8b9a218d1a3e526146a170cb6133be9cda23e70e
   react-native-voice: 908a0eba96c8c3d643e4f98b7232c6557d0a6f9c
@@ -2263,6 +2289,6 @@ SPEC CHECKSUMS:
   TextToSpeech: 89b239221ec378d213af422d14789a729705360b
   Yoga: 772166513f9cd2d61a6251d0dacbbfaa5b537479
 
-PODFILE CHECKSUM: d63a3499858be5063fa6f57c19d221244869900b
+PODFILE CHECKSUM: 488593c418bfe260c36fc1a51788dfd460adf348
 
 COCOAPODS: 1.16.2

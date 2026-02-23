@@ -19,7 +19,8 @@ export type RagErrorCode =
   | 'E_RETRIEVAL'
   | 'E_COMPLETION'
   | 'E_MODEL_PATH'
-  | 'E_OLLAMA';
+  | 'E_OLLAMA'
+  | 'E_DETERMINISTIC_ONLY';
 
 export function ragError(
   code: RagErrorCode,

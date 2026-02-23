@@ -261,21 +261,6 @@
 			shellScript = "set -e\nESPEAK_SRC=\"${SRCROOT}/../plugins/piper-tts/ios/Resources/espeak-ng-data\"\nDST=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nif [ ! -d \"$ESPEAK_SRC\" ]; then echo \"warning: espeak-ng-data missing at $ESPEAK_SRC (run scripts/download-espeak-ng-data.sh)\"; exit 0; fi\nmkdir -p \"${DST}/espeak-ng-data\"\ncp -R \"${ESPEAK_SRC}\"/* \"${DST}/espeak-ng-data/\"\necho \"espeak-ng-data copied to ${DST}/espeak-ng-data\"\n";
 			showEnvVarsInLog = 0;
 		};
-		RAGPACKCOPY001A2B3C4D5E6F7 /* Copy content pack */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "Copy content pack";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "set -e\nPACK_SRC=\"${SRCROOT}/../assets/content_pack\"\nDST=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nif [ ! -d \"$PACK_SRC\" ]; then echo \"warning: content_pack missing at $PACK_SRC\"; exit 0; fi\nif [ ! -f \"${PACK_SRC}/manifest.json\" ]; then echo \"warning: manifest.json not found in $PACK_SRC\"; exit 0; fi\nmkdir -p \"${DST}/content_pack\"\ncp -R \"${PACK_SRC}\"/* \"${DST}/content_pack/\"\necho \"content_pack copied to ${DST}/content_pack\"\n";
-			showEnvVarsInLog = 0;
-		};
 		C38B50BA6285516D6DCD4F65 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -313,6 +298,21 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-CompanionApp/Pods-CompanionApp-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		RAGPACKCOPY001A2B3C4D5E6F7 /* Copy content pack */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Copy content pack";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nPACK_SRC=\"${SRCROOT}/../assets/content_pack\"\nDST=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nif [ ! -e \"$PACK_SRC\" ]; then echo \"warning: content_pack missing at $PACK_SRC\"; exit 0; fi\nif [ -L \"$PACK_SRC\" ]; then echo \"error: assets/content_pack is a symlink. Run 'pnpm run sync-pack-small' to materialize a real directory (no models/) before building.\"; exit 1; fi\nif [ ! -f \"${PACK_SRC}/manifest.json\" ]; then echo \"warning: manifest.json not found in $PACK_SRC\"; exit 0; fi\nmkdir -p \"${DST}/content_pack\"\ncp -R \"${PACK_SRC}\"/* \"${DST}/content_pack/\"\necho \"content_pack copied to ${DST}/content_pack\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */

@@ -71,3 +71,65 @@ export function createBundlePackReader(): PackFileReader | null {
     return null;
   }
 }
+
+/**
+ * Returns a PackFileReader that reads from a pack root on the filesystem (e.g. Documents/content_pack).
+ * Use after copyBundlePackToDocuments so the app uses the on-device copy and avoids rebundling.
+ * Requires RagPackReader.readFileAtPath / readFileBinaryAtPath. Returns null if not available.
+ */
+export function createDocumentsPackReader(packRoot: string): PackFileReader | null {
+  if (!packRoot || typeof packRoot !== 'string') return null;
+  try {
+    const { NativeModules } = require('react-native');
+    const RagPackReader = NativeModules.RagPackReader ?? NativeModules.RagPackReaderModule;
+    if (
+      !RagPackReader ||
+      typeof RagPackReader.readFileAtPath !== 'function' ||
+      typeof RagPackReader.readFileBinaryAtPath !== 'function'
+    )
+      return null;
+    const root = packRoot.replace(/\/+$/, '');
+    return {
+      async readFile(relativePath: string): Promise<string> {
+        const path = `${root}/${relativePath.replace(/^\//, '')}`;
+        return RagPackReader.readFileAtPath(path);
+      },
+      async readFileBinary(relativePath: string): Promise<ArrayBuffer> {
+        const path = `${root}/${relativePath.replace(/^\//, '')}`;
+        const base64 = await RagPackReader.readFileBinaryAtPath(path);
+        const bytes = base64ToBytes(base64);
+        return bytes.buffer;
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolves the path to the content pack in Documents. If the pack is already there (manifest present),
+ * returns that path. Otherwise returns empty string (caller should then copy and retry).
+ */
+export async function getContentPackPathInDocuments(): Promise<string> {
+  try {
+    const { NativeModules } = require('react-native');
+    const RagPackReader = NativeModules.RagPackReader ?? NativeModules.RagPackReaderModule;
+    if (!RagPackReader || typeof RagPackReader.getContentPackPathInDocuments !== 'function')
+      return '';
+    return (await RagPackReader.getContentPackPathInDocuments()) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Copies the bundled content_pack to Documents (one-time). Idempotent: if pack already in Documents, skips copy.
+ * Returns the Documents pack path. Rejects if bundle has no pack or copy fails.
+ */
+export async function copyBundlePackToDocuments(): Promise<string> {
+  const { NativeModules } = require('react-native');
+  const RagPackReader = NativeModules.RagPackReader ?? NativeModules.RagPackReaderModule;
+  if (!RagPackReader || typeof RagPackReader.copyBundlePackToDocuments !== 'function')
+    throw new Error('RagPackReader.copyBundlePackToDocuments not available');
+  return RagPackReader.copyBundlePackToDocuments();
+}

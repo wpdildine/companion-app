@@ -12,7 +12,15 @@
     "rebuild": "./scripts/rebuild.sh",
     "start": "react-native start",
     "test": "jest",
-    "ping-piper": "node scripts/ping-piper.js"
+    "ping-piper": "node scripts/ping-piper.js",
+    "link-mtg-rules": "node scripts/link-mtg-rules.js",
+    "link-mtg-rules:status": "node scripts/link-mtg-rules.js status",
+    "sync-pack-small": "node scripts/sync-pack-small.js",
+    "sync-pack-full": "node scripts/sync-pack-full.js",
+    "check-pack-no-models": "node scripts/check-pack-no-models.js",
+    "check-bundle-no-node": "node scripts/check-bundle-no-node.js",
+    "verify-parity-uses-node": "node scripts/verify-parity-uses-node.js",
+    "validate-e2e-gates": "node scripts/validate-e2e-gates.js"
   },
   "dependencies": {
     "@react-native-community/slider": "^5.1.2",
@@ -23,7 +31,9 @@
     "react": "19.2.3",
     "react-native": "0.84.0",
     "react-native-safe-area-context": "^5.5.2",
-    "react-native-tts": "^4.1.1"
+    "react-native-tts": "^4.1.1",
+    "react-native-quick-sqlite": "^8.2.0",
+    "@mtg/runtime": "file:../mtg_rules/runtime-ts"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

@@ -1,11 +1,13 @@
-# On-device RAG models (GGUF)
+# On-device models (GGUF)
 
-The RAG feature uses two GGUF models on device:
+The app’s **ask path** uses the deterministic context provider (SQLite + router_map + spec) to build a context bundle; **no vector retrieval in-app**. The LLM is used only to format/summarize that context. Embeddings/vectors are **optional / offline tooling only** (e.g. pack build or lab); the app does not require an embed model for the default flow.
+
+For the **chat (LLM)** model on device:
 
 | Purpose | Filename | Notes |
 |--------|----------|--------|
-| Embeddings | `nomic-embed-text.gguf` | Must match pack index (768 dim). Use [nomic-embed-text](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF) (e.g. Q4_0 or similar). |
-| Chat | `llama3.2-3b-Q4_K_M.gguf` | Any small instruct GGUF; rename to this or change `CHAT_MODEL_FILENAME` in `App.tsx`. |
+| Chat (LLM) | `llama3.2-3b-Q4_K_M.gguf` | Any small instruct GGUF; rename to this or change `CHAT_MODEL_FILENAME` in `App.tsx`. |
+| Embeddings (optional) | `nomic-embed-text.gguf` | Only if you use embedding-based tooling; not required for the default deterministic ask path. |
 
 ## Where the app looks
 
@@ -14,7 +16,7 @@ The app reads these files from its **models** directory:
 - **Android**: `getFilesDir() + "/models"` (e.g. `/data/data/com.companionapp/files/models/`)
 - **iOS**: `Documents/models` inside the app container
 
-You must place the two GGUF files in that directory with the exact names above.
+Place the chat GGUF in that directory (and optionally the embed model if you use embedding-based tooling).
 
 ## How to get the path on device
 
@@ -29,7 +31,7 @@ From the repo root, run:
 ./scripts/download-rag-models.sh
 ```
 
-This downloads the embed and chat models into `rag-models/` (or a path you pass). Then copy the contents of that folder into the app’s models directory (see below).
+This downloads the chat (and optionally embed) models into `rag-models/` (or a path you pass). Copy the chat model into the app’s models directory (see below); embed only if you use an embedding-based path.
 
 ## Copying models onto the device
 

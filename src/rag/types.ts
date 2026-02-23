@@ -3,6 +3,15 @@
  * Aligns with CONTENT_PACK.md and the Ollama RAG + validation plan.
  */
 
+/**
+ * In this app version the ask path uses the deterministic context provider only.
+ * Embeddings are not present; embedModelId/embedModelPath are unused for the
+ * primary path. Packs are expected to have context_provider capability and
+ * no vector retrieval in-app. Set to false only if you re-enable the
+ * embedding-based retrieval path (e.g. for lab/legacy).
+ */
+export const RAG_USE_DETERMINISTIC_CONTEXT_ONLY = true;
+
 /** Supported pack_schema_version values. App hard-fails on unknown. */
 export const PACK_SCHEMA_VERSION = 1;
 
@@ -112,7 +121,12 @@ export interface PackState {
   };
 }
 
-/** Init params; app identifies embed model by id, not path parsing. */
+/**
+ * Init params; app identifies embed model by id when embeddings are used.
+ * When RAG_USE_DETERMINISTIC_CONTEXT_ONLY is true: embedModelId/embedModelPath
+ * are ignored; the app uses the deterministic context provider (SQLite + router_map + spec)
+ * and does not load or use any embed model.
+ */
 export interface RagInitParams {
   embedModelId: string;
   embedModelPath: string;

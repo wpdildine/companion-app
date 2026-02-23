@@ -1,5 +1,7 @@
 /**
  * RAG integration layer: init, pack load, ask (embed → retrieve → complete → validate).
+ * In this app version (RAG_USE_DETERMINISTIC_CONTEXT_ONLY) embeddings are not present;
+ * the canonical path is deterministic context provider + LLM format/summarize only.
  * See plan: Ollama RAG and validation.
  */
 
@@ -8,11 +10,19 @@ import { loadPack, getPackEmbedModelId } from './loadPack';
 import { ragError } from './errors';
 
 export type { PackState, PackFileReader, RagInitParams } from './types';
+export { RAG_USE_DETERMINISTIC_CONTEXT_ONLY } from './types';
 export { ragError } from './errors';
 export type { RagErrorCode } from './errors';
 export type { ValidationSummary } from './validate';
-export { createThrowReader, createBundlePackReader, BUNDLE_PACK_ROOT } from './packFileReader';
-export { getPackEmbedModelId } from './loadPack';
+export {
+  createThrowReader,
+  createBundlePackReader,
+  createDocumentsPackReader,
+  getContentPackPathInDocuments,
+  copyBundlePackToDocuments,
+  BUNDLE_PACK_ROOT,
+} from './packFileReader';
+export { getPackEmbedModelId, PACK_EMBED_MODEL_ID_DETERMINISTIC_ONLY } from './loadPack';
 
 import type { ValidationSummary } from './validate';
 import type { RetrievalHit } from './types';
