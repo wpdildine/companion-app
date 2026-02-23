@@ -6,12 +6,15 @@
  */
 
 import type { PackFileReader, PackState, RagInitParams } from './types';
-import { loadPack, getPackEmbedModelId } from './loadPack';
+import { loadPack } from './loadPack';
 import { ragError } from './errors';
 
 export type { PackState, PackFileReader, RagInitParams } from './types';
 export { RAG_USE_DETERMINISTIC_CONTEXT_ONLY } from './types';
 export { ragError } from './errors';
+export { RAG_CONFIG } from './config';
+export { applyPackRagConfig } from './config';
+export type { RagConfig, PackRagConfig } from './config';
 export type { RagErrorCode } from './errors';
 export type { ValidationSummary } from './validate';
 export {
@@ -25,7 +28,6 @@ export {
 export { getPackEmbedModelId, PACK_EMBED_MODEL_ID_DETERMINISTIC_ONLY } from './loadPack';
 
 import type { ValidationSummary } from './validate';
-import type { RetrievalHit } from './types';
 
 /** Options for ask(). */
 export interface AskOptions {

@@ -3,6 +3,7 @@
  */
 
 import type { RetrievalHit } from './types';
+import { RAG_CONFIG } from './config';
 
 export interface ChunkForPrompt {
   doc_id: string;
@@ -12,13 +13,13 @@ export interface ChunkForPrompt {
 }
 
 /** Default max context characters for mobile (~500–700 tokens). */
-export const DEFAULT_MAX_CONTEXT_CHARS = 12_000;
+export const DEFAULT_MAX_CONTEXT_CHARS = RAG_CONFIG.prompt.default_max_context_chars;
 
-/** Hard cap on prompt size so we stay under n_ctx (e.g. 1024) with room for generation. ~850 tokens ≈ 3400 chars. */
-export const MAX_PROMPT_CHARS = 3400;
+/** Hard cap on prompt size so we stay under n_ctx with room for generation. */
+export const MAX_PROMPT_CHARS = RAG_CONFIG.prompt.max_prompt_chars;
 
 /** Rough chars-per-token for prompt sizing. */
-export const CHARS_PER_TOKEN_EST = 4;
+export const CHARS_PER_TOKEN_EST = RAG_CONFIG.prompt.chars_per_token_est;
 
 /**
  * Build context string for completion: "Rules excerpts (doc_id …):" and "Cards excerpts (doc_id …):".
@@ -56,7 +57,7 @@ export function buildContextBlock(
  * Build full prompt: system + context + user question.
  */
 export function buildPrompt(contextBlock: string, question: string): string {
-  const system = 'Answer based only on the provided rules and card excerpts. Cite doc_id when you use a specific excerpt.';
+  const system = RAG_CONFIG.prompt.system_instruction;
   return `${system}\n\n${contextBlock}\n\nQuestion: ${question}\n\nAnswer:`;
 }
 

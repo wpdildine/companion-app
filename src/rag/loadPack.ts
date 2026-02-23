@@ -14,7 +14,8 @@ import {
   type PackState,
   type RagInitParams,
 } from './types';
-import { ragError, type RagErrorCode } from './errors';
+import { ragError } from './errors';
+import { applyPackRagConfig, type PackRagConfig } from './config';
 
 function parseJson<T>(raw: string, path: string): T {
   try {
@@ -23,6 +24,17 @@ function parseJson<T>(raw: string, path: string): T {
     throw ragError('E_PACK_LOAD', `Invalid JSON: ${path}`, {
       cause: e instanceof Error ? e.message : String(e),
     });
+  }
+}
+
+/** Optional shared mobile config exported in content pack root as rag_config.json. */
+async function loadAndApplyPackRagConfig(reader: PackFileReader): Promise<void> {
+  try {
+    const raw = await reader.readFile('rag_config.json');
+    const cfg = parseJson<PackRagConfig>(raw, 'rag_config.json');
+    applyPackRagConfig(cfg);
+  } catch {
+    // Optional for backwards compatibility with older packs.
   }
 }
 
@@ -146,6 +158,7 @@ export async function loadPack(
   mark('pack load start');
   const { packRoot, embedModelId } = params;
   const manifest = await loadManifest(reader, packRoot);
+  await loadAndApplyPackRagConfig(reader);
   mark('manifest read end');
 
   const validate = manifest.sidecars!.capabilities!.validate!;

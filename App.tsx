@@ -8,6 +8,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
+  type AppStateStatus,
   NativeModules,
   Platform,
   Pressable,
@@ -23,6 +25,14 @@ import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
+import {
+  createDefaultVizRef,
+  DevPanel,
+  NodeMapCanvas,
+  TARGET_ACTIVITY_BY_MODE,
+  triggerPulseAtCenter,
+  type VizMode,
+} from './src/nodeMap';
 import {
   BUNDLE_PACK_ROOT,
   copyBundlePackToDocuments,
@@ -152,24 +162,51 @@ function VoiceScreen() {
   const isDarkMode = useColorScheme() === 'dark';
   const [transcribedText, setTranscribedText] = useState('What is a trigger?');
   const [partialText, setPartialText] = useState('');
-  const [isListening, setIsListening] = useState(false);
+  const [mode, setMode] = useState<VizMode>('idle');
   const [error, setError] = useState<string | null>(null);
   const [voiceReady, setVoiceReady] = useState(false);
   const [voiceAvailable, setVoiceAvailable] = useState(false);
   const voiceRef = useRef<VoiceModule | null>(null);
   const ttsRef = useRef<TtsModule | null>(null);
   const committedTextRef = useRef('');
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const [piperAvailable, setPiperAvailable] = useState<boolean | null>(null);
   const [piperDebugInfo, setPiperDebugInfo] = useState<string | null>(null);
   const [responseText, setResponseText] = useState<string | null>(null);
-  const [isAsking, setIsAsking] = useState(false);
   const [validationSummary, setValidationSummary] =
     useState<ValidationSummary | null>(null);
   const [packStatus, setPackStatus] = useState<
     'idle' | 'loading' | 'ready' | 'error'
   >('idle');
   const [packError, setPackError] = useState<string | null>(null);
+  const [showDevScreen, setShowDevScreen] = useState(false);
+  const [devEnabled, setDevEnabled] = useState(false);
+  const vizRef = useRef(createDefaultVizRef());
+  const recordingSessionIdRef = useRef(0);
+  const requestIdRef = useRef(0);
+  const modeRef = useRef(mode);
+  const pressStartedWhileListeningRef = useRef(false);
+  const autoStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const MAX_LISTEN_MS = 12000;
+  modeRef.current = mode;
+
+  const playListenIn = useCallback(() => {
+    console.debug('[Voice] earcon: listen-in');
+  }, []);
+  const playListenOut = useCallback(() => {
+    console.debug('[Voice] earcon: listen-out');
+  }, []);
+  const playError = useCallback(() => {
+    console.debug('[Voice] earcon: error');
+  }, []);
+
+  const isListening = mode === 'listening';
+  const isAsking = mode === 'processing';
+  const isSpeaking = mode === 'speaking';
+
+  useEffect(() => {
+    vizRef.current.targetActivity = TARGET_ACTIVITY_BY_MODE[mode];
+  }, [mode]);
+
   const textColor = isDarkMode ? '#e5e5e5' : '#1a1a1a';
   const mutedColor = isDarkMode ? '#888' : '#666';
   const bgColor = isDarkMode ? '#1a1a1a' : '#f5f5f5';
@@ -199,6 +236,10 @@ function VoiceScreen() {
       setError(e instanceof Error ? e.message : 'Voice module failed to load');
     }
     return () => {
+      if (autoStopTimerRef.current) {
+        clearTimeout(autoStopTimerRef.current);
+        autoStopTimerRef.current = null;
+      }
       const V = voiceRef.current;
       if (V) {
         V.destroy().then(() => V.removeAllListeners());
@@ -251,21 +292,27 @@ function VoiceScreen() {
     if (!V) return;
 
     V.onSpeechResults = e => {
+      if (modeRef.current !== 'listening') return;
       const next = (e.value?.[0] ?? '').trim();
       setPartialText('');
       if (!next) return;
       const committed = committedTextRef.current.trim();
       setTranscribedText(committed ? `${committed} ${next}` : next);
+      triggerPulseAtCenter(vizRef);
     };
     V.onSpeechPartialResults = e => {
+      if (modeRef.current !== 'listening') return;
       setPartialText(e.value?.[0] ?? '');
+      triggerPulseAtCenter(vizRef);
     };
     V.onSpeechError = e => {
       setError(e.error?.message ?? 'Speech recognition error');
-      setIsListening(false);
+      playError();
+      setMode('idle');
     };
     V.onSpeechEnd = () => {
-      setIsListening(false);
+      playListenOut();
+      setMode('idle');
       setPartialText('');
     };
 
@@ -275,29 +322,18 @@ function VoiceScreen() {
       V.onSpeechError = null;
       V.onSpeechEnd = null;
     };
-  }, [voiceReady]);
+  }, [voiceReady, playListenIn, playListenOut, playError]);
 
   // Defer pack load to first Submit so boot stays fast. Only sync status if already inited.
   useEffect(() => {
     if (getPackState()) setPackStatus('ready');
   }, []);
 
-  const startListening = useCallback(async () => {
-    const V = voiceRef.current;
-    if (!V) return;
-    setError(null);
-    setPartialText('');
-    committedTextRef.current = transcribedText;
-    try {
-      await V.start('en-US');
-      setIsListening(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to start voice');
-      setIsListening(false);
-    }
-  }, [transcribedText]);
-
   const stopListening = useCallback(async () => {
+    if (autoStopTimerRef.current) {
+      clearTimeout(autoStopTimerRef.current);
+      autoStopTimerRef.current = null;
+    }
     const V = voiceRef.current;
     if (V) {
       try {
@@ -306,17 +342,57 @@ function VoiceScreen() {
         // ignore
       }
     }
-    setIsListening(false);
+    setMode('idle');
     setPartialText('');
   }, []);
 
+  const startListening = useCallback(async () => {
+    const V = voiceRef.current;
+    if (!V) return;
+    if (mode === 'processing' || mode === 'speaking') return;
+    recordingSessionIdRef.current += 1;
+    setError(null);
+    setPartialText('');
+    committedTextRef.current = transcribedText;
+    if (autoStopTimerRef.current) {
+      clearTimeout(autoStopTimerRef.current);
+      autoStopTimerRef.current = null;
+    }
+    try {
+      await V.start('en-US');
+      setMode('listening');
+      playListenIn();
+      autoStopTimerRef.current = setTimeout(() => {
+        if (modeRef.current === 'listening') {
+          stopListening();
+        }
+        autoStopTimerRef.current = null;
+      }, MAX_LISTEN_MS);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to start voice');
+      setMode('idle');
+    }
+  }, [transcribedText, mode, stopListening, playListenIn]);
+
+  // Stop listening when app goes to background so mic does not stay on.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (nextState === 'background' && modeRef.current === 'listening') {
+        stopListening();
+      }
+    });
+    return () => sub.remove();
+  }, [stopListening]);
+
   const handleSubmit = useCallback(async () => {
-    const question = transcribedText.trim();
+    const question = transcribedText.trim().replace(/\s+/g, ' ');
     if (!question) return;
+    requestIdRef.current += 1;
+    const reqId = requestIdRef.current;
     setError(null);
     setResponseText(null);
     setValidationSummary(null);
-    setIsAsking(true);
+    setMode('processing');
     try {
       if (!getPackState()) {
         setPackStatus('loading');
@@ -357,8 +433,21 @@ function VoiceScreen() {
       const nudged = result.nudged;
       setResponseText(nudged);
       setValidationSummary(result.validationSummary);
-      console.log('[RAG] Full response (raw):', result.raw);
-      console.log('[RAG] Full response (nudged):', nudged);
+      triggerPulseAtCenter(vizRef);
+      if (
+        result.validationSummary &&
+        (result.validationSummary.stats.unknownCardCount > 0 ||
+          result.validationSummary.stats.invalidRuleCount > 0)
+      ) {
+        console.info(
+          '[RAG] requestId=',
+          reqId,
+          'validationSummary=',
+          result.validationSummary.stats,
+        );
+      }
+      console.log('[RAG] requestId=', reqId, 'Full response (nudged):', nudged);
+      setMode('idle');
     } catch (e) {
       const msg = errorMessage(e);
       const code =
@@ -370,8 +459,8 @@ function VoiceScreen() {
         setPackStatus('error');
         setPackError(msg);
       }
-    } finally {
-      setIsAsking(false);
+      console.warn('[RAG] error requestId=', reqId, 'code=', code, 'message=', msg);
+      setMode('idle');
     }
   }, [transcribedText]);
 
@@ -408,7 +497,7 @@ function VoiceScreen() {
         textLength: text.length,
         preview: text.slice(0, 40),
       });
-      setIsSpeaking(true);
+      setMode('speaking');
       try {
         console.log('[Playback] Piper: calling PiperTts.speak()…');
         await PiperTts.speak(text);
@@ -417,7 +506,7 @@ function VoiceScreen() {
         console.log('[Playback] Piper: speak() rejected', e);
         setError(e instanceof Error ? e.message : 'Piper playback failed');
       } finally {
-        setIsSpeaking(false);
+        setMode('idle');
         console.log('[Playback] Piper: isSpeaking set to false');
       }
       return;
@@ -439,19 +528,19 @@ function VoiceScreen() {
         Tts.stop();
       }
       const onFinish = () => {
-        setIsSpeaking(false);
+        setMode('idle');
         Tts.removeEventListener('tts-finish', onFinish);
         Tts.removeEventListener('tts-cancel', onFinish);
       };
       Tts.addEventListener('tts-finish', onFinish);
       Tts.addEventListener('tts-cancel', onFinish);
-      setIsSpeaking(true);
+      setMode('speaking');
       console.log('[Playback] system TTS: calling speak()');
       Tts.speak(text);
     } catch (e) {
       console.log('[Playback] system TTS error', e);
       setError(e instanceof Error ? e.message : 'TTS playback failed');
-      setIsSpeaking(false);
+      setMode('idle');
     }
   }, [partialText, transcribedText, piperAvailable]);
 
@@ -479,16 +568,24 @@ function VoiceScreen() {
   }
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: bgColor }]}
-      contentContainerStyle={{
-        paddingTop: insets.top,
-        paddingBottom: insets.bottom,
-      }}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator
-    >
-      <Text style={[styles.title, { color: textColor }]}>Voice to text</Text>
+    <View style={styles.screenWrapper}>
+      <NodeMapCanvas vizRef={vizRef} />
+      {showDevScreen && (
+        <ScrollView
+          style={[styles.container, styles.scrollOverlay]}
+          contentContainerStyle={{
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+          }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator
+        >
+          <Pressable
+            onLongPress={() => setDevEnabled(prev => !prev)}
+            delayLongPress={600}
+          >
+            <Text style={[styles.title, { color: textColor }]}>Voice to text</Text>
+          </Pressable>
 
       <View style={styles.piperStatusRow}>
         <Text style={[styles.piperStatusLabel, { color: mutedColor }]}>
@@ -666,8 +763,23 @@ function VoiceScreen() {
             isListening && styles.micButtonActive,
             !voiceReady && styles.buttonDisabled,
           ]}
-          onPress={isListening ? stopListening : startListening}
-          disabled={!voiceReady || !voiceAvailable}
+          onPressIn={() => {
+            pressStartedWhileListeningRef.current = modeRef.current === 'listening';
+            setMode('touched');
+            vizRef.current.touchActive = true;
+            vizRef.current.touchWorld = [0, 0, 0];
+          }}
+          onPressOut={() => {
+            vizRef.current.touchActive = false;
+            vizRef.current.touchWorld = null;
+            setMode('released');
+            if (pressStartedWhileListeningRef.current) {
+              stopListening();
+            } else {
+              startListening();
+            }
+          }}
+          disabled={!voiceReady || !voiceAvailable || isAsking || isSpeaking}
         >
           {isListening ? (
             <ActivityIndicator color="#fff" />
@@ -688,7 +800,7 @@ function VoiceScreen() {
         <Pressable
           style={[styles.button, styles.submitButton, { borderColor }]}
           onPress={handleSubmit}
-          disabled={isAsking}
+          disabled={isAsking || isSpeaking}
         >
           <Text style={styles.submitButtonLabel}>
             {isAsking ? '…' : 'Submit'}
@@ -696,10 +808,35 @@ function VoiceScreen() {
         </Pressable>
       </View>
     </ScrollView>
+      )}
+      {showDevScreen && devEnabled && (
+        <DevPanel vizRef={vizRef} onClose={() => setDevEnabled(false)} />
+      )}
+      <Pressable
+        style={[
+          styles.devToggle,
+          {
+            bottom: (insets.bottom || 16) + 12,
+          },
+        ]}
+        onPress={() => setShowDevScreen(prev => !prev)}
+      >
+        <Text style={styles.devToggleLabel}>
+          {showDevScreen ? 'User' : 'Dev'}
+        </Text>
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screenWrapper: {
+    flex: 1,
+  },
+  scrollOverlay: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
   container: {
     flex: 1,
     paddingHorizontal: 24,
@@ -886,6 +1023,19 @@ const styles = StyleSheet.create({
   submitButtonLabel: {
     color: '#fff',
     fontSize: 17,
+    fontWeight: '600',
+  },
+  devToggle: {
+    position: 'absolute',
+    right: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  devToggleLabel: {
+    color: '#fff',
+    fontSize: 13,
     fontWeight: '600',
   },
 });

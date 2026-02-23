@@ -24,10 +24,10 @@ import {
 } from '@mtg/runtime';
 import { openCardsDb, openRulesDb, type DbRow } from './packDbRN';
 import type { PackFileReader } from './types';
+import { RAG_CONFIG } from './config';
 
 const SCORE_SCALE = 1_000_000;
 const SECTION_702 = 702;
-const BUDGET = 800;
 const MIN_TOKEN_LENGTH = 3;
 
 interface DbRule {
@@ -340,7 +340,7 @@ export async function getContextRN(
       finalDefRules,
       finalMechRules,
       finalSupportRules,
-      BUDGET,
+      RAG_CONFIG.context_budget,
     );
 
     const parts: string[] = [];

@@ -34,7 +34,12 @@
     "react-native-safe-area-context": "^5.5.2",
     "react-native-tts": "^4.1.1",
     "react-native-quick-sqlite": "^8.2.0",
-    "@mtg/runtime": "file:../mtg_rules/runtime-ts"
+    "@mtg/runtime": "file:../mtg_rules/runtime-ts",
+    "expo": "^52.0.0",
+    "expo-asset": "~10.0.10",
+    "expo-gl": "^15.0.0",
+    "three": "^0.162.0",
+    "@react-three/fiber": "^8.15.19"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

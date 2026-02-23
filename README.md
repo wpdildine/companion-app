@@ -10,6 +10,7 @@ This is a [**React Native**](https://reactnative.dev) project, bootstrapped usin
 
 ## How the app works
 
+- **Node map:** The voice screen uses a fullscreen Three.js/R3F visualization (starfield, node cloud, connections) as the background. Mode (idle, listening, processing, speaking, touched, released) drives activity and pulses; see [docs/app-architecture.md](docs/app-architecture.md) for high- and low-level architecture.
 - **Voice:** Speech-to-text via `@react-native-voice/voice` (lazy-loaded). You speak; the app turns it into text and sends it to the RAG pipeline.
 - **TTS:** Piper (offline) as the main voice; fallback to `react-native-tts` when the Piper model isn’t installed.
 - **RAG / “Ask” path:** The app does **not** run embeddings or vector search on-device. It uses a **deterministic context provider** that:

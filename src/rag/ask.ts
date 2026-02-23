@@ -8,24 +8,7 @@ import { RAG_USE_DETERMINISTIC_CONTEXT_ONLY } from './types';
 import { loadVectors, searchL2, loadChunksForRows } from './retrieval';
 import { trimChunksToFitPrompt, buildPrompt } from './prompt';
 import { ragError } from './errors';
-
-const RULES_WEIGHT = 0.6;
-const CARDS_WEIGHT = 0.4;
-/** Reduced for mobile: smaller prompt, ~500–700 tokens target. */
-const TOP_K_RULES = 4;
-const TOP_K_CARDS = 3;
-const TOP_K_MERGE = 6;
-
-/** Deterministic params to match CLI; set temperature=0, top_p=1, top_k=1 for reproducible debugging. */
-const DEBUG_GENERATION_PARAMS = {
-  temperature: 0,
-  top_p: 1,
-  top_k: 1,
-  penalty_repeat: 1,
-};
-
-const DEBUG_EXCERPT_LEN = 200;
-const DEBUG_PROMPT_PREVIEW_LEN = 500;
+import { RAG_CONFIG } from './config';
 
 export interface RunRagFlowResult {
   raw: string;
@@ -82,7 +65,7 @@ async function getEmbedContext(embedModelPath: string): Promise<import('llama.rn
     model: embedModelPath,
     embedding: true,
     pooling_type: 'mean',
-    n_ctx: 512,
+    n_ctx: RAG_CONFIG.embed_n_ctx,
   });
   embedContext = ctx;
   return ctx;
@@ -93,7 +76,7 @@ async function getChatContext(chatModelPath: string): Promise<import('llama.rn')
   const { initLlama } = require('llama.rn');
   const ctx = await initLlama({
     model: chatModelPath,
-    n_ctx: 1024,
+    n_ctx: RAG_CONFIG.chat_n_ctx,
   });
   chatContext = ctx;
   return ctx;
@@ -115,14 +98,14 @@ function logDebugPromptAndChunks(
 ): void {
   console.log('[RAG][DEBUG] --- final prompt ---');
   console.log('[RAG][DEBUG] prompt length (chars):', prompt.length);
-  const preview = prompt.length <= DEBUG_PROMPT_PREVIEW_LEN
+  const preview = prompt.length <= RAG_CONFIG.debug.prompt_preview_len
     ? prompt
-    : prompt.slice(0, DEBUG_PROMPT_PREVIEW_LEN) + '...';
+    : prompt.slice(0, RAG_CONFIG.debug.prompt_preview_len) + '...';
   console.log('[RAG][DEBUG] prompt preview:', preview);
   console.log('[RAG][DEBUG] --- retrieved chunks (top K) ---');
   chunks.forEach((c, i) => {
-    const excerpt = (c.text ?? '').slice(0, DEBUG_EXCERPT_LEN);
-    const excerptSuffix = (c.text?.length ?? 0) > DEBUG_EXCERPT_LEN ? '...' : '';
+    const excerpt = (c.text ?? '').slice(0, RAG_CONFIG.debug.excerpt_len);
+    const excerptSuffix = (c.text?.length ?? 0) > RAG_CONFIG.debug.excerpt_len ? '...' : '';
     console.log(`[RAG][DEBUG] chunk ${i + 1}: doc_id=${c.doc_id} source_type=${c.source_type} title=${c.title ?? '(none)'}`);
     console.log(`[RAG][DEBUG]   excerpt: ${excerpt}${excerptSuffix}`);
   });
@@ -192,12 +175,12 @@ export async function runRagFlow(
     ]);
     mark('vectors load end');
     mark('retrieval start');
-    const rulesTopK = Math.min(TOP_K_RULES, rulesIndex.nRows);
-    const cardsTopK = Math.min(TOP_K_CARDS, cardsIndex.nRows);
+    const rulesTopK = Math.min(RAG_CONFIG.retrieval.top_k_rules, rulesIndex.nRows);
+    const cardsTopK = Math.min(RAG_CONFIG.retrieval.top_k_cards, cardsIndex.nRows);
     const rulesHits = searchL2(rulesIndex, queryVec, rulesTopK);
     const cardsHits = searchL2(cardsIndex, queryVec, cardsTopK);
     const merged = mergeHits(rulesHits, cardsHits);
-    const topMerged = merged.slice(0, TOP_K_MERGE);
+    const topMerged = merged.slice(0, RAG_CONFIG.retrieval.top_k_merge);
     mark('retrieval end');
     const rulesRowIds = topMerged.filter((h) => h.source_type === 'rules').map((h) => h.rowId);
     const cardsRowIds = topMerged.filter((h) => h.source_type === 'cards').map((h) => h.rowId);
@@ -299,8 +282,8 @@ export async function runRagFlow(
       mark('completion start');
       const completionResult = await chatCtx.completion({
         prompt,
-        n_predict: 512,
-        ...DEBUG_GENERATION_PARAMS,
+        n_predict: RAG_CONFIG.n_predict,
+        ...RAG_CONFIG.generation,
       });
       raw = completionResult?.text ?? (completionResult as { content?: string })?.content ?? '';
       mark('completion end');
@@ -339,12 +322,12 @@ export async function runRagFlow(
     mark('vectors load end');
 
     mark('retrieval start');
-    const rulesTopK = Math.min(TOP_K_RULES, rulesIndex.nRows);
-    const cardsTopK = Math.min(TOP_K_CARDS, cardsIndex.nRows);
+    const rulesTopK = Math.min(RAG_CONFIG.retrieval.top_k_rules, rulesIndex.nRows);
+    const cardsTopK = Math.min(RAG_CONFIG.retrieval.top_k_cards, cardsIndex.nRows);
     const rulesHits = searchL2(rulesIndex, queryVec, rulesTopK);
     const cardsHits = searchL2(cardsIndex, queryVec, cardsTopK);
     const merged = mergeHits(rulesHits, cardsHits);
-    const topMerged = merged.slice(0, TOP_K_MERGE);
+    const topMerged = merged.slice(0, RAG_CONFIG.retrieval.top_k_merge);
     mark('retrieval end');
 
     const rulesRowIds = topMerged.filter((h) => h.source_type === 'rules').map((h) => h.rowId);
@@ -373,7 +356,7 @@ export async function runRagFlow(
     logDebugPromptAndChunks(
       chunksForPrompt,
       prompt,
-      DEBUG_GENERATION_PARAMS,
+      RAG_CONFIG.generation,
       params.chatModelPath ?? '(none)'
     );
 
@@ -391,8 +374,8 @@ export async function runRagFlow(
     mark('completion start');
     const result = await chatCtx.completion({
       prompt,
-      n_predict: 512,
-      ...DEBUG_GENERATION_PARAMS,
+      n_predict: RAG_CONFIG.n_predict,
+      ...RAG_CONFIG.generation,
     });
     raw = result?.text ?? result?.content ?? '';
     mark('completion end');
@@ -414,13 +397,13 @@ function mergeHits(
     ...h,
     source_type: 'rules' as const,
     doc_id: `rules:${h.rowId}`,
-    normScore: RULES_WEIGHT * (1 - rNorm(h.score)),
+    normScore: RAG_CONFIG.retrieval.rules_weight * (1 - rNorm(h.score)),
   }));
   const cardsWithDocId = cardsHits.map((h) => ({
     ...h,
     source_type: 'cards' as const,
     doc_id: `cards:${h.rowId}`,
-    normScore: CARDS_WEIGHT * (1 - cNorm(h.score)),
+    normScore: RAG_CONFIG.retrieval.cards_weight * (1 - cNorm(h.score)),
   }));
   const all = [...rulesWithDocId, ...cardsWithDocId];
   all.sort((a, b) => b.normScore - a.normScore);
