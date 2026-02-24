@@ -31,13 +31,13 @@ function fibonacciSphere(n: number, radius: number): [number, number, number][] 
   return points;
 }
 
-/** Purple Nebula palette (single theme for now) */
-const PALETTE = [
+/** Default node palette (RGB 0–1). Overridable via optional nodePalette from theme. */
+const DEFAULT_NODE_PALETTE: [number, number, number][] = [
   [0.4, 0.2, 0.8],
   [0.5, 0.25, 0.85],
   [0.6, 0.3, 0.9],
   [0.35, 0.15, 0.75],
-] as [number, number, number][];
+];
 
 /** Crystalline Sphere: multiple Fibonacci layers, lateral and long-range connections */
 export function buildCrystallineSphere(
@@ -45,7 +45,9 @@ export function buildCrystallineSphere(
   radii: number[] = [0.9, 1.5, 2.1, 2.6],
   lateralK = 2,
   longRangeK = 1,
+  nodePalette?: [number, number, number][],
 ): { nodes: Node[]; edges: { a: number; b: number; strength: number; pathIndex: number }[] } {
+  const palette = nodePalette?.length ? nodePalette : DEFAULT_NODE_PALETTE;
   const nodes: Node[] = [];
   let id = 0;
   const layerStarts: number[] = [];
@@ -55,7 +57,7 @@ export function buildCrystallineSphere(
     const r = radii[L];
     const positions = fibonacciSphere(n, r);
     layerStarts.push(nodes.length);
-    const color = PALETTE[L % PALETTE.length];
+    const color = palette[L % palette.length];
     for (let i = 0; i < n; i++) {
       const pos = positions[i];
       const distanceFromRoot = Math.sqrt(pos[0] ** 2 + pos[1] ** 2 + pos[2] ** 2) / (radii[radii.length - 1] || 1);

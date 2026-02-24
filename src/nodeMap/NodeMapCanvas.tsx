@@ -6,6 +6,7 @@
 import React, { Component, useEffect, useState } from 'react';
 import { NativeModules, Platform } from 'react-native';
 import type { VizEngineRef } from './types';
+import type { TouchCallbacks } from './touchHandlers';
 import { NodeMapFallback } from './NodeMapFallback';
 
 /** Skip loading R3F on Android; set false to try R3F + expo-gl on Android. */
@@ -13,14 +14,14 @@ const SKIP_R3F_ON_ANDROID = false;
 const R3F_EXPO_WAIT_TIMEOUT_MS = 6000;
 const R3F_EXPO_WAIT_POLL_MS = 150;
 
-type R3FComponentType = React.ComponentType<{
+type NodeMapCanvasProps = {
   vizRef: React.RefObject<VizEngineRef | null>;
   controlsEnabled: boolean;
   inputEnabled: boolean;
-  onShortTap?: () => void;
-  onLongPressStart?: () => void;
-  onLongPressEnd?: () => void;
-}>;
+  canvasBackground?: string;
+} & TouchCallbacks;
+
+type R3FComponentType = React.ComponentType<NodeMapCanvasProps>;
 
 type ErrorBoundaryState = { hasError: boolean };
 
@@ -58,17 +59,15 @@ export function NodeMapCanvas({
   vizRef,
   controlsEnabled,
   inputEnabled,
+  canvasBackground,
   onShortTap,
+  onDoubleTap,
   onLongPressStart,
   onLongPressEnd,
-}: {
-  vizRef: React.RefObject<VizEngineRef | null>;
-  controlsEnabled: boolean;
-  inputEnabled: boolean;
-  onShortTap?: () => void;
-  onLongPressStart?: () => void;
-  onLongPressEnd?: () => void;
-}) {
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+}: NodeMapCanvasProps) {
   const [R3FComponent, setR3FComponent] = useState<R3FComponentType | null>(null);
   const [r3fFailed, setR3FFailed] = useState(false);
 
@@ -151,7 +150,9 @@ export function NodeMapCanvas({
     };
   }, [r3fFailed]);
 
-  const dotsOnlyFallback = <NodeMapFallback vizRef={vizRef} />;
+  const dotsOnlyFallback = (
+    <NodeMapFallback vizRef={vizRef} canvasBackground={canvasBackground} />
+  );
   const fallback = dotsOnlyFallback;
 
   if (!R3FComponent || r3fFailed) {
@@ -170,9 +171,14 @@ export function NodeMapCanvas({
         vizRef={vizRef}
         controlsEnabled={controlsEnabled}
         inputEnabled={inputEnabled}
+        canvasBackground={canvasBackground}
         onShortTap={onShortTap}
+        onDoubleTap={onDoubleTap}
         onLongPressStart={onLongPressStart}
         onLongPressEnd={onLongPressEnd}
+        onDragStart={onDragStart}
+        onDragMove={onDragMove}
+        onDragEnd={onDragEnd}
       />
     </NodeMapErrorBoundary>
   );

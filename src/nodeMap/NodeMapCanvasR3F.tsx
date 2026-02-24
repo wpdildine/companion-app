@@ -1,7 +1,7 @@
 /**
  * R3F implementation of the node map (Lane A).
- * Loaded only when @react-three/fiber/native + expo-gl are available.
- * Touch: tap → raypick → pulse at 3D point; drag → orbit camera (reference behavior).
+ * Touch: tap → raypick → pulse; double-tap / long-press / drag callbacks via stubs.
+ * canvasBackground and callbacks are injected (no theme import).
  */
 
 import React, { useEffect, useRef } from 'react';
@@ -15,33 +15,55 @@ import { TouchRaycaster } from './TouchRaycaster';
 import { CameraOrbit } from './CameraOrbit';
 import { PostFXPass } from './PostFXPass';
 import type { VizEngineRef } from './types';
+import { withTouchStubs, type TouchCallbacks } from './touchHandlers';
 
 const TAP_MAX_MS = 300;
 const TAP_MAX_MOVE = 15;
 const LONG_PRESS_MS = 500;
 const LONG_PRESS_CANCEL_MOVE = 18;
 const ORBIT_SENSITIVITY = 0.008;
+const DOUBLE_TAP_MS = 400;
+const DOUBLE_TAP_MAX_MOVE = 30;
+const DRAG_THRESHOLD = 8;
+
+const DEFAULT_CANVAS_BACKGROUND = '#0a0612';
+
+export type NodeMapCanvasR3FProps = {
+  vizRef: React.RefObject<VizEngineRef | null>;
+  controlsEnabled: boolean;
+  inputEnabled: boolean;
+  canvasBackground?: string;
+} & TouchCallbacks;
 
 export function NodeMapCanvasR3F({
   vizRef,
   controlsEnabled,
   inputEnabled,
+  canvasBackground = DEFAULT_CANVAS_BACKGROUND,
   onShortTap,
+  onDoubleTap,
   onLongPressStart,
   onLongPressEnd,
-}: {
-  vizRef: React.RefObject<VizEngineRef | null>;
-  controlsEnabled: boolean;
-  inputEnabled: boolean;
-  onShortTap?: () => void;
-  onLongPressStart?: () => void;
-  onLongPressEnd?: () => void;
-}) {
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+}: NodeMapCanvasR3FProps) {
+  const touch = withTouchStubs({
+    onShortTap,
+    onDoubleTap,
+    onLongPressStart,
+    onLongPressEnd,
+    onDragStart,
+    onDragMove,
+    onDragEnd,
+  });
   const fill = StyleSheet.absoluteFillObject;
   const touchStart = useRef({ x: 0, y: 0, t: 0 });
   const lastMove = useRef({ x: 0, y: 0 });
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
+  const lastTap = useRef<{ x: number; y: number; t: number } | null>(null);
+  const dragActive = useRef(false);
 
   useEffect(() => {
     console.log('[NodeMap] R3F Canvas mounted', Platform.OS);
@@ -62,16 +84,15 @@ export function NodeMapCanvasR3F({
     touchStart.current = { x: locationX, y: locationY, t: Date.now() };
     lastMove.current = { x: locationX, y: locationY };
     longPressTriggered.current = false;
+    dragActive.current = false;
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
     }
-    if (onLongPressStart) {
-      longPressTimer.current = setTimeout(() => {
-        longPressTriggered.current = true;
-        onLongPressStart();
-      }, LONG_PRESS_MS);
-    }
+    longPressTimer.current = setTimeout(() => {
+      longPressTriggered.current = true;
+      touch.onLongPressStart();
+    }, LONG_PRESS_MS);
     console.log('[NodeMap] touchStart', { locationX, locationY });
   };
 
@@ -87,15 +108,17 @@ export function NodeMapCanvasR3F({
       longPressTimer.current = null;
     }
     const v = vizRef.current;
-    if (!v) return;
-    if (!controlsEnabled) {
-      lastMove.current = { x: locationX, y: locationY };
-      return;
-    }
     const dx = (locationX - lastMove.current.x) * ORBIT_SENSITIVITY;
     const dy = (locationY - lastMove.current.y) * ORBIT_SENSITIVITY;
-    v.orbitTheta -= dx;
-    v.orbitPhi = Math.max(0.1, Math.min(Math.PI - 0.1, v.orbitPhi + dy));
+    if (v && controlsEnabled && moved > DRAG_THRESHOLD) {
+      if (!dragActive.current) {
+        dragActive.current = true;
+        touch.onDragStart();
+      }
+      touch.onDragMove(locationX - lastMove.current.x, locationY - lastMove.current.y);
+      v.orbitTheta -= dx;
+      v.orbitPhi = Math.max(0.1, Math.min(Math.PI - 0.1, v.orbitPhi + dy));
+    }
     lastMove.current = { x: locationX, y: locationY };
   };
 
@@ -104,6 +127,10 @@ export function NodeMapCanvasR3F({
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
+    }
+    if (dragActive.current) {
+      dragActive.current = false;
+      touch.onDragEnd();
     }
     const v = vizRef.current;
     const { locationX, locationY } = e.nativeEvent;
@@ -125,16 +152,29 @@ export function NodeMapCanvasR3F({
     }
     if (longPressTriggered.current) {
       longPressTriggered.current = false;
-      onLongPressEnd?.();
+      touch.onLongPressEnd();
       console.log('[NodeMap] touchEnd: long press completed');
       return;
     }
     if (dt < TAP_MAX_MS && dist < TAP_MAX_MOVE) {
       const ndcX = (locationX / v.canvasWidth) * 2 - 1;
       const ndcY = 1 - (locationY / v.canvasHeight) * 2;
-      v.pendingTapNdc = [ndcX, ndcY];
-      onShortTap?.();
-      console.log('[NodeMap] touchEnd: registered as tap, pendingTapNdc=', [ndcX, ndcY]);
+      const now = Date.now();
+      const prev = lastTap.current;
+      const isDoubleTap =
+        prev &&
+        now - prev.t <= DOUBLE_TAP_MS &&
+        Math.hypot(locationX - prev.x, locationY - prev.y) <= DOUBLE_TAP_MAX_MOVE;
+      if (isDoubleTap) {
+        lastTap.current = null;
+        touch.onDoubleTap();
+        console.log('[NodeMap] touchEnd: double tap');
+      } else {
+        lastTap.current = { x: locationX, y: locationY, t: now };
+        v.pendingTapNdc = [ndcX, ndcY];
+        touch.onShortTap();
+        console.log('[NodeMap] touchEnd: tap, pendingTapNdc=', [ndcX, ndcY]);
+      }
     } else {
       console.log('[NodeMap] touchEnd: not a tap (dt or dist too large)');
     }
@@ -153,7 +193,7 @@ export function NodeMapCanvasR3F({
         camera={{ position: [0, 0, 12], fov: 60 }}
         gl={{ alpha: true, antialias: true }}
       >
-        <color attach="background" args={['#0a0612']} />
+        <color attach="background" args={[canvasBackground]} />
         <EngineLoop vizRef={vizRef} />
         <TouchRaycaster vizRef={vizRef} />
         <CameraOrbit vizRef={vizRef} />

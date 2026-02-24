@@ -18,11 +18,23 @@ function mulberry32(seed: number) {
   };
 }
 
+/** Optional palette override (RGB 0–1). Injected from theme; do not import theme here. */
+export type StarfieldPalette = {
+  a: [number, number, number];
+  b: [number, number, number];
+};
+
+const DEFAULT_PALETTE_A: [number, number, number] = [0.35, 0.55, 1.0];
+const DEFAULT_PALETTE_B: [number, number, number] = [0.95, 0.35, 0.85];
+
 export function buildStarfield(
   count: number,
   radius: number = 42,
+  palette?: StarfieldPalette,
 ): StarVertex[] {
   const rnd = mulberry32(SEED);
+  const paletteA = palette?.a ?? DEFAULT_PALETTE_A;
+  const paletteB = palette?.b ?? DEFAULT_PALETTE_B;
   const out: StarVertex[] = [];
   for (let i = 0; i < count; i++) {
     const theta = rnd() * Math.PI * 2;
@@ -36,9 +48,6 @@ export function buildStarfield(
     const x = r * ring * Math.cos(theta);
     const z = r * ring * Math.sin(theta);
     const lum = 0.6 + 0.4 * rnd();
-    // Match node palette endpoints (see shaders/nodes.ts gradientA/gradientB).
-    const paletteA = [0.35, 0.55, 1.0] as const;
-    const paletteB = [0.95, 0.35, 0.85] as const;
     const tint = rnd();
     const rCol = paletteA[0] * (1 - tint) + paletteB[0] * tint;
     const gCol = paletteA[1] * (1 - tint) + paletteB[1] * tint;

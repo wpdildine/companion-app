@@ -8,3 +8,4 @@ export {
   type VizMode,
   type TouchNdc,
 } from './types';
+export { withTouchStubs, type TouchCallbacks } from './touchHandlers';

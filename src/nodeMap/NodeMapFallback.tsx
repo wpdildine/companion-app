@@ -10,7 +10,7 @@ import type { VizEngineRef } from './types';
 
 const LOG_FALLBACK = true;
 
-const FALLBACK_BG = '#000000';
+const DEFAULT_FALLBACK_BG = '#000000';
 const NODE_COUNT = 72;
 const SEED = 54321;
 
@@ -55,8 +55,10 @@ const POLL_MS = 120;
 
 export function NodeMapFallback({
   vizRef,
+  canvasBackground = DEFAULT_FALLBACK_BG,
 }: {
   vizRef: React.RefObject<VizEngineRef | null>;
+  canvasBackground?: string;
 }) {
   const { width, height } = useWindowDimensions();
   const [activity, setActivity] = useState(0.15);
@@ -78,12 +80,10 @@ export function NodeMapFallback({
   const time = tick * (POLL_MS / 1000);
 
   return (
-    <View style={[StyleSheet.absoluteFill, styles.root]} />
+    <View style={[StyleSheet.absoluteFill, styles.root, { backgroundColor: canvasBackground }]} />
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    backgroundColor: FALLBACK_BG,
-  },
+  root: {},
 });

@@ -22,16 +22,12 @@ import {
   useColorScheme,
   View,
 } from 'react-native';
-
-// @react-native-voice/voice uses NativeEventEmitter in a way that triggers warnings on new arch (Fabric) when the native module doesn't expose addListener/removeListeners. Voice still works.
-LogBox.ignoreLogs([
-  'new NativeEventEmitter() was called with a non-null argument without the required `addListener` method',
-  'new NativeEventEmitter() was called with a non-null argument without the required `removeListeners` method',
-]);
 import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
+import { getTheme } from './src/theme';
+import { VoiceLoadingView } from './src/ui/VoiceLoadingView';
 import {
   createDefaultVizRef,
   NodeMapCanvas,
@@ -52,6 +48,12 @@ import {
   init as ragInit,
   type ValidationSummary,
 } from './src/rag';
+
+// @react-native-voice/voice uses NativeEventEmitter in a way that triggers warnings on new arch (Fabric) when the native module doesn't expose addListener/removeListeners. Voice still works.
+LogBox.ignoreLogs([
+  'new NativeEventEmitter() was called with a non-null argument without the required `addListener` method',
+  'new NativeEventEmitter() was called with a non-null argument without the required `removeListeners` method',
+]);
 
 /** Bundle-relative GGUF paths to probe. Android packaging can keep or flatten content_pack/, so probe both layouts. */
 const BUNDLE_MODEL_PREFIXES = Array.from(
@@ -100,7 +102,9 @@ async function getOnDeviceModelPaths(): Promise<{
     }
   };
 
-  const resolveBundleModelPath = async (candidates: string[]): Promise<string> => {
+  const resolveBundleModelPath = async (
+    candidates: string[],
+  ): Promise<string> => {
     if (typeof RagPackReader.getBundleFilePath !== 'function') return '';
     for (const candidate of candidates) {
       try {
@@ -243,7 +247,9 @@ function VoiceScreen() {
   const recordingSessionIdRef = useRef(0);
   const requestIdRef = useRef(0);
   const modeRef = useRef(mode);
-  const stateCycleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stateCycleTimerRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
   const stateCycleIdxRef = useRef(0);
   const pressStartedWhileListeningRef = useRef(false);
   const longPressTriggeredRef = useRef(false);
@@ -274,59 +280,69 @@ function VoiceScreen() {
     vizRef.current.currentMode = mode;
   }, [mode]);
 
-  const textColor = isDarkMode ? '#e5e5e5' : '#1a1a1a';
-  const mutedColor = isDarkMode ? '#888' : '#666';
-  const bgColor = isDarkMode ? '#1a1a1a' : '#f5f5f5';
-  const inputBg = isDarkMode ? '#2a2a2a' : '#fff';
-  const borderColor = isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)';
+  const theme = getTheme(isDarkMode);
+  const textColor = theme.text;
+  const mutedColor = theme.textMuted;
+  const inputBg = theme.surface;
+  const borderColor = theme.border;
   const clamp = (x: number, min: number, max: number) =>
     Math.max(min, Math.min(max, x));
 
   const getVoiceNative = () => {
-    const direct = (NativeModules?.Voice ?? null) as
-      | {
-          startSpeech?: (locale: string, opts?: object, cb?: (e?: string) => void) => void;
-          stopSpeech?: (cb?: (e?: string) => void) => void;
-        }
-      | null;
-    const rct = (NativeModules?.RCTVoice ?? null) as
-      | {
-          startSpeech?: (locale: string, opts?: object, cb?: (e?: string) => void) => void;
-          stopSpeech?: (cb?: (e?: string) => void) => void;
-        }
-      | null;
+    const direct = (NativeModules?.Voice ?? null) as {
+      startSpeech?: (
+        locale: string,
+        opts?: object,
+        cb?: (e?: string) => void,
+      ) => void;
+      stopSpeech?: (cb?: (e?: string) => void) => void;
+    } | null;
+    const rct = (NativeModules?.RCTVoice ?? null) as {
+      startSpeech?: (
+        locale: string,
+        opts?: object,
+        cb?: (e?: string) => void,
+      ) => void;
+      stopSpeech?: (cb?: (e?: string) => void) => void;
+    } | null;
 
     if (direct?.startSpeech || direct?.stopSpeech) return direct;
     if (rct?.startSpeech || rct?.stopSpeech) return rct;
     return direct ?? rct ?? null;
   };
 
-  const withViz = useCallback((fn: (v: ReturnType<typeof createDefaultVizRef>) => void) => {
-    const v = vizRef.current;
-    if (!v) return;
-    fn(v);
-    setDevUiVersion(i => i + 1);
-  }, []);
+  const withViz = useCallback(
+    (fn: (v: ReturnType<typeof createDefaultVizRef>) => void) => {
+      const v = vizRef.current;
+      if (!v) return;
+      fn(v);
+      setDevUiVersion(i => i + 1);
+    },
+    [],
+  );
 
-  const applyVizState = useCallback((state: VizMode) => {
-    setMode(state);
-    withViz(v => {
-      const target = TARGET_ACTIVITY_BY_MODE[state];
-      v.targetActivity = target;
-      // Make state tests immediately visible instead of waiting on easing.
-      v.activity = target;
-      if (state === 'touched') {
-        v.touchActive = true;
-        v.touchWorld = [0, 0, 0];
-      } else {
-        v.touchActive = false;
-        v.touchWorld = null;
+  const applyVizState = useCallback(
+    (state: VizMode) => {
+      setMode(state);
+      withViz(v => {
+        const target = TARGET_ACTIVITY_BY_MODE[state];
+        v.targetActivity = target;
+        // Make state tests immediately visible instead of waiting on easing.
+        v.activity = target;
+        if (state === 'touched') {
+          v.touchActive = true;
+          v.touchWorld = [0, 0, 0];
+        } else {
+          v.touchActive = false;
+          v.touchWorld = null;
+        }
+      });
+      if (state === 'released') {
+        triggerPulseAtCenter(vizRef);
       }
-    });
-    if (state === 'released') {
-      triggerPulseAtCenter(vizRef);
-    }
-  }, [withViz]);
+    },
+    [withViz],
+  );
 
   useEffect(() => {
     if (!stateCycleOn) {
@@ -337,7 +353,8 @@ function VoiceScreen() {
       return;
     }
     stateCycleTimerRef.current = setInterval(() => {
-      const state = DEV_APP_STATES[stateCycleIdxRef.current % DEV_APP_STATES.length]!;
+      const state =
+        DEV_APP_STATES[stateCycleIdxRef.current % DEV_APP_STATES.length]!;
       applyVizState(state);
       stateCycleIdxRef.current =
         (stateCycleIdxRef.current + 1) % DEV_APP_STATES.length;
@@ -521,59 +538,65 @@ function VoiceScreen() {
     setPartialText('');
   }, []);
 
-  const startListening = useCallback(async (fresh = false) => {
-    const V = voiceRef.current;
-    if (!V) return;
-    if (mode === 'processing' || mode === 'speaking') return;
-    recordingSessionIdRef.current += 1;
-    setError(null);
-    setPartialText('');
-    if (fresh) {
-      committedTextRef.current = '';
-      setTranscribedText('');
-    } else {
-      committedTextRef.current = transcribedText;
-    }
-    if (autoStopTimerRef.current) {
-      clearTimeout(autoStopTimerRef.current);
-      autoStopTimerRef.current = null;
-    }
-    try {
-      try {
-        await V.start('en-US');
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        const nativeVoice = getVoiceNative();
-        if (
-          msg.toLowerCase().includes('startspeech is null') &&
-          typeof nativeVoice?.startSpeech === 'function'
-        ) {
-          await nativeVoice.startSpeech('en-US');
-        } else {
-          throw e;
-        }
+  const startListening = useCallback(
+    async (fresh = false) => {
+      const V = voiceRef.current;
+      if (!V) return;
+      if (mode === 'processing' || mode === 'speaking') return;
+      recordingSessionIdRef.current += 1;
+      setError(null);
+      setPartialText('');
+      if (fresh) {
+        committedTextRef.current = '';
+        setTranscribedText('');
+      } else {
+        committedTextRef.current = transcribedText;
       }
-      setMode('listening');
-      playListenIn();
-      autoStopTimerRef.current = setTimeout(() => {
-        if (modeRef.current === 'listening') {
-          stopListening();
-        }
+      if (autoStopTimerRef.current) {
+        clearTimeout(autoStopTimerRef.current);
         autoStopTimerRef.current = null;
-      }, MAX_LISTEN_MS);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to start voice');
-      setMode('idle');
-    }
-  }, [transcribedText, mode, stopListening, playListenIn]);
+      }
+      try {
+        try {
+          await V.start('en-US');
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          const nativeVoice = getVoiceNative();
+          if (
+            msg.toLowerCase().includes('startspeech is null') &&
+            typeof nativeVoice?.startSpeech === 'function'
+          ) {
+            await nativeVoice.startSpeech('en-US');
+          } else {
+            throw e;
+          }
+        }
+        setMode('listening');
+        playListenIn();
+        autoStopTimerRef.current = setTimeout(() => {
+          if (modeRef.current === 'listening') {
+            stopListening();
+          }
+          autoStopTimerRef.current = null;
+        }, MAX_LISTEN_MS);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to start voice');
+        setMode('idle');
+      }
+    },
+    [transcribedText, mode, stopListening, playListenIn],
+  );
 
   // Stop listening when app goes to background so mic does not stay on.
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
-      if (nextState === 'background' && modeRef.current === 'listening') {
-        stopListening();
-      }
-    });
+    const sub = AppState.addEventListener(
+      'change',
+      (nextState: AppStateStatus) => {
+        if (nextState === 'background' && modeRef.current === 'listening') {
+          stopListening();
+        }
+      },
+    );
     return () => sub.remove();
   }, [stopListening]);
 
@@ -653,7 +676,14 @@ function VoiceScreen() {
         setPackStatus('error');
         setPackError(msg);
       }
-      console.warn('[RAG] error requestId=', reqId, 'code=', code, 'message=', msg);
+      console.warn(
+        '[RAG] error requestId=',
+        reqId,
+        'code=',
+        code,
+        'message=',
+        msg,
+      );
       setMode('idle');
       return null;
     }
@@ -664,83 +694,86 @@ function VoiceScreen() {
     setPartialText('');
   }, []);
 
-  const playText = useCallback(async (text: string) => {
-    const normalized = text.trim();
-    if (!normalized) {
-      console.log('[Playback] empty text, skipping');
-      return;
-    }
-    setError(null);
-    playbackInterruptedRef.current = false;
-    console.log('[Playback] start', {
-      piperAvailable,
-      textLength: normalized.length,
-    });
-    // Prefer Piper (offline) as the main TTS voice when the model is available
-    if (piperAvailable) {
-      const PiperTts = require('piper-tts').default;
-      const options = {
-        lengthScale: 1.08,
-        noiseScale: 0.62,
-        noiseW: 0.8,
-        gainDb: 0,
-        interSentenceSilenceMs: 250,
-        interCommaSilenceMs: 125,
-      };
-      console.log('[Playback] Piper: setOptions before speak', options);
-      PiperTts.setOptions(options);
-      console.log('[Playback] Piper path: starting speak', {
+  const playText = useCallback(
+    async (text: string) => {
+      const normalized = text.trim();
+      if (!normalized) {
+        console.log('[Playback] empty text, skipping');
+        return;
+      }
+      setError(null);
+      playbackInterruptedRef.current = false;
+      console.log('[Playback] start', {
+        piperAvailable,
         textLength: normalized.length,
-        preview: normalized.slice(0, 40),
       });
-      setMode('speaking');
+      // Prefer Piper (offline) as the main TTS voice when the model is available
+      if (piperAvailable) {
+        const PiperTts = require('piper-tts').default;
+        const options = {
+          lengthScale: 1.08,
+          noiseScale: 0.62,
+          noiseW: 0.8,
+          gainDb: 0,
+          interSentenceSilenceMs: 250,
+          interCommaSilenceMs: 125,
+        };
+        console.log('[Playback] Piper: setOptions before speak', options);
+        PiperTts.setOptions(options);
+        console.log('[Playback] Piper path: starting speak', {
+          textLength: normalized.length,
+          preview: normalized.slice(0, 40),
+        });
+        setMode('speaking');
+        try {
+          console.log('[Playback] Piper: calling PiperTts.speak()…');
+          await PiperTts.speak(normalized);
+          console.log('[Playback] Piper: speak() resolved (playback finished)');
+        } catch (e) {
+          if (playbackInterruptedRef.current) return;
+          console.log('[Playback] Piper: speak() rejected', e);
+          setError(e instanceof Error ? e.message : 'Piper playback failed');
+        } finally {
+          setMode('idle');
+          console.log('[Playback] Piper: isSpeaking set to false');
+        }
+        return;
+      }
+      // Fallback to system TTS when Piper model is not installed
+      console.log('[Playback] using system TTS');
+      let Tts: TtsModule;
       try {
-        console.log('[Playback] Piper: calling PiperTts.speak()…');
-        await PiperTts.speak(normalized);
-        console.log('[Playback] Piper: speak() resolved (playback finished)');
+        Tts = require('react-native-tts').default as TtsModule;
+        ttsRef.current = Tts;
+      } catch (e) {
+        console.log('[Playback] system TTS failed to load', e);
+        setError(e instanceof Error ? e.message : 'TTS failed to load');
+        return;
+      }
+      try {
+        await Tts.getInitStatus();
+        if (Platform.OS === 'android') {
+          Tts.stop();
+        }
+        const onFinish = () => {
+          setMode('idle');
+          Tts.removeEventListener('tts-finish', onFinish);
+          Tts.removeEventListener('tts-cancel', onFinish);
+        };
+        Tts.addEventListener('tts-finish', onFinish);
+        Tts.addEventListener('tts-cancel', onFinish);
+        setMode('speaking');
+        console.log('[Playback] system TTS: calling speak()');
+        Tts.speak(normalized);
       } catch (e) {
         if (playbackInterruptedRef.current) return;
-        console.log('[Playback] Piper: speak() rejected', e);
-        setError(e instanceof Error ? e.message : 'Piper playback failed');
-      } finally {
+        console.log('[Playback] system TTS error', e);
+        setError(e instanceof Error ? e.message : 'TTS playback failed');
         setMode('idle');
-        console.log('[Playback] Piper: isSpeaking set to false');
       }
-      return;
-    }
-    // Fallback to system TTS when Piper model is not installed
-    console.log('[Playback] using system TTS');
-    let Tts: TtsModule;
-    try {
-      Tts = require('react-native-tts').default as TtsModule;
-      ttsRef.current = Tts;
-    } catch (e) {
-      console.log('[Playback] system TTS failed to load', e);
-      setError(e instanceof Error ? e.message : 'TTS failed to load');
-      return;
-    }
-    try {
-      await Tts.getInitStatus();
-      if (Platform.OS === 'android') {
-        Tts.stop();
-      }
-      const onFinish = () => {
-        setMode('idle');
-        Tts.removeEventListener('tts-finish', onFinish);
-        Tts.removeEventListener('tts-cancel', onFinish);
-      };
-      Tts.addEventListener('tts-finish', onFinish);
-      Tts.addEventListener('tts-cancel', onFinish);
-      setMode('speaking');
-      console.log('[Playback] system TTS: calling speak()');
-      Tts.speak(normalized);
-    } catch (e) {
-      if (playbackInterruptedRef.current) return;
-      console.log('[Playback] system TTS error', e);
-      setError(e instanceof Error ? e.message : 'TTS playback failed');
-      setMode('idle');
-    }
-  }, [piperAvailable]);
+    },
+    [piperAvailable],
+  );
 
   const cancelPlayback = useCallback(() => {
     playbackInterruptedRef.current = true;
@@ -821,22 +854,7 @@ function VoiceScreen() {
 
   if (!voiceReady && !error) {
     return (
-      <View
-        style={[
-          styles.container,
-          { paddingTop: insets.top, backgroundColor: bgColor },
-        ]}
-      >
-        <Text style={[styles.title, { color: textColor }]}>Voice</Text>
-        <ActivityIndicator
-          size="large"
-          color={isDarkMode ? '#78c2a9' : '#0a7ea4'}
-          style={styles.loader}
-        />
-        <Text style={[styles.hint, { color: mutedColor }]}>
-          Loading speech recognition…
-        </Text>
-      </View>
+      <VoiceLoadingView theme={theme} paddingTop={insets.top} />
     );
   }
 
@@ -846,8 +864,11 @@ function VoiceScreen() {
         vizRef={vizRef}
         controlsEnabled={showDevScreen}
         inputEnabled
+        canvasBackground={theme.viz.canvasBackground}
         onShortTap={!showDevScreen ? handleUserModeTap : undefined}
-        onLongPressStart={!showDevScreen ? handleUserModeLongPressStart : undefined}
+        onLongPressStart={
+          !showDevScreen ? handleUserModeLongPressStart : undefined
+        }
         onLongPressEnd={!showDevScreen ? handleUserModeLongPressEnd : undefined}
       />
       {showDevScreen && (
@@ -860,476 +881,779 @@ function VoiceScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator
         >
-          <Text style={[styles.title, { color: textColor }]}>Voice to text</Text>
+          <Text style={[styles.title, { color: textColor }]}>Developer</Text>
 
-      <View style={styles.piperStatusRow}>
-        <Text style={[styles.piperStatusLabel, { color: mutedColor }]}>
-          Piper model:{' '}
-        </Text>
-        {piperAvailable === null ? (
-          <Text style={[styles.piperStatusValue, { color: mutedColor }]}>
-            Checking…
-          </Text>
-        ) : piperAvailable === true ? (
-          <Text style={[styles.piperStatusValue, styles.piperStatusOk]}>
-            ✓ File present
-          </Text>
-        ) : (
-          <Text style={[styles.piperStatusValue, styles.piperStatusMissing]}>
-            Not found — run: pnpm run download-piper then rebuild (ios/android).
-          </Text>
-        )}
-      </View>
-      {piperAvailable === false && piperDebugInfo ? (
-        <View style={styles.piperDebugBox}>
-          <Text
-            style={[styles.piperDebugText, { color: mutedColor }]}
-            selectable
-          >
-            {piperDebugInfo}
-          </Text>
-        </View>
-      ) : null}
-
-      <View style={styles.packStatusRow}>
-        <Text style={[styles.packStatusLabel, { color: mutedColor }]}>
-          Content pack:{' '}
-        </Text>
-        {packStatus === 'loading' ? (
-          <View style={styles.packStatusValueRow}>
-            <ActivityIndicator size="small" color={mutedColor} />
-            <Text style={[styles.packStatusValue, { color: mutedColor }]}>
-              Loading…
+          <View style={styles.piperStatusRow}>
+            <Text style={[styles.piperStatusLabel, { color: mutedColor }]}>
+              Piper model:{' '}
             </Text>
+            {piperAvailable === null ? (
+              <Text style={[styles.piperStatusValue, { color: mutedColor }]}>
+                Checking…
+              </Text>
+            ) : piperAvailable === true ? (
+              <Text style={[styles.piperStatusValue, styles.piperStatusOk]}>
+                ✓ File present
+              </Text>
+            ) : (
+              <Text
+                style={[styles.piperStatusValue, styles.piperStatusMissing]}
+              >
+                Not found — run: pnpm run download-piper then rebuild
+                (ios/android).
+              </Text>
+            )}
           </View>
-        ) : packStatus === 'ready' ? (
-          <Text style={[styles.packStatusValue, styles.packStatusOk]}>
-            Ready
-          </Text>
-        ) : packStatus === 'error' ? (
-          <Text
-            style={[styles.packStatusValue, styles.packStatusMissing]}
-            numberOfLines={2}
-          >
-            Error: {packError ?? 'Unknown'}
-          </Text>
-        ) : (
-          <Text style={[styles.packStatusValue, { color: mutedColor }]}>
-            Not loaded
-          </Text>
-        )}
-      </View>
+          {piperAvailable === false && piperDebugInfo ? (
+            <View style={styles.piperDebugBox}>
+              <Text
+                style={[styles.piperDebugText, { color: mutedColor }]}
+                selectable
+              >
+                {piperDebugInfo}
+              </Text>
+            </View>
+          ) : null}
 
-      <View style={[styles.devToolsCard, { backgroundColor: inputBg, borderColor }]}>
-        <Text style={[styles.sectionLabel, { color: mutedColor }]}>Dev Tools</Text>
-
-        <View style={styles.devToolsRow}>
-          <Text style={[styles.devToolsLabel, { color: textColor }]}>Show viz</Text>
-          <Pressable
-            onPress={() => withViz(v => { v.showViz = !v.showViz; })}
-          >
-            <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-              {vizRef.current?.showViz ? 'ON' : 'OFF'}
+          <View style={styles.packStatusRow}>
+            <Text style={[styles.packStatusLabel, { color: mutedColor }]}>
+              Content pack:{' '}
             </Text>
-          </Pressable>
-        </View>
-        <View style={styles.devToolsRow}>
-          <Text style={[styles.devToolsLabel, { color: textColor }]}>Show connections</Text>
-          <Pressable
-            onPress={() => withViz(v => { v.showConnections = !v.showConnections; })}
-          >
-            <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-              {vizRef.current?.showConnections ? 'ON' : 'OFF'}
-            </Text>
-          </Pressable>
-        </View>
-        <View style={styles.devToolsRow}>
-          <Text style={[styles.devToolsLabel, { color: textColor }]}>Star count mult</Text>
-          <View style={styles.devToolsStepper}>
-            <Pressable
-              onPress={() =>
-                withViz(v => {
-                  v.starCountMultiplier = clamp(v.starCountMultiplier - 0.2, 0.1, 3);
-                })
-              }
-            >
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>-</Text>
-            </Pressable>
-            <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-              {(vizRef.current?.starCountMultiplier ?? 1).toFixed(1)}
-            </Text>
-            <Pressable
-              onPress={() =>
-                withViz(v => {
-                  v.starCountMultiplier = clamp(v.starCountMultiplier + 0.2, 0.1, 3);
-                })
-              }
-            >
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>+</Text>
-            </Pressable>
+            {packStatus === 'loading' ? (
+              <View style={styles.packStatusValueRow}>
+                <ActivityIndicator size="small" color={mutedColor} />
+                <Text style={[styles.packStatusValue, { color: mutedColor }]}>
+                  Loading…
+                </Text>
+              </View>
+            ) : packStatus === 'ready' ? (
+              <Text style={[styles.packStatusValue, styles.packStatusOk]}>
+                Ready
+              </Text>
+            ) : packStatus === 'error' ? (
+              <Text
+                style={[styles.packStatusValue, styles.packStatusMissing]}
+                numberOfLines={2}
+              >
+                Error: {packError ?? 'Unknown'}
+              </Text>
+            ) : (
+              <Text style={[styles.packStatusValue, { color: mutedColor }]}>
+                Not loaded
+              </Text>
+            )}
           </View>
-        </View>
 
-        <Pressable style={styles.devToolsButton} onPress={() => triggerPulseAtCenter(vizRef)}>
-          <Text style={[styles.devToolsButtonText, { color: textColor }]}>Debug pulse</Text>
-        </Pressable>
-
-        <View style={styles.devToolsRow}>
-          <Text style={[styles.devToolsLabel, { color: textColor }]}>Cycle states</Text>
-          <Pressable onPress={() => setStateCycleOn(x => !x)}>
-            <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-              {stateCycleOn ? 'ON' : 'OFF'}
+          <View
+            style={[
+              styles.devToolsCard,
+              { backgroundColor: inputBg, borderColor },
+            ]}
+          >
+            <Text style={[styles.sectionLabel, { color: mutedColor }]}>
+              Dev Tools
             </Text>
-          </Pressable>
-        </View>
-        <View style={styles.devToolsStateGrid}>
-          {DEV_APP_STATES.map(state => (
+
+            <View style={styles.devToolsRow}>
+              <Text style={[styles.devToolsLabel, { color: textColor }]}>
+                Show viz
+              </Text>
+              <Pressable
+                onPress={() =>
+                  withViz(v => {
+                    v.showViz = !v.showViz;
+                  })
+                }
+              >
+                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
+                  {vizRef.current?.showViz ? 'ON' : 'OFF'}
+                </Text>
+              </Pressable>
+            </View>
+            <View style={styles.devToolsRow}>
+              <Text style={[styles.devToolsLabel, { color: textColor }]}>
+                Show connections
+              </Text>
+              <Pressable
+                onPress={() =>
+                  withViz(v => {
+                    v.showConnections = !v.showConnections;
+                  })
+                }
+              >
+                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
+                  {vizRef.current?.showConnections ? 'ON' : 'OFF'}
+                </Text>
+              </Pressable>
+            </View>
+            <View style={styles.devToolsRow}>
+              <Text style={[styles.devToolsLabel, { color: textColor }]}>
+                Star count mult
+              </Text>
+              <View style={styles.devToolsStepper}>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.starCountMultiplier = clamp(
+                        v.starCountMultiplier - 0.2,
+                        0.1,
+                        3,
+                      );
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    -
+                  </Text>
+                </Pressable>
+                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
+                  {(vizRef.current?.starCountMultiplier ?? 1).toFixed(1)}
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.starCountMultiplier = clamp(
+                        v.starCountMultiplier + 0.2,
+                        0.1,
+                        3,
+                      );
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    +
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+
             <Pressable
-              key={state}
-              style={styles.devToolsStateButton}
-              onPress={() => applyVizState(state)}
+              style={styles.devToolsButton}
+              onPress={() => triggerPulseAtCenter(vizRef)}
             >
-              <Text style={[styles.devToolsStateButtonText, { color: textColor }]}>
-                {state}
+              <Text style={[styles.devToolsButtonText, { color: textColor }]}>
+                Debug pulse
               </Text>
             </Pressable>
-          ))}
-        </View>
 
-        <View style={styles.devToolsRow}>
-          <Text style={[styles.devToolsLabel, { color: textColor }]}>Post FX</Text>
-          <Pressable
-            onPress={() => withViz(v => { v.postFxEnabled = !v.postFxEnabled; })}
-          >
-            <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-              {vizRef.current?.postFxEnabled ? 'ON' : 'OFF'}
-            </Text>
-          </Pressable>
-        </View>
-        <View style={styles.devToolsRow}>
-          <Text style={[styles.devToolsLabel, { color: textColor }]}>Vignette</Text>
-          <View style={styles.devToolsStepper}>
-            <Pressable onPress={() => withViz(v => { v.postFxVignette = clamp(v.postFxVignette - 0.05, 0, 1); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>-</Text>
-            </Pressable>
-            <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-              {(vizRef.current?.postFxVignette ?? 0).toFixed(2)}
-            </Text>
-            <Pressable onPress={() => withViz(v => { v.postFxVignette = clamp(v.postFxVignette + 0.05, 0, 1); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>+</Text>
-            </Pressable>
-          </View>
-        </View>
-        <View style={styles.devToolsRow}>
-          <Text style={[styles.devToolsLabel, { color: textColor }]}>Chromatic</Text>
-          <View style={styles.devToolsStepper}>
-            <Pressable onPress={() => withViz(v => { v.postFxChromatic = clamp(v.postFxChromatic - 0.0005, 0, 0.01); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>-</Text>
-            </Pressable>
-            <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-              {(vizRef.current?.postFxChromatic ?? 0).toFixed(4)}
-            </Text>
-            <Pressable onPress={() => withViz(v => { v.postFxChromatic = clamp(v.postFxChromatic + 0.0005, 0, 0.01); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>+</Text>
-            </Pressable>
-          </View>
-        </View>
-        <View style={styles.devToolsRow}>
-          <Text style={[styles.devToolsLabel, { color: textColor }]}>Grain</Text>
-          <View style={styles.devToolsStepper}>
-            <Pressable onPress={() => withViz(v => { v.postFxGrain = clamp(v.postFxGrain - 0.01, 0, 0.2); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>-</Text>
-            </Pressable>
-            <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-              {(vizRef.current?.postFxGrain ?? 0).toFixed(2)}
-            </Text>
-            <Pressable onPress={() => withViz(v => { v.postFxGrain = clamp(v.postFxGrain + 0.01, 0, 0.2); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>+</Text>
-            </Pressable>
-          </View>
-        </View>
+            <View style={styles.devToolsRow}>
+              <Text style={[styles.devToolsLabel, { color: textColor }]}>
+                Cycle states
+              </Text>
+              <Pressable onPress={() => setStateCycleOn(x => !x)}>
+                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
+                  {stateCycleOn ? 'ON' : 'OFF'}
+                </Text>
+              </Pressable>
+            </View>
+            <View style={styles.devToolsStateGrid}>
+              {DEV_APP_STATES.map(state => (
+                <Pressable
+                  key={state}
+                  style={styles.devToolsStateButton}
+                  onPress={() => applyVizState(state)}
+                >
+                  <Text
+                    style={[
+                      styles.devToolsStateButtonText,
+                      { color: textColor },
+                    ]}
+                  >
+                    {state}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
 
-        <View style={styles.devToolsRow}>
-          <Text style={[styles.devToolsLabel, { color: textColor }]}>activityLambda</Text>
-          <View style={styles.devToolsStepper}>
-            <Pressable onPress={() => withViz(v => { v.activityLambda = clamp(v.activityLambda - 1, 0.5, 20); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>-</Text>
-            </Pressable>
-            <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-              {(vizRef.current?.activityLambda ?? 0).toFixed(1)}
-            </Text>
-            <Pressable onPress={() => withViz(v => { v.activityLambda = clamp(v.activityLambda + 1, 0.5, 20); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>+</Text>
-            </Pressable>
-          </View>
-        </View>
-        <View style={styles.devToolsRow}>
-          <Text style={[styles.devToolsLabel, { color: textColor }]}>lambdaUp</Text>
-          <View style={styles.devToolsStepper}>
-            <Pressable onPress={() => withViz(v => { v.lambdaUp = clamp(v.lambdaUp - 1, 0.5, 20); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>-</Text>
-            </Pressable>
-            <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-              {(vizRef.current?.lambdaUp ?? 0).toFixed(1)}
-            </Text>
-            <Pressable onPress={() => withViz(v => { v.lambdaUp = clamp(v.lambdaUp + 1, 0.5, 20); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>+</Text>
-            </Pressable>
-          </View>
-        </View>
-        <View style={styles.devToolsRow}>
-          <Text style={[styles.devToolsLabel, { color: textColor }]}>lambdaDown</Text>
-          <View style={styles.devToolsStepper}>
-            <Pressable onPress={() => withViz(v => { v.lambdaDown = clamp(v.lambdaDown - 1, 0.5, 20); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>-</Text>
-            </Pressable>
-            <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-              {(vizRef.current?.lambdaDown ?? 0).toFixed(1)}
-            </Text>
-            <Pressable onPress={() => withViz(v => { v.lambdaDown = clamp(v.lambdaDown + 1, 0.5, 20); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>+</Text>
-            </Pressable>
-          </View>
-        </View>
+            <View style={styles.devToolsRow}>
+              <Text style={[styles.devToolsLabel, { color: textColor }]}>
+                Post FX
+              </Text>
+              <Pressable
+                onPress={() =>
+                  withViz(v => {
+                    v.postFxEnabled = !v.postFxEnabled;
+                  })
+                }
+              >
+                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
+                  {vizRef.current?.postFxEnabled ? 'ON' : 'OFF'}
+                </Text>
+              </Pressable>
+            </View>
+            <View style={styles.devToolsRow}>
+              <Text style={[styles.devToolsLabel, { color: textColor }]}>
+                Vignette
+              </Text>
+              <View style={styles.devToolsStepper}>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.postFxVignette = clamp(v.postFxVignette - 0.05, 0, 1);
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    -
+                  </Text>
+                </Pressable>
+                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
+                  {(vizRef.current?.postFxVignette ?? 0).toFixed(2)}
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.postFxVignette = clamp(v.postFxVignette + 0.05, 0, 1);
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    +
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+            <View style={styles.devToolsRow}>
+              <Text style={[styles.devToolsLabel, { color: textColor }]}>
+                Chromatic
+              </Text>
+              <View style={styles.devToolsStepper}>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.postFxChromatic = clamp(
+                        v.postFxChromatic - 0.0005,
+                        0,
+                        0.01,
+                      );
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    -
+                  </Text>
+                </Pressable>
+                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
+                  {(vizRef.current?.postFxChromatic ?? 0).toFixed(4)}
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.postFxChromatic = clamp(
+                        v.postFxChromatic + 0.0005,
+                        0,
+                        0.01,
+                      );
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    +
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+            <View style={styles.devToolsRow}>
+              <Text style={[styles.devToolsLabel, { color: textColor }]}>
+                Grain
+              </Text>
+              <View style={styles.devToolsStepper}>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.postFxGrain = clamp(v.postFxGrain - 0.01, 0, 0.2);
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    -
+                  </Text>
+                </Pressable>
+                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
+                  {(vizRef.current?.postFxGrain ?? 0).toFixed(2)}
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.postFxGrain = clamp(v.postFxGrain + 0.01, 0, 0.2);
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    +
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
 
-        <View style={styles.devToolsRow}>
-          <Text style={[styles.devToolsLabel, { color: textColor }]}>paletteId</Text>
-          <View style={styles.devToolsStepper}>
-            <Pressable onPress={() => withViz(v => { v.paletteId = Math.max(0, Math.floor(v.paletteId - 1)); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>-</Text>
-            </Pressable>
-            <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-              {Math.floor(vizRef.current?.paletteId ?? 0)}
-            </Text>
-            <Pressable onPress={() => withViz(v => { v.paletteId = Math.max(0, Math.floor(v.paletteId + 1)); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>+</Text>
-            </Pressable>
-          </View>
-        </View>
-        <View style={styles.devToolsRow}>
-          <Text style={[styles.devToolsLabel, { color: textColor }]}>hueShift</Text>
-          <View style={styles.devToolsStepper}>
-            <Pressable onPress={() => withViz(v => { v.hueShift = clamp(v.hueShift - 0.02, -0.1, 0.1); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>-</Text>
-            </Pressable>
-            <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-              {(vizRef.current?.hueShift ?? 0).toFixed(2)}
-            </Text>
-            <Pressable onPress={() => withViz(v => { v.hueShift = clamp(v.hueShift + 0.02, -0.1, 0.1); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>+</Text>
-            </Pressable>
-          </View>
-        </View>
-        <View style={styles.devToolsRow}>
-          <Text style={[styles.devToolsLabel, { color: textColor }]}>satBoost</Text>
-          <View style={styles.devToolsStepper}>
-            <Pressable onPress={() => withViz(v => { v.satBoost = clamp(v.satBoost - 0.1, 0.5, 1.5); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>-</Text>
-            </Pressable>
-            <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-              {(vizRef.current?.satBoost ?? 0).toFixed(1)}
-            </Text>
-            <Pressable onPress={() => withViz(v => { v.satBoost = clamp(v.satBoost + 0.1, 0.5, 1.5); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>+</Text>
-            </Pressable>
-          </View>
-        </View>
-        <View style={styles.devToolsRow}>
-          <Text style={[styles.devToolsLabel, { color: textColor }]}>lumBoost</Text>
-          <View style={styles.devToolsStepper}>
-            <Pressable onPress={() => withViz(v => { v.lumBoost = clamp(v.lumBoost - 0.1, 0.5, 1.5); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>-</Text>
-            </Pressable>
-            <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-              {(vizRef.current?.lumBoost ?? 0).toFixed(1)}
-            </Text>
-            <Pressable onPress={() => withViz(v => { v.lumBoost = clamp(v.lumBoost + 0.1, 0.5, 1.5); })}>
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>+</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
+            <View style={styles.devToolsRow}>
+              <Text style={[styles.devToolsLabel, { color: textColor }]}>
+                activityLambda
+              </Text>
+              <View style={styles.devToolsStepper}>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.activityLambda = clamp(v.activityLambda - 1, 0.5, 20);
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    -
+                  </Text>
+                </Pressable>
+                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
+                  {(vizRef.current?.activityLambda ?? 0).toFixed(1)}
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.activityLambda = clamp(v.activityLambda + 1, 0.5, 20);
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    +
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+            <View style={styles.devToolsRow}>
+              <Text style={[styles.devToolsLabel, { color: textColor }]}>
+                lambdaUp
+              </Text>
+              <View style={styles.devToolsStepper}>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.lambdaUp = clamp(v.lambdaUp - 1, 0.5, 20);
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    -
+                  </Text>
+                </Pressable>
+                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
+                  {(vizRef.current?.lambdaUp ?? 0).toFixed(1)}
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.lambdaUp = clamp(v.lambdaUp + 1, 0.5, 20);
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    +
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+            <View style={styles.devToolsRow}>
+              <Text style={[styles.devToolsLabel, { color: textColor }]}>
+                lambdaDown
+              </Text>
+              <View style={styles.devToolsStepper}>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.lambdaDown = clamp(v.lambdaDown - 1, 0.5, 20);
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    -
+                  </Text>
+                </Pressable>
+                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
+                  {(vizRef.current?.lambdaDown ?? 0).toFixed(1)}
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.lambdaDown = clamp(v.lambdaDown + 1, 0.5, 20);
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    +
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
 
-      <Text style={[styles.sectionLabel, { color: mutedColor }]}>Question</Text>
-      <View style={[styles.textBox, { backgroundColor: inputBg, borderColor }]}>
-        <TextInput
-          style={[styles.textInput, { color: textColor }]}
-          placeholder="Type or speak your question..."
-          placeholderTextColor={mutedColor}
-          value={displayText}
-          onChangeText={t => {
-            if (!partialText) setTranscribedText(t);
-          }}
-          editable={!isListening}
-          multiline
-        />
-        {partialText ? (
-          <Text style={[styles.partialHint, { color: mutedColor }]}>
-            Listening...
+            <View style={styles.devToolsRow}>
+              <Text style={[styles.devToolsLabel, { color: textColor }]}>
+                paletteId
+              </Text>
+              <View style={styles.devToolsStepper}>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.paletteId = Math.max(0, Math.floor(v.paletteId - 1));
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    -
+                  </Text>
+                </Pressable>
+                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
+                  {Math.floor(vizRef.current?.paletteId ?? 0)}
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.paletteId = Math.max(0, Math.floor(v.paletteId + 1));
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    +
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+            <View style={styles.devToolsRow}>
+              <Text style={[styles.devToolsLabel, { color: textColor }]}>
+                hueShift
+              </Text>
+              <View style={styles.devToolsStepper}>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.hueShift = clamp(v.hueShift - 0.02, -0.1, 0.1);
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    -
+                  </Text>
+                </Pressable>
+                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
+                  {(vizRef.current?.hueShift ?? 0).toFixed(2)}
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.hueShift = clamp(v.hueShift + 0.02, -0.1, 0.1);
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    +
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+            <View style={styles.devToolsRow}>
+              <Text style={[styles.devToolsLabel, { color: textColor }]}>
+                satBoost
+              </Text>
+              <View style={styles.devToolsStepper}>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.satBoost = clamp(v.satBoost - 0.1, 0.5, 1.5);
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    -
+                  </Text>
+                </Pressable>
+                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
+                  {(vizRef.current?.satBoost ?? 0).toFixed(1)}
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.satBoost = clamp(v.satBoost + 0.1, 0.5, 1.5);
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    +
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+            <View style={styles.devToolsRow}>
+              <Text style={[styles.devToolsLabel, { color: textColor }]}>
+                lumBoost
+              </Text>
+              <View style={styles.devToolsStepper}>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.lumBoost = clamp(v.lumBoost - 0.1, 0.5, 1.5);
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    -
+                  </Text>
+                </Pressable>
+                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
+                  {(vizRef.current?.lumBoost ?? 0).toFixed(1)}
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    withViz(v => {
+                      v.lumBoost = clamp(v.lumBoost + 0.1, 0.5, 1.5);
+                    })
+                  }
+                >
+                  <Text
+                    style={[styles.devToolsButtonText, { color: textColor }]}
+                  >
+                    +
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+
+          <Text style={[styles.sectionLabel, { color: mutedColor }]}>
+            Question
           </Text>
-        ) : null}
-        <Pressable
-          style={[styles.playbackButton, { borderColor }]}
-          onPress={handlePlayback}
-          disabled={!displayText.trim() || isSpeaking}
-        >
-          {isSpeaking ? (
+          <View
+            style={[styles.textBox, { backgroundColor: inputBg, borderColor }]}
+          >
+            <TextInput
+              style={[styles.textInput, { color: textColor }]}
+              placeholder="Type or speak your question..."
+              placeholderTextColor={mutedColor}
+              value={displayText}
+              onChangeText={t => {
+                if (!partialText) setTranscribedText(t);
+              }}
+              editable={!isListening}
+              multiline
+            />
+            {partialText ? (
+              <Text style={[styles.partialHint, { color: mutedColor }]}>
+                Listening...
+              </Text>
+            ) : null}
+            <Pressable
+              style={[styles.playbackButton, { borderColor }]}
+              onPress={handlePlayback}
+              disabled={!displayText.trim() || isSpeaking}
+            >
+              {isSpeaking ? (
+                <View
+                  style={[
+                    styles.playbackButtonContent,
+                    styles.playbackSpeakingRow,
+                  ]}
+                >
+                  <ActivityIndicator size="small" color={textColor} />
+                  <Text
+                    style={[
+                      styles.playbackHint,
+                      styles.playbackSpeakingHint,
+                      { color: mutedColor },
+                    ]}
+                  >
+                    Synthesizing…
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.playbackButtonContent}>
+                  <Text style={[styles.playbackLabel, { color: textColor }]}>
+                    ▶ {piperAvailable ? 'Play (Piper)' : 'Playback'}
+                  </Text>
+                  {piperAvailable === true && (
+                    <Text style={[styles.playbackHint, { color: mutedColor }]}>
+                      Offline voice
+                    </Text>
+                  )}
+                </View>
+              )}
+            </Pressable>
+          </View>
+
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+          <Text style={[styles.sectionLabel, { color: mutedColor }]}>
+            Response
+          </Text>
+          {isAsking ? (
             <View
-              style={[styles.playbackButtonContent, styles.playbackSpeakingRow]}
+              style={[
+                styles.responseBox,
+                styles.responseLoadingRow,
+                { backgroundColor: inputBg, borderColor },
+              ]}
             >
               <ActivityIndicator size="small" color={textColor} />
               <Text
                 style={[
-                  styles.playbackHint,
-                  styles.playbackSpeakingHint,
+                  styles.responseLabel,
+                  styles.responseLabelInline,
                   { color: mutedColor },
                 ]}
               >
-                Synthesizing…
+                Loading…
               </Text>
             </View>
           ) : (
-            <View style={styles.playbackButtonContent}>
-              <Text style={[styles.playbackLabel, { color: textColor }]}>
-                ▶ {piperAvailable ? 'Play (Piper)' : 'Playback'}
+            <View
+              style={[
+                styles.responseBox,
+                { backgroundColor: inputBg, borderColor },
+              ]}
+            >
+              <Text style={[styles.responseLabel, { color: mutedColor }]}>
+                Answer
               </Text>
-              {piperAvailable === true && (
-                <Text style={[styles.playbackHint, { color: mutedColor }]}>
-                  Offline voice
+              {responseText != null ? (
+                <>
+                  <Text
+                    style={[styles.responseText, { color: textColor }]}
+                    selectable
+                  >
+                    {responseText}
+                  </Text>
+                  {validationSummary &&
+                  (validationSummary.stats.unknownCardCount > 0 ||
+                    validationSummary.stats.invalidRuleCount > 0) ? (
+                    <Text
+                      style={[styles.validationHint, { color: mutedColor }]}
+                    >
+                      Corrected {validationSummary.stats.unknownCardCount}{' '}
+                      name(s), {validationSummary.stats.invalidRuleCount}{' '}
+                      rule(s) invalid.
+                    </Text>
+                  ) : null}
+                </>
+              ) : (
+                <Text
+                  style={[styles.responsePlaceholder, { color: mutedColor }]}
+                >
+                  Submit a question to see the answer here.
                 </Text>
               )}
             </View>
           )}
-        </Pressable>
-      </View>
 
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          <View style={[styles.buttons, styles.buttonsCompactTop]}>
+            <Pressable
+              style={[
+                styles.button,
+                styles.micButton,
+                isListening && styles.micButtonActive,
+                !voiceReady && styles.buttonDisabled,
+              ]}
+              onPressIn={() => {
+                longPressTriggeredRef.current = false;
+                pressStartedWhileListeningRef.current =
+                  modeRef.current === 'listening';
+                setMode('touched');
+                vizRef.current.touchActive = true;
+                vizRef.current.touchWorld = [0, 0, 0];
+              }}
+              onLongPress={() => {
+                longPressTriggeredRef.current = true;
+                (async () => {
+                  if (modeRef.current === 'listening') {
+                    await stopListening();
+                  }
+                  const answer = await handleSubmit();
+                  if (answer) {
+                    await playText(answer);
+                  }
+                })();
+              }}
+              delayLongPress={500}
+              onPressOut={() => {
+                vizRef.current.touchActive = false;
+                vizRef.current.touchWorld = null;
+                if (longPressTriggeredRef.current) {
+                  return;
+                }
+                setMode('released');
+                if (pressStartedWhileListeningRef.current) {
+                  stopListening();
+                } else {
+                  startListening();
+                }
+              }}
+              disabled={
+                !voiceReady || !voiceAvailable || isAsking || isSpeaking
+              }
+            >
+              {isListening ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.micButtonLabel}>Start voice</Text>
+              )}
+            </Pressable>
 
-      <Text style={[styles.sectionLabel, { color: mutedColor }]}>Response</Text>
-      {isAsking ? (
-        <View
-          style={[
-            styles.responseBox,
-            styles.responseLoadingRow,
-            { backgroundColor: inputBg, borderColor },
-          ]}
-        >
-          <ActivityIndicator size="small" color={textColor} />
-          <Text
-            style={[
-              styles.responseLabel,
-              styles.responseLabelInline,
-              { color: mutedColor },
-            ]}
-          >
-            Loading…
-          </Text>
-        </View>
-      ) : (
-        <View
-          style={[
-            styles.responseBox,
-            { backgroundColor: inputBg, borderColor },
-          ]}
-        >
-          <Text style={[styles.responseLabel, { color: mutedColor }]}>
-            Answer
-          </Text>
-          {responseText != null ? (
-            <>
-              <Text
-                style={[styles.responseText, { color: textColor }]}
-                selectable
-              >
-                {responseText}
+            <Pressable
+              style={[styles.button, { borderColor }]}
+              onPress={handleClear}
+            >
+              <Text style={[styles.submitButtonLabel, { color: textColor }]}>
+                Clear
               </Text>
-              {validationSummary &&
-              (validationSummary.stats.unknownCardCount > 0 ||
-                validationSummary.stats.invalidRuleCount > 0) ? (
-                <Text style={[styles.validationHint, { color: mutedColor }]}>
-                  Corrected {validationSummary.stats.unknownCardCount} name(s),{' '}
-                  {validationSummary.stats.invalidRuleCount} rule(s) invalid.
-                </Text>
-              ) : null}
-            </>
-          ) : (
-            <Text style={[styles.responsePlaceholder, { color: mutedColor }]}>
-              Submit a question to see the answer here.
-            </Text>
-          )}
-        </View>
-      )}
+            </Pressable>
 
-      <View style={[styles.buttons, styles.buttonsCompactTop]}>
-        <Pressable
-          style={[
-            styles.button,
-            styles.micButton,
-            isListening && styles.micButtonActive,
-            !voiceReady && styles.buttonDisabled,
-          ]}
-          onPressIn={() => {
-            longPressTriggeredRef.current = false;
-            pressStartedWhileListeningRef.current = modeRef.current === 'listening';
-            setMode('touched');
-            vizRef.current.touchActive = true;
-            vizRef.current.touchWorld = [0, 0, 0];
-          }}
-          onLongPress={() => {
-            longPressTriggeredRef.current = true;
-            (async () => {
-              if (modeRef.current === 'listening') {
-                await stopListening();
-              }
-              const answer = await handleSubmit();
-              if (answer) {
-                await playText(answer);
-              }
-            })();
-          }}
-          delayLongPress={500}
-          onPressOut={() => {
-            vizRef.current.touchActive = false;
-            vizRef.current.touchWorld = null;
-            if (longPressTriggeredRef.current) {
-              return;
-            }
-            setMode('released');
-            if (pressStartedWhileListeningRef.current) {
-              stopListening();
-            } else {
-              startListening();
-            }
-          }}
-          disabled={!voiceReady || !voiceAvailable || isAsking || isSpeaking}
-        >
-          {isListening ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.micButtonLabel}>Start voice</Text>
-          )}
-        </Pressable>
-
-        <Pressable
-          style={[styles.button, { borderColor }]}
-          onPress={handleClear}
-        >
-          <Text style={[styles.submitButtonLabel, { color: textColor }]}>
-            Clear
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={[styles.button, styles.submitButton, { borderColor }]}
-          onPress={handleSubmit}
-          disabled={isAsking || isSpeaking}
-        >
-          <Text style={styles.submitButtonLabel}>
-            {isAsking ? '…' : 'Submit'}
-          </Text>
-        </Pressable>
-      </View>
-    </ScrollView>
+            <Pressable
+              style={[styles.button, styles.submitButton, { borderColor }]}
+              onPress={handleSubmit}
+              disabled={isAsking || isSpeaking}
+            >
+              <Text style={styles.submitButtonLabel}>
+                {isAsking ? '…' : 'Submit'}
+              </Text>
+            </Pressable>
+          </View>
+        </ScrollView>
       )}
       <Pressable
         style={[

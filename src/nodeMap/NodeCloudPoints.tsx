@@ -53,10 +53,19 @@ export function NodeCloudPoints({ vizRef }: { vizRef: React.RefObject<VizEngineR
     return { decayPhase: phase, decayRate: rate, decayDepth: depth };
   }, []);
 
+  const MODE_TO_ID: Record<string, number> = {
+    idle: 0,
+    listening: 1,
+    processing: 2,
+    speaking: 3,
+    touched: 4,
+    released: 5,
+  };
   const uniforms = useMemo(
     () => ({
       uTime: { value: 0 },
       uActivity: { value: 0.1 },
+      uMode: { value: 0 },
       uBaseNodeSize: { value: 3.45 },
       uPulseSpeed: { value: 4 },
       uPulsePositions: {
@@ -91,6 +100,7 @@ export function NodeCloudPoints({ vizRef }: { vizRef: React.RefObject<VizEngineR
     if (mat.uniforms) {
       mat.uniforms.uTime.value += delta;
       mat.uniforms.uActivity.value = v.activity;
+      mat.uniforms.uMode.value = MODE_TO_ID[v.currentMode as keyof typeof MODE_TO_ID] ?? 0;
       mat.uniforms.uPulsePositions.value[0].set(v.pulsePositions[0][0], v.pulsePositions[0][1], v.pulsePositions[0][2]);
       mat.uniforms.uPulsePositions.value[1].set(v.pulsePositions[1][0], v.pulsePositions[1][1], v.pulsePositions[1][2]);
       mat.uniforms.uPulsePositions.value[2].set(v.pulsePositions[2][0], v.pulsePositions[2][1], v.pulsePositions[2][2]);

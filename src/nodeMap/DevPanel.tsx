@@ -12,6 +12,7 @@ import {
   useColorScheme,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getTheme } from '../theme';
 import {
   TARGET_ACTIVITY_BY_MODE,
   type VizEngineRef,
@@ -38,13 +39,14 @@ export function DevPanel({
   onClose: () => void;
 }) {
   const isDark = useColorScheme() === 'dark';
+  const theme = getTheme(isDark);
   const [, setUiVersion] = useState(0);
   const [stateCycleOn, setStateCycleOn] = useState(false);
   const stateCycleTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const stateIdx = useRef(0);
 
-  const textColor = isDark ? '#e5e5e5' : '#1a1a1a';
-  const muted = isDark ? '#888' : '#666';
+  const textColor = theme.text;
+  const muted = theme.textMuted;
   const bg = isDark ? 'rgba(30,30,30,0.95)' : 'rgba(250,250,250,0.95)';
 
   const withViz = useCallback(

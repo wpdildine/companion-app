@@ -13,6 +13,7 @@ export const nodeVertex = `
   attribute float decayDepth;
   uniform float uTime;
   uniform float uActivity;
+  uniform float uMode;
   uniform float uBaseNodeSize;
   uniform vec3 uPulsePositions[3];
   uniform float uPulseTimes[3];
@@ -79,6 +80,21 @@ export const nodeVertex = `
     vec3 oscillateColor = mix(oscillateA, oscillateB, hueWave);
     baseColor = mix(baseColor, starSyncColor, 0.48);
     baseColor = mix(baseColor, oscillateColor, 0.62);
+    // Mode-based color to match starfield: listening=red, processing=blue, speaking=cyan/green.
+    if (uMode >= 0.5 && uMode < 1.5) {
+      float hard = abs(sin(uTime * 3.2 + decayPhase + distanceFromRoot * 4.0));
+      vec3 listenColor = mix(vec3(0.72, 0.06, 0.10), vec3(1.0, 0.22, 0.16), pow(hard, 2.8));
+      baseColor = mix(baseColor, listenColor, 0.78);
+    } else if (uMode >= 1.5 && uMode < 2.5) {
+      float soft = 0.5 + 0.5 * sin(uTime * 1.1 + decayPhase + distanceFromRoot * 4.0);
+      vec3 processColor = mix(vec3(0.20, 0.40, 1.00), vec3(0.45, 0.72, 1.00), soft);
+      baseColor = mix(baseColor, processColor, 0.72);
+    } else if (uMode >= 2.5 && uMode < 3.5) {
+      float talk = clamp(uActivity, 0.0, 1.0);
+      float osc = 0.5 + 0.5 * sin(uTime * (0.9 + talk * 2.6) + decayPhase + distanceFromRoot * 4.0);
+      vec3 speakColor = mix(vec3(0.14, 0.85, 0.95), vec3(0.18, 0.95, 0.45), osc);
+      baseColor = mix(baseColor, speakColor, 0.75);
+    }
     float touchDist = distance(world.xyz, uTouchWorld);
     float touchBoost = uTouchInfluence * (1.0 - smoothstep(0.0, 2.0, touchDist));
     float pulseBoost = clamp(pulse, 0.0, 1.0);

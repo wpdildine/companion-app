@@ -24,6 +24,19 @@ Context provider logic is shared with **mtg_rules**: the app consumes **@mtg/run
 
 ---
 
+## Project structure
+
+- **`src/theme/`** — Central theme (pure values). `getTheme(isDark)` returns RN tokens (text, background, etc.) and viz primitives (canvas background, palette arrays). Theme is **injected** into screens and NodeMap; NodeMap does not import theme. Recomputed only when `isDark` changes; DevPanel overrides affect viz palette only.
+- **`src/ui/`** — Voice screen UI components (e.g. `VoiceLoadingView`). Consume theme from App; keep `App.tsx` to orchestration and composition.
+- **`src/nodeMap/`** — 3D visualization: R3F canvas, 2D fallback, touch, shaders. **Pure visualization layer**: it does not own app state or voice lifecycle. It consumes **injected theme primitives** (e.g. `canvasBackground`), the engine ref, and optional touch callbacks (with stubs when not wired). Touch API: short tap, double-tap, long-press, drag; see `touchHandlers.ts`.
+- **`src/rag/`** — RAG pipeline, context provider, pack DB (unchanged).
+- **`src/utils/`** — Shared utilities: structured logging (`logViz`, `logTouch`), viz state validation (`validateVizState`). Pure or side-effect isolated; no React/theme imports.
+- **`App.tsx`** — Root: `SafeAreaProvider`, `VoiceScreen` (state, handlers, composition of NodeMapCanvas and UI).
+
+The app does **not** use Skia. Graphics are driven by Three.js/R3F and the theme’s viz primitives.
+
+---
+
 ## Connection to mtg_rules
 
 This app is the **mobile consumer** of the **mtg_rules** (Rules Service) pipeline. mtg_rules:
@@ -101,7 +114,7 @@ If everything is set up correctly, the app runs in the Android Emulator, iOS Sim
 
 ## Step 4: Modify your app
 
-Edit `App.tsx` (or any source); [Fast Refresh](https://reactnative.dev/docs/fast-refresh) will update the app. To force a full reload:
+Edit `App.tsx` (or any source); [Fast Refresh](https://reactnative.dev/docs/fast-refresh) will update the app. Main entry is `App.tsx`; add or change UI in `src/ui/`, theme tokens in `src/theme/`, and 3D/viz behavior in `src/nodeMap/`. To force a full reload:
 
 - **Android:** Double-tap <kbd>R</kbd> or Dev Menu (<kbd>Ctrl</kbd>+<kbd>M</kbd> / <kbd>Cmd</kbd>+<kbd>M</kbd>) → Reload.
 - **iOS:** <kbd>R</kbd> in the simulator.
