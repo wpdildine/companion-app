@@ -164,6 +164,7 @@ export function ConnectionLines({ vizRef }: { vizRef: React.RefObject<VizEngineR
         uniforms={uniforms}
         transparent
         depthWrite={false}
+        blending={THREE.AdditiveBlending}
       />
     </lineSegments>
   );

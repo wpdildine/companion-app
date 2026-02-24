@@ -2,7 +2,7 @@
  * Starfield: Points with twinkle shader. uTime only for todo 1.
  */
 
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { buildStarfield } from './starfieldData';
@@ -13,6 +13,9 @@ const STAR_COUNT = 8000;
 
 export function StarfieldPoints({ vizRef }: { vizRef: React.RefObject<VizEngineRef | null> }) {
   const meshRef = useRef<THREE.Points>(null);
+  useEffect(() => {
+    console.log('[NodeMap] StarfieldPoints mounted');
+  }, []);
   const { positions, colors, sizes } = useMemo(() => {
     const stars = buildStarfield(STAR_COUNT);
     const positions = new Float32Array(stars.length * 3);

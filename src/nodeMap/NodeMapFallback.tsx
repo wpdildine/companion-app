@@ -8,6 +8,8 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import type { VizEngineRef } from './types';
 
+const LOG_FALLBACK = true;
+
 const FALLBACK_BG = '#0a0612';
 const NODE_COUNT = 72;
 const SEED = 54321;
@@ -59,6 +61,10 @@ export function NodeMapFallback({
   const { width, height } = useWindowDimensions();
   const [activity, setActivity] = useState(0.15);
   const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    if (LOG_FALLBACK) console.log('[NodeMap] NodeMapFallback mounted (2D dots)', { width, height });
+  }, [width, height]);
 
   useEffect(() => {
     const id = setInterval(() => {

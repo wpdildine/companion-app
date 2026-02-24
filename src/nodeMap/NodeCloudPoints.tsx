@@ -2,7 +2,7 @@
  * Node cloud: Crystalline Sphere formation, breathing + drift + glow. uTime, uActivity, uPulse*.
  */
 
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { buildCrystallineSphere } from './formations';
@@ -13,6 +13,9 @@ const FORMATION = buildCrystallineSphere();
 
 export function NodeCloudPoints({ vizRef }: { vizRef: React.RefObject<VizEngineRef | null> }) {
   const meshRef = useRef<THREE.Points>(null);
+  useEffect(() => {
+    console.log('[NodeMap] NodeCloudPoints mounted');
+  }, []);
   const { positions, nodeSizes, nodeTypes, nodeColors, distanceFromRoot } = useMemo(() => {
     const n = FORMATION.nodes.length;
     const positions = new Float32Array(n * 3);
@@ -106,6 +109,7 @@ export function NodeCloudPoints({ vizRef }: { vizRef: React.RefObject<VizEngineR
         uniforms={uniforms}
         transparent
         depthWrite={false}
+        blending={THREE.AdditiveBlending}
       />
     </points>
   );

@@ -40,6 +40,14 @@ export interface VizEngineRef {
   touchNdc: TouchNdc;
   touchWorld: [number, number, number] | null;
   touchInfluence: number;
+  /** Tap-to-pulse: NDC [x,y] when user taps canvas; cleared after raycast. */
+  pendingTapNdc: [number, number] | null;
+  /** Canvas layout size for NDC conversion. */
+  canvasWidth: number;
+  canvasHeight: number;
+  /** Drag-to-orbit: spherical angles (radians). */
+  orbitTheta: number;
+  orbitPhi: number;
 }
 
 const SENTINEL_FAR = 1e6;
@@ -69,6 +77,11 @@ export function createDefaultVizRef(): VizEngineRef {
     touchNdc: { x: 0, y: 0 },
     touchWorld: null,
     touchInfluence: 0,
+    pendingTapNdc: null,
+    canvasWidth: 1,
+    canvasHeight: 1,
+    orbitTheta: 0,
+    orbitPhi: 0.4,
   };
 }
 

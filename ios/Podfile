@@ -4,6 +4,12 @@ require Pod::Executable.execute_command('node', ['-p',
     "react-native/scripts/react_native_pods.rb",
     {paths: [process.argv[1]]},
   )', __dir__]).strip
+require File.join(
+  File.dirname(
+    Pod::Executable.execute_command('node', ['--print', 'require.resolve("expo/package.json")']).strip
+  ),
+  "scripts/autolinking"
+)
 
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
@@ -16,6 +22,7 @@ if ENV['USE_FRAMEWORKS']
 end
 
 target 'CompanionApp' do
+  use_expo_modules!
   # Explicit pod so Piper TTS is always linked (avoids autolinking-only dependency)
   pod 'PiperTts', :path => '../plugins/piper-tts'
 

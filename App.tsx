@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   AppState,
   type AppStateStatus,
+  LogBox,
   NativeModules,
   Platform,
   Pressable,
@@ -21,6 +22,12 @@ import {
   useColorScheme,
   View,
 } from 'react-native';
+
+// @react-native-voice/voice uses NativeEventEmitter in a way that triggers warnings on new arch (Fabric) when the native module doesn't expose addListener/removeListeners. Voice still works.
+LogBox.ignoreLogs([
+  'new NativeEventEmitter() was called with a non-null argument without the required `addListener` method',
+  'new NativeEventEmitter() was called with a non-null argument without the required `removeListeners` method',
+]);
 import {
   SafeAreaProvider,
   useSafeAreaInsets,
@@ -248,10 +255,6 @@ function VoiceScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    console.log('piperAvailable', piperAvailable);
-    console.log('piperDebugInfo', piperDebugInfo);
-  }, [piperAvailable, piperDebugInfo]);
   // Check Piper TTS availability and fetch debug info when not found
   useEffect(() => {
     let cancelled = false;

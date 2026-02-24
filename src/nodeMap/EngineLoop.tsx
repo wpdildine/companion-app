@@ -2,15 +2,21 @@
  * Render-loop only: smooth activity and touchInfluence from engine ref. No React state.
  */
 
+import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import type { VizEngineRef } from './types';
 
 const DT_CAP = 0.1;
 
 export function EngineLoop({ vizRef }: { vizRef: React.RefObject<VizEngineRef | null> }) {
+  const didLog = useRef(false);
   useFrame((state, delta) => {
     const v = vizRef.current;
     if (!v) return;
+    if (!didLog.current) {
+      console.log('[NodeMap] EngineLoop useFrame running (R3F render loop active)');
+      didLog.current = true;
+    }
     v.clock = state.clock.getElapsedTime();
     const dt = Math.min(delta, DT_CAP);
     const lambda = v.targetActivity > v.activity ? v.lambdaUp : v.lambdaDown;
