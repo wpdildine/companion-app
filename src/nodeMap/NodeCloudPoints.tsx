@@ -36,12 +36,28 @@ export function NodeCloudPoints({ vizRef }: { vizRef: React.RefObject<VizEngineR
     });
     return { positions, nodeSizes, nodeTypes, nodeColors, distanceFromRoot };
   }, []);
+  const { decayPhase, decayRate, decayDepth } = useMemo(() => {
+    const n = FORMATION.nodes.length;
+    const phase = new Float32Array(n);
+    const rate = new Float32Array(n);
+    const depth = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      // Deterministic pseudo-random distribution by index.
+      const r1 = Math.abs(Math.sin((i + 1) * 12.9898));
+      const r2 = Math.abs(Math.sin((i + 1) * 78.233));
+      const r3 = Math.abs(Math.sin((i + 1) * 37.719));
+      phase[i] = r1 * Math.PI * 2;
+      rate[i] = 0.25 + r2 * 1.15;
+      depth[i] = 0.12 + r3 * 0.35;
+    }
+    return { decayPhase: phase, decayRate: rate, decayDepth: depth };
+  }, []);
 
   const uniforms = useMemo(
     () => ({
       uTime: { value: 0 },
       uActivity: { value: 0.1 },
-      uBaseNodeSize: { value: 1.6 },
+      uBaseNodeSize: { value: 3.45 },
       uPulseSpeed: { value: 4 },
       uPulsePositions: {
         value: [
@@ -101,8 +117,20 @@ export function NodeCloudPoints({ vizRef }: { vizRef: React.RefObject<VizEngineR
     g.setAttribute('nodeType', new THREE.BufferAttribute(nodeTypes, 1));
     g.setAttribute('nodeColor', new THREE.BufferAttribute(nodeColors, 3));
     g.setAttribute('distanceFromRoot', new THREE.BufferAttribute(distanceFromRoot, 1));
+    g.setAttribute('decayPhase', new THREE.BufferAttribute(decayPhase, 1));
+    g.setAttribute('decayRate', new THREE.BufferAttribute(decayRate, 1));
+    g.setAttribute('decayDepth', new THREE.BufferAttribute(decayDepth, 1));
     return g;
-  }, [positions, nodeSizes, nodeTypes, nodeColors, distanceFromRoot]);
+  }, [
+    positions,
+    nodeSizes,
+    nodeTypes,
+    nodeColors,
+    distanceFromRoot,
+    decayPhase,
+    decayRate,
+    decayDepth,
+  ]);
 
   if (!vizRef.current?.showViz) return null;
 
@@ -115,7 +143,7 @@ export function NodeCloudPoints({ vizRef }: { vizRef: React.RefObject<VizEngineR
         uniforms={uniforms}
         transparent
         depthWrite={false}
-        blending={THREE.AdditiveBlending}
+        blending={THREE.NormalBlending}
       />
     </points>
   );

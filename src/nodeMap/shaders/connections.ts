@@ -15,6 +15,7 @@ export const connectionVertex = `
   uniform float uPulseTimes[3];
   uniform vec3 uPulseColors[3];
   uniform float uPulseSpeed;
+  uniform float uTouchInfluence;
   varying float vT;
   varying vec3 vColor;
   varying float vAlpha;
@@ -37,9 +38,14 @@ export const connectionVertex = `
     vec3 pos = oneMinusT * oneMinusT * startPoint + 2.0 * oneMinusT * t * control + t * t * endPoint;
     vec4 world = modelMatrix * vec4(pos, 1.0);
     float pulse = getPulseIntensity(world.xyz);
+    float pulseBoost = clamp(pulse, 0.0, 1.0);
+    float glowGate = max(uTouchInfluence, pulseBoost);
     vT = t;
-    vColor = mix(connectionColor, connectionColor + vec3(0.2), pulse * 0.5);
-    vAlpha = connectionStrength * (0.3 + 0.7 * uActivity) * (0.7 + 0.3 * sin(uTime * 2.0 + pathIndex));
+    vColor = mix(connectionColor, connectionColor + vec3(0.12), glowGate * 0.6);
+    float flowMod = 0.7 + 0.3 * sin(uTime * 2.0 + pathIndex);
+    float baseAlpha = connectionStrength * (0.16 + 0.22 * uActivity) * flowMod;
+    float glowAlpha = connectionStrength * glowGate * (0.08 + 0.14 * uActivity);
+    vAlpha = baseAlpha + glowAlpha;
     gl_Position = projectionMatrix * viewMatrix * world;
   }
 `;

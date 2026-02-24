@@ -10,10 +10,10 @@ import type { LayoutChangeEvent, GestureResponderEvent } from 'react-native';
 import { Canvas } from '@react-three/fiber/native';
 import { StarfieldPoints } from './StarfieldPoints';
 import { NodeCloudPoints } from './NodeCloudPoints';
-import { ConnectionLines } from './ConnectionLines';
 import { EngineLoop } from './EngineLoop';
 import { TouchRaycaster } from './TouchRaycaster';
 import { CameraOrbit } from './CameraOrbit';
+import { PostFXPass } from './PostFXPass';
 import type { VizEngineRef } from './types';
 
 const TAP_MAX_MS = 300;
@@ -110,7 +110,7 @@ export function NodeMapCanvasR3F({
         <CameraOrbit vizRef={vizRef} />
         <StarfieldPoints vizRef={vizRef} />
         <NodeCloudPoints vizRef={vizRef} />
-        <ConnectionLines vizRef={vizRef} />
+        <PostFXPass vizRef={vizRef} />
       </Canvas>
     </View>
   );

@@ -56,6 +56,15 @@ export function DevPanel({
   const setStarCountMultiplier = (x: number) => {
     v.starCountMultiplier = clamp(x, 0.1, 3);
   };
+  const setPostFxVignette = (x: number) => {
+    v.postFxVignette = clamp(x, 0, 1);
+  };
+  const setPostFxChromatic = (x: number) => {
+    v.postFxChromatic = clamp(x, 0, 0.01);
+  };
+  const setPostFxGrain = (x: number) => {
+    v.postFxGrain = clamp(x, 0, 0.2);
+  };
 
   return (
     <View style={[StyleSheet.absoluteFill, styles.overlay]}>
@@ -112,6 +121,55 @@ export function DevPanel({
           >
             <Text style={{ color: textColor }}>Debug pulses</Text>
           </Pressable>
+
+          <Text style={[styles.section, { color: muted }]}>Post FX</Text>
+          <Pressable
+            onPress={() => (v.postFxEnabled = !v.postFxEnabled)}
+            style={styles.row}
+          >
+            <Text style={{ color: textColor }}>Enable post FX</Text>
+            <Text style={{ color: muted }}>{v.postFxEnabled ? 'ON' : 'OFF'}</Text>
+          </Pressable>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>Vignette</Text>
+            <View style={styles.row}>
+              <Pressable onPress={() => setPostFxVignette(v.postFxVignette - 0.05)}>
+                <Text style={{ color: textColor }}> − </Text>
+              </Pressable>
+              <Text style={{ color: muted }}>{v.postFxVignette.toFixed(2)}</Text>
+              <Pressable onPress={() => setPostFxVignette(v.postFxVignette + 0.05)}>
+                <Text style={{ color: textColor }}> + </Text>
+              </Pressable>
+            </View>
+          </View>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>Chromatic</Text>
+            <View style={styles.row}>
+              <Pressable
+                onPress={() => setPostFxChromatic(v.postFxChromatic - 0.0005)}
+              >
+                <Text style={{ color: textColor }}> − </Text>
+              </Pressable>
+              <Text style={{ color: muted }}>{v.postFxChromatic.toFixed(4)}</Text>
+              <Pressable
+                onPress={() => setPostFxChromatic(v.postFxChromatic + 0.0005)}
+              >
+                <Text style={{ color: textColor }}> + </Text>
+              </Pressable>
+            </View>
+          </View>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>Grain</Text>
+            <View style={styles.row}>
+              <Pressable onPress={() => setPostFxGrain(v.postFxGrain - 0.01)}>
+                <Text style={{ color: textColor }}> − </Text>
+              </Pressable>
+              <Text style={{ color: muted }}>{v.postFxGrain.toFixed(2)}</Text>
+              <Pressable onPress={() => setPostFxGrain(v.postFxGrain + 0.01)}>
+                <Text style={{ color: textColor }}> + </Text>
+              </Pressable>
+            </View>
+          </View>
 
           <Text style={[styles.section, { color: muted }]}>Easing</Text>
           <View style={styles.row}>

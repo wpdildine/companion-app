@@ -106,6 +106,7 @@ export function ConnectionLines({ vizRef }: { vizRef: React.RefObject<VizEngineR
           new THREE.Vector3(1, 1, 1),
         ],
       },
+      uTouchInfluence: { value: 0 },
     }),
     [],
   );
@@ -130,6 +131,7 @@ export function ConnectionLines({ vizRef }: { vizRef: React.RefObject<VizEngineR
       mat.uniforms.uPulseColors.value[0].set(v.pulseColors[0][0], v.pulseColors[0][1], v.pulseColors[0][2]);
       mat.uniforms.uPulseColors.value[1].set(v.pulseColors[1][0], v.pulseColors[1][1], v.pulseColors[1][2]);
       mat.uniforms.uPulseColors.value[2].set(v.pulseColors[2][0], v.pulseColors[2][1], v.pulseColors[2][2]);
+      mat.uniforms.uTouchInfluence.value = v.touchInfluence;
     }
   });
 
@@ -170,7 +172,7 @@ export function ConnectionLines({ vizRef }: { vizRef: React.RefObject<VizEngineR
         uniforms={uniforms}
         transparent
         depthWrite={false}
-        blending={THREE.AdditiveBlending}
+        blending={THREE.NormalBlending}
       />
     </lineSegments>
   );

@@ -56,6 +56,11 @@ export interface VizEngineRef {
   autoRotSpeedX: number;
   autoRotSpeedY: number;
   autoRotSpeedZ: number;
+  /** Post FX controls. */
+  postFxEnabled: boolean;
+  postFxVignette: number;
+  postFxChromatic: number;
+  postFxGrain: number;
 }
 
 const SENTINEL_FAR = 1e6;
@@ -96,6 +101,10 @@ export function createDefaultVizRef(): VizEngineRef {
     autoRotSpeedX: (Math.random() * 0.08 + 0.04) * (Math.random() > 0.5 ? 1 : -1),
     autoRotSpeedY: (Math.random() * 0.08 + 0.04) * (Math.random() > 0.5 ? 1 : -1),
     autoRotSpeedZ: (Math.random() * 0.04 + 0.02) * (Math.random() > 0.5 ? 1 : -1),
+    postFxEnabled: true,
+    postFxVignette: 0.14,
+    postFxChromatic: 0.0,
+    postFxGrain: 0.0,
   };
 }
 

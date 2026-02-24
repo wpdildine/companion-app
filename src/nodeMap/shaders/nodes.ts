@@ -8,6 +8,9 @@ export const nodeVertex = `
   attribute float nodeType;
   attribute vec3 nodeColor;
   attribute float distanceFromRoot;
+  attribute float decayPhase;
+  attribute float decayRate;
+  attribute float decayDepth;
   uniform float uTime;
   uniform float uActivity;
   uniform float uBaseNodeSize;
@@ -35,8 +38,22 @@ export const nodeVertex = `
 
   void main() {
     float breath = 0.98 + 0.04 * sin(uTime * 1.2 + distanceFromRoot * 6.28);
-    float drift = 0.02 * sin(uTime * 0.7 + position.x * 10.0) + 0.02 * cos(uTime * 0.5 + position.z * 10.0);
-    vec3 pos = position + normalize(position) * drift;
+    float localNoise = sin(position.x * 5.7 + position.y * 3.9 + position.z * 4.3 + uTime * 0.45 + decayPhase);
+    float swirl = sin(uTime * (0.32 + decayRate * 0.18) + position.x * 2.1) + cos(uTime * (0.27 + decayRate * 0.15) + position.z * 1.9);
+    // Keep spherical core, but loosen edge falloff so the outer shell extends further.
+    float edgeRelax = smoothstep(0.25, 1.0, distanceFromRoot);
+    float radialFuzz =
+      (0.07 + decayDepth * 0.36) * (0.75 + edgeRelax * 1.45) * localNoise +
+      (0.05 + edgeRelax * 0.12) * swirl;
+    float tangentFuzzA = sin(uTime * 0.38 + decayPhase + position.y * 4.0);
+    float tangentFuzzB = cos(uTime * 0.31 + decayPhase + position.x * 4.0);
+    vec3 tangent = normalize(vec3(-position.z + 1e-3, 0.0, position.x + 1e-3));
+    vec3 bitangent = normalize(cross(normalize(position), tangent));
+    vec3 pos =
+      position +
+      normalize(position) * radialFuzz +
+      tangent * (0.03 + decayDepth * 0.08 + edgeRelax * 0.06) * tangentFuzzA +
+      bitangent * (0.03 + decayDepth * 0.08 + edgeRelax * 0.06) * tangentFuzzB;
     vec3 sphereDir = normalize(position);
     vec4 world = modelMatrix * vec4(pos, 1.0);
     float pulse = getPulseIntensity(world.xyz);
@@ -50,15 +67,31 @@ export const nodeVertex = `
     vec3 gradientA = vec3(0.35, 0.55, 1.0);
     vec3 gradientB = vec3(0.95, 0.35, 0.85);
     vec3 gradientColor = mix(gradientA, gradientB, gradientT);
-    vec3 baseColor = mix(nodeColor, gradientColor, 0.45 + 0.2 * uActivity);
-    vColor = mix(baseColor, baseColor + vec3(0.3), pulse * 0.5);
+    // Coordinate node palette with starfield: same warm/cool endpoints and cadence.
+    vec3 starWarm = vec3(1.0, 0.9, 0.78);
+    vec3 starCool = vec3(0.72, 0.82, 1.0);
+    float starSync = 0.5 + 0.5 * sin(uTime * 1.4 + position.x * 8.0 + position.z * 6.0);
+    vec3 starSyncColor = mix(starWarm, starCool, starSync);
+    vec3 baseColor = mix(nodeColor, gradientColor, 0.38 + 0.16 * uActivity);
+    baseColor = mix(baseColor, starSyncColor, 0.34);
     float touchDist = distance(world.xyz, uTouchWorld);
     float touchBoost = uTouchInfluence * (1.0 - smoothstep(0.0, 2.0, touchDist));
-    vAlpha = (0.4 + 0.6 * uActivity) * breath * (1.0 + touchBoost * 0.5);
+    float pulseBoost = clamp(pulse, 0.0, 1.0);
+    float glowGate = max(touchBoost, pulseBoost);
+    float randA = sin(uTime * (0.23 + decayRate * 0.41) + decayPhase * 1.7);
+    float randB = cos(uTime * (0.61 + decayRate * 0.27) + decayPhase * 0.37);
+    float randC = sin(uTime * (1.07 + decayRate * 0.53) + decayPhase * 2.31 + position.y * 1.7);
+    float randomDecayMix = clamp(0.5 + 0.5 * (0.5 * randA + 0.3 * randB + 0.2 * randC), 0.0, 1.0);
+    float randomDecay = 1.0 - decayDepth * (0.12 + 0.95 * randomDecayMix);
+    vec3 brightBase = baseColor * (1.25 + 0.2 * uActivity);
+    vColor = mix(brightBase, brightBase + vec3(0.18), glowGate * 0.55);
+    float baseAlpha = (0.42 + 0.34 * uActivity) * breath * randomDecay;
+    vAlpha = baseAlpha + glowGate * (0.10 + 0.16 * uActivity);
     vec4 mv = viewMatrix * world;
     gl_Position = projectionMatrix * mv;
-    float s = (uBaseNodeSize + nodeSize) * (200.0 / -mv.z) * (1.0 + pulse * 0.5 + touchBoost * 0.3);
-    gl_PointSize = max(s, 2.0);
+    float sizeDecay = 1.0 - decayDepth * 0.22 * (0.35 + 0.65 * randomDecayMix);
+    float s = (uBaseNodeSize + nodeSize) * sizeDecay * (220.0 / -mv.z) * (1.0 + pulse * 0.35 + touchBoost * 0.2);
+    gl_PointSize = max(s, 2.4);
   }
 `;
 
@@ -69,9 +102,11 @@ export const nodeFragment = `
   void main() {
     vec2 c = gl_PointCoord - 0.5;
     float d = length(c);
-    float a = 1.0 - smoothstep(0.0, 0.5, d);
-    a *= vAlpha;
-    a += vPulse * 0.3 * (1.0 - d * 2.0);
+    // Sharper point profile to reduce blur/haze.
+    float edge = 1.0 - smoothstep(0.0, 0.34, d);
+    float core = 1.0 - smoothstep(0.0, 0.13, d);
+    float a = (edge * 0.35 + core * 0.65) * vAlpha;
+    a += vPulse * 0.14 * (1.0 - d * 2.0);
     gl_FragColor = vec4(vColor, min(a, 1.0));
   }
 `;
