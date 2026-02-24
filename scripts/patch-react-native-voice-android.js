@@ -11,6 +11,24 @@ const target = path.join(
   'android',
   'build.gradle'
 );
+const srcIndexTarget = path.join(
+  __dirname,
+  '..',
+  'node_modules',
+  '@react-native-voice',
+  'voice',
+  'src',
+  'index.ts'
+);
+const distIndexTarget = path.join(
+  __dirname,
+  '..',
+  'node_modules',
+  '@react-native-voice',
+  'voice',
+  'dist',
+  'index.js'
+);
 
 if (!fs.existsSync(target)) {
   console.warn('[patch-voice] build.gradle not found, skipping.');
@@ -54,8 +72,39 @@ dependencies {
 const current = fs.readFileSync(target, 'utf8');
 if (current.includes('androidx.appcompat:appcompat:1.7.0') && current.includes('namespace "com.wenkesj.voice"')) {
   console.log('[patch-voice] already patched.');
-  process.exit(0);
+} else {
+  fs.writeFileSync(target, patched);
+  console.log('[patch-voice] patched @react-native-voice/voice android build.gradle');
 }
 
-fs.writeFileSync(target, patched);
-console.log('[patch-voice] patched @react-native-voice/voice android build.gradle');
+function patchModuleResolution(filePath, from, to) {
+  if (!fs.existsSync(filePath)) return false;
+  const content = fs.readFileSync(filePath, 'utf8');
+  if (content.includes(to)) return false;
+  if (!content.includes(from)) return false;
+  fs.writeFileSync(filePath, content.replace(from, to));
+  return true;
+}
+
+const patchedSrcIndex = patchModuleResolution(
+  srcIndexTarget,
+  'const Voice = NativeModules.Voice as VoiceModule;',
+  'const Voice = (NativeModules.Voice ?? NativeModules.RCTVoice) as VoiceModule;'
+);
+const patchedDistIndex = patchModuleResolution(
+  distIndexTarget,
+  'const Voice = react_native_1.NativeModules.Voice;',
+  'const Voice = react_native_1.NativeModules.Voice ?? react_native_1.NativeModules.RCTVoice;'
+);
+
+if (patchedSrcIndex || patchedDistIndex) {
+  console.log(
+    '[patch-voice] patched module resolution for Voice/RCTVoice in',
+    [
+      patchedSrcIndex ? 'src/index.ts' : null,
+      patchedDistIndex ? 'dist/index.js' : null,
+    ].filter(Boolean).join(', ')
+  );
+} else {
+  console.log('[patch-voice] module resolution already patched or files not found.');
+}

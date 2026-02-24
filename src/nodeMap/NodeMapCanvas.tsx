@@ -17,6 +17,9 @@ type R3FComponentType = React.ComponentType<{
   vizRef: React.RefObject<VizEngineRef | null>;
   controlsEnabled: boolean;
   inputEnabled: boolean;
+  onShortTap?: () => void;
+  onLongPressStart?: () => void;
+  onLongPressEnd?: () => void;
 }>;
 
 type ErrorBoundaryState = { hasError: boolean };
@@ -55,10 +58,16 @@ export function NodeMapCanvas({
   vizRef,
   controlsEnabled,
   inputEnabled,
+  onShortTap,
+  onLongPressStart,
+  onLongPressEnd,
 }: {
   vizRef: React.RefObject<VizEngineRef | null>;
   controlsEnabled: boolean;
   inputEnabled: boolean;
+  onShortTap?: () => void;
+  onLongPressStart?: () => void;
+  onLongPressEnd?: () => void;
 }) {
   const [R3FComponent, setR3FComponent] = useState<R3FComponentType | null>(null);
   const [r3fFailed, setR3FFailed] = useState(false);
@@ -161,6 +170,9 @@ export function NodeMapCanvas({
         vizRef={vizRef}
         controlsEnabled={controlsEnabled}
         inputEnabled={inputEnabled}
+        onShortTap={onShortTap}
+        onLongPressStart={onLongPressStart}
+        onLongPressEnd={onLongPressEnd}
       />
     </NodeMapErrorBoundary>
   );

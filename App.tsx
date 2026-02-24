@@ -246,6 +246,7 @@ function VoiceScreen() {
   const stateCycleIdxRef = useRef(0);
   const pressStartedWhileListeningRef = useRef(false);
   const longPressTriggeredRef = useRef(false);
+  const userModeLongPressActiveRef = useRef(false);
   const autoStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const MAX_LISTEN_MS = 12000;
   modeRef.current = mode;
@@ -276,6 +277,25 @@ function VoiceScreen() {
   const borderColor = isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)';
   const clamp = (x: number, min: number, max: number) =>
     Math.max(min, Math.min(max, x));
+
+  const getVoiceNative = () => {
+    const direct = (NativeModules?.Voice ?? null) as
+      | {
+          startSpeech?: (locale: string, opts?: object, cb?: (e?: string) => void) => void;
+          stopSpeech?: (cb?: (e?: string) => void) => void;
+        }
+      | null;
+    const rct = (NativeModules?.RCTVoice ?? null) as
+      | {
+          startSpeech?: (locale: string, opts?: object, cb?: (e?: string) => void) => void;
+          stopSpeech?: (cb?: (e?: string) => void) => void;
+        }
+      | null;
+
+    if (direct?.startSpeech || direct?.stopSpeech) return direct;
+    if (rct?.startSpeech || rct?.stopSpeech) return rct;
+    return direct ?? rct ?? null;
+  };
 
   const withViz = useCallback((fn: (v: ReturnType<typeof createDefaultVizRef>) => void) => {
     const v = vizRef.current;
@@ -330,8 +350,7 @@ function VoiceScreen() {
   // Do not mutate NativeModules (e.g. NativeModules.Voice = ...) — the bridge forbids inserting into the native module proxy.
   useEffect(() => {
     try {
-      const VoiceNative =
-        NativeModules?.Voice ?? NativeModules?.RCTVoice ?? null;
+      const VoiceNative = getVoiceNative();
       if (!VoiceNative) {
         setError(
           'Speech recognition not available (native Voice module not linked).',
@@ -342,6 +361,29 @@ function VoiceScreen() {
         return;
       }
       const Voice = require('@react-native-voice/voice').default as VoiceModule;
+      if (Platform.OS === 'android') {
+        console.log('[Voice] native exports', {
+          hasVoiceModule: !!NativeModules?.Voice,
+          hasRCTVoiceModule: !!NativeModules?.RCTVoice,
+          voiceKeys: Object.keys((NativeModules?.Voice ?? {}) as object),
+          rctVoiceKeys: Object.keys((NativeModules?.RCTVoice ?? {}) as object),
+        });
+      }
+      const hasStartApi =
+        typeof Voice?.start === 'function' ||
+        typeof VoiceNative?.startSpeech === 'function';
+      const hasStopApi =
+        typeof Voice?.stop === 'function' ||
+        typeof VoiceNative?.stopSpeech === 'function';
+      if (!hasStartApi || !hasStopApi) {
+        setError(
+          'Speech recognition not available (Voice start/stop API missing).',
+        );
+        setVoiceReady(true);
+        voiceRef.current = null;
+        setVoiceAvailable(false);
+        return;
+      }
       voiceRef.current = Voice;
       setVoiceReady(true);
       setVoiceAvailable(true);
@@ -447,28 +489,57 @@ function VoiceScreen() {
     if (V) {
       try {
         await V.stop();
-      } catch {
-        // ignore
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const nativeVoice = getVoiceNative();
+        if (
+          msg.toLowerCase().includes('stopspeech is null') &&
+          typeof nativeVoice?.stopSpeech === 'function'
+        ) {
+          try {
+            await nativeVoice.stopSpeech();
+          } catch {
+            // ignore fallback errors
+          }
+        }
       }
     }
     setMode('idle');
     setPartialText('');
   }, []);
 
-  const startListening = useCallback(async () => {
+  const startListening = useCallback(async (fresh = false) => {
     const V = voiceRef.current;
     if (!V) return;
     if (mode === 'processing' || mode === 'speaking') return;
     recordingSessionIdRef.current += 1;
     setError(null);
     setPartialText('');
-    committedTextRef.current = transcribedText;
+    if (fresh) {
+      committedTextRef.current = '';
+      setTranscribedText('');
+    } else {
+      committedTextRef.current = transcribedText;
+    }
     if (autoStopTimerRef.current) {
       clearTimeout(autoStopTimerRef.current);
       autoStopTimerRef.current = null;
     }
     try {
-      await V.start('en-US');
+      try {
+        await V.start('en-US');
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const nativeVoice = getVoiceNative();
+        if (
+          msg.toLowerCase().includes('startspeech is null') &&
+          typeof nativeVoice?.startSpeech === 'function'
+        ) {
+          await nativeVoice.startSpeech('en-US');
+        } else {
+          throw e;
+        }
+      }
       setMode('listening');
       playListenIn();
       autoStopTimerRef.current = setTimeout(() => {
@@ -664,6 +735,28 @@ function VoiceScreen() {
     await playText(text);
   }, [partialText, transcribedText, playText]);
 
+  const handleUserModeTap = useCallback(() => {
+    const text = (responseText ?? transcribedText).trim();
+    if (!text) return;
+    playText(text);
+  }, [responseText, transcribedText, playText]);
+
+  const handleUserModeLongPressStart = useCallback(() => {
+    userModeLongPressActiveRef.current = true;
+    startListening(true);
+  }, [startListening]);
+
+  const handleUserModeLongPressEnd = useCallback(() => {
+    if (!userModeLongPressActiveRef.current) return;
+    userModeLongPressActiveRef.current = false;
+    (async () => {
+      await stopListening();
+      setTimeout(() => {
+        handleSubmit();
+      }, 250);
+    })();
+  }, [stopListening, handleSubmit]);
+
   const displayText = partialText || transcribedText;
 
   if (!voiceReady && !error) {
@@ -693,6 +786,9 @@ function VoiceScreen() {
         vizRef={vizRef}
         controlsEnabled={showDevScreen}
         inputEnabled
+        onShortTap={!showDevScreen ? handleUserModeTap : undefined}
+        onLongPressStart={!showDevScreen ? handleUserModeLongPressStart : undefined}
+        onLongPressEnd={!showDevScreen ? handleUserModeLongPressEnd : undefined}
       />
       {showDevScreen && (
         <ScrollView
