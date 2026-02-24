@@ -35,18 +35,21 @@ export function buildStarfield(
     const r = radius * (0.82 + 0.18 * rnd());
     const x = r * ring * Math.cos(theta);
     const z = r * ring * Math.sin(theta);
-    const lum = 0.55 + 0.45 * rnd();
+    const lum = 0.6 + 0.4 * rnd();
+    // Match node palette endpoints (see shaders/nodes.ts gradientA/gradientB).
+    const paletteA = [0.35, 0.55, 1.0] as const;
+    const paletteB = [0.95, 0.35, 0.85] as const;
     const tint = rnd();
-    const warm = [1.0, 0.9, 0.78] as const;
-    const cool = [0.72, 0.82, 1.0] as const;
-    const rCol = warm[0] * (1 - tint) + cool[0] * tint;
-    const gCol = warm[1] * (1 - tint) + cool[1] * tint;
-    const bCol = warm[2] * (1 - tint) + cool[2] * tint;
+    const rCol = paletteA[0] * (1 - tint) + paletteB[0] * tint;
+    const gCol = paletteA[1] * (1 - tint) + paletteB[1] * tint;
+    const bCol = paletteA[2] * (1 - tint) + paletteB[2] * tint;
+    // Subtle size jitter for a more cohesive background texture.
+    const sizeJitter = (rnd() - 0.5) * 0.55;
     out.push({
       position: [x, y, z],
       color: [rCol * lum, gCol * lum, bCol * lum],
-      // Mobile GL point sprites need larger base size to stay visible.
-      size: 0.7 + 1.8 * Math.pow(rnd(), 2),
+      // Keep stars visible while only slightly randomizing per-star size.
+      size: 1.35 + sizeJitter,
     });
   }
   return out;
