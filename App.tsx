@@ -75,6 +75,7 @@ const DEV_APP_STATES: VizMode[] = [
   'touched',
   'released',
 ];
+const DOUBLE_TAP_MS = 280;
 
 /** Resolves embed and chat model file paths for on-device RAG. Uses bundle paths when present in assets/content_pack/models/, else Documents/models with fallback filenames. Resolves each model independently so a pack with only LLM (no embed) still gets chat from bundle. */
 async function getOnDeviceModelPaths(): Promise<{
@@ -247,6 +248,9 @@ function VoiceScreen() {
   const pressStartedWhileListeningRef = useRef(false);
   const longPressTriggeredRef = useRef(false);
   const userModeLongPressActiveRef = useRef(false);
+  const lastTapAtRef = useRef(0);
+  const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playbackInterruptedRef = useRef(false);
   const autoStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const MAX_LISTEN_MS = 12000;
   modeRef.current = mode;
@@ -345,6 +349,15 @@ function VoiceScreen() {
       }
     };
   }, [stateCycleOn, applyVizState]);
+
+  useEffect(() => {
+    return () => {
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Lazy-load Voice only after mount so we don't touch native before runtime is ready (RN 0.84).
   // Do not mutate NativeModules (e.g. NativeModules.Voice = ...) — the bridge forbids inserting into the native module proxy.
@@ -658,6 +671,7 @@ function VoiceScreen() {
       return;
     }
     setError(null);
+    playbackInterruptedRef.current = false;
     console.log('[Playback] start', {
       piperAvailable,
       textLength: normalized.length,
@@ -685,6 +699,7 @@ function VoiceScreen() {
         await PiperTts.speak(normalized);
         console.log('[Playback] Piper: speak() resolved (playback finished)');
       } catch (e) {
+        if (playbackInterruptedRef.current) return;
         console.log('[Playback] Piper: speak() rejected', e);
         setError(e instanceof Error ? e.message : 'Piper playback failed');
       } finally {
@@ -720,11 +735,33 @@ function VoiceScreen() {
       console.log('[Playback] system TTS: calling speak()');
       Tts.speak(normalized);
     } catch (e) {
+      if (playbackInterruptedRef.current) return;
       console.log('[Playback] system TTS error', e);
       setError(e instanceof Error ? e.message : 'TTS playback failed');
       setMode('idle');
     }
   }, [piperAvailable]);
+
+  const cancelPlayback = useCallback(() => {
+    playbackInterruptedRef.current = true;
+    try {
+      const PiperTts = require('piper-tts').default;
+      if (typeof PiperTts?.stop === 'function') {
+        PiperTts.stop();
+      }
+    } catch {
+      // ignore
+    }
+    try {
+      ttsRef.current?.stop();
+    } catch {
+      // ignore
+    }
+    setMode('idle');
+    setTimeout(() => {
+      playbackInterruptedRef.current = false;
+    }, 120);
+  }, []);
 
   const handlePlayback = useCallback(async () => {
     const text = (partialText || transcribedText).trim();
@@ -736,12 +773,35 @@ function VoiceScreen() {
   }, [partialText, transcribedText, playText]);
 
   const handleUserModeTap = useCallback(() => {
-    const text = (responseText ?? transcribedText).trim();
-    if (!text) return;
-    playText(text);
-  }, [responseText, transcribedText, playText]);
+    const now = Date.now();
+    const sinceLast = now - lastTapAtRef.current;
+    if (sinceLast > 0 && sinceLast <= DOUBLE_TAP_MS) {
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = null;
+      }
+      lastTapAtRef.current = 0;
+      const answer = (responseText ?? '').trim();
+      if (!answer) return;
+      playText(answer);
+      return;
+    }
+    lastTapAtRef.current = now;
+    if (singleTapTimerRef.current) {
+      clearTimeout(singleTapTimerRef.current);
+    }
+    singleTapTimerRef.current = setTimeout(() => {
+      singleTapTimerRef.current = null;
+      cancelPlayback();
+    }, DOUBLE_TAP_MS + 20);
+  }, [responseText, playText, cancelPlayback]);
 
   const handleUserModeLongPressStart = useCallback(() => {
+    if (singleTapTimerRef.current) {
+      clearTimeout(singleTapTimerRef.current);
+      singleTapTimerRef.current = null;
+    }
+    lastTapAtRef.current = 0;
     userModeLongPressActiveRef.current = true;
     startListening(true);
   }, [startListening]);
