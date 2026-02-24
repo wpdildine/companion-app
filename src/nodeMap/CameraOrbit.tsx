@@ -6,7 +6,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useRef } from 'react';
 import type { VizEngineRef } from './types';
 
-const RADIUS = 12;
+const RADIUS = 13.5;
 
 export function CameraOrbit({
   vizRef,

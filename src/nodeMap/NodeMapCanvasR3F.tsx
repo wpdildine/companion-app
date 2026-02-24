@@ -22,8 +22,10 @@ const ORBIT_SENSITIVITY = 0.008;
 
 export function NodeMapCanvasR3F({
   vizRef,
+  controlsEnabled,
 }: {
   vizRef: React.RefObject<VizEngineRef | null>;
+  controlsEnabled: boolean;
 }) {
   const touchStart = useRef({ x: 0, y: 0, t: 0 });
   const lastMove = useRef({ x: 0, y: 0 });
@@ -49,6 +51,7 @@ export function NodeMapCanvasR3F({
   };
 
   const onTouchMove = (e: GestureResponderEvent) => {
+    if (!controlsEnabled) return;
     const v = vizRef.current;
     if (!v) return;
     const { locationX, locationY } = e.nativeEvent;
@@ -93,7 +96,7 @@ export function NodeMapCanvasR3F({
       style={StyleSheet.absoluteFill}
       onLayout={onLayout}
       onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
+      onTouchMove={controlsEnabled ? onTouchMove : undefined}
       onTouchEnd={onTouchEnd}
     >
       <Canvas

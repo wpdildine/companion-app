@@ -15,6 +15,7 @@ const R3F_EXPO_WAIT_POLL_MS = 150;
 
 type R3FComponentType = React.ComponentType<{
   vizRef: React.RefObject<VizEngineRef | null>;
+  controlsEnabled: boolean;
 }>;
 
 type ErrorBoundaryState = { hasError: boolean };
@@ -49,7 +50,13 @@ class NodeMapErrorBoundary extends Component<
   }
 }
 
-export function NodeMapCanvas({ vizRef }: { vizRef: React.RefObject<VizEngineRef | null> }) {
+export function NodeMapCanvas({
+  vizRef,
+  controlsEnabled,
+}: {
+  vizRef: React.RefObject<VizEngineRef | null>;
+  controlsEnabled: boolean;
+}) {
   const [R3FComponent, setR3FComponent] = useState<R3FComponentType | null>(null);
   const [r3fFailed, setR3FFailed] = useState(false);
 
@@ -147,7 +154,7 @@ export function NodeMapCanvas({ vizRef }: { vizRef: React.RefObject<VizEngineRef
       fallback={fallback}
       onCaught={() => setR3FFailed(true)}
     >
-      <R3FComponent vizRef={vizRef} />
+      <R3FComponent vizRef={vizRef} controlsEnabled={controlsEnabled} />
     </NodeMapErrorBoundary>
   );
 }

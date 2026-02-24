@@ -615,7 +615,7 @@ function VoiceScreen() {
 
   return (
     <View style={styles.screenWrapper}>
-      <NodeMapCanvas vizRef={vizRef} />
+      <NodeMapCanvas vizRef={vizRef} controlsEnabled={showDevScreen && devEnabled} />
       {showDevScreen && (
         <ScrollView
           style={[styles.container, styles.scrollOverlay]}

@@ -42,7 +42,7 @@ const PALETTE = [
 /** Crystalline Sphere: multiple Fibonacci layers, lateral and long-range connections */
 export function buildCrystallineSphere(
   nodesPerLayer: number[] = [24, 48, 96, 128],
-  radii: number[] = [1.2, 2.0, 2.8, 3.5],
+  radii: number[] = [0.9, 1.5, 2.1, 2.6],
   lateralK = 2,
   longRangeK = 1,
 ): { nodes: Node[]; edges: { a: number; b: number; strength: number; pathIndex: number }[] } {

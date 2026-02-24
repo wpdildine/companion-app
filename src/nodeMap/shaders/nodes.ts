@@ -37,10 +37,21 @@ export const nodeVertex = `
     float breath = 0.98 + 0.04 * sin(uTime * 1.2 + distanceFromRoot * 6.28);
     float drift = 0.02 * sin(uTime * 0.7 + position.x * 10.0) + 0.02 * cos(uTime * 0.5 + position.z * 10.0);
     vec3 pos = position + normalize(position) * drift;
+    vec3 sphereDir = normalize(position);
     vec4 world = modelMatrix * vec4(pos, 1.0);
     float pulse = getPulseIntensity(world.xyz);
     vPulse = pulse;
-    vColor = mix(nodeColor, nodeColor + vec3(0.3), pulse * 0.5);
+    float gradientT = 0.5 + 0.5 * sin(
+      sphereDir.y * 3.14159 +
+      sphereDir.x * 1.7 +
+      sphereDir.z * 0.9 +
+      uTime * 0.45
+    );
+    vec3 gradientA = vec3(0.35, 0.55, 1.0);
+    vec3 gradientB = vec3(0.95, 0.35, 0.85);
+    vec3 gradientColor = mix(gradientA, gradientB, gradientT);
+    vec3 baseColor = mix(nodeColor, gradientColor, 0.45 + 0.2 * uActivity);
+    vColor = mix(baseColor, baseColor + vec3(0.3), pulse * 0.5);
     float touchDist = distance(world.xyz, uTouchWorld);
     float touchBoost = uTouchInfluence * (1.0 - smoothstep(0.0, 2.0, touchDist));
     vAlpha = (0.4 + 0.6 * uActivity) * breath * (1.0 + touchBoost * 0.5);

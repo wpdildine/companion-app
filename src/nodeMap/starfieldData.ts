@@ -20,22 +20,33 @@ function mulberry32(seed: number) {
 
 export function buildStarfield(
   count: number,
-  radius: number = 25,
+  radius: number = 42,
 ): StarVertex[] {
   const rnd = mulberry32(SEED);
   const out: StarVertex[] = [];
   for (let i = 0; i < count; i++) {
     const theta = rnd() * Math.PI * 2;
-    const phi = Math.acos(2 * rnd() - 1);
-    const r = radius * Math.cbrt(rnd());
-    const x = r * Math.sin(phi) * Math.cos(theta);
-    const y = r * Math.sin(phi) * Math.sin(theta);
-    const z = r * Math.cos(phi);
-    const lum = 0.5 + 0.5 * rnd();
+    const isBandStar = rnd() < 0.72;
+    // Most stars live in a thin galactic band, with the remainder isotropic.
+    const yBand = (rnd() - 0.5) * radius * 0.24;
+    const yIso = (2 * rnd() - 1) * radius;
+    const y = isBandStar ? yBand : yIso;
+    const ring = Math.sqrt(Math.max(0.01, 1 - (y / radius) * (y / radius)));
+    const r = radius * (0.82 + 0.18 * rnd());
+    const x = r * ring * Math.cos(theta);
+    const z = r * ring * Math.sin(theta);
+    const lum = 0.55 + 0.45 * rnd();
+    const tint = rnd();
+    const warm = [1.0, 0.9, 0.78] as const;
+    const cool = [0.72, 0.82, 1.0] as const;
+    const rCol = warm[0] * (1 - tint) + cool[0] * tint;
+    const gCol = warm[1] * (1 - tint) + cool[1] * tint;
+    const bCol = warm[2] * (1 - tint) + cool[2] * tint;
     out.push({
       position: [x, y, z],
-      color: [lum, lum * 0.95, lum * 1.1],
-      size: 0.015 + 0.02 * rnd(),
+      color: [rCol * lum, gCol * lum, bCol * lum],
+      // Mobile GL point sprites need larger base size to stay visible.
+      size: 0.7 + 1.8 * Math.pow(rnd(), 2),
     });
   }
   return out;

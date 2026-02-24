@@ -42,6 +42,8 @@ export function StarfieldPoints({ vizRef }: { vizRef: React.RefObject<VizEngineR
 
   useFrame((_, delta) => {
     if (!meshRef.current?.material || !vizRef.current) return;
+    meshRef.current.rotation.y += delta * 0.01;
+    meshRef.current.rotation.x += delta * 0.003;
     const mat = meshRef.current.material as THREE.ShaderMaterial;
     if (mat.uniforms?.uTime) mat.uniforms.uTime.value += delta;
   });
@@ -65,6 +67,8 @@ export function StarfieldPoints({ vizRef }: { vizRef: React.RefObject<VizEngineR
         uniforms={uniforms}
         transparent
         depthWrite={false}
+        depthTest={false}
+        blending={THREE.AdditiveBlending}
       />
     </points>
   );

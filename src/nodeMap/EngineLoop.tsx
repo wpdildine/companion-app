@@ -26,6 +26,10 @@ export function EngineLoop({ vizRef }: { vizRef: React.RefObject<VizEngineRef | 
     const touchTarget = v.touchActive ? 1 : 0;
     const tk = 1 - Math.exp(-6 * dt);
     v.touchInfluence = v.touchInfluence + (touchTarget - v.touchInfluence) * tk;
+    const rotScale = 0.25 + v.activity * 0.45;
+    v.autoRotX += dt * v.autoRotSpeedX * rotScale;
+    v.autoRotY += dt * v.autoRotSpeedY * rotScale;
+    v.autoRotZ += dt * v.autoRotSpeedZ * rotScale;
   });
   return null;
 }

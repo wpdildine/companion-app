@@ -41,7 +41,7 @@ export function NodeCloudPoints({ vizRef }: { vizRef: React.RefObject<VizEngineR
     () => ({
       uTime: { value: 0 },
       uActivity: { value: 0.1 },
-      uBaseNodeSize: { value: 2 },
+      uBaseNodeSize: { value: 1.6 },
       uPulseSpeed: { value: 4 },
       uPulsePositions: {
         value: [
@@ -66,8 +66,12 @@ export function NodeCloudPoints({ vizRef }: { vizRef: React.RefObject<VizEngineR
 
   useFrame((_, delta) => {
     if (!meshRef.current?.material || !vizRef.current) return;
-    const mat = meshRef.current.material as THREE.ShaderMaterial;
+    const points = meshRef.current;
+    const mat = points.material as THREE.ShaderMaterial;
     const v = vizRef.current;
+    points.rotation.x = v.autoRotX;
+    points.rotation.y = v.autoRotY;
+    points.rotation.z = v.autoRotZ;
     if (mat.uniforms) {
       mat.uniforms.uTime.value += delta;
       mat.uniforms.uActivity.value = v.activity;

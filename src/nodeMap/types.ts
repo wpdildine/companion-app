@@ -48,6 +48,14 @@ export interface VizEngineRef {
   /** Drag-to-orbit: spherical angles (radians). */
   orbitTheta: number;
   orbitPhi: number;
+  /** Shared autonomous network rotation (radians). */
+  autoRotX: number;
+  autoRotY: number;
+  autoRotZ: number;
+  /** Small autonomous rotation speeds (rad/s). */
+  autoRotSpeedX: number;
+  autoRotSpeedY: number;
+  autoRotSpeedZ: number;
 }
 
 const SENTINEL_FAR = 1e6;
@@ -82,6 +90,12 @@ export function createDefaultVizRef(): VizEngineRef {
     canvasHeight: 1,
     orbitTheta: 0,
     orbitPhi: 0.4,
+    autoRotX: 0,
+    autoRotY: 0,
+    autoRotZ: 0,
+    autoRotSpeedX: (Math.random() * 0.08 + 0.04) * (Math.random() > 0.5 ? 1 : -1),
+    autoRotSpeedY: (Math.random() * 0.08 + 0.04) * (Math.random() > 0.5 ? 1 : -1),
+    autoRotSpeedZ: (Math.random() * 0.04 + 0.02) * (Math.random() > 0.5 ? 1 : -1),
   };
 }
 

@@ -112,8 +112,12 @@ export function ConnectionLines({ vizRef }: { vizRef: React.RefObject<VizEngineR
 
   useFrame((_, delta) => {
     if (!meshRef.current?.material || !vizRef.current) return;
-    const mat = meshRef.current.material as THREE.ShaderMaterial;
+    const lines = meshRef.current;
+    const mat = lines.material as THREE.ShaderMaterial;
     const v = vizRef.current;
+    lines.rotation.x = v.autoRotX;
+    lines.rotation.y = v.autoRotY;
+    lines.rotation.z = v.autoRotZ;
     if (mat.uniforms) {
       mat.uniforms.uTime.value += delta;
       mat.uniforms.uActivity.value = v.activity;
