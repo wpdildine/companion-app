@@ -16,16 +16,18 @@ import { CameraOrbit } from './CameraOrbit';
 import { PostFXPass } from './PostFXPass';
 import type { VizEngineRef } from './types';
 
-const TAP_MAX_MS = 300;
+const TAP_MAX_MS = 2200;
 const TAP_MAX_MOVE = 15;
 const ORBIT_SENSITIVITY = 0.008;
 
 export function NodeMapCanvasR3F({
   vizRef,
   controlsEnabled,
+  inputEnabled,
 }: {
   vizRef: React.RefObject<VizEngineRef | null>;
   controlsEnabled: boolean;
+  inputEnabled: boolean;
 }) {
   const touchStart = useRef({ x: 0, y: 0, t: 0 });
   const lastMove = useRef({ x: 0, y: 0 });
@@ -44,6 +46,7 @@ export function NodeMapCanvasR3F({
   };
 
   const onTouchStart = (e: GestureResponderEvent) => {
+    if (!inputEnabled) return;
     const { locationX, locationY } = e.nativeEvent;
     touchStart.current = { x: locationX, y: locationY, t: Date.now() };
     lastMove.current = { x: locationX, y: locationY };
@@ -51,6 +54,7 @@ export function NodeMapCanvasR3F({
   };
 
   const onTouchMove = (e: GestureResponderEvent) => {
+    if (!inputEnabled) return;
     if (!controlsEnabled) return;
     const v = vizRef.current;
     if (!v) return;
@@ -63,6 +67,7 @@ export function NodeMapCanvasR3F({
   };
 
   const onTouchEnd = (e: GestureResponderEvent) => {
+    if (!inputEnabled) return;
     const v = vizRef.current;
     const { locationX, locationY } = e.nativeEvent;
     const dt = Date.now() - touchStart.current.t;
@@ -95,9 +100,9 @@ export function NodeMapCanvasR3F({
     <View
       style={StyleSheet.absoluteFill}
       onLayout={onLayout}
-      onTouchStart={onTouchStart}
-      onTouchMove={controlsEnabled ? onTouchMove : undefined}
-      onTouchEnd={onTouchEnd}
+      onTouchStart={inputEnabled ? onTouchStart : undefined}
+      onTouchMove={inputEnabled && controlsEnabled ? onTouchMove : undefined}
+      onTouchEnd={inputEnabled ? onTouchEnd : undefined}
     >
       <Canvas
         style={StyleSheet.absoluteFill}

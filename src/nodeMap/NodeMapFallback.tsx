@@ -10,7 +10,7 @@ import type { VizEngineRef } from './types';
 
 const LOG_FALLBACK = true;
 
-const FALLBACK_BG = '#0a0612';
+const FALLBACK_BG = '#000000';
 const NODE_COUNT = 72;
 const SEED = 54321;
 
@@ -78,39 +78,12 @@ export function NodeMapFallback({
   const time = tick * (POLL_MS / 1000);
 
   return (
-    <View style={[StyleSheet.absoluteFill, styles.root]}>
-      {NODES.map((node, i) => {
-        const twinkle = 0.5 + 0.5 * Math.sin(node.phase + time);
-        const opacity = Math.min(1, 0.2 + activity * 0.5 + twinkle * 0.25);
-        const left = node.x * width - node.size;
-        const top = node.y * height - node.size;
-        return (
-          <View
-            key={i}
-            style={[
-              styles.dot,
-              {
-                left,
-                top,
-                width: node.size * 2,
-                height: node.size * 2,
-                borderRadius: node.size,
-                opacity,
-              },
-            ]}
-          />
-        );
-      })}
-    </View>
+    <View style={[StyleSheet.absoluteFill, styles.root]} />
   );
 }
 
 const styles = StyleSheet.create({
   root: {
     backgroundColor: FALLBACK_BG,
-  },
-  dot: {
-    position: 'absolute',
-    backgroundColor: 'rgba(200, 210, 255, 0.9)',
   },
 });

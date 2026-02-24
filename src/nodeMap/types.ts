@@ -56,6 +56,8 @@ export interface VizEngineRef {
   autoRotSpeedX: number;
   autoRotSpeedY: number;
   autoRotSpeedZ: number;
+  /** Current app mode so render layers can map state-specific effects. */
+  currentMode: VizMode;
   /** Post FX controls. */
   postFxEnabled: boolean;
   postFxVignette: number;
@@ -101,6 +103,7 @@ export function createDefaultVizRef(): VizEngineRef {
     autoRotSpeedX: (Math.random() * 0.08 + 0.04) * (Math.random() > 0.5 ? 1 : -1),
     autoRotSpeedY: (Math.random() * 0.08 + 0.04) * (Math.random() > 0.5 ? 1 : -1),
     autoRotSpeedZ: (Math.random() * 0.04 + 0.02) * (Math.random() > 0.5 ? 1 : -1),
+    currentMode: 'idle',
     postFxEnabled: true,
     postFxVignette: 0.14,
     postFxChromatic: 0.0,

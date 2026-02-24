@@ -11,11 +11,24 @@ import {
   ScrollView,
   useColorScheme,
 } from 'react-native';
-import type { VizEngineRef } from './types';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  TARGET_ACTIVITY_BY_MODE,
+  type VizEngineRef,
+  type VizMode,
+} from './types';
 import { triggerPulseAtCenter } from './triggerPulse';
 
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v));
+const APP_STATES: VizMode[] = [
+  'idle',
+  'listening',
+  'processing',
+  'speaking',
+  'touched',
+  'released',
+];
 
 export function DevPanel({
   vizRef,
@@ -25,49 +38,130 @@ export function DevPanel({
   onClose: () => void;
 }) {
   const isDark = useColorScheme() === 'dark';
-  const v = vizRef.current;
-  if (!v) return null;
+  const [, setUiVersion] = useState(0);
+  const [stateCycleOn, setStateCycleOn] = useState(false);
+  const stateCycleTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stateIdx = useRef(0);
 
   const textColor = isDark ? '#e5e5e5' : '#1a1a1a';
   const muted = isDark ? '#888' : '#666';
   const bg = isDark ? 'rgba(30,30,30,0.95)' : 'rgba(250,250,250,0.95)';
 
+  const withViz = useCallback(
+    (fn: (viz: VizEngineRef) => void) => {
+      const viz = vizRef.current;
+      if (!viz) return;
+      fn(viz);
+      // Dev panel values are ref-backed; force repaint so controls reflect changes immediately.
+      setUiVersion(v => v + 1);
+    },
+    [vizRef],
+  );
+
   const setPaletteId = (id: number) => {
-    v.paletteId = Math.max(0, Math.floor(id));
+    withViz(viz => {
+      viz.paletteId = Math.max(0, Math.floor(id));
+    });
   };
   const setHueShift = (x: number) => {
-    v.hueShift = clamp(x, -0.1, 0.1);
+    withViz(viz => {
+      viz.hueShift = clamp(x, -0.1, 0.1);
+    });
   };
   const setSatBoost = (x: number) => {
-    v.satBoost = clamp(x, 0.5, 1.5);
+    withViz(viz => {
+      viz.satBoost = clamp(x, 0.5, 1.5);
+    });
   };
   const setLumBoost = (x: number) => {
-    v.lumBoost = clamp(x, 0.5, 1.5);
+    withViz(viz => {
+      viz.lumBoost = clamp(x, 0.5, 1.5);
+    });
   };
   const setActivityLambda = (x: number) => {
-    v.activityLambda = clamp(x, 0.5, 20);
+    withViz(viz => {
+      viz.activityLambda = clamp(x, 0.5, 20);
+    });
   };
   const setLambdaUp = (x: number) => {
-    v.lambdaUp = clamp(x, 0.5, 20);
+    withViz(viz => {
+      viz.lambdaUp = clamp(x, 0.5, 20);
+    });
   };
   const setLambdaDown = (x: number) => {
-    v.lambdaDown = clamp(x, 0.5, 20);
+    withViz(viz => {
+      viz.lambdaDown = clamp(x, 0.5, 20);
+    });
   };
   const setStarCountMultiplier = (x: number) => {
-    v.starCountMultiplier = clamp(x, 0.1, 3);
+    withViz(viz => {
+      viz.starCountMultiplier = clamp(x, 0.1, 3);
+    });
   };
   const setPostFxVignette = (x: number) => {
-    v.postFxVignette = clamp(x, 0, 1);
+    withViz(viz => {
+      viz.postFxVignette = clamp(x, 0, 1);
+    });
   };
   const setPostFxChromatic = (x: number) => {
-    v.postFxChromatic = clamp(x, 0, 0.01);
+    withViz(viz => {
+      viz.postFxChromatic = clamp(x, 0, 0.01);
+    });
   };
   const setPostFxGrain = (x: number) => {
-    v.postFxGrain = clamp(x, 0, 0.2);
+    withViz(viz => {
+      viz.postFxGrain = clamp(x, 0, 0.2);
+    });
+  };
+  const applyState = useCallback(
+    (state: VizMode) => {
+      withViz(viz => {
+        viz.targetActivity = TARGET_ACTIVITY_BY_MODE[state];
+        if (state === 'touched') {
+          viz.touchActive = true;
+          viz.touchWorld = [0, 0, 0];
+        } else {
+          viz.touchActive = false;
+          viz.touchWorld = null;
+        }
+      });
+      if (state === 'released') {
+        // Released mode should show quick pulse then settle.
+        triggerPulseAtCenter(vizRef);
+      }
+    },
+    [vizRef, withViz],
+  );
+  const toggleStateCycle = () => {
+    const next = !stateCycleOn;
+    setStateCycleOn(next);
+    setUiVersion(v => v + 1);
   };
 
+  useEffect(() => {
+    if (stateCycleOn) {
+      stateCycleTimer.current = setInterval(() => {
+        const mode = APP_STATES[stateIdx.current % APP_STATES.length]!;
+        applyState(mode);
+        stateIdx.current = (stateIdx.current + 1) % APP_STATES.length;
+      }, 1300);
+    } else if (stateCycleTimer.current) {
+      clearInterval(stateCycleTimer.current);
+      stateCycleTimer.current = null;
+    }
+    return () => {
+      if (stateCycleTimer.current) {
+        clearInterval(stateCycleTimer.current);
+        stateCycleTimer.current = null;
+      }
+    };
+  }, [stateCycleOn, applyState]);
+
+  const v = vizRef.current;
+  if (!v) return null;
+
   return (
-    <View style={[StyleSheet.absoluteFill, styles.overlay]}>
+    <View style={[StyleSheet.absoluteFill, styles.overlay]} pointerEvents="auto">
       <View style={[styles.panel, { backgroundColor: bg }]}>
         <View style={styles.header}>
           <Text style={[styles.title, { color: textColor }]}>DevPanel</Text>
@@ -122,14 +216,28 @@ export function DevPanel({
             <Text style={{ color: textColor }}>Debug pulses</Text>
           </Pressable>
 
+          <Text style={[styles.section, { color: muted }]}>State tests</Text>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>Cycle all states</Text>
+            <Pressable onPress={toggleStateCycle}>
+              <Text style={{ color: muted }}>{stateCycleOn ? 'ON' : 'OFF'}</Text>
+            </Pressable>
+          </View>
+          {APP_STATES.map(state => (
+            <Pressable
+              key={state}
+              onPress={() => applyState(state)}
+              style={styles.row}
+            >
+              <Text style={{ color: textColor }}>Apply {state}</Text>
+            </Pressable>
+          ))}
+
           <Text style={[styles.section, { color: muted }]}>Post FX</Text>
-          <Pressable
-            onPress={() => (v.postFxEnabled = !v.postFxEnabled)}
-            style={styles.row}
-          >
+          <View style={styles.row}>
             <Text style={{ color: textColor }}>Enable post FX</Text>
             <Text style={{ color: muted }}>{v.postFxEnabled ? 'ON' : 'OFF'}</Text>
-          </Pressable>
+          </View>
           <View style={styles.row}>
             <Text style={{ color: textColor }}>Vignette</Text>
             <View style={styles.row}>
@@ -275,6 +383,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.3)',
+    zIndex: 1000,
+    elevation: 20,
   },
   panel: {
     width: '90%',
@@ -282,6 +392,8 @@ const styles = StyleSheet.create({
     maxHeight: '80%',
     borderRadius: 12,
     padding: 16,
+    zIndex: 1001,
+    elevation: 21,
   },
   header: {
     flexDirection: 'row',
