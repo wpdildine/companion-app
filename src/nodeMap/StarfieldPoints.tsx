@@ -49,7 +49,7 @@ export function StarfieldPoints({ vizRef }: { vizRef: React.RefObject<VizEngineR
   const geom = useMemo(() => {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    g.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
     g.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
     return g;
   }, [positions, colors, sizes]);
@@ -65,7 +65,6 @@ export function StarfieldPoints({ vizRef }: { vizRef: React.RefObject<VizEngineR
         uniforms={uniforms}
         transparent
         depthWrite={false}
-        vertexColors
       />
     </points>
   );

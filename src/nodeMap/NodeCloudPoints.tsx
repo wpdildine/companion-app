@@ -50,7 +50,7 @@ export function NodeCloudPoints({ vizRef }: { vizRef: React.RefObject<VizEngineR
           new THREE.Vector3(1e6, 1e6, 1e6),
         ],
       },
-      uPulseTimes: { value: new THREE.Vector3(-1e3, -1e3, -1e3) },
+      uPulseTimes: { value: new Float32Array([-1e3, -1e3, -1e3]) },
       uPulseColors: {
         value: [
           new THREE.Vector3(1, 1, 1),
@@ -74,7 +74,9 @@ export function NodeCloudPoints({ vizRef }: { vizRef: React.RefObject<VizEngineR
       mat.uniforms.uPulsePositions.value[0].set(v.pulsePositions[0][0], v.pulsePositions[0][1], v.pulsePositions[0][2]);
       mat.uniforms.uPulsePositions.value[1].set(v.pulsePositions[1][0], v.pulsePositions[1][1], v.pulsePositions[1][2]);
       mat.uniforms.uPulsePositions.value[2].set(v.pulsePositions[2][0], v.pulsePositions[2][1], v.pulsePositions[2][2]);
-      mat.uniforms.uPulseTimes.value.set(v.pulseTimes[0], v.pulseTimes[1], v.pulseTimes[2]);
+      mat.uniforms.uPulseTimes.value[0] = v.pulseTimes[0];
+      mat.uniforms.uPulseTimes.value[1] = v.pulseTimes[1];
+      mat.uniforms.uPulseTimes.value[2] = v.pulseTimes[2];
       mat.uniforms.uPulseColors.value[0].set(v.pulseColors[0][0], v.pulseColors[0][1], v.pulseColors[0][2]);
       mat.uniforms.uPulseColors.value[1].set(v.pulseColors[1][0], v.pulseColors[1][1], v.pulseColors[1][2]);
       mat.uniforms.uPulseColors.value[2].set(v.pulseColors[2][0], v.pulseColors[2][1], v.pulseColors[2][2]);

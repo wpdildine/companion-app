@@ -54,11 +54,16 @@ import {
   type ValidationSummary,
 } from './src/rag';
 
-/** Bundle-relative paths for GGUF models in the content pack (assets/content_pack/models/...). Present only if you ship a full pack with models/; symlink and sync-pack-small do not include models/. */
-const BUNDLE_EMBED_PATH =
-  (BUNDLE_PACK_ROOT ? BUNDLE_PACK_ROOT + '/' : '') + 'models/embed/embed.gguf';
-const BUNDLE_LLM_PATH =
-  (BUNDLE_PACK_ROOT ? BUNDLE_PACK_ROOT + '/' : '') + 'models/llm/model.gguf';
+/** Bundle-relative GGUF paths to probe. Android packaging can keep or flatten content_pack/, so probe both layouts. */
+const BUNDLE_MODEL_PREFIXES = Array.from(
+  new Set([BUNDLE_PACK_ROOT, '', 'content_pack'].filter(Boolean)),
+);
+const BUNDLE_EMBED_PATH_CANDIDATES = BUNDLE_MODEL_PREFIXES.map(
+  prefix => `${prefix}/models/embed/embed.gguf`,
+);
+const BUNDLE_LLM_PATH_CANDIDATES = BUNDLE_MODEL_PREFIXES.map(
+  prefix => `${prefix}/models/llm/model.gguf`,
+);
 
 /** Fallback GGUF filenames when using getAppModelsPath (Documents/models). Required when the pack has no models/ (e.g. symlinked or sync-pack-small). */
 const EMBED_MODEL_FILENAME = 'nomic-embed-text.gguf';
@@ -75,23 +80,47 @@ async function getOnDeviceModelPaths(): Promise<{
 
   let embedModelPath = '';
   let chatModelPath = '';
+  let modelsDir = '';
+
+  const fileExists = async (absolutePath: string): Promise<boolean> => {
+    if (!absolutePath || typeof absolutePath !== 'string') return false;
+    if (typeof RagPackReader.fileExistsAtPath !== 'function') return true;
+    try {
+      return !!(await RagPackReader.fileExistsAtPath(absolutePath));
+    } catch {
+      return false;
+    }
+  };
+
+  const resolveBundleModelPath = async (candidates: string[]): Promise<string> => {
+    if (typeof RagPackReader.getBundleFilePath !== 'function') return '';
+    for (const candidate of candidates) {
+      try {
+        const resolved = await RagPackReader.getBundleFilePath(candidate);
+        if (resolved && (await fileExists(resolved))) {
+          return resolved;
+        }
+      } catch {
+        // keep probing other bundle layouts
+      }
+    }
+    return '';
+  };
 
   try {
-    if (typeof RagPackReader.getBundleFilePath === 'function') {
-      const [embedPath, llmPath] = await Promise.all([
-        RagPackReader.getBundleFilePath(BUNDLE_EMBED_PATH),
-        RagPackReader.getBundleFilePath(BUNDLE_LLM_PATH),
-      ]);
-      if (embedPath) embedModelPath = embedPath;
-      if (llmPath) chatModelPath = llmPath;
-      if (embedModelPath || chatModelPath) {
-        console.log(
-          '[RAG] Model paths (bundle): embed=',
-          embedModelPath || '(none)',
-          'chat=',
-          chatModelPath || '(none)',
-        );
-      }
+    const [embedPath, llmPath] = await Promise.all([
+      resolveBundleModelPath(BUNDLE_EMBED_PATH_CANDIDATES),
+      resolveBundleModelPath(BUNDLE_LLM_PATH_CANDIDATES),
+    ]);
+    if (embedPath) embedModelPath = embedPath;
+    if (llmPath) chatModelPath = llmPath;
+    if (embedModelPath || chatModelPath) {
+      console.log(
+        '[RAG] Model paths (bundle): embed=',
+        embedModelPath || '(none)',
+        'chat=',
+        chatModelPath || '(none)',
+      );
     }
   } catch (e) {
     console.log(
@@ -102,11 +131,17 @@ async function getOnDeviceModelPaths(): Promise<{
 
   try {
     if (RagPackReader.getAppModelsPath) {
-      const modelsDir = await RagPackReader.getAppModelsPath();
+      modelsDir = await RagPackReader.getAppModelsPath();
       if (modelsDir && typeof modelsDir === 'string') {
         const dir = modelsDir.replace(/\/+$/, '');
-        if (!embedModelPath) embedModelPath = `${dir}/${EMBED_MODEL_FILENAME}`;
-        if (!chatModelPath) chatModelPath = `${dir}/${CHAT_MODEL_FILENAME}`;
+        const embedCandidate = `${dir}/${EMBED_MODEL_FILENAME}`;
+        const chatCandidate = `${dir}/${CHAT_MODEL_FILENAME}`;
+        if (!embedModelPath && (await fileExists(embedCandidate))) {
+          embedModelPath = embedCandidate;
+        }
+        if (!chatModelPath && (await fileExists(chatCandidate))) {
+          chatModelPath = chatCandidate;
+        }
       }
     }
   } catch (e) {
@@ -122,6 +157,14 @@ async function getOnDeviceModelPaths(): Promise<{
       embedModelPath || '(none)',
       'chat=',
       chatModelPath || '(none)',
+    );
+  }
+  if (!chatModelPath) {
+    console.warn(
+      '[RAG] Chat model not found. Searched bundle candidates:',
+      BUNDLE_LLM_PATH_CANDIDATES,
+      'and app models dir:',
+      modelsDir || '(unavailable)',
     );
   }
   return { embedModelPath, chatModelPath };

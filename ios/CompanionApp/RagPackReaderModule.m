@@ -199,4 +199,10 @@ RCT_EXPORT_METHOD(readFileBinaryAtPath:(NSString *)absolutePath
   resolve([data base64EncodedStringWithOptions:0]);
 }
 
+RCT_EXPORT_METHOD(fileExistsAtPath:(NSString *)absolutePath
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject) {
+  resolve(@([[NSFileManager defaultManager] fileExistsAtPath:absolutePath]));
+}
+
 @end

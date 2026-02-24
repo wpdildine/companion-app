@@ -205,6 +205,19 @@ class RagPackReaderModule(reactContext: ReactApplicationContext) :
         }
     }
 
+    /** Returns whether a file exists at the absolute path. */
+    @ReactMethod
+    fun fileExistsAtPath(absolutePath: String, promise: Promise) {
+        executor.execute {
+            try {
+                promise.resolve(File(absolutePath).exists())
+            } catch (e: Exception) {
+                Log.e(TAG, "fileExistsAtPath $absolutePath: ${e.message}")
+                promise.resolve(false)
+            }
+        }
+    }
+
     companion object {
         private const val TAG = "RagPackReader"
     }

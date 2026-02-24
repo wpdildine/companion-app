@@ -3,13 +3,13 @@
  */
 
 export const starfieldVertex = `
-  attribute vec3 color;
+  attribute vec3 aColor;
   attribute float size;
   uniform float uTime;
   varying vec3 vColor;
   varying float vTwinkle;
   void main() {
-    vColor = color;
+    vColor = aColor;
     float t = uTime * 2.0 + position.x * 100.0;
     vTwinkle = 0.6 + 0.4 * sin(t);
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
