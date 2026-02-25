@@ -12,6 +12,10 @@ import { RAG_CONFIG } from './config';
 
 export interface RunRagFlowResult {
   raw: string;
+  /** Context used for deterministic human_short post-processing when available. */
+  contextText?: string;
+  /** Intent label used by runtime post-processing (defaults to unknown). */
+  intent?: string;
 }
 
 let embedContext: import('llama.rn').LlamaContext | null = null;
@@ -146,7 +150,7 @@ export async function runRagFlow(
 
   const listResult = runListPreClassifier(question, packState);
   if (listResult?.useListPath) {
-    return { raw: '[Deterministic list path not yet implemented]' };
+    return { raw: '[Deterministic list path not yet implemented]', intent: 'unknown' };
   }
 
   const rulesMeta = packState.rules.indexMeta;
@@ -287,7 +291,7 @@ export async function runRagFlow(
       });
       raw = completionResult?.text ?? (completionResult as { content?: string })?.content ?? '';
       mark('completion end');
-      return { raw };
+      return { raw, contextText: bundleText, intent: 'unknown' };
     }
     if (!params.embedModelPath?.trim() || !params.chatModelPath?.trim()) {
       throw ragError(
@@ -381,7 +385,7 @@ export async function runRagFlow(
     mark('completion end');
   }
 
-  return { raw };
+  return { raw, intent: 'unknown' };
 }
 
 function mergeHits(

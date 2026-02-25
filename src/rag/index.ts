@@ -28,6 +28,7 @@ export {
 export { getPackEmbedModelId, PACK_EMBED_MODEL_ID_DETERMINISTIC_ONLY } from './loadPack';
 
 import type { ValidationSummary } from './validate';
+import { runHumanShortPipeline, runPipelineHumanShort } from '@mtg/runtime';
 
 /** Options for ask(). */
 export interface AskOptions {
@@ -110,6 +111,31 @@ export async function ask(
   const skipNudge = options?.debugSkipNudge ?? RAG_DEBUG_SKIP_NUDGE;
   askInFlight = true;
   try {
+    const normalizeHumanShortLines = (text: string): string => {
+      const lines = (text ?? '')
+        .split('\n')
+        .map((ln) => ln.trim())
+        .filter((ln) => ln.length > 0)
+        .map((ln) => ln.replace(/^(?:-\s+|\u2022\s*|\*\s+)/, '').trim());
+      return lines.join('\n').trim();
+    };
+    const toHumanShort = (
+      rawText: string,
+      contextText?: string,
+      intent?: string
+    ): string => {
+      if ((contextText ?? '').trim().length > 0) {
+        return normalizeHumanShortLines(
+          runPipelineHumanShort(
+            rawText,
+            contextText ?? '',
+            _question,
+            intent ?? 'unknown'
+          ).finalText
+        );
+      }
+      return normalizeHumanShortLines(runHumanShortPipeline(rawText));
+    };
     const { runRagFlow } = await import('./ask');
     const result = await runRagFlow(
       packState,
@@ -121,7 +147,7 @@ export async function ask(
     if (skipNudge) {
       return {
         raw: result.raw,
-        nudged: result.raw,
+        nudged: toHumanShort(result.raw, result.contextText, result.intent),
         validationSummary: {
           cards: [],
           rules: [],
@@ -137,7 +163,7 @@ export async function ask(
     );
     return {
       raw: result.raw,
-      nudged: nudgeResult.nudgedText,
+      nudged: toHumanShort(nudgeResult.nudgedText, result.contextText, result.intent),
       validationSummary: nudgeResult.summary,
     };
   } finally {

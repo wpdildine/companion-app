@@ -16,6 +16,11 @@ const config = {
   watchFolders,
   resolver: {
     resolverMainFields: ['react-native', 'browser', 'main'],
+    // Resolve @babel/runtime from app node_modules when bundling symlinked @mtg/runtime
+    // (files under mtg_rules/runtime-ts otherwise fail to resolve this)
+    extraNodeModules: {
+      '@babel/runtime': path.resolve(projectRoot, 'node_modules/@babel/runtime'),
+    },
     blockList: [
       /node_modules[\\/]@mtg[\\/]runtime[\\/]node_modules[\\/]react[\\/].*/,
       /node_modules[\\/]@mtg[\\/]runtime[\\/]node_modules[\\/]react-native[\\/].*/,

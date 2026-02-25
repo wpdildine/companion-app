@@ -57,10 +57,11 @@ This app is the **mobile consumer** of the **mtg_rules** (Rules Service) pipelin
 
 **Scripts and linking:**
 
+- **Update runtime (use latest runtime-ts):** `pnpm run update-runtime` — sets `@mtg/runtime` to your local `../mtg_rules/runtime-ts` and runs `pnpm install`. Run this after you change code in mtg_rules/runtime-ts so the app picks it up.
 - **Sync pack (small, no models):** `pnpm run sync-pack-small` — copies from `mtg_rules/content_pack` into `assets/content_pack`, excludes `models/`, writes `pack_identity.json`. Use before every build / CI.
 - **Sync pack (full, with models):** `pnpm run sync-pack-full` — same but includes `models/` for one-off device install; then switch back to sync-pack-small for normal builds.
-- **Link mtg_rules for dev:** `node scripts/link-mtg-rules.js link [path-to-mtg_rules]` — can symlink `assets/content_pack` to mtg_rules and link **@mtg/runtime** to `mtg_rules/runtime-ts`. For release, always run `sync-pack-small` so the bundle is a real directory.
-- **@mtg/runtime** is wired as a dependency: `"@mtg/runtime": "file:../mtg_rules/runtime-ts"` (or tarball). The app uses the React Native entrypoint; the Node entrypoint is for parity tests only.
+- **Link mtg_rules for dev (optional):** `node scripts/link-mtg-rules.js link [path]` — symlinks `assets/content_pack` and wires **@mtg/runtime**. For release, run `sync-pack-small` so the bundle is a real directory.
+- **@mtg/runtime** is wired as `"file:../mtg_rules/runtime-ts"`. The app uses the React Native entrypoint; the Node entrypoint is for parity tests only.
 
 See **[docs/content-pack-setup.md](docs/content-pack-setup.md)** for pack layout, build contract, and model path resolution. The plan **[TS parallel runtime and context provider](.cursor/plans/ts_parallel_runtime_and_context_provider_0bc942e0.plan.md)** (in Cursor plans) describes the spec surface, reference traces, and parity strategy between Python and TS.
 
