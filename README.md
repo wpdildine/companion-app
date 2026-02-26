@@ -57,6 +57,7 @@ This app is the **mobile consumer** of the **mtg_rules** (Rules Service) pipelin
 
 **Scripts and linking:**
 
+- **Regenerate native projects (RN CLI):** `pnpm run regen-native` — regenerates fresh `ios/` + `android/` with `@react-native-community/cli init`, then applies overrides from `scripts/native-overrides/`. You can delete `ios/` and `android/` anytime; regen recreates them. **Edit only `scripts/native-overrides/`** for native customizations (Podfile, RagPackReader, build.gradle, etc.); edits under `ios/` or `android/` will not stick after a delete/regen.
 - **Update runtime (use latest runtime-ts):** `pnpm run update-runtime` — sets `@mtg/runtime` to your local `../mtg_rules/runtime-ts` and runs `pnpm install`. Run this after you change code in mtg_rules/runtime-ts so the app picks it up.
 - **Sync pack (small, no models):** `pnpm run sync-pack-small` — copies from `mtg_rules/content_pack` into `assets/content_pack`, excludes `models/`, writes `pack_identity.json`. Use before every build / CI.
 - **Sync pack (full, with models):** `pnpm run sync-pack-full` — same but includes `models/` for one-off device install; then switch back to sync-pack-small for normal builds.

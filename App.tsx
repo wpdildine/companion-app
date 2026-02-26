@@ -79,8 +79,8 @@ const DEV_APP_STATES: VizMode[] = [
 ];
 const DOUBLE_TAP_MS = 280;
 
-/** Resolves embed and chat model file paths for on-device RAG. Uses bundle paths when present in assets/content_pack/models/, else Documents/models with fallback filenames. Resolves each model independently so a pack with only LLM (no embed) still gets chat from bundle. */
-async function getOnDeviceModelPaths(): Promise<{
+/** Resolves embed and chat model file paths for on-device RAG. Uses bundle paths when present, else pack-in-Documents (content_pack/models/...), else Documents/models with fallback filenames. */
+async function getOnDeviceModelPaths(packRootInDocuments?: string): Promise<{
   embedModelPath: string;
   chatModelPath: string;
 }> {
@@ -163,6 +163,23 @@ async function getOnDeviceModelPaths(): Promise<{
     );
   }
 
+  // On Android bundle paths are not filesystem paths; use pack copied to Documents if available.
+  if (packRootInDocuments?.trim()) {
+    const root = packRootInDocuments.replace(/\/+$/, '');
+    const packEmbed = `${root}/models/embed/embed.gguf`;
+    const packLlm = `${root}/models/llm/model.gguf`;
+    if (!embedModelPath && (await fileExists(packEmbed))) embedModelPath = packEmbed;
+    if (!chatModelPath && (await fileExists(packLlm))) chatModelPath = packLlm;
+    if (embedModelPath || chatModelPath) {
+      console.log(
+        '[RAG] Model paths (pack in Documents): embed=',
+        embedModelPath || '(none)',
+        'chat=',
+        chatModelPath || '(none)',
+      );
+    }
+  }
+
   if (embedModelPath || chatModelPath) {
     console.log(
       '[RAG] Model paths resolved: embed=',
@@ -175,7 +192,9 @@ async function getOnDeviceModelPaths(): Promise<{
     console.warn(
       '[RAG] Chat model not found. Searched bundle candidates:',
       BUNDLE_LLM_PATH_CANDIDATES,
-      'and app models dir:',
+      'pack root:',
+      packRootInDocuments || '(none)',
+      'app models dir:',
       modelsDir || '(unavailable)',
     );
   }
@@ -633,7 +652,7 @@ function VoiceScreen() {
           );
         console.log('[RAG] Pack root:', packRoot || '(bundle)');
         const embedModelId = await getPackEmbedModelId(reader);
-        const { embedModelPath, chatModelPath } = await getOnDeviceModelPaths();
+        const { embedModelPath, chatModelPath } = await getOnDeviceModelPaths(packRoot || undefined);
         await ragInit(
           {
             embedModelId,

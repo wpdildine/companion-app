@@ -1,9 +1,30 @@
 /**
  * Prompt builder: structured rules/cards excerpts with doc_id, source_type, title.
+ * Uses Llama-3 chat template (matches mtg_rules runtime when available).
  */
 
 import type { RetrievalHit } from './types';
 import { RAG_CONFIG } from './config';
+
+/** Llama-3 chat template tokens. */
+const BOS = '<|begin_of_text|>';
+const START_SYSTEM = '<|start_header_id|>system<|end_header_id|>';
+const START_USER = '<|start_header_id|>user<|end_header_id|>';
+const START_ASSISTANT = '<|start_header_id|>assistant<|end_header_id|>';
+const EOT = '<|eot_id|>';
+
+/**
+ * Build prompt using Llama-3 chat format. Not exported from @mtg/runtime RN entrypoint, so defined here.
+ */
+function buildLlamaHumanShortPrompt(
+  contextBlock: string,
+  question: string,
+  systemInstruction: string
+): string {
+  const system = (systemInstruction ?? '').trim() || 'You are a helpful assistant.';
+  const userContent = [contextBlock.trim(), `Question: ${question.trim()}`].filter(Boolean).join('\n\n');
+  return `${BOS}${START_SYSTEM}\n\n${system}${EOT}\n${START_USER}\n\n${userContent}${EOT}\n${START_ASSISTANT}\n\n`;
+}
 
 export interface ChunkForPrompt {
   doc_id: string;
@@ -54,11 +75,10 @@ export function buildContextBlock(
 }
 
 /**
- * Build full prompt: system + context + user question.
+ * Build full prompt using Llama-3 chat template (matches mtg_rules runtime).
  */
 export function buildPrompt(contextBlock: string, question: string): string {
-  const system = RAG_CONFIG.prompt.system_instruction;
-  return `${system}\n\n${contextBlock}\n\nQuestion: ${question}\n\nAnswer:`;
+  return buildLlamaHumanShortPrompt(contextBlock, question, RAG_CONFIG.prompt.system_instruction);
 }
 
 /**

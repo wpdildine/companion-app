@@ -1,7 +1,15 @@
 /**
  * Single configuration for RAG + generation.
- * Defaults are mobile-tuned and can be overridden by pack rag_config.json at runtime.
+ * Defaults match mtg_rules runtime (human_short) and can be overridden by pack rag_config.json at runtime.
  */
+
+import * as MtgRuntime from '@mtg/runtime';
+
+/** System instruction for human-short RAG; not exported from runtime RN entrypoint so fallback. */
+const HUMAN_SHORT_BODY =
+  (typeof (MtgRuntime as { HUMAN_SHORT_BODY?: string }).HUMAN_SHORT_BODY === 'string' &&
+    (MtgRuntime as { HUMAN_SHORT_BODY?: string }).HUMAN_SHORT_BODY) ||
+  'You are a concise assistant. Answer using only the provided rules and card excerpts. Cite doc_id when relevant. Keep answers short.';
 
 export interface RagConfig {
   n_predict: number;
@@ -73,8 +81,7 @@ const DEFAULT_RAG_CONFIG: RagConfig = {
     max_prompt_chars: 1400,
     default_max_context_chars: 2400,
     chars_per_token_est: 4,
-    system_instruction:
-      'Answer using only the provided context. Use concise bullet points. Include exactly one quoted sentence from context. If context is insufficient, reply exactly: Insufficient retrieved context.',
+    system_instruction: HUMAN_SHORT_BODY,
   },
   /** Deterministic context provider: max tokens for the context bundle (rules + cards). */
   context_budget: 800,

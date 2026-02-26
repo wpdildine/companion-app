@@ -4,6 +4,9 @@
  */
 
 import type { PackState, PackFileReader, RagInitParams } from './types';
+
+/** Llama 3 stop sequences (not exported from @mtg/runtime RN entrypoint; define here to avoid passing undefined to native). */
+const LLAMA3_STOP_SEQUENCES = ['<|eot_id|>', '<|end_of_text|>'];
 import { RAG_USE_DETERMINISTIC_CONTEXT_ONLY } from './types';
 import { loadVectors, searchL2, loadChunksForRows } from './retrieval';
 import { trimChunksToFitPrompt, buildPrompt } from './prompt';
@@ -287,6 +290,7 @@ export async function runRagFlow(
       const completionResult = await chatCtx.completion({
         prompt,
         n_predict: RAG_CONFIG.n_predict,
+        stop: LLAMA3_STOP_SEQUENCES,
         ...RAG_CONFIG.generation,
       });
       raw = completionResult?.text ?? (completionResult as { content?: string })?.content ?? '';
@@ -379,6 +383,7 @@ export async function runRagFlow(
     const result = await chatCtx.completion({
       prompt,
       n_predict: RAG_CONFIG.n_predict,
+      stop: LLAMA3_STOP_SEQUENCES,
       ...RAG_CONFIG.generation,
     });
     raw = result?.text ?? result?.content ?? '';

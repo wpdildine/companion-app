@@ -13,6 +13,7 @@ const root = path.resolve(__dirname, '..');
 const dirs = [
   path.join(root, 'android', 'app', 'build'),
   path.join(root, 'android', 'build'),
+  path.join(root, 'ios', 'build'),
 ];
 
 function rmRecursive(dir) {
@@ -20,7 +21,7 @@ function rmRecursive(dir) {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
-dirs.forEach((dir) => {
+dirs.forEach(dir => {
   if (fs.existsSync(dir)) {
     rmRecursive(dir);
     console.log('Removed:', path.relative(root, dir));

@@ -17,7 +17,7 @@ fi
 ESPEAK_REPO="${ESPEAK_REPO:-https://github.com/espeak-ng/espeak-ng}"
 ESPEAK_IOS="plugins/piper-tts/ios/Resources/espeak-ng-data"
 ESPEAK_ANDROID="plugins/piper-tts/android/src/main/assets/espeak-ng-data"
-TMP_CLONE="$REPO_ROOT/build/espeak-ng-clone"
+TMP_CLONE="$REPO_ROOT/vendor/espeak-ng-clone"
 ESPEAK_BUILD="$TMP_CLONE/build"
 
 echo "Downloading espeak-ng (clone/update)..."
