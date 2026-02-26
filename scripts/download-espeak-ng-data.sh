@@ -2,6 +2,10 @@
 # Download and build espeak-ng-data into the Piper TTS plugin resources (iOS bundle / Android assets).
 # Run from repo root: ./scripts/download-espeak-ng-data.sh
 # Requires: cmake, C compiler (Xcode CLI or brew install cmake). Needed for phontab/phondata/phonindex.
+#
+# Canonical location for the espeak-ng clone is vendor/espeak-ng-clone (not repo root build/).
+# This script does not create or use REPO_ROOT/build. If you have a stray build/espeak-ng-clone,
+# it will be moved to vendor/ and the empty build/ removed.
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,11 +17,21 @@ if [[ ! -d "plugins/piper-tts" ]]; then
   exit 1
 fi
 
+# Migrate stray root build/espeak-ng-clone -> vendor/espeak-ng-clone (this script never uses root build/)
+LEGACY_BUILD_CLONE="$REPO_ROOT/build/espeak-ng-clone"
+TMP_CLONE="$REPO_ROOT/vendor/espeak-ng-clone"
+if [[ -d "$LEGACY_BUILD_CLONE/.git" && ! -d "$TMP_CLONE/.git" ]]; then
+  echo "Moving build/espeak-ng-clone to vendor/espeak-ng-clone (canonical location)..."
+  mkdir -p "$(dirname "$TMP_CLONE")"
+  rm -rf "$TMP_CLONE"
+  mv "$LEGACY_BUILD_CLONE" "$TMP_CLONE"
+  rmdir "$REPO_ROOT/build" 2>/dev/null || true
+fi
+
 # espeak-ng-data: repo only has lang/ and voices/; phontab, phondata, phonindex are built from source
 ESPEAK_REPO="${ESPEAK_REPO:-https://github.com/espeak-ng/espeak-ng}"
 ESPEAK_IOS="plugins/piper-tts/ios/Resources/espeak-ng-data"
 ESPEAK_ANDROID="plugins/piper-tts/android/src/main/assets/espeak-ng-data"
-TMP_CLONE="$REPO_ROOT/vendor/espeak-ng-clone"
 ESPEAK_BUILD="$TMP_CLONE/build"
 
 echo "Downloading espeak-ng (clone/update)..."
