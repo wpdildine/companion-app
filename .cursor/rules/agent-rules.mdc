@@ -1,0 +1,12 @@
+---
+description: Agent must follow project AI rules and use README + architecture docs
+alwaysApply: true
+---
+
+# Project context and agent rules
+
+- **README.md** — Project overview, how the app works, structure, and links to mtg_rules. Use it for product context and high-level orientation.
+- **docs/ARCHITECTURE.md** — "Where do I go?" Map: app, rag, viz, shared; screens don't do IO; shared has no feature logic.
+- **docs/ai/AGENT_RULES.md** — How to implement: prime directive (search before adding), navigation, anti-bloat, reuse-first, no heuristic smoothing, contracts over guesses, screen/hook/service patterns, tests, PR checklist.
+
+Before changing code, follow **docs/ai/AGENT_RULES.md**. For where code lives, use **docs/ARCHITECTURE.md**. For project and product context, use **README.md**.

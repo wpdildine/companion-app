@@ -8,7 +8,7 @@ Canonical "where do I go?" doc; reference from README.
 
 **Directory map** — src/app/ (app entry + navigation); src/rag/ (RAG: retrieval + pack logic); src/viz/ (GL UI: rendering + viz-specific behavior only — components/, interaction/ for 3D raycasting and in-scene UI, hooks/, services/, helpers/, shaders/, types.ts); src/shared/ (components/, hooks/, services/, helpers/, types/, theme/). **Scope:** viz/ and rag/ stay narrow; no analytics, app state, shared utils, or cross-feature glue in features.
 
-**The only two rules** — (1) Screens don't do IO; screens call hooks, hooks call services. Hooks may orchestrate state and call services, but should not contain raw NativeModules or fetch logic directly. (2) Shared is not a dumping ground; feature-specific code lives in that feature. **Hard constraint:** No new top-level folders under src without updating ARCHITECTURE.md (prevents infra/, core/, lib/, engine/, manager/ sprawl). **App.tsx** must shrink below ~500 lines over time.
+**The only two rules** — (1) Screens don't do IO; screens call hooks, hooks call services. Hooks may orchestrate state and call services, but should not contain raw NativeModules or fetch logic directly. (2) **shared/ is for truly cross-feature code; if it's only used by rag or viz, it stays in rag/ or viz/.** **Hard constraint:** No new top-level folders under src without updating ARCHITECTURE.md (prevents infra/, core/, lib/, engine/, manager/ sprawl). **App.tsx** must shrink below ~500 lines over time.
 
 **services/ vs helpers/ (in rag/viz)** — services/ = IO or talking to the outside world. helpers/ = pure functions only; no side effects. **shared/services vs rag/viz services** — Feature-specific service stays in rag/ or viz/; only move to shared/services after reuse in a second feature.
 
@@ -26,4 +26,8 @@ Canonical "where do I go?" doc; reference from README.
 **Two non-negotiables**
 
 - Screens don't do IO (hooks/services do).
-- shared contains no feature logic.
+- shared/ is for truly cross-feature code; if it's only used by rag or viz, it stays in rag/ or viz/.
+
+---
+
+**These docs (don't contradict)** — README = what the app is and how it works. ARCHITECTURE = where code goes. AGENT_RULES = how to change code without bloat/drift. When you change structure (e.g. rename viz/), update ARCHITECTURE first, then README, then AGENT_RULES if needed.
