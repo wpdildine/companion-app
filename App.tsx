@@ -55,7 +55,6 @@ LogBox.ignoreLogs([
   'new NativeEventEmitter() was called with a non-null argument without the required `removeListeners` method',
 ]);
 
-/** Bundle-relative GGUF paths to probe. Android packaging can keep or flatten content_pack/, so probe both layouts. */
 const BUNDLE_MODEL_PREFIXES = Array.from(
   new Set([BUNDLE_PACK_ROOT, '', 'content_pack'].filter(Boolean)),
 );
@@ -65,10 +64,8 @@ const BUNDLE_EMBED_PATH_CANDIDATES = BUNDLE_MODEL_PREFIXES.map(
 const BUNDLE_LLM_PATH_CANDIDATES = BUNDLE_MODEL_PREFIXES.map(
   prefix => `${prefix}/models/llm/model.gguf`,
 );
-
-/** Fallback GGUF filenames when using getAppModelsPath (Documents/models). Required when the pack has no models/ (e.g. symlinked or sync-pack-small). */
 const EMBED_MODEL_FILENAME = 'nomic-embed-text.gguf';
-const CHAT_MODEL_FILENAME = 'llama3.2-3b-Q4_K_M.gguf';
+const CHAT_MODEL_FILENAME = 'model.gguf';
 const DEV_APP_STATES: VizMode[] = [
   'idle',
   'listening',
@@ -79,7 +76,7 @@ const DEV_APP_STATES: VizMode[] = [
 ];
 const DOUBLE_TAP_MS = 280;
 
-/** Resolves embed and chat model file paths for on-device RAG. Uses bundle paths when present, else pack-in-Documents (content_pack/models/...), else Documents/models with fallback filenames. */
+/** Resolve embed + chat model paths: pack in Documents (primary on Android), then bundle, then app files/models/. */
 async function getOnDeviceModelPaths(packRootInDocuments?: string): Promise<{
   embedModelPath: string;
   chatModelPath: string;
@@ -113,90 +110,78 @@ async function getOnDeviceModelPaths(packRootInDocuments?: string): Promise<{
           return resolved;
         }
       } catch {
-        // keep probing other bundle layouts
+        /* try next candidate */
       }
     }
     return '';
   };
 
-  try {
-    const [embedPath, llmPath] = await Promise.all([
-      resolveBundleModelPath(BUNDLE_EMBED_PATH_CANDIDATES),
-      resolveBundleModelPath(BUNDLE_LLM_PATH_CANDIDATES),
-    ]);
-    if (embedPath) embedModelPath = embedPath;
-    if (llmPath) chatModelPath = llmPath;
-    if (embedModelPath || chatModelPath) {
-      console.log(
-        '[RAG] Model paths (bundle): embed=',
-        embedModelPath || '(none)',
-        'chat=',
-        chatModelPath || '(none)',
-      );
-    }
-  } catch (e) {
-    console.log(
-      '[RAG] Bundle model paths not available:',
-      e instanceof Error ? e.message : e,
-    );
-  }
-
-  try {
-    if (RagPackReader.getAppModelsPath) {
-      modelsDir = await RagPackReader.getAppModelsPath();
-      if (modelsDir && typeof modelsDir === 'string') {
-        const dir = modelsDir.replace(/\/+$/, '');
-        const embedCandidate = `${dir}/${EMBED_MODEL_FILENAME}`;
-        const chatCandidate = `${dir}/${CHAT_MODEL_FILENAME}`;
-        if (!embedModelPath && (await fileExists(embedCandidate))) {
-          embedModelPath = embedCandidate;
-        }
-        if (!chatModelPath && (await fileExists(chatCandidate))) {
-          chatModelPath = chatCandidate;
-        }
-      }
-    }
-  } catch (e) {
-    console.log(
-      '[RAG] App models path not available:',
-      e instanceof Error ? e.message : e,
-    );
-  }
-
-  // On Android bundle paths are not filesystem paths; use pack copied to Documents if available.
   if (packRootInDocuments?.trim()) {
     const root = packRootInDocuments.replace(/\/+$/, '');
+    if (typeof RagPackReader.readFileAtPath === 'function') {
+      try {
+        const manifestJson = await RagPackReader.readFileAtPath(
+          `${root}/manifest.json`,
+        );
+        const manifest = JSON.parse(manifestJson) as {
+          models?: { llm?: { file?: string }; embed?: { file?: string } };
+        };
+        const llmFile = manifest?.models?.llm?.file;
+        const embedFile = manifest?.models?.embed?.file;
+        if (llmFile && (await fileExists(`${root}/${llmFile}`)))
+          chatModelPath = `${root}/${llmFile}`;
+        if (embedFile && (await fileExists(`${root}/${embedFile}`)))
+          embedModelPath = `${root}/${embedFile}`;
+      } catch {
+        /* use hardcoded pack paths below */
+      }
+    }
     const packEmbed = `${root}/models/embed/embed.gguf`;
     const packLlm = `${root}/models/llm/model.gguf`;
-    if (!embedModelPath && (await fileExists(packEmbed))) embedModelPath = packEmbed;
+    if (!embedModelPath && (await fileExists(packEmbed)))
+      embedModelPath = packEmbed;
     if (!chatModelPath && (await fileExists(packLlm))) chatModelPath = packLlm;
-    if (embedModelPath || chatModelPath) {
-      console.log(
-        '[RAG] Model paths (pack in Documents): embed=',
-        embedModelPath || '(none)',
-        'chat=',
-        chatModelPath || '(none)',
-      );
+  }
+
+  if (!embedModelPath || !chatModelPath) {
+    try {
+      const [embedPath, llmPath] = await Promise.all([
+        resolveBundleModelPath(BUNDLE_EMBED_PATH_CANDIDATES),
+        resolveBundleModelPath(BUNDLE_LLM_PATH_CANDIDATES),
+      ]);
+      if (embedPath && !embedModelPath) embedModelPath = embedPath;
+      if (llmPath && !chatModelPath) chatModelPath = llmPath;
+    } catch {
+      /* bundle not available (e.g. Android) */
+    }
+  }
+
+  if (!embedModelPath || !chatModelPath) {
+    try {
+      if (RagPackReader.getAppModelsPath) {
+        modelsDir = await RagPackReader.getAppModelsPath();
+        if (modelsDir && typeof modelsDir === 'string') {
+          const dir = modelsDir.replace(/\/+$/, '');
+          if (!embedModelPath && (await fileExists(`${dir}/${EMBED_MODEL_FILENAME}`)))
+            embedModelPath = `${dir}/${EMBED_MODEL_FILENAME}`;
+          if (!chatModelPath && (await fileExists(`${dir}/${CHAT_MODEL_FILENAME}`)))
+            chatModelPath = `${dir}/${CHAT_MODEL_FILENAME}`;
+        }
+      }
+    } catch {
+      /* app models path not available */
     }
   }
 
   if (embedModelPath || chatModelPath) {
-    console.log(
-      '[RAG] Model paths resolved: embed=',
-      embedModelPath || '(none)',
-      'chat=',
-      chatModelPath || '(none)',
-    );
+    console.log('[RAG] Model paths:', { embed: embedModelPath || null, chat: chatModelPath || null });
   }
   if (!chatModelPath) {
-    console.warn(
-      '[RAG] Chat model not found. Searched bundle candidates:',
-      BUNDLE_LLM_PATH_CANDIDATES,
-      'pack root:',
-      packRootInDocuments || '(none)',
-      'app models dir:',
-      modelsDir || '(unavailable)',
-    );
+    const packPath = packRootInDocuments?.trim()
+      ? `${packRootInDocuments.replace(/\/+$/, '')}/models/llm/${CHAT_MODEL_FILENAME}`
+      : null;
+    const appPath = modelsDir ? `${modelsDir.replace(/\/+$/, '')}/${CHAT_MODEL_FILENAME}` : null;
+    console.warn('[RAG] Chat model not found. Checked pack:', packPath, 'files/models:', appPath);
   }
   return { embedModelPath, chatModelPath };
 }
@@ -298,6 +283,26 @@ function VoiceScreen() {
     vizRef.current.targetActivity = TARGET_ACTIVITY_BY_MODE[mode];
     vizRef.current.currentMode = mode;
   }, [mode]);
+
+  // Copy bundled content_pack to app files on startup so models are on device before first RAG use.
+  useEffect(() => {
+    copyBundlePackToDocuments().catch(() => {});
+  }, []);
+
+  // Copy Piper ONNX model from app assets to files/piper/ on startup (Android) so TTS works.
+  useEffect(() => {
+    const run = () => {
+      const PiperTts = NativeModules.PiperTts ?? require('piper-tts').default;
+      const copy = typeof PiperTts?.copyModelToFiles === 'function' ? PiperTts.copyModelToFiles : null;
+      if (!copy) return;
+      copy()
+        .then((path: string) => path && console.log('[Piper] Model copied to', path))
+        .catch((e: unknown) => console.warn('[Piper] copyModelToFiles failed:', e instanceof Error ? e.message : e));
+    };
+    run();
+    const t = setTimeout(run, 1500);
+    return () => clearTimeout(t);
+  }, []);
 
   const theme = getTheme(isDarkMode);
   const textColor = theme.text;
@@ -452,32 +457,35 @@ function VoiceScreen() {
     };
   }, []);
 
-  // Check Piper TTS availability and fetch debug info when not found
+  // Check Piper TTS availability with retries. Startup copy (model + espeak) may complete after first render.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const PiperTts = require('piper-tts').default;
-        const available = await PiperTts.isModelAvailable();
-        if (!cancelled) setPiperAvailable(available);
-        if (!cancelled && !available && PiperTts.getDebugInfo) {
+      const PiperTts = require('piper-tts').default;
+      const retryDelaysMs = [0, 800, 1500, 2500, 4000];
+      for (const delay of retryDelaysMs) {
+        if (cancelled) return;
+        if (delay > 0)
+          await new Promise<void>(resolve => setTimeout(() => resolve(), delay));
+        try {
+          const available = await PiperTts.isModelAvailable();
+          if (cancelled) return;
+          setPiperAvailable(available);
+          if (available) {
+            setPiperDebugInfo(null);
+            return;
+          }
+        } catch {
+          if (cancelled) return;
+          setPiperAvailable(false);
+        }
+      }
+      if (!cancelled && PiperTts.getDebugInfo) {
+        try {
           const info = await PiperTts.getDebugInfo();
           if (!cancelled) setPiperDebugInfo(info ?? null);
-        } else if (available) {
-          setPiperDebugInfo(null);
-        }
-      } catch {
-        if (!cancelled) setPiperAvailable(false);
-        if (!cancelled) {
-          try {
-            const PiperTts = require('piper-tts').default;
-            if (PiperTts.getDebugInfo) {
-              const info = await PiperTts.getDebugInfo();
-              setPiperDebugInfo(info ?? null);
-            }
-          } catch {
-            setPiperDebugInfo(null);
-          }
+        } catch {
+          if (!cancelled) setPiperDebugInfo(null);
         }
       }
     })();
@@ -632,17 +640,16 @@ function VoiceScreen() {
       if (!getPackState()) {
         setPackStatus('loading');
         setPackError(null);
-        let packRoot = await getContentPackPathInDocuments();
-        if (!packRoot) {
-          try {
-            packRoot = await copyBundlePackToDocuments();
-          } catch (e) {
-            console.log(
-              '[RAG] Copy pack to Documents failed, using bundle:',
-              e instanceof Error ? e.message : e,
-            );
-            packRoot = '';
-          }
+        // Always run copy so native can recopy when bundle has models but Documents pack doesn't (e.g. after upgrading APK).
+        let packRoot: string;
+        try {
+          packRoot = await copyBundlePackToDocuments();
+        } catch (e) {
+          console.log(
+            '[RAG] Copy pack to Documents failed, using bundle:',
+            e instanceof Error ? e.message : e,
+          );
+          packRoot = (await getContentPackPathInDocuments()) ?? '';
         }
         const reader =
           (packRoot ? createDocumentsPackReader(packRoot) : null) ??
@@ -652,7 +659,9 @@ function VoiceScreen() {
           );
         console.log('[RAG] Pack root:', packRoot || '(bundle)');
         const embedModelId = await getPackEmbedModelId(reader);
-        const { embedModelPath, chatModelPath } = await getOnDeviceModelPaths(packRoot || undefined);
+        const { embedModelPath, chatModelPath } = await getOnDeviceModelPaths(
+          packRoot || undefined,
+        );
         await ragInit(
           {
             embedModelId,
@@ -690,7 +699,11 @@ function VoiceScreen() {
         e && typeof e === 'object' && 'code' in e
           ? (e as { code: string }).code
           : '';
-      setError(code ? `[${code}] ${msg}` : msg);
+      let displayMsg = code ? `[${code}] ${msg}` : msg;
+      if (code === 'E_MODEL_PATH' && Platform.OS === 'android') {
+        displayMsg += ` Put the chat GGUF in the app's files/models/ folder (filename: ${CHAT_MODEL_FILENAME}). See docs/RAG_MODELS.md or use adb with run-as to push the file.`;
+      }
+      setError(displayMsg);
       if (!getPackState()) {
         setPackStatus('error');
         setPackError(msg);
@@ -726,9 +739,18 @@ function VoiceScreen() {
         piperAvailable,
         textLength: normalized.length,
       });
-      // Prefer Piper (offline) as the main TTS voice when the model is available
-      if (piperAvailable) {
-        const PiperTts = require('piper-tts').default;
+      // Prefer Piper (offline). Re-check availability right before speak because startup copy may finish after mount.
+      const PiperTts = require('piper-tts').default;
+      let canUsePiper = piperAvailable;
+      if (!canUsePiper && PiperTts?.isModelAvailable) {
+        try {
+          canUsePiper = !!(await PiperTts.isModelAvailable());
+          setPiperAvailable(canUsePiper);
+        } catch {
+          canUsePiper = false;
+        }
+      }
+      if (canUsePiper) {
         const options = {
           lengthScale: 1.08,
           noiseScale: 0.62,
@@ -776,8 +798,31 @@ function VoiceScreen() {
         }
         const onFinish = () => {
           setMode('idle');
-          Tts.removeEventListener('tts-finish', onFinish);
-          Tts.removeEventListener('tts-cancel', onFinish);
+          try {
+            if (typeof Tts.removeEventListener === 'function') {
+              Tts.removeEventListener('tts-finish', onFinish);
+              Tts.removeEventListener('tts-cancel', onFinish);
+            } else if (
+              typeof (
+                Tts as unknown as {
+                  removeListener?: (e: string, f: () => void) => void;
+                }
+              ).removeListener === 'function'
+            ) {
+              (
+                Tts as unknown as {
+                  removeListener: (e: string, f: () => void) => void;
+                }
+              ).removeListener('tts-finish', onFinish);
+              (
+                Tts as unknown as {
+                  removeListener: (e: string, f: () => void) => void;
+                }
+              ).removeListener('tts-cancel', onFinish);
+            }
+          } catch (_) {
+            // react-native-tts on Android may not implement removeEventListener consistently
+          }
         };
         Tts.addEventListener('tts-finish', onFinish);
         Tts.addEventListener('tts-cancel', onFinish);
@@ -872,9 +917,7 @@ function VoiceScreen() {
   const displayText = partialText || transcribedText;
 
   if (!voiceReady && !error) {
-    return (
-      <VoiceLoadingView theme={theme} paddingTop={insets.top} />
-    );
+    return <VoiceLoadingView theme={theme} paddingTop={insets.top} />;
   }
 
   return (

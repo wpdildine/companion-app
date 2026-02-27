@@ -102,9 +102,18 @@ class RagPackReaderModule(reactContext: ReactApplicationContext) :
       }
       val packDirFile = File(packDir)
       val manifestInDocs = File(packDirFile, "manifest.json")
-      if (manifestInDocs.exists()) {
+      // If bundle has an LLM path (e.g. models/llm/model.gguf) but Documents pack doesn't, recopy so updated pack is used.
+      val llmInBundle = runCatching {
+        reactApplicationContext.assets.list("content_pack/models/llm")?.isNullOrEmpty() == false
+      }.getOrDefault(false)
+      val llmInDocs = File(packDirFile, "models/llm/model.gguf").exists()
+      if (manifestInDocs.exists() && (!llmInBundle || llmInDocs)) {
         promise.resolve(packDir)
         return
+      }
+      if (manifestInDocs.exists() && llmInBundle && !llmInDocs) {
+        packDirFile.deleteRecursively()
+        packDirFile.mkdirs()
       }
       copyAssetsToDir("content_pack", packDirFile)
       promise.resolve(packDir)

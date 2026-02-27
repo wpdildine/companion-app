@@ -116,14 +116,24 @@ task copyContentPack(type: Copy) {
 }
 preBuild.dependsOn copyContentPack
 
-// Ensure Piper TTS model is in app assets (autolinking can set piper-tts android to null; this guarantees it).
+// Ensure Piper TTS model is in app assets (same path pattern as content_pack).
 def piperAssetsSource = file("${rootProject.projectDir}/../plugins/piper-tts/android/src/main/assets/piper")
 task copyPiperModel(type: Copy) {
     from piperAssetsSource
     into file("${projectDir}/src/main/assets/piper")
     onlyIf { piperAssetsSource.exists() && file("${piperAssetsSource}/model.onnx").exists() }
+    outputs.upToDateWhen { false }
 }
 preBuild.dependsOn copyPiperModel
+
+// Ensure espeak-ng-data is in app assets (same as iOS; plugin assets may not merge on Android).
+def espeakNgSource = file("${rootProject.projectDir}/../plugins/piper-tts/android/src/main/assets/espeak-ng-data")
+task copyEspeakNgData(type: Copy) {
+    from espeakNgSource
+    into file("${projectDir}/src/main/assets/espeak-ng-data")
+    onlyIf { espeakNgSource.exists() }
+}
+preBuild.dependsOn copyEspeakNgData
 
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin

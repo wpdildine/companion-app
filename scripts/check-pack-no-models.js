@@ -10,7 +10,10 @@
  *   node scripts/check-pack-no-models.js <path-to-bundle-or-dir>
  *     Also greps for .gguf in the given path (e.g. build output); fails if any found.
  *
- * Exit 0 if clean, 1 if models/ or .gguf detected.
+ * To allow a full pack (with models) for a one-off Android build: ALLOW_PACK_WITH_MODELS=1 node scripts/check-pack-no-models.js
+ * Then build; the app will copy content_pack (including models/llm/model.gguf) to device. Run sync-pack-small again before CI.
+ *
+ * Exit 0 if clean, 1 if models/ or .gguf detected (unless ALLOW_PACK_WITH_MODELS=1).
  */
 
 const fs = require('fs');
@@ -60,14 +63,19 @@ function grepGgufInDir(dir) {
   return found;
 }
 
+const allowPackWithModels = process.env.ALLOW_PACK_WITH_MODELS === '1';
 const packResult = checkPackDir();
 if (!packResult.ok) {
-  console.error('check-pack-no-models:', packResult.msg);
-  process.exit(1);
+  if (allowPackWithModels) {
+    console.log('check-pack-no-models: ALLOW_PACK_WITH_MODELS=1, allowing pack with models/');
+  } else {
+    console.error('check-pack-no-models:', packResult.msg);
+    process.exit(1);
+  }
 }
 
 const bundlePath = process.argv[2];
-if (bundlePath) {
+if (bundlePath && !allowPackWithModels) {
   const abs = path.resolve(ROOT, bundlePath);
   const ggufFiles = grepGgufInDir(abs);
   if (ggufFiles.length > 0) {
@@ -76,4 +84,4 @@ if (bundlePath) {
   }
 }
 
-console.log('check-pack-no-models: OK (no models/ in pack, no .gguf in checked paths)');
+console.log(allowPackWithModels ? 'check-pack-no-models: OK (ALLOW_PACK_WITH_MODELS=1)' : 'check-pack-no-models: OK (no models/ in pack, no .gguf in checked paths)');

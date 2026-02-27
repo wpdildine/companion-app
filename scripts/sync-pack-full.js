@@ -13,7 +13,10 @@
  * Default source: ../mtg_rules/content_pack
  *
  * Note: validate-e2e-gates (check-pack-no-models) will fail while the full pack
- * is in place. Run sync-pack-small again before CI or release if you enforce that gate.
+ * is in place. For a one-off Android build with the model on device: run this script,
+ * then build Android; the app copies content_pack (including models/llm/model.gguf) to
+ * files/content_pack. To run the gates anyway use ALLOW_PACK_WITH_MODELS=1. Run
+ * sync-pack-small again before CI or release if you enforce that gate.
  */
 
 const fs = require('fs');

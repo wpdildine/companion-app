@@ -89,6 +89,15 @@ export default {
     }
   },
 
+  /** Copy Piper ONNX model from app assets to files/piper/ (Android). Call on startup so TTS works without waiting for first speak. */
+  copyModelToFiles(): Promise<string | null> {
+    if (NativePiperTts == null) return Promise.resolve(null);
+    if (typeof (NativePiperTts as { copyModelToFiles?: () => Promise<string> }).copyModelToFiles !== 'function') {
+      return Promise.resolve(null);
+    }
+    return (NativePiperTts as { copyModelToFiles: () => Promise<string> }).copyModelToFiles().catch(() => null);
+  },
+
   isModelAvailable(): Promise<boolean> {
     if (NativePiperTts == null) return Promise.resolve(false);
     return NativePiperTts.isModelAvailable();

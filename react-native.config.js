@@ -12,6 +12,13 @@ module.exports = {
   dependencies: {
     'piper-tts': {
       root: path.join(__dirname, 'plugins/piper-tts'),
+      platforms: {
+        android: {
+          sourceDir: path.join(__dirname, 'plugins/piper-tts/android'),
+          packageImportPath: 'import com.pipertts.PiperTtsPackage;',
+          packageInstance: 'new PiperTtsPackage()',
+        },
+      },
     },
   },
 };

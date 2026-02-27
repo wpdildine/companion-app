@@ -24,9 +24,50 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
     @Volatile
     private var lastSpeakOptions: ReadableMap? = null
 
+    init {
+        // Copy model from assets to files/piper/ as soon as the module loads so it's on device before any JS or speak().
+        executor.execute {
+            try {
+                val dir = reactApplicationContext.filesDir.resolve("piper").also { it.mkdirs() }
+                val onnx = dir.resolve("model.onnx")
+                if (!onnx.exists()) {
+                    if (copyAssetToFile("piper/model.onnx", onnx)) {
+                        copyAssetToFile("piper/model.onnx.json", dir.resolve("model.onnx.json"))
+                        Log.i(TAG, "[Piper] Model copied to ${dir.absolutePath}")
+                    } else {
+                        Log.w(TAG, "[Piper] Model not in app assets; run pnpm run download-piper and rebuild.")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "[Piper] init copy failed: ${e.message}", e)
+            }
+        }
+    }
+
     @ReactMethod
     fun setOptions(options: ReadableMap?) {
         lastSpeakOptions = options
+    }
+
+    /** Copy Piper ONNX model from app assets to files/piper/ so synthesis can run. Call on app startup. */
+    @ReactMethod
+    fun copyModelToFiles(promise: Promise) {
+        try {
+            val dir = reactApplicationContext.filesDir.resolve("piper").also { it.mkdirs() }
+            val onnx = dir.resolve("model.onnx")
+            val json = dir.resolve("model.onnx.json")
+            if (!onnx.exists()) {
+                if (!copyAssetToFile("piper/model.onnx", onnx)) {
+                    promise.reject("E_NO_MODEL", "Piper model not in app assets. Run pnpm run download-piper and rebuild.")
+                    return
+                }
+                copyAssetToFile("piper/model.onnx.json", json)
+            }
+            promise.resolve(dir.absolutePath)
+        } catch (e: Exception) {
+            Log.e(TAG, "[copyModelToFiles] ${e.message}", e)
+            promise.reject("E_COPY", e.message ?: "Copy failed", e)
+        }
     }
 
     @ReactMethod
@@ -39,14 +80,14 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
         executor.execute {
             try {
                 val (modelPath, configPath) = getModelPaths() ?: run {
-                    Log.e(TAG, "[E_NO_MODEL] Piper model not found. Run scripts/download-piper-voice.sh")
-                    promise.reject("E_NO_MODEL", "Piper model not found. Run scripts/download-piper-voice.sh")
+                    Log.e(TAG, "[E_NO_MODEL] Piper model not found. Run: pnpm run download-piper then rebuild the app.")
+                    promise.reject("E_NO_MODEL", "Piper model not found. Run: pnpm run download-piper then rebuild the app.")
                     return@execute
                 }
                 val espeakPath = getEspeakDataPath()
                 if (espeakPath == null) {
-                    Log.e(TAG, "[E_NO_ESPEAK_DATA] espeak-ng-data not found. Run scripts/download-espeak-ng-data.sh and copy to android assets.")
-                    promise.reject("E_NO_ESPEAK_DATA", "espeak-ng-data not found. Run scripts/download-espeak-ng-data.sh")
+                    Log.e(TAG, "[E_NO_ESPEAK_DATA] espeak-ng-data not found. Run: ./scripts/download-espeak-ng-data.sh then rebuild the app.")
+                    promise.reject("E_NO_ESPEAK_DATA", "espeak-ng-data not found. Run: ./scripts/download-espeak-ng-data.sh then rebuild the app.")
                     return@execute
                 }
                 val sentenceMs = getOptionInt("interSentenceSilenceMs", 0)
@@ -129,7 +170,10 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
     @ReactMethod
     fun isModelAvailable(promise: Promise) {
         try {
-            promise.resolve(getModelPaths() != null)
+            // On Android both the Piper ONNX model and espeak-ng-data are required for synthesis.
+            val modelOk = getModelPaths() != null
+            val espeakOk = getEspeakDataPath() != null
+            promise.resolve(modelOk && espeakOk)
         } catch (e: Exception) {
             promise.resolve(false)
         }
