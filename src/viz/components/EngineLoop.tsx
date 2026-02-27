@@ -4,7 +4,7 @@
 
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import type { VizEngineRef } from './types';
+import type { VizEngineRef } from '../types';
 
 const DT_CAP = 0.1;
 

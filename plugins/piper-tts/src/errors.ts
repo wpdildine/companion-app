@@ -3,7 +3,7 @@
  * See docs/plugin-contract.md.
  */
 
-import type { PluginError } from '../../../src/types/plugin-contract';
+import type { PluginError } from '../../../src/shared/types/plugin-contract';
 
 export type PiperErrorCode =
   | 'E_NOT_LINKED'

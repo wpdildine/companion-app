@@ -5,9 +5,9 @@
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { starfieldFragment, starfieldVertex } from './shaders/starfield';
-import { buildStarfield } from './starfieldData';
-import type { VizEngineRef } from './types';
+import { starfieldFragment, starfieldVertex } from '../shaders/starfield';
+import { buildStarfield } from '../helpers/starfieldData';
+import type { VizEngineRef } from '../types';
 
 const STAR_COUNT = 16000;
 const MODE_TO_ID: Record<string, number> = {

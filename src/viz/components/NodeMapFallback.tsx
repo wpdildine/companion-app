@@ -6,7 +6,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
-import type { VizEngineRef } from './types';
+import type { VizEngineRef } from '../types';
 
 const LOG_FALLBACK = true;
 

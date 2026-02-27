@@ -2,7 +2,7 @@
  * Theme: getTheme returns required keys and valid color strings.
  */
 
-import { getTheme } from '../src/theme';
+import { getTheme } from '../src/shared/theme';
 
 const REQUIRED_RN_KEYS = [
   'text',

@@ -2,6 +2,8 @@
 
 MTG Rules Companion and Timer App — React Native (New Architecture), with [llama.rn](https://github.com/mybigday/llama.rn) for on-device LLM. Voice input, offline TTS (Piper), and a **deterministic context provider** for grounded MTG rules/cards answers — no vector retrieval in-app.
 
+**AI agents:** Follow [docs/ai/AGENT_RULES.md](docs/ai/AGENT_RULES.md). See the [Architecture Navigation Map](docs/ARCHITECTURE.md) for where code lives (app, rag, viz, shared).
+
 This is a [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
 
 **New Architecture** (Fabric + TurboModules) is enabled by default (see `android/gradle.properties` → `newArchEnabled=true`). React Native 0.84 uses the new architecture on both Android and iOS.
@@ -26,12 +28,12 @@ Context provider logic is shared with **mtg_rules**: the app consumes **@mtg/run
 
 ## Project structure
 
-- **`src/theme/`** — Central theme (pure values). `getTheme(isDark)` returns RN tokens (text, background, etc.) and viz primitives (canvas background, palette arrays). Theme is **injected** into screens and NodeMap; NodeMap does not import theme. Recomputed only when `isDark` changes; DevPanel overrides affect viz palette only.
-- **`src/ui/`** — Voice screen UI components (e.g. `VoiceLoadingView`). Consume theme from App; keep `App.tsx` to orchestration and composition.
-- **`src/nodeMap/`** — 3D visualization: R3F canvas, 2D fallback, touch, shaders. **Pure visualization layer**: it does not own app state or voice lifecycle. It consumes **injected theme primitives** (e.g. `canvasBackground`), the engine ref, and optional touch callbacks (with stubs when not wired). Touch API: short tap, double-tap, long-press, drag; see `touchHandlers.ts`.
-- **`src/rag/`** — RAG pipeline, context provider, pack DB (unchanged).
-- **`src/utils/`** — Shared utilities: structured logging (`logViz`, `logTouch`), viz state validation (`validateVizState`). Pure or side-effect isolated; no React/theme imports.
-- **`App.tsx`** — Root: `SafeAreaProvider`, `VoiceScreen` (state, handlers, composition of NodeMapCanvas and UI).
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full Architecture Navigation Map.
+
+- **`src/app/`** — App entry + navigation. `App.tsx` composes `SafeAreaProvider`, `VoiceScreen` (state, handlers, NodeMapCanvas and UI).
+- **`src/shared/`** — Reusable building blocks: theme (`getTheme(isDark)`), components (e.g. `VoiceLoadingView`), helpers (e.g. `log`), services (e.g. native PluginDiagnostics), types.
+- **`src/viz/`** — GL UI (3D visualization): R3F canvas, 2D fallback, touch, shaders. **Pure visualization layer**: injected theme primitives, engine ref, touch callbacks (with stubs when not wired). Touch API: short tap, double-tap, long-press, drag; see `viz/interaction/touchHandlers.ts`.
+- **`src/rag/`** — RAG pipeline, context provider, pack DB.
 
 The app does **not** use Skia. Graphics are driven by Three.js/R3F and the theme’s viz primitives.
 

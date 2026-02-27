@@ -11,11 +11,11 @@ import { Canvas } from '@react-three/fiber/native';
 import { StarfieldPoints } from './StarfieldPoints';
 import { NodeCloudPoints } from './NodeCloudPoints';
 import { EngineLoop } from './EngineLoop';
-import { TouchRaycaster } from './TouchRaycaster';
+import { TouchRaycaster } from '../interaction/TouchRaycaster';
 import { CameraOrbit } from './CameraOrbit';
 import { PostFXPass } from './PostFXPass';
-import type { VizEngineRef } from './types';
-import { withTouchStubs, type TouchCallbacks } from './touchHandlers';
+import type { VizEngineRef } from '../types';
+import { withTouchStubs, type TouchCallbacks } from '../interaction/touchHandlers';
 
 const TAP_MAX_MS = 300;
 const TAP_MAX_MOVE = 15;

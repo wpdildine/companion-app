@@ -7,7 +7,7 @@
 import type {
   NormalizedDiagnosticEvent,
   PluginEventPayload,
-} from '../types/plugin-contract';
+} from '../../types/plugin-contract';
 
 const DEFAULT_BUFFER_SIZE = 100;
 let buffer: NormalizedDiagnosticEvent[] = [];

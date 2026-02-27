@@ -6,7 +6,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useRef } from 'react';
-import type { VizEngineRef } from './types';
+import type { VizEngineRef } from '../types';
 
 const PULSE_COLOR: [number, number, number] = [0.5, 0.25, 0.85];
 

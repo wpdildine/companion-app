@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import type { VizEngineRef } from './types';
+import type { VizEngineRef } from '../types';
 
 const postVertex = `
   varying vec2 vUv;

@@ -3,7 +3,7 @@
  * See docs/plugin-contract.md for PluginError shape.
  */
 
-import type { PluginError } from '../types/plugin-contract';
+import type { PluginError } from '../shared/types/plugin-contract';
 
 export type RagErrorCode =
   | 'E_PACK_LOAD'

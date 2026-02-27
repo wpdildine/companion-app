@@ -5,8 +5,8 @@
 
 import React, { Component, useEffect, useState } from 'react';
 import { NativeModules, Platform } from 'react-native';
-import type { VizEngineRef } from './types';
-import type { TouchCallbacks } from './touchHandlers';
+import type { VizEngineRef } from '../types';
+import type { TouchCallbacks } from '../interaction/touchHandlers';
 import { NodeMapFallback } from './NodeMapFallback';
 
 /** Skip loading R3F on Android; set false to try R3F + expo-gl on Android. */

@@ -12,13 +12,13 @@ import {
   useColorScheme,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getTheme } from '../theme';
+import { getTheme } from '../../shared/theme';
 import {
   TARGET_ACTIVITY_BY_MODE,
   type VizEngineRef,
   type VizMode,
-} from './types';
-import { triggerPulseAtCenter } from './triggerPulse';
+} from '../types';
+import { triggerPulseAtCenter } from '../helpers/triggerPulse';
 
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v));

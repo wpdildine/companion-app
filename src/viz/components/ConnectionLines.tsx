@@ -5,9 +5,9 @@
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { buildCrystallineSphere } from './formations';
-import { connectionVertex, connectionFragment } from './shaders/connections';
-import type { VizEngineRef } from './types';
+import { buildCrystallineSphere } from '../helpers/formations';
+import { connectionVertex, connectionFragment } from '../shaders/connections';
+import type { VizEngineRef } from '../types';
 
 const FORMATION = buildCrystallineSphere();
 const SEGMENTS_PER_EDGE = 12;

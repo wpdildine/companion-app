@@ -4,7 +4,7 @@
  */
 
 import type { RefObject } from 'react';
-import type { VizEngineRef } from './types';
+import type { VizEngineRef } from '../types';
 
 const PULSE_COLOR: [number, number, number] = [0.5, 0.25, 0.85];
 

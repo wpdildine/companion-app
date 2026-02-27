@@ -3,7 +3,7 @@
  * Use in __DEV__ or tests.
  */
 
-import type { VizEngineRef, VizMode } from '../nodeMap/types';
+import type { VizEngineRef, VizMode } from '../types';
 
 const VIZ_MODES: VizMode[] = [
   'idle',

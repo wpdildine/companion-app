@@ -4,7 +4,7 @@
 
 import { useFrame, useThree } from '@react-three/fiber';
 import { useRef } from 'react';
-import type { VizEngineRef } from './types';
+import type { VizEngineRef } from '../types';
 
 const RADIUS = 13.5;
 

@@ -3,7 +3,7 @@
  * Follows plugin contract: structured errors, events, getDebugInfo.
  */
 import NativePiperTts from './NativePiperTts';
-import type { PluginEventPayload } from '../../../src/types/plugin-contract';
+import type { PluginEventPayload } from '../../../src/shared/types/plugin-contract';
 
 const MODULE_MISSING_MSG =
   'Native module PiperTts is not loaded. Rebuild the app (clean + pod install) and ensure the Piper TTS pod is linked.';

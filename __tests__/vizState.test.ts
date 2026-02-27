@@ -2,8 +2,8 @@
  * Viz state: createDefaultVizRef and validateVizState.
  */
 
-import { createDefaultVizRef } from '../src/nodeMap/types';
-import { validateVizState } from '../src/utils/validateVizState';
+import { createDefaultVizRef } from '../src/viz/types';
+import { validateVizState } from '../src/viz/helpers/validateVizState';
 
 describe('createDefaultVizRef', () => {
   it('returns object with required fields', () => {

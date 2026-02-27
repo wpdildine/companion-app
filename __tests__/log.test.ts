@@ -2,7 +2,7 @@
  * Logging: mode change logs include sessionId; pulse logs include slot index.
  */
 
-import { logModeChange, logPulse, logViz } from '../src/utils/log';
+import { logModeChange, logPulse, logViz } from '../src/shared/helpers/log';
 
 // Capture console.log
 let logCalls: string[] = [];
