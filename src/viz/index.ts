@@ -1,4 +1,4 @@
-export { NodeMapCanvas } from './components/NodeMapCanvas';
+export { VizCanvas } from './components/VizCanvas';
 export { DevPanel } from './components/DevPanel';
 export { triggerPulseAtCenter } from './helpers/triggerPulse';
 export {

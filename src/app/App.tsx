@@ -30,7 +30,7 @@ import { getTheme } from '../shared/theme';
 import { VoiceLoadingView } from '../shared/components/VoiceLoadingView';
 import {
   createDefaultVizRef,
-  NodeMapCanvas,
+  VizCanvas,
   TARGET_ACTIVITY_BY_MODE,
   triggerPulseAtCenter,
   type VizMode,
@@ -922,7 +922,7 @@ function VoiceScreen() {
 
   return (
     <View style={styles.screenWrapper}>
-      <NodeMapCanvas
+      <VizCanvas
         vizRef={vizRef}
         controlsEnabled={showDevScreen}
         inputEnabled

@@ -1,5 +1,6 @@
 /**
- * Connection layer: precomputed curved segments (bezier), flow + pulse in shader. uActivity.
+ * Context links: precomputed curved segments (bezier), flow + pulse in shader. uActivity.
+ * Visibility gated by showViz and showConnections on vizRef.
  */
 
 import { useMemo, useRef } from 'react';
@@ -35,7 +36,7 @@ function sampleBezier(
   return [b, c, d];
 }
 
-export function ConnectionLines({ vizRef }: { vizRef: React.RefObject<VizEngineRef | null> }) {
+export function ContextLinks({ vizRef }: { vizRef: React.RefObject<VizEngineRef | null> }) {
   const meshRef = useRef<THREE.LineSegments>(null);
   const { positions, tArr, startPoints, endPoints, strengths, pathIndices, colors } = useMemo(() => {
     const nodes = FORMATION.nodes;

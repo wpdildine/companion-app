@@ -14,7 +14,7 @@ export function EngineLoop({ vizRef }: { vizRef: React.RefObject<VizEngineRef | 
     const v = vizRef.current;
     if (!v) return;
     if (!didLog.current) {
-      console.log('[NodeMap] EngineLoop useFrame running (R3F render loop active)');
+      console.log('[Viz] EngineLoop useFrame running (R3F render loop active)');
       didLog.current = true;
     }
     v.clock = state.clock.getElapsedTime();

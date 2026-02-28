@@ -7,8 +7,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useRef } from 'react';
 import type { VizEngineRef } from '../types';
-
-const PULSE_COLOR: [number, number, number] = [0.5, 0.25, 0.85];
+import { getPulseColorWithHue } from '../helpers/getPulseColor';
 
 export function TouchRaycaster({
   vizRef,
@@ -27,7 +26,7 @@ export function TouchRaycaster({
 
     const [ndcX, ndcY] = v.pendingTapNdc;
     v.pendingTapNdc = null;
-    console.log('[NodeMap] TouchRaycaster: processing tap ndc=', ndcX.toFixed(3), ndcY.toFixed(3));
+    console.log('[Viz] TouchRaycaster: processing tap ndc=', ndcX.toFixed(3), ndcY.toFixed(3));
 
     pointer.current.set(ndcX, ndcY);
     raycaster.current.setFromCamera(pointer.current, camera);
@@ -44,11 +43,16 @@ export function TouchRaycaster({
         intersection.current.z,
       ];
       v.pulseTimes[i] = state.clock.getElapsedTime();
-      v.pulseColors[i] = [...PULSE_COLOR];
+      v.pulseColors[i] = getPulseColorWithHue(
+        v.paletteId,
+        v.hueShift,
+        'tap',
+        v.currentMode,
+      );
       v.lastPulseIndex = (v.lastPulseIndex + 1) % 3;
-      console.log('[NodeMap] TouchRaycaster: pulse at', intersection.current.x.toFixed(2), intersection.current.y.toFixed(2), intersection.current.z.toFixed(2));
+      console.log('[Viz] TouchRaycaster: pulse at', intersection.current.x.toFixed(2), intersection.current.y.toFixed(2), intersection.current.z.toFixed(2));
     } else {
-      console.log('[NodeMap] TouchRaycaster: no plane intersection');
+      console.log('[Viz] TouchRaycaster: no plane intersection');
     }
   });
 

@@ -1,5 +1,5 @@
 /**
- * 2D fallback node map when R3F is unavailable (e.g. Android).
+ * 2D fallback when R3F is unavailable (e.g. Android).
  * Renders a dark background with a sphere-projected grid of dots that pulse with activity.
  * No extra deps; drives visibility from vizRef.targetActivity.
  */
@@ -53,7 +53,7 @@ const NODES = buildFallbackNodes();
 
 const POLL_MS = 120;
 
-export function NodeMapFallback({
+export function VizCanvasFallback({
   vizRef,
   canvasBackground = DEFAULT_FALLBACK_BG,
 }: {
@@ -65,7 +65,7 @@ export function NodeMapFallback({
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    if (LOG_FALLBACK) console.log('[NodeMap] NodeMapFallback mounted (2D dots)', { width, height });
+    if (LOG_FALLBACK) console.log('[Viz] VizCanvasFallback mounted (2D dots)', { width, height });
   }, [width, height]);
 
   useEffect(() => {
@@ -76,8 +76,6 @@ export function NodeMapFallback({
     }, POLL_MS);
     return () => clearInterval(id);
   }, [vizRef]);
-
-  const time = tick * (POLL_MS / 1000);
 
   return (
     <View style={[StyleSheet.absoluteFill, styles.root, { backgroundColor: canvasBackground }]} />

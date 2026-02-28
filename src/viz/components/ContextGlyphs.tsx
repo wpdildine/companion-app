@@ -1,5 +1,5 @@
 /**
- * Node cloud: Crystalline Sphere formation, breathing + drift + glow. uTime, uActivity, uPulse*.
+ * Context glyphs: Crystalline Sphere formation, breathing + drift + glow. uTime, uActivity, uPulse*.
  */
 
 import { useEffect, useMemo, useRef } from 'react';
@@ -11,10 +11,10 @@ import type { VizEngineRef } from '../types';
 
 const FORMATION = buildCrystallineSphere();
 
-export function NodeCloudPoints({ vizRef }: { vizRef: React.RefObject<VizEngineRef | null> }) {
+export function ContextGlyphs({ vizRef }: { vizRef: React.RefObject<VizEngineRef | null> }) {
   const meshRef = useRef<THREE.Points>(null);
   useEffect(() => {
-    console.log('[NodeMap] NodeCloudPoints mounted');
+    console.log('[Viz] ContextGlyphs mounted');
   }, []);
   const { positions, nodeSizes, nodeTypes, nodeColors, distanceFromRoot } = useMemo(() => {
     const n = FORMATION.nodes.length;

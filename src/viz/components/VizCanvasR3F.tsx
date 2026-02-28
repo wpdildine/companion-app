@@ -1,5 +1,5 @@
 /**
- * R3F implementation of the node map (Lane A).
+ * R3F implementation of the viz canvas (constructivist planes + context glyphs).
  * Touch: tap → raypick → pulse; double-tap / long-press / drag callbacks via stubs.
  * canvasBackground and callbacks are injected (no theme import).
  */
@@ -8,8 +8,8 @@ import React, { useEffect, useRef } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import type { LayoutChangeEvent, GestureResponderEvent } from 'react-native';
 import { Canvas } from '@react-three/fiber/native';
-import { StarfieldPoints } from './StarfieldPoints';
-import { NodeCloudPoints } from './NodeCloudPoints';
+import { ContextGlyphs } from './ContextGlyphs';
+import { ContextLinks } from './ContextLinks';
 import { EngineLoop } from './EngineLoop';
 import { TouchRaycaster } from '../interaction/TouchRaycaster';
 import { CameraOrbit } from './CameraOrbit';
@@ -28,14 +28,14 @@ const DRAG_THRESHOLD = 8;
 
 const DEFAULT_CANVAS_BACKGROUND = '#0a0612';
 
-export type NodeMapCanvasR3FProps = {
+export type VizCanvasR3FProps = {
   vizRef: React.RefObject<VizEngineRef | null>;
   controlsEnabled: boolean;
   inputEnabled: boolean;
   canvasBackground?: string;
 } & TouchCallbacks;
 
-export function NodeMapCanvasR3F({
+export function VizCanvasR3F({
   vizRef,
   controlsEnabled,
   inputEnabled,
@@ -47,7 +47,7 @@ export function NodeMapCanvasR3F({
   onDragStart,
   onDragMove,
   onDragEnd,
-}: NodeMapCanvasR3FProps) {
+}: VizCanvasR3FProps) {
   const touch = withTouchStubs({
     onShortTap,
     onDoubleTap,
@@ -66,12 +66,12 @@ export function NodeMapCanvasR3F({
   const dragActive = useRef(false);
 
   useEffect(() => {
-    console.log('[NodeMap] R3F Canvas mounted', Platform.OS);
+    console.log('[Viz] R3F Canvas mounted', Platform.OS);
   }, []);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
-    console.log('[NodeMap] onLayout', { width, height });
+    console.log('[Viz] onLayout', { width, height });
     if (vizRef.current) {
       vizRef.current.canvasWidth = width;
       vizRef.current.canvasHeight = height;
@@ -93,7 +93,7 @@ export function NodeMapCanvasR3F({
       longPressTriggered.current = true;
       touch.onLongPressStart();
     }, LONG_PRESS_MS);
-    console.log('[NodeMap] touchStart', { locationX, locationY });
+    console.log('[Viz] touchStart', { locationX, locationY });
   };
 
   const onTouchMove = (e: GestureResponderEvent) => {
@@ -139,7 +139,7 @@ export function NodeMapCanvasR3F({
       locationX - touchStart.current.x,
       locationY - touchStart.current.y,
     );
-    console.log('[NodeMap] touchEnd', {
+    console.log('[Viz] touchEnd', {
       locationX,
       locationY,
       dt,
@@ -147,13 +147,13 @@ export function NodeMapCanvasR3F({
       canvasSize: v ? [v.canvasWidth, v.canvasHeight] : null,
     });
     if (!v || v.canvasWidth <= 0 || v.canvasHeight <= 0) {
-      console.log('[NodeMap] touchEnd: skip (no vizRef or zero canvas size)');
+      console.log('[Viz] touchEnd: skip (no vizRef or zero canvas size)');
       return;
     }
     if (longPressTriggered.current) {
       longPressTriggered.current = false;
       touch.onLongPressEnd();
-      console.log('[NodeMap] touchEnd: long press completed');
+      console.log('[Viz] touchEnd: long press completed');
       return;
     }
     if (dt < TAP_MAX_MS && dist < TAP_MAX_MOVE) {
@@ -168,15 +168,15 @@ export function NodeMapCanvasR3F({
       if (isDoubleTap) {
         lastTap.current = null;
         touch.onDoubleTap();
-        console.log('[NodeMap] touchEnd: double tap');
+        console.log('[Viz] touchEnd: double tap');
       } else {
         lastTap.current = { x: locationX, y: locationY, t: now };
         v.pendingTapNdc = [ndcX, ndcY];
         touch.onShortTap();
-        console.log('[NodeMap] touchEnd: tap, pendingTapNdc=', [ndcX, ndcY]);
+        console.log('[Viz] touchEnd: tap, pendingTapNdc=', [ndcX, ndcY]);
       }
     } else {
-      console.log('[NodeMap] touchEnd: not a tap (dt or dist too large)');
+      console.log('[Viz] touchEnd: not a tap (dt or dist too large)');
     }
   };
 
@@ -197,8 +197,8 @@ export function NodeMapCanvasR3F({
         <EngineLoop vizRef={vizRef} />
         <TouchRaycaster vizRef={vizRef} />
         <CameraOrbit vizRef={vizRef} />
-        <StarfieldPoints vizRef={vizRef} />
-        <NodeCloudPoints vizRef={vizRef} />
+        <ContextGlyphs vizRef={vizRef} />
+        <ContextLinks vizRef={vizRef} />
         <PostFXPass vizRef={vizRef} />
       </Canvas>
     </View>
