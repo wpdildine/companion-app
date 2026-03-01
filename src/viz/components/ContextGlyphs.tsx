@@ -79,16 +79,18 @@ export function ContextGlyphs({ vizRef }: { vizRef: React.RefObject<VizEngineRef
         ],
       },
       uTouchWorld: { value: new THREE.Vector3(1e6, 1e6, 1e6) },
-      uTouchView: { value: new THREE.Vector3(0, 0, 1e6) },
       uTouchInfluence: { value: 0 },
       uModelMatrix: { value: new THREE.Matrix4() },
-      uModelViewMatrix: { value: new THREE.Matrix4() },
+      uViewMatrix: { value: new THREE.Matrix4() },
       uProjectionMatrix: { value: new THREE.Matrix4() },
+      uTouchRadius: { value: 2.2 },
+      uTouchStrength: { value: 1.25 },
+      uTouchMaxOffset: { value: 0.65 },
     }),
     [],
   );
 
-  const modelViewMatrixRef = useRef(new THREE.Matrix4());
+  const viewMatrixRef = useRef(new THREE.Matrix4());
   const projectionMatrixRef = useRef(new THREE.Matrix4());
 
   useFrame((state, delta) => {
@@ -127,17 +129,11 @@ export function ContextGlyphs({ vizRef }: { vizRef: React.RefObject<VizEngineRef
         tw ? tw[1] : 1e6,
         tw ? tw[2] : 1e6,
       );
-      const tv = v.touchView;
-      mat.uniforms.uTouchView.value.set(
-        tv ? tv[0] : 0,
-        tv ? tv[1] : 0,
-        tv ? tv[2] : 1e6,
-      );
       mat.uniforms.uTouchInfluence.value = v.touchInfluence;
-      modelViewMatrixRef.current.copy(state.camera.matrixWorldInverse).multiply(points.matrixWorld);
+      viewMatrixRef.current.copy(state.camera.matrixWorldInverse);
       projectionMatrixRef.current.copy(state.camera.projectionMatrix);
       mat.uniforms.uModelMatrix.value.copy(points.matrixWorld);
-      mat.uniforms.uModelViewMatrix.value.copy(modelViewMatrixRef.current);
+      mat.uniforms.uViewMatrix.value.copy(viewMatrixRef.current);
       mat.uniforms.uProjectionMatrix.value.copy(projectionMatrixRef.current);
     }
   });

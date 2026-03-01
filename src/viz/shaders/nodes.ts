@@ -21,11 +21,13 @@ export const nodeVertex = `
   uniform vec3 uPulseColors[3];
   uniform float uPulseSpeed;
   uniform vec3 uTouchWorld;
-  uniform vec3 uTouchView;
   uniform float uTouchInfluence;
   uniform mat4 uModelMatrix;
-  uniform mat4 uModelViewMatrix;
+  uniform mat4 uViewMatrix;
   uniform mat4 uProjectionMatrix;
+  uniform float uTouchRadius;
+  uniform float uTouchStrength;
+  uniform float uTouchMaxOffset;
   varying vec3 vColor;
   varying float vAlpha;
   varying float vPulse;
@@ -61,12 +63,11 @@ export const nodeVertex = `
       tangent * (0.03 + decayDepth * 0.08 + edgeRelax * 0.06) * tangentFuzzA +
       bitangent * (0.03 + decayDepth * 0.08 + edgeRelax * 0.06) * tangentFuzzB;
     vec4 worldPreTouch = uModelMatrix * vec4(pos, 1.0);
-    vec4 viewPos = uModelViewMatrix * vec4(pos, 1.0);
-    float touchDistView = distance(viewPos.xyz, uTouchView);
-    vec3 touchAwayView = touchDistView > 0.01 ? normalize(viewPos.xyz - uTouchView) : vec3(0.0);
-    float repulse = uTouchInfluence * 1.8 * exp(-touchDistView * 0.9);
-    vec3 viewPosRepulsed = viewPos.xyz + touchAwayView * repulse;
-    vec4 world = worldPreTouch;
+    float touchDistWorld = distance(worldPreTouch.xyz, uTouchWorld);
+    vec3 touchAwayWorld = touchDistWorld > 0.01 ? normalize(worldPreTouch.xyz - uTouchWorld) : vec3(0.0);
+    float radiusMask = 1.0 - smoothstep(0.0, uTouchRadius, touchDistWorld);
+    float repulse = min(uTouchMaxOffset, uTouchInfluence * uTouchStrength * radiusMask * radiusMask);
+    vec4 world = vec4(worldPreTouch.xyz + touchAwayWorld * repulse, 1.0);
     vec3 sphereDir = normalize(position);
     float pulse = getPulseIntensity(world.xyz);
     vPulse = pulse;
@@ -119,7 +120,7 @@ export const nodeVertex = `
     vColor = mix(brightBase, brightBase + vec3(0.18), glowGate * 0.55);
     float baseAlpha = (0.42 + 0.34 * uActivity) * breath * randomDecay;
     vAlpha = baseAlpha + glowGate * (0.10 + 0.16 * uActivity);
-    vec4 mv = vec4(viewPosRepulsed, 1.0);
+    vec4 mv = uViewMatrix * world;
     gl_Position = uProjectionMatrix * mv;
     float sizeDecay = 1.0 - decayDepth * 0.22 * (0.35 + 0.65 * randomDecayMix);
     float s = (uBaseNodeSize + nodeSize) * sizeDecay * (220.0 / -mv.z) * (1.0 + pulse * 0.35 + touchBoost * 0.2);
