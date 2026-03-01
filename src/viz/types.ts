@@ -11,10 +11,29 @@ export type VizMode =
   | 'touched'
   | 'released';
 
+/** UI-semantic signals for the viz layer only. Not render params. */
+export type AiUiSignalsEvent =
+  | 'tapCitation'
+  | 'chunkAccepted'
+  | 'warning'
+  | 'tapCard'
+  | null;
+
+export type AiUiSignals = {
+  phase: 'idle' | 'processing' | 'resolved';
+  grounded: boolean;
+  confidence: number; // 0..1
+  retrievalDepth: number; // count of selected rule snippets
+  cardRefsCount: number; // count of referenced cards
+  event?: AiUiSignalsEvent;
+};
+
 export interface TouchNdc {
   x: number;
   y: number;
 }
+
+export type VizIntensity = 'off' | 'subtle' | 'full';
 
 export interface VizEngineRef {
   clock: number;
@@ -33,12 +52,12 @@ export interface VizEngineRef {
   hueShift: number;
   satBoost: number;
   lumBoost: number;
-  showViz: boolean;
-  showConnections: boolean;
   starCountMultiplier: number;
   touchActive: boolean;
   touchNdc: TouchNdc;
   touchWorld: [number, number, number] | null;
+  /** Touch in view space (camera.matrixWorldInverse * touchWorld) for shader repulsion. */
+  touchView: [number, number, number] | null;
   touchInfluence: number;
   /** Tap-to-pulse: NDC [x,y] when user taps canvas; cleared after raycast. */
   pendingTapNdc: [number, number] | null;
@@ -63,6 +82,33 @@ export interface VizEngineRef {
   postFxVignette: number;
   postFxChromatic: number;
   postFxGrain: number;
+  /** Viz intensity: off | subtle | full. Default subtle until later. */
+  vizIntensity: VizIntensity;
+  /** Reduce motion (accessibility). */
+  reduceMotion: boolean;
+  /** Last semantic event (for pulse/ripple). */
+  lastEvent: AiUiSignalsEvent;
+  /** Time of last event (clock or elapsed). */
+  lastEventTime: number;
+  /** Optional snapshot for debug. */
+  signalsSnapshot?: AiUiSignals;
+  /** Panel rects in viewport-relative screen px (account for scroll before writing). VizSurface provides viewport size; GL converts to normalized. */
+  panelRects?: {
+    answer?: { x: number; y: number; w: number; h: number };
+    cards?: { x: number; y: number; w: number; h: number };
+    rules?: { x: number; y: number; w: number; h: number };
+  };
+  /** Derived in applySignalsToViz from signals (not in signals API). */
+  rulesClusterCount: number;
+  cardsClusterCount: number;
+  layerCount: number;
+  deconWeight: number;
+  planeOpacity: number;
+  driftPx: number;
+  /** Canvas-owned touch field for repulsion (viz band only). */
+  touchFieldActive: boolean;
+  touchFieldNdc: [number, number] | null;
+  touchFieldStrength: number;
 }
 
 const SENTINEL_FAR = 1e6;
@@ -85,12 +131,11 @@ export function createDefaultVizRef(): VizEngineRef {
     hueShift: 0,
     satBoost: 1,
     lumBoost: 1,
-    showViz: true,
-    showConnections: true,
     starCountMultiplier: 1,
     touchActive: false,
     touchNdc: { x: 0, y: 0 },
     touchWorld: null,
+    touchView: null,
     touchInfluence: 0,
     pendingTapNdc: null,
     canvasWidth: 1,
@@ -104,10 +149,25 @@ export function createDefaultVizRef(): VizEngineRef {
     autoRotSpeedY: (Math.random() * 0.08 + 0.04) * (Math.random() > 0.5 ? 1 : -1),
     autoRotSpeedZ: (Math.random() * 0.04 + 0.02) * (Math.random() > 0.5 ? 1 : -1),
     currentMode: 'idle',
-    postFxEnabled: true,
+    postFxEnabled: false,
     postFxVignette: 0.14,
     postFxChromatic: 0.0,
     postFxGrain: 0.0,
+    vizIntensity: 'subtle',
+    reduceMotion: false,
+    lastEvent: null,
+    lastEventTime: 0,
+    signalsSnapshot: undefined,
+    panelRects: undefined,
+    rulesClusterCount: 0,
+    cardsClusterCount: 0,
+    layerCount: 2,
+    deconWeight: 0.2,
+    planeOpacity: 0.28,
+    driftPx: 2,
+    touchFieldActive: false,
+    touchFieldNdc: null,
+    touchFieldStrength: 0,
   };
 }
 

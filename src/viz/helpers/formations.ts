@@ -115,3 +115,75 @@ export function buildCrystallineSphere(
 
   return { nodes, edges };
 }
+
+const MAX_PER_CLUSTER = 8;
+const RULES_COLOR: [number, number, number] = [0.35, 0.55, 1.0];
+const CARDS_COLOR: [number, number, number] = [0.95, 0.35, 0.85];
+
+/** Seeded pseudo-random in [0,1] */
+function seeded(i: number, seed: number): number {
+  return Math.abs(Math.sin((i + 1) * seed));
+}
+
+/** Two clusters (rules left, cards right) for GlyphNodes. Max 8 per cluster, 16 total. */
+export function buildTwoClusters(): {
+  nodes: (Node & { clusterId: number; indexInCluster: number })[];
+} {
+  const nodes: (Node & { clusterId: number; indexInCluster: number })[] = [];
+  const radius = 1.2;
+  for (let i = 0; i < MAX_PER_CLUSTER; i++) {
+    const theta = (i / MAX_PER_CLUSTER) * Math.PI * 1.2 + seeded(i, 12.9898) * 0.4;
+    const phi = seeded(i, 78.233) * Math.PI * 0.6;
+    const x = -radius * 0.6 + Math.cos(phi) * Math.sin(theta) * radius * 0.5;
+    const y = (i / MAX_PER_CLUSTER - 0.5) * 1.2;
+    const z = Math.cos(theta) * radius * 0.5;
+    nodes.push({
+      id: i,
+      position: [x, y, z],
+      connections: [],
+      level: 0,
+      type: 0,
+      size: 0.06 + seeded(i, 37.719) * 0.04,
+      distanceFromRoot: Math.sqrt(x * x + y * y + z * z) / (radius * 1.2),
+      color: [...RULES_COLOR],
+      clusterId: 0,
+      indexInCluster: i,
+    });
+  }
+  for (let i = 0; i < MAX_PER_CLUSTER; i++) {
+    const theta = (i / MAX_PER_CLUSTER) * Math.PI * 1.2 + seeded(i + 8, 12.9898) * 0.4;
+    const phi = seeded(i + 8, 78.233) * Math.PI * 0.6;
+    const x = radius * 0.6 + Math.cos(phi) * Math.sin(theta) * radius * 0.5;
+    const y = (i / MAX_PER_CLUSTER - 0.5) * 1.2;
+    const z = Math.cos(theta) * radius * 0.5;
+    nodes.push({
+      id: MAX_PER_CLUSTER + i,
+      position: [x, y, z],
+      connections: [],
+      level: 1,
+      type: 1,
+      size: 0.06 + seeded(i + 8, 37.719) * 0.04,
+      distanceFromRoot: Math.sqrt(x * x + y * y + z * z) / (radius * 1.2),
+      color: [...CARDS_COLOR],
+      clusterId: 1,
+      indexInCluster: i,
+    });
+  }
+  return { nodes };
+}
+
+/** World-space centers of the two clusters for event pulses (tapCitation → rules, tapCard → cards). */
+export function getTwoClusterCenters(): {
+  rulesCenter: [number, number, number];
+  cardsCenter: [number, number, number];
+} {
+  const { nodes } = buildTwoClusters();
+  const rules = nodes.filter(n => n.clusterId === 0);
+  const cards = nodes.filter(n => n.clusterId === 1);
+  const sum = (arr: (Node & { clusterId: number; indexInCluster: number })[], i: 0 | 1 | 2) =>
+    arr.reduce((a, n) => a + n.position[i], 0) / arr.length;
+  return {
+    rulesCenter: [sum(rules, 0), sum(rules, 1), sum(rules, 2)],
+    cardsCenter: [sum(cards, 0), sum(cards, 1), sum(cards, 2)],
+  };
+}

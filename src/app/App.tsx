@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   AppState,
   type AppStateStatus,
@@ -28,13 +29,16 @@ import {
 } from 'react-native-safe-area-context';
 import { getTheme } from '../shared/theme';
 import { VoiceLoadingView } from '../shared/components/VoiceLoadingView';
+import { CardReferenceBlock } from '../shared/components/CardReferenceBlock';
+import { SelectedRulesBlock } from '../shared/components/SelectedRulesBlock';
 import {
   createDefaultVizRef,
-  VizCanvas,
+  VizSurface,
   TARGET_ACTIVITY_BY_MODE,
   triggerPulseAtCenter,
   type VizMode,
 } from '../viz';
+import { useAiVizBridge } from './hooks/useAiVizBridge';
 import {
   BUNDLE_PACK_ROOT,
   copyBundlePackToDocuments,
@@ -75,6 +79,9 @@ const DEV_APP_STATES: VizMode[] = [
   'released',
 ];
 const DOUBLE_TAP_MS = 280;
+
+/** Set to false to hide all UI over the canvas; focus on viz to spec. */
+const SHOW_UI_OVERLAY = false;
 
 /** Resolve embed + chat model paths: pack in Documents (primary on Android), then bundle, then app files/models/. */
 async function getOnDeviceModelPaths(packRootInDocuments?: string): Promise<{
@@ -279,10 +286,56 @@ function VoiceScreen() {
   const isAsking = mode === 'processing';
   const isSpeaking = mode === 'speaking';
 
+  const { setSignals } = useAiVizBridge(vizRef);
+
   useEffect(() => {
-    vizRef.current.targetActivity = TARGET_ACTIVITY_BY_MODE[mode];
-    vizRef.current.currentMode = mode;
-  }, [mode]);
+    const v = vizRef.current;
+    if (!v) return;
+    v.targetActivity = TARGET_ACTIVITY_BY_MODE[mode];
+    if (!SHOW_UI_OVERLAY) {
+      setSignals({
+        phase: 'resolved',
+        grounded: true,
+        confidence: 0.8,
+        retrievalDepth: 4,
+        cardRefsCount: 3,
+      });
+      return;
+    }
+    const phase =
+      mode === 'processing'
+        ? 'processing'
+        : mode === 'speaking'
+          ? 'resolved'
+          : 'idle';
+    const grounded =
+      validationSummary != null
+        ? validationSummary.stats.unknownCardCount === 0 &&
+          validationSummary.stats.invalidRuleCount === 0
+        : true;
+    const confidence = grounded ? 0.9 : 0.5;
+    setSignals({
+      phase,
+      grounded,
+      confidence,
+      retrievalDepth: validationSummary?.rules?.length ?? 0,
+      cardRefsCount: validationSummary?.cards?.length ?? 0,
+    });
+  }, [mode, validationSummary, setSignals]);
+
+  useEffect(() => {
+    const setReduceMotion = (enabled: boolean) => {
+      if (vizRef.current) vizRef.current.reduceMotion = enabled;
+    };
+    AccessibilityInfo.isReduceMotionEnabled?.()
+      .then(setReduceMotion)
+      .catch(() => {});
+    const sub = AccessibilityInfo.addEventListener?.(
+      'reduceMotionChanged',
+      setReduceMotion,
+    );
+    return () => sub?.remove?.();
+  }, []);
 
   // Copy bundled content_pack to app files on startup so models are on device before first RAG use.
   useEffect(() => {
@@ -922,7 +975,7 @@ function VoiceScreen() {
 
   return (
     <View style={styles.screenWrapper}>
-      <VizCanvas
+      <VizSurface
         vizRef={vizRef}
         controlsEnabled={showDevScreen}
         inputEnabled
@@ -932,8 +985,8 @@ function VoiceScreen() {
           !showDevScreen ? handleUserModeLongPressStart : undefined
         }
         onLongPressEnd={!showDevScreen ? handleUserModeLongPressEnd : undefined}
-      />
-      {showDevScreen && (
+      >
+        {SHOW_UI_OVERLAY ? (
         <ScrollView
           style={[styles.container, styles.scrollOverlay]}
           contentContainerStyle={{
@@ -943,7 +996,9 @@ function VoiceScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator
         >
-          <Text style={[styles.title, { color: textColor }]}>Developer</Text>
+          {showDevScreen && (
+            <>
+              <Text style={[styles.title, { color: textColor }]}>Developer</Text>
 
           <View style={styles.piperStatusRow}>
             <Text style={[styles.piperStatusLabel, { color: mutedColor }]}>
@@ -1018,33 +1073,22 @@ function VoiceScreen() {
 
             <View style={styles.devToolsRow}>
               <Text style={[styles.devToolsLabel, { color: textColor }]}>
-                Show viz
+                Viz intensity
               </Text>
               <Pressable
                 onPress={() =>
                   withViz(v => {
-                    v.showViz = !v.showViz;
+                    v.vizIntensity =
+                      v.vizIntensity === 'off'
+                        ? 'subtle'
+                        : v.vizIntensity === 'subtle'
+                          ? 'full'
+                          : 'off';
                   })
                 }
               >
                 <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-                  {vizRef.current?.showViz ? 'ON' : 'OFF'}
-                </Text>
-              </Pressable>
-            </View>
-            <View style={styles.devToolsRow}>
-              <Text style={[styles.devToolsLabel, { color: textColor }]}>
-                Show connections
-              </Text>
-              <Pressable
-                onPress={() =>
-                  withViz(v => {
-                    v.showConnections = !v.showConnections;
-                  })
-                }
-              >
-                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-                  {vizRef.current?.showConnections ? 'ON' : 'OFF'}
+                  {vizRef.current?.vizIntensity ?? 'subtle'}
                 </Text>
               </Pressable>
             </View>
@@ -1518,6 +1562,8 @@ function VoiceScreen() {
               </View>
             </View>
           </View>
+              </>
+            )}
 
           <Text style={[styles.sectionLabel, { color: mutedColor }]}>
             Question
@@ -1643,6 +1689,30 @@ function VoiceScreen() {
             </View>
           )}
 
+          <CardReferenceBlock
+            cards={
+              validationSummary?.cards?.map(c => ({
+                id: c.doc_id ?? c.raw,
+                name: c.canonical ?? c.raw,
+                imageUrl: null,
+              })) ?? []
+            }
+            textColor={textColor}
+            mutedColor={mutedColor}
+          />
+          <SelectedRulesBlock
+            rules={
+              validationSummary?.rules?.map(r => ({
+                id: r.canonical ?? r.raw,
+                title: r.raw,
+                excerpt: r.raw.length > 120 ? r.raw.slice(0, 120) + '…' : r.raw,
+                used: r.status === 'valid',
+              })) ?? []
+            }
+            textColor={textColor}
+            mutedColor={mutedColor}
+          />
+
           <View style={[styles.buttons, styles.buttonsCompactTop]}>
             <Pressable
               style={[
@@ -1716,20 +1786,23 @@ function VoiceScreen() {
             </Pressable>
           </View>
         </ScrollView>
+        ) : null}
+      </VizSurface>
+      {SHOW_UI_OVERLAY && (
+        <Pressable
+          style={[
+            styles.devToggle,
+            {
+              bottom: (insets.bottom || 16) + 12,
+            },
+          ]}
+          onPress={() => setShowDevScreen(prev => !prev)}
+        >
+          <Text style={styles.devToggleLabel}>
+            {showDevScreen ? 'User' : 'Dev'}
+          </Text>
+        </Pressable>
       )}
-      <Pressable
-        style={[
-          styles.devToggle,
-          {
-            bottom: (insets.bottom || 16) + 12,
-          },
-        ]}
-        onPress={() => setShowDevScreen(prev => !prev)}
-      >
-        <Text style={styles.devToggleLabel}>
-          {showDevScreen ? 'User' : 'Dev'}
-        </Text>
-      </Pressable>
     </View>
   );
 }

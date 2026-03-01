@@ -3,7 +3,7 @@
  * Use in __DEV__ or tests.
  */
 
-import type { VizEngineRef, VizMode } from '../types';
+import type { VizEngineRef, VizMode, VizIntensity } from '../types';
 
 const VIZ_MODES: VizMode[] = [
   'idle',
@@ -63,6 +63,47 @@ export function validateVizState(state: unknown): ValidationResult {
   }
   if (s.pendingTapNdc !== null && !Array.isArray(s.pendingTapNdc)) {
     errors.push('pendingTapNdc must be null or [number, number]');
+  }
+  const VIZ_INTENSITIES: VizIntensity[] = ['off', 'subtle', 'full'];
+  if (s.vizIntensity != null && !VIZ_INTENSITIES.includes(s.vizIntensity as VizIntensity)) {
+    errors.push(`vizIntensity must be one of ${VIZ_INTENSITIES.join(', ')}`);
+  }
+  if (s.reduceMotion != null && typeof s.reduceMotion !== 'boolean') {
+    errors.push('reduceMotion must be a boolean');
+  }
+  const validEvents = ['tapCitation', 'chunkAccepted', 'warning', 'tapCard'];
+  if (s.lastEvent != null && !validEvents.includes(s.lastEvent as string)) {
+    errors.push('lastEvent must be tapCitation | chunkAccepted | warning | tapCard | null');
+  }
+  if (s.lastEventTime != null && (typeof s.lastEventTime !== 'number' || Number.isNaN(s.lastEventTime))) {
+    errors.push('lastEventTime must be a number');
+  }
+  if (typeof s.rulesClusterCount !== 'number' || s.rulesClusterCount < 0 || s.rulesClusterCount > 8) {
+    errors.push('rulesClusterCount must be 0..8');
+  }
+  if (typeof s.cardsClusterCount !== 'number' || s.cardsClusterCount < 0 || s.cardsClusterCount > 8) {
+    errors.push('cardsClusterCount must be 0..8');
+  }
+  if (typeof s.layerCount !== 'number' || s.layerCount < 0 || s.layerCount > 4) {
+    errors.push('layerCount must be 0..4');
+  }
+  if (!inRange(s.deconWeight as number, 0, 1)) {
+    errors.push('deconWeight must be in [0,1]');
+  }
+  if (s.planeOpacity != null && !inRange(s.planeOpacity as number, 0, 1)) {
+    errors.push('planeOpacity must be in [0,1]');
+  }
+  if (s.driftPx != null && (typeof s.driftPx !== 'number' || s.driftPx < 0)) {
+    errors.push('driftPx must be a non-negative number');
+  }
+  if (s.touchFieldActive != null && typeof s.touchFieldActive !== 'boolean') {
+    errors.push('touchFieldActive must be a boolean');
+  }
+  if (s.touchFieldNdc !== null && !Array.isArray(s.touchFieldNdc)) {
+    errors.push('touchFieldNdc must be null or [number, number]');
+  }
+  if (s.touchFieldStrength != null && !inRange(s.touchFieldStrength as number, 0, 1)) {
+    errors.push('touchFieldStrength must be in [0,1]');
   }
 
   if (!inRange(s.postFxVignette as number, 0, 1)) {

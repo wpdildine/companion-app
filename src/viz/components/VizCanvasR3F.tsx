@@ -4,13 +4,15 @@
  * canvasBackground and callbacks are injected (no theme import).
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import type { LayoutChangeEvent, GestureResponderEvent } from 'react-native';
 import { Canvas } from '@react-three/fiber/native';
+import * as THREE from 'three';
 import { ContextGlyphs } from './ContextGlyphs';
 import { ContextLinks } from './ContextLinks';
 import { EngineLoop } from './EngineLoop';
+import { PlaneLayerField } from './PlaneLayerField';
 import { TouchRaycaster } from '../interaction/TouchRaycaster';
 import { CameraOrbit } from './CameraOrbit';
 import { PostFXPass } from './PostFXPass';
@@ -65,13 +67,8 @@ export function VizCanvasR3F({
   const lastTap = useRef<{ x: number; y: number; t: number } | null>(null);
   const dragActive = useRef(false);
 
-  useEffect(() => {
-    console.log('[Viz] R3F Canvas mounted', Platform.OS);
-  }, []);
-
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
-    console.log('[Viz] onLayout', { width, height });
     if (vizRef.current) {
       vizRef.current.canvasWidth = width;
       vizRef.current.canvasHeight = height;
@@ -85,6 +82,15 @@ export function VizCanvasR3F({
     lastMove.current = { x: locationX, y: locationY };
     longPressTriggered.current = false;
     dragActive.current = false;
+    if (vizRef.current) {
+      const v = vizRef.current;
+      const w = v.canvasWidth ?? 1;
+      const h = v.canvasHeight ?? 1;
+      v.touchFieldActive = true;
+      v.touchFieldNdc = [(locationX / w) * 2 - 1, 1 - (locationY / h) * 2];
+      v.touchFieldStrength = 1;
+      console.log('[Viz] touchStart → ref', { touchFieldActive: true, touchFieldNdc: v.touchFieldNdc, canvasSize: [w, h] });
+    }
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
@@ -93,7 +99,6 @@ export function VizCanvasR3F({
       longPressTriggered.current = true;
       touch.onLongPressStart();
     }, LONG_PRESS_MS);
-    console.log('[Viz] touchStart', { locationX, locationY });
   };
 
   const onTouchMove = (e: GestureResponderEvent) => {
@@ -108,6 +113,10 @@ export function VizCanvasR3F({
       longPressTimer.current = null;
     }
     const v = vizRef.current;
+    if (v && v.canvasWidth != null && v.canvasHeight != null) {
+      v.touchFieldNdc = [(locationX / v.canvasWidth) * 2 - 1, 1 - (locationY / v.canvasHeight) * 2];
+      v.touchFieldStrength = 1;
+    }
     const dx = (locationX - lastMove.current.x) * ORBIT_SENSITIVITY;
     const dy = (locationY - lastMove.current.y) * ORBIT_SENSITIVITY;
     if (v && controlsEnabled && moved > DRAG_THRESHOLD) {
@@ -124,6 +133,12 @@ export function VizCanvasR3F({
 
   const onTouchEnd = (e: GestureResponderEvent) => {
     if (!inputEnabled) return;
+    if (vizRef.current) {
+      vizRef.current.touchFieldActive = false;
+      vizRef.current.touchFieldNdc = null;
+      vizRef.current.touchFieldStrength = 0;
+      console.log('[Viz] touchEnd → ref', { touchFieldActive: false });
+    }
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
@@ -139,21 +154,10 @@ export function VizCanvasR3F({
       locationX - touchStart.current.x,
       locationY - touchStart.current.y,
     );
-    console.log('[Viz] touchEnd', {
-      locationX,
-      locationY,
-      dt,
-      dist,
-      canvasSize: v ? [v.canvasWidth, v.canvasHeight] : null,
-    });
-    if (!v || v.canvasWidth <= 0 || v.canvasHeight <= 0) {
-      console.log('[Viz] touchEnd: skip (no vizRef or zero canvas size)');
-      return;
-    }
+    if (!v || v.canvasWidth <= 0 || v.canvasHeight <= 0) return;
     if (longPressTriggered.current) {
       longPressTriggered.current = false;
       touch.onLongPressEnd();
-      console.log('[Viz] touchEnd: long press completed');
       return;
     }
     if (dt < TAP_MAX_MS && dist < TAP_MAX_MOVE) {
@@ -168,17 +172,22 @@ export function VizCanvasR3F({
       if (isDoubleTap) {
         lastTap.current = null;
         touch.onDoubleTap();
-        console.log('[Viz] touchEnd: double tap');
       } else {
         lastTap.current = { x: locationX, y: locationY, t: now };
         v.pendingTapNdc = [ndcX, ndcY];
         touch.onShortTap();
-        console.log('[Viz] touchEnd: tap, pendingTapNdc=', [ndcX, ndcY]);
       }
-    } else {
-      console.log('[Viz] touchEnd: not a tap (dt or dist too large)');
     }
   };
+
+  const onCanvasCreated = useCallback(
+    (state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
+      const hex = new THREE.Color(canvasBackground).getHex();
+      state.gl.setClearColor(hex, 1);
+      state.scene.background = new THREE.Color(canvasBackground);
+    },
+    [canvasBackground],
+  );
 
   return (
     <View
@@ -191,12 +200,18 @@ export function VizCanvasR3F({
       <Canvas
         style={fill}
         camera={{ position: [0, 0, 12], fov: 60 }}
-        gl={{ alpha: true, antialias: true }}
+        onCreated={onCanvasCreated}
+        gl={{
+          alpha: false,
+          antialias: true,
+          preserveDrawingBuffer: false,
+        }}
       >
         <color attach="background" args={[canvasBackground]} />
         <EngineLoop vizRef={vizRef} />
         <TouchRaycaster vizRef={vizRef} />
         <CameraOrbit vizRef={vizRef} />
+        <PlaneLayerField vizRef={vizRef} />
         <ContextGlyphs vizRef={vizRef} />
         <ContextLinks vizRef={vizRef} />
         <PostFXPass vizRef={vizRef} />

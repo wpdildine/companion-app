@@ -1,28 +1,26 @@
 /**
- * Context glyphs: Crystalline Sphere formation, breathing + drift + glow. uTime, uActivity, uPulse*.
+ * Context glyphs: two clusters (rules + cards), breathing + drift + glow. Counts from vizRef; no glyphs when no evidence.
  */
 
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { buildCrystallineSphere } from '../helpers/formations';
+import { buildTwoClusters } from '../helpers/formations';
 import { nodeVertex, nodeFragment } from '../shaders/nodes';
 import type { VizEngineRef } from '../types';
 
-const FORMATION = buildCrystallineSphere();
+const FORMATION = buildTwoClusters();
+const N = FORMATION.nodes.length;
 
 export function ContextGlyphs({ vizRef }: { vizRef: React.RefObject<VizEngineRef | null> }) {
   const meshRef = useRef<THREE.Points>(null);
-  useEffect(() => {
-    console.log('[Viz] ContextGlyphs mounted');
-  }, []);
+  const visibleRef = useRef<Float32Array>(new Float32Array(N));
   const { positions, nodeSizes, nodeTypes, nodeColors, distanceFromRoot } = useMemo(() => {
-    const n = FORMATION.nodes.length;
-    const positions = new Float32Array(n * 3);
-    const nodeSizes = new Float32Array(n);
-    const nodeTypes = new Float32Array(n);
-    const nodeColors = new Float32Array(n * 3);
-    const distanceFromRoot = new Float32Array(n);
+    const positions = new Float32Array(N * 3);
+    const nodeSizes = new Float32Array(N);
+    const nodeTypes = new Float32Array(N);
+    const nodeColors = new Float32Array(N * 3);
+    const distanceFromRoot = new Float32Array(N);
     FORMATION.nodes.forEach((node, i) => {
       positions[i * 3] = node.position[0];
       positions[i * 3 + 1] = node.position[1];
@@ -37,12 +35,10 @@ export function ContextGlyphs({ vizRef }: { vizRef: React.RefObject<VizEngineRef
     return { positions, nodeSizes, nodeTypes, nodeColors, distanceFromRoot };
   }, []);
   const { decayPhase, decayRate, decayDepth } = useMemo(() => {
-    const n = FORMATION.nodes.length;
-    const phase = new Float32Array(n);
-    const rate = new Float32Array(n);
-    const depth = new Float32Array(n);
-    for (let i = 0; i < n; i++) {
-      // Deterministic pseudo-random distribution by index.
+    const phase = new Float32Array(N);
+    const rate = new Float32Array(N);
+    const depth = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
       const r1 = Math.abs(Math.sin((i + 1) * 12.9898));
       const r2 = Math.abs(Math.sin((i + 1) * 78.233));
       const r3 = Math.abs(Math.sin((i + 1) * 37.719));
@@ -52,7 +48,6 @@ export function ContextGlyphs({ vizRef }: { vizRef: React.RefObject<VizEngineRef
     }
     return { decayPhase: phase, decayRate: rate, decayDepth: depth };
   }, []);
-
   const MODE_TO_ID: Record<string, number> = {
     idle: 0,
     listening: 1,
@@ -84,16 +79,32 @@ export function ContextGlyphs({ vizRef }: { vizRef: React.RefObject<VizEngineRef
         ],
       },
       uTouchWorld: { value: new THREE.Vector3(1e6, 1e6, 1e6) },
+      uTouchView: { value: new THREE.Vector3(0, 0, 1e6) },
       uTouchInfluence: { value: 0 },
+      uModelMatrix: { value: new THREE.Matrix4() },
+      uModelViewMatrix: { value: new THREE.Matrix4() },
+      uProjectionMatrix: { value: new THREE.Matrix4() },
     }),
     [],
   );
 
-  useFrame((_, delta) => {
+  const modelViewMatrixRef = useRef(new THREE.Matrix4());
+  const projectionMatrixRef = useRef(new THREE.Matrix4());
+
+  useFrame((state, delta) => {
     if (!meshRef.current?.material || !vizRef.current) return;
     const points = meshRef.current;
-    const mat = points.material as THREE.ShaderMaterial;
+    const geom = points.geometry;
     const v = vizRef.current;
+    const rulesCount = v.rulesClusterCount ?? 0;
+    const cardsCount = v.cardsClusterCount ?? 0;
+    for (let i = 0; i < 8; i++) visibleRef.current[i] = i < rulesCount ? 1 : 0;
+    for (let i = 8; i < 16; i++) visibleRef.current[i] = i - 8 < cardsCount ? 1 : 0;
+    const visibleAttr = geom.getAttribute('visible');
+    if (visibleAttr) {
+      visibleAttr.needsUpdate = true;
+    }
+    const mat = points.material as THREE.ShaderMaterial;
     points.rotation.x = v.autoRotX;
     points.rotation.y = v.autoRotY;
     points.rotation.z = v.autoRotZ;
@@ -116,7 +127,18 @@ export function ContextGlyphs({ vizRef }: { vizRef: React.RefObject<VizEngineRef
         tw ? tw[1] : 1e6,
         tw ? tw[2] : 1e6,
       );
+      const tv = v.touchView;
+      mat.uniforms.uTouchView.value.set(
+        tv ? tv[0] : 0,
+        tv ? tv[1] : 0,
+        tv ? tv[2] : 1e6,
+      );
       mat.uniforms.uTouchInfluence.value = v.touchInfluence;
+      modelViewMatrixRef.current.copy(state.camera.matrixWorldInverse).multiply(points.matrixWorld);
+      projectionMatrixRef.current.copy(state.camera.projectionMatrix);
+      mat.uniforms.uModelMatrix.value.copy(points.matrixWorld);
+      mat.uniforms.uModelViewMatrix.value.copy(modelViewMatrixRef.current);
+      mat.uniforms.uProjectionMatrix.value.copy(projectionMatrixRef.current);
     }
   });
 
@@ -130,6 +152,7 @@ export function ContextGlyphs({ vizRef }: { vizRef: React.RefObject<VizEngineRef
     g.setAttribute('decayPhase', new THREE.BufferAttribute(decayPhase, 1));
     g.setAttribute('decayRate', new THREE.BufferAttribute(decayRate, 1));
     g.setAttribute('decayDepth', new THREE.BufferAttribute(decayDepth, 1));
+    g.setAttribute('visible', new THREE.BufferAttribute(visibleRef.current, 1));
     return g;
   }, [
     positions,
@@ -142,7 +165,9 @@ export function ContextGlyphs({ vizRef }: { vizRef: React.RefObject<VizEngineRef
     decayDepth,
   ]);
 
-  if (!vizRef.current?.showViz) return null;
+  if (vizRef.current?.vizIntensity === 'off') {
+    return null;
+  }
 
   return (
     <points ref={meshRef} geometry={geom}>

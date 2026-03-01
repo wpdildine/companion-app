@@ -1,6 +1,6 @@
 /**
  * Context links: precomputed curved segments (bezier), flow + pulse in shader. uActivity.
- * Visibility gated by showViz and showConnections on vizRef.
+ * Visibility gated by vizIntensity (Full mode only).
  */
 
 import { useMemo, useRef } from 'react';
@@ -162,7 +162,12 @@ export function ContextLinks({ vizRef }: { vizRef: React.RefObject<VizEngineRef 
     return g;
   }, [positions, tArr, startPoints, endPoints, strengths, pathIndices, colors]);
 
-  if (!vizRef.current?.showViz || !vizRef.current?.showConnections) return null;
+  const v = vizRef.current;
+  const confidence = v?.signalsSnapshot?.confidence ?? 1;
+  const showLinks = v?.vizIntensity === 'full' && confidence < 0.7;
+  if (!showLinks) {
+    return null;
+  }
 
   return (
     <lineSegments ref={meshRef} geometry={geom}>

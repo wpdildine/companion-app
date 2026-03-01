@@ -26,8 +26,6 @@ export function TouchRaycaster({
 
     const [ndcX, ndcY] = v.pendingTapNdc;
     v.pendingTapNdc = null;
-    console.log('[Viz] TouchRaycaster: processing tap ndc=', ndcX.toFixed(3), ndcY.toFixed(3));
-
     pointer.current.set(ndcX, ndcY);
     raycaster.current.setFromCamera(pointer.current, camera);
 
@@ -50,9 +48,6 @@ export function TouchRaycaster({
         v.currentMode,
       );
       v.lastPulseIndex = (v.lastPulseIndex + 1) % 3;
-      console.log('[Viz] TouchRaycaster: pulse at', intersection.current.x.toFixed(2), intersection.current.y.toFixed(2), intersection.current.z.toFixed(2));
-    } else {
-      console.log('[Viz] TouchRaycaster: no plane intersection');
     }
   });
 

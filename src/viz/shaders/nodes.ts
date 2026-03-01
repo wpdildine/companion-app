@@ -11,6 +11,7 @@ export const nodeVertex = `
   attribute float decayPhase;
   attribute float decayRate;
   attribute float decayDepth;
+  attribute float visible;
   uniform float uTime;
   uniform float uActivity;
   uniform float uMode;
@@ -20,7 +21,11 @@ export const nodeVertex = `
   uniform vec3 uPulseColors[3];
   uniform float uPulseSpeed;
   uniform vec3 uTouchWorld;
+  uniform vec3 uTouchView;
   uniform float uTouchInfluence;
+  uniform mat4 uModelMatrix;
+  uniform mat4 uModelViewMatrix;
+  uniform mat4 uProjectionMatrix;
   varying vec3 vColor;
   varying float vAlpha;
   varying float vPulse;
@@ -55,8 +60,14 @@ export const nodeVertex = `
       normalize(position) * radialFuzz +
       tangent * (0.03 + decayDepth * 0.08 + edgeRelax * 0.06) * tangentFuzzA +
       bitangent * (0.03 + decayDepth * 0.08 + edgeRelax * 0.06) * tangentFuzzB;
+    vec4 worldPreTouch = uModelMatrix * vec4(pos, 1.0);
+    vec4 viewPos = uModelViewMatrix * vec4(pos, 1.0);
+    float touchDistView = distance(viewPos.xyz, uTouchView);
+    vec3 touchAwayView = touchDistView > 0.01 ? normalize(viewPos.xyz - uTouchView) : vec3(0.0);
+    float repulse = uTouchInfluence * 1.8 * exp(-touchDistView * 0.9);
+    vec3 viewPosRepulsed = viewPos.xyz + touchAwayView * repulse;
+    vec4 world = worldPreTouch;
     vec3 sphereDir = normalize(position);
-    vec4 world = modelMatrix * vec4(pos, 1.0);
     float pulse = getPulseIntensity(world.xyz);
     vPulse = pulse;
     float gradientT = 0.5 + 0.5 * sin(
@@ -95,8 +106,8 @@ export const nodeVertex = `
       vec3 speakColor = mix(vec3(0.14, 0.85, 0.95), vec3(0.18, 0.95, 0.45), osc);
       baseColor = mix(baseColor, speakColor, 0.75);
     }
-    float touchDist = distance(world.xyz, uTouchWorld);
-    float touchBoost = uTouchInfluence * (1.0 - smoothstep(0.0, 2.0, touchDist));
+    float touchDistGlow = distance(world.xyz, uTouchWorld);
+    float touchBoost = uTouchInfluence * (1.0 - smoothstep(0.0, 2.0, touchDistGlow));
     float pulseBoost = clamp(pulse, 0.0, 1.0);
     float glowGate = max(touchBoost, pulseBoost);
     float randA = sin(uTime * (0.23 + decayRate * 0.41) + decayPhase * 1.7);
@@ -108,11 +119,12 @@ export const nodeVertex = `
     vColor = mix(brightBase, brightBase + vec3(0.18), glowGate * 0.55);
     float baseAlpha = (0.42 + 0.34 * uActivity) * breath * randomDecay;
     vAlpha = baseAlpha + glowGate * (0.10 + 0.16 * uActivity);
-    vec4 mv = viewMatrix * world;
-    gl_Position = projectionMatrix * mv;
+    vec4 mv = vec4(viewPosRepulsed, 1.0);
+    gl_Position = uProjectionMatrix * mv;
     float sizeDecay = 1.0 - decayDepth * 0.22 * (0.35 + 0.65 * randomDecayMix);
     float s = (uBaseNodeSize + nodeSize) * sizeDecay * (220.0 / -mv.z) * (1.0 + pulse * 0.35 + touchBoost * 0.2);
-    gl_PointSize = max(s, 2.4);
+    gl_PointSize = max(s, 2.4) * max(0.0, visible);
+    vAlpha *= max(0.0, visible);
   }
 `;
 

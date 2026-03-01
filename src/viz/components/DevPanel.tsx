@@ -172,22 +172,20 @@ export function DevPanel({
           </Pressable>
         </View>
         <ScrollView style={styles.scroll}>
-          <Text style={[styles.section, { color: muted }]}>Viz toggles</Text>
+          <Text style={[styles.section, { color: muted }]}>Viz</Text>
           <Pressable
-            onPress={() => (v.showViz = !v.showViz)}
+            onPress={() => {
+              v.vizIntensity =
+                v.vizIntensity === 'off'
+                  ? 'subtle'
+                  : v.vizIntensity === 'subtle'
+                    ? 'full'
+                    : 'off';
+            }}
             style={styles.row}
           >
-            <Text style={{ color: textColor }}>Show viz</Text>
-            <Text style={{ color: muted }}>{v.showViz ? 'ON' : 'OFF'}</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => (v.showConnections = !v.showConnections)}
-            style={styles.row}
-          >
-            <Text style={{ color: textColor }}>Show connections</Text>
-            <Text style={{ color: muted }}>
-              {v.showConnections ? 'ON' : 'OFF'}
-            </Text>
+            <Text style={{ color: textColor }}>Viz intensity</Text>
+            <Text style={{ color: muted }}>{v.vizIntensity ?? 'subtle'}</Text>
           </Pressable>
           <View style={styles.row}>
             <Text style={{ color: textColor }}>Star count mult.</Text>
