@@ -31,6 +31,7 @@ export const nodeVertex = `
   varying vec3 vColor;
   varying float vAlpha;
   varying float vPulse;
+  varying float vNodeType;
 
   float getPulseIntensity(vec3 worldPos) {
     float intensity = 0.0;
@@ -63,36 +64,30 @@ export const nodeVertex = `
       tangent * (0.03 + decayDepth * 0.08 + edgeRelax * 0.06) * tangentFuzzA +
       bitangent * (0.03 + decayDepth * 0.08 + edgeRelax * 0.06) * tangentFuzzB;
     vec4 worldPreTouch = uModelMatrix * vec4(pos, 1.0);
-    float touchDistWorld = distance(worldPreTouch.xyz, uTouchWorld);
-    vec3 touchAwayWorld = touchDistWorld > 0.01 ? normalize(worldPreTouch.xyz - uTouchWorld) : vec3(0.0);
-    float radiusMask = 1.0 - smoothstep(0.0, uTouchRadius, touchDistWorld);
-    float repulse = min(uTouchMaxOffset, uTouchInfluence * uTouchStrength * radiusMask * radiusMask);
+    vec2 touchDeltaXY = worldPreTouch.xy - uTouchWorld.xy;
+    float touchDistXY = length(touchDeltaXY);
+    vec3 touchAwayWorld =
+      touchDistXY > 0.0001
+        ? normalize(vec3(touchDeltaXY, 0.0))
+        : vec3(0.0);
+    float radiusMask = 1.0 - smoothstep(0.0, uTouchRadius, touchDistXY);
+    float repulse = min(
+      uTouchMaxOffset,
+      uTouchInfluence * uTouchStrength * radiusMask * radiusMask
+    );
     vec4 world = vec4(worldPreTouch.xyz + touchAwayWorld * repulse, 1.0);
     vec3 sphereDir = normalize(position);
     float pulse = getPulseIntensity(world.xyz);
     vPulse = pulse;
-    float gradientT = 0.5 + 0.5 * sin(
-      sphereDir.y * 3.14159 +
-      sphereDir.x * 1.7 +
-      sphereDir.z * 0.9 +
-      uTime * 0.45
-    );
-    vec3 gradientA = vec3(0.35, 0.55, 1.0);
-    vec3 gradientB = vec3(0.95, 0.35, 0.85);
-    vec3 gradientColor = mix(gradientA, gradientB, gradientT);
-    // Coordinate node palette with starfield: same warm/cool endpoints and cadence.
-    vec3 starWarm = vec3(1.0, 0.9, 0.78);
-    vec3 starCool = vec3(0.72, 0.82, 1.0);
-    float starSync = 0.5 + 0.5 * sin(uTime * 1.4 + position.x * 8.0 + position.z * 6.0);
-    vec3 starSyncColor = mix(starWarm, starCool, starSync);
-    vec3 baseColor = mix(nodeColor, gradientColor, 0.38 + 0.16 * uActivity);
+    vNodeType = nodeType;
+    vec3 baseColor = nodeColor;
     float hueWave = 0.5 + 0.5 * sin(uTime * (0.9 + decayRate * 0.35) + decayPhase + distanceFromRoot * 8.0);
     vec3 oscillateA = vec3(0.30, 0.58, 1.00);
     vec3 oscillateB = vec3(0.98, 0.30, 0.82);
     vec3 oscillateColor = mix(oscillateA, oscillateB, hueWave);
-    baseColor = mix(baseColor, starSyncColor, 0.48);
-    baseColor = mix(baseColor, oscillateColor, 0.62);
-    // Mode-based color to match starfield: listening=red, processing=blue, speaking=cyan/green.
+    // Keep cluster colors semantically distinct, only a light oscillation overlay.
+    baseColor = mix(baseColor, oscillateColor, 0.18 + 0.10 * uActivity);
+    // Mode-based color: listening=red, processing=blue, speaking=cyan/green.
     if (uMode >= 0.5 && uMode < 1.5) {
       float hard = abs(sin(uTime * 3.2 + decayPhase + distanceFromRoot * 4.0));
       vec3 listenColor = mix(vec3(0.72, 0.06, 0.10), vec3(1.0, 0.22, 0.16), pow(hard, 2.8));
@@ -133,13 +128,22 @@ export const nodeFragment = `
   varying vec3 vColor;
   varying float vAlpha;
   varying float vPulse;
+  varying float vNodeType;
   void main() {
     vec2 c = gl_PointCoord - 0.5;
     float d = length(c);
-    // Sharper point profile to reduce blur/haze.
-    float edge = 1.0 - smoothstep(0.0, 0.34, d);
-    float core = 1.0 - smoothstep(0.0, 0.13, d);
-    float a = (edge * 0.35 + core * 0.65) * vAlpha;
+    float circle = 1.0 - smoothstep(0.34, 0.38, d);
+    float diamondDist = abs(c.x) + abs(c.y);
+    float diamond = 1.0 - smoothstep(0.36, 0.40, diamondDist);
+    float squareEdge = max(abs(c.x), abs(c.y));
+    float square = 1.0 - smoothstep(0.30, 0.34, squareEdge);
+    float shapeMask = circle;
+    if (vNodeType > 0.5 && vNodeType < 1.5) {
+      shapeMask = diamond;
+    } else if (vNodeType >= 1.5) {
+      shapeMask = square;
+    }
+    float a = shapeMask * vAlpha;
     a += vPulse * 0.14 * (1.0 - d * 2.0);
     gl_FragColor = vec4(vColor, min(a, 1.0));
   }

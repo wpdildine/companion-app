@@ -117,53 +117,52 @@ export function buildCrystallineSphere(
 }
 
 const MAX_PER_CLUSTER = 8;
-const RULES_COLOR: [number, number, number] = [0.35, 0.55, 1.0];
-const CARDS_COLOR: [number, number, number] = [0.95, 0.35, 0.85];
+const RULES_COLOR: [number, number, number] = [0.34, 0.58, 0.98];
+const CARDS_COLOR: [number, number, number] = [0.92, 0.42, 0.82];
 
 /** Seeded pseudo-random in [0,1] */
 function seeded(i: number, seed: number): number {
   return Math.abs(Math.sin((i + 1) * seed));
 }
 
-/** Two clusters (rules left, cards right) for GlyphNodes. Max 8 per cluster, 16 total. */
+/** Two front-facing (2D) clusters (rules left, cards right). Max 8 per cluster, 16 total. */
 export function buildTwoClusters(): {
   nodes: (Node & { clusterId: number; indexInCluster: number })[];
 } {
   const nodes: (Node & { clusterId: number; indexInCluster: number })[] = [];
-  const radius = 1.2;
+  const radius = 1.15;
+  const zJitter = 0.035;
   for (let i = 0; i < MAX_PER_CLUSTER; i++) {
-    const theta = (i / MAX_PER_CLUSTER) * Math.PI * 1.2 + seeded(i, 12.9898) * 0.4;
-    const phi = seeded(i, 78.233) * Math.PI * 0.6;
-    const x = -radius * 0.6 + Math.cos(phi) * Math.sin(theta) * radius * 0.5;
-    const y = (i / MAX_PER_CLUSTER - 0.5) * 1.2;
-    const z = Math.cos(theta) * radius * 0.5;
+    const theta = (i / MAX_PER_CLUSTER) * Math.PI * 1.9 + seeded(i, 12.9898) * 0.35;
+    const x = -radius * 0.62 + Math.cos(theta) * radius * 0.42;
+    const y = Math.sin(theta) * radius * 0.52 + (seeded(i, 78.233) - 0.5) * 0.12;
+    const z = (seeded(i, 37.719) - 0.5) * zJitter;
     nodes.push({
       id: i,
       position: [x, y, z],
       connections: [],
       level: 0,
       type: 0,
-      size: 0.06 + seeded(i, 37.719) * 0.04,
-      distanceFromRoot: Math.sqrt(x * x + y * y + z * z) / (radius * 1.2),
+      size: 0.10 + seeded(i, 37.719) * 0.02,
+      distanceFromRoot: Math.sqrt(x * x + y * y) / (radius * 1.2),
       color: [...RULES_COLOR],
       clusterId: 0,
       indexInCluster: i,
     });
   }
   for (let i = 0; i < MAX_PER_CLUSTER; i++) {
-    const theta = (i / MAX_PER_CLUSTER) * Math.PI * 1.2 + seeded(i + 8, 12.9898) * 0.4;
-    const phi = seeded(i + 8, 78.233) * Math.PI * 0.6;
-    const x = radius * 0.6 + Math.cos(phi) * Math.sin(theta) * radius * 0.5;
-    const y = (i / MAX_PER_CLUSTER - 0.5) * 1.2;
-    const z = Math.cos(theta) * radius * 0.5;
+    const theta = (i / MAX_PER_CLUSTER) * Math.PI * 1.9 + seeded(i + 8, 12.9898) * 0.35;
+    const x = radius * 0.62 + Math.cos(theta) * radius * 0.42;
+    const y = Math.sin(theta) * radius * 0.52 + (seeded(i + 8, 78.233) - 0.5) * 0.12;
+    const z = (seeded(i + 8, 37.719) - 0.5) * zJitter;
     nodes.push({
       id: MAX_PER_CLUSTER + i,
       position: [x, y, z],
       connections: [],
       level: 1,
       type: 1,
-      size: 0.06 + seeded(i + 8, 37.719) * 0.04,
-      distanceFromRoot: Math.sqrt(x * x + y * y + z * z) / (radius * 1.2),
+      size: 0.085 + seeded(i + 8, 37.719) * 0.018,
+      distanceFromRoot: Math.sqrt(x * x + y * y) / (radius * 1.2),
       color: [...CARDS_COLOR],
       clusterId: 1,
       indexInCluster: i,

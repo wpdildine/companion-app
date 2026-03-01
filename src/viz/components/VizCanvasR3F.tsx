@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { ContextGlyphs } from './ContextGlyphs';
 import { ContextLinks } from './ContextLinks';
 import { EngineLoop } from './EngineLoop';
-import { PlaneLayerField } from './PlaneLayerField';
+import { ClusterTouchZones } from './ClusterTouchZones';
 import { TouchRaycaster } from '../interaction/TouchRaycaster';
 import { CameraOrbit } from './CameraOrbit';
 import { PostFXPass } from './PostFXPass';
@@ -211,7 +211,7 @@ export function VizCanvasR3F({
         <EngineLoop vizRef={vizRef} />
         <TouchRaycaster vizRef={vizRef} />
         <CameraOrbit vizRef={vizRef} />
-        <PlaneLayerField vizRef={vizRef} />
+        <ClusterTouchZones vizRef={vizRef} />
         <ContextGlyphs vizRef={vizRef} />
         <ContextLinks vizRef={vizRef} />
         <PostFXPass vizRef={vizRef} />

@@ -6,11 +6,34 @@
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { buildCrystallineSphere } from '../helpers/formations';
+import { buildTwoClusters } from '../helpers/formations';
 import { connectionVertex, connectionFragment } from '../shaders/connections';
 import type { VizEngineRef } from '../types';
 
-const FORMATION = buildCrystallineSphere();
+const TWO_CLUSTERS = buildTwoClusters();
+const CLUSTER_SIZE = 8;
+const FORMATION = {
+  nodes: TWO_CLUSTERS.nodes.map(n => ({
+    position: n.position,
+    color: n.color as [number, number, number],
+    clusterId: n.clusterId,
+  })),
+  edges: (() => {
+    const edges: { a: number; b: number; strength: number; pathIndex: number }[] = [];
+    let pathIndex = 0;
+    for (let c = 0; c < 2; c++) {
+      const start = c * CLUSTER_SIZE;
+      for (let i = 0; i < CLUSTER_SIZE; i++) {
+        const a = start + i;
+        const b = start + ((i + 1) % CLUSTER_SIZE);
+        const d = start + ((i + 3) % CLUSTER_SIZE);
+        edges.push({ a, b, strength: 0.9, pathIndex: pathIndex++ });
+        edges.push({ a, b: d, strength: 0.55, pathIndex: pathIndex++ });
+      }
+    }
+    return edges;
+  })(),
+};
 const SEGMENTS_PER_EDGE = 12;
 
 function sampleBezier(
@@ -27,7 +50,7 @@ function sampleBezier(
   const control: [number, number, number] = [
     mid[0] + 0.2 * Math.sin(pathIndex),
     mid[1] + 0.1 * Math.cos(pathIndex * 0.7),
-    mid[2] + 0.15 * Math.sin(pathIndex * 0.5),
+    (mid[2] + 0.03 * Math.sin(pathIndex * 0.5)),
   ];
   const u = 1 - t;
   const b = u * u * start[0] + 2 * u * t * control[0] + t * t * end[0];
@@ -117,9 +140,10 @@ export function ContextLinks({ vizRef }: { vizRef: React.RefObject<VizEngineRef 
     const lines = meshRef.current;
     const mat = lines.material as THREE.ShaderMaterial;
     const v = vizRef.current;
-    lines.rotation.x = v.autoRotX;
-    lines.rotation.y = v.autoRotY;
-    lines.rotation.z = v.autoRotZ;
+    // Keep links front-facing (2D cluster topology), no 3D orbit rotation.
+    lines.rotation.x = 0;
+    lines.rotation.y = 0;
+    lines.rotation.z = 0;
     if (mat.uniforms) {
       mat.uniforms.uTime.value += delta;
       mat.uniforms.uActivity.value = v.activity;

@@ -5,6 +5,7 @@
 
 export interface TouchCallbacks {
   onShortTap?: () => void;
+  onClusterTap?: (cluster: 'rules' | 'cards') => void;
   onDoubleTap?: () => void;
   onLongPressStart?: () => void;
   onLongPressEnd?: () => void;
@@ -14,6 +15,7 @@ export interface TouchCallbacks {
 }
 
 const noop = () => {};
+const noopCluster = (_cluster: 'rules' | 'cards') => {};
 const noopDrag = (_dx: number, _dy: number) => {};
 
 /**
@@ -23,6 +25,7 @@ const noopDrag = (_dx: number, _dy: number) => {};
 export function withTouchStubs(callbacks: TouchCallbacks = {}): Required<TouchCallbacks> {
   return {
     onShortTap: callbacks.onShortTap ?? noop,
+    onClusterTap: callbacks.onClusterTap ?? noopCluster,
     onDoubleTap: callbacks.onDoubleTap ?? noop,
     onLongPressStart: callbacks.onLongPressStart ?? noop,
     onLongPressEnd: callbacks.onLongPressEnd ?? noop,

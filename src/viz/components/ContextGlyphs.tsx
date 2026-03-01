@@ -61,7 +61,7 @@ export function ContextGlyphs({ vizRef }: { vizRef: React.RefObject<VizEngineRef
       uTime: { value: 0 },
       uActivity: { value: 0.1 },
       uMode: { value: 0 },
-      uBaseNodeSize: { value: 3.45 },
+      uBaseNodeSize: { value: 5.25 },
       uPulseSpeed: { value: 4 },
       uPulsePositions: {
         value: [
@@ -83,9 +83,9 @@ export function ContextGlyphs({ vizRef }: { vizRef: React.RefObject<VizEngineRef
       uModelMatrix: { value: new THREE.Matrix4() },
       uViewMatrix: { value: new THREE.Matrix4() },
       uProjectionMatrix: { value: new THREE.Matrix4() },
-      uTouchRadius: { value: 2.2 },
-      uTouchStrength: { value: 1.25 },
-      uTouchMaxOffset: { value: 0.65 },
+      uTouchRadius: { value: 3.6 },
+      uTouchStrength: { value: 2.8 },
+      uTouchMaxOffset: { value: 1.35 },
     }),
     [],
   );
@@ -107,9 +107,10 @@ export function ContextGlyphs({ vizRef }: { vizRef: React.RefObject<VizEngineRef
       visibleAttr.needsUpdate = true;
     }
     const mat = points.material as THREE.ShaderMaterial;
-    points.rotation.x = v.autoRotX;
-    points.rotation.y = v.autoRotY;
-    points.rotation.z = v.autoRotZ;
+    // Keep glyph clusters front-facing and stable in 2D space.
+    points.rotation.x = 0;
+    points.rotation.y = 0;
+    points.rotation.z = 0;
     if (mat.uniforms) {
       mat.uniforms.uTime.value += delta;
       mat.uniforms.uActivity.value = v.activity;

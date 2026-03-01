@@ -9,14 +9,24 @@ import type { LayoutChangeEvent, GestureResponderEvent } from 'react-native';
 import type { RefObject } from 'react';
 import type { VizEngineRef } from '../types';
 
-const BAND_HEIGHT = 80;
+const BAND_TOP_INSET = 112;
 
 export type VizInteractionBandProps = {
   vizRef: RefObject<VizEngineRef | null>;
+  onClusterTap?: (cluster: 'rules' | 'cards') => void;
+  enabled?: boolean;
 };
 
-export function VizInteractionBand({ vizRef }: VizInteractionBandProps) {
+const TAP_MAX_MS = 320;
+const TAP_MAX_MOVE = 16;
+
+export function VizInteractionBand({
+  vizRef,
+  onClusterTap,
+  enabled = true,
+}: VizInteractionBandProps) {
   const layoutRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { x, y, width: w, height: h } = e.nativeEvent.layout;
@@ -42,9 +52,11 @@ export function VizInteractionBand({ vizRef }: VizInteractionBandProps) {
 
   const handleTouchStart = useCallback(
     (e: GestureResponderEvent) => {
+      if (!enabled) return;
       const { locationX, locationY } = e.nativeEvent;
       const v = vizRef.current;
       if (!v) return;
+      touchStartRef.current = { x: locationX, y: locationY, t: Date.now() };
       const ndc = toNdc(locationX, locationY);
       if (ndc) {
         v.touchFieldActive = true;
@@ -52,11 +64,12 @@ export function VizInteractionBand({ vizRef }: VizInteractionBandProps) {
         v.touchFieldStrength = 1;
       }
     },
-    [vizRef, toNdc],
+    [vizRef, toNdc, enabled],
   );
 
   const handleTouchMove = useCallback(
     (e: GestureResponderEvent) => {
+      if (!enabled) return;
       const { locationX, locationY } = e.nativeEvent;
       const v = vizRef.current;
       if (!v) return;
@@ -66,16 +79,34 @@ export function VizInteractionBand({ vizRef }: VizInteractionBandProps) {
         v.touchFieldStrength = 1;
       }
     },
-    [vizRef, toNdc],
+    [vizRef, toNdc, enabled],
   );
 
-  const handleTouchEnd = useCallback(() => {
-    if (vizRef.current) {
-      vizRef.current.touchFieldActive = false;
-      vizRef.current.touchFieldNdc = null;
-      vizRef.current.touchFieldStrength = 0;
-    }
-  }, [vizRef]);
+  const handleTouchEnd = useCallback(
+    (e: GestureResponderEvent) => {
+      if (!enabled) return;
+      const v = vizRef.current;
+      if (v) {
+        v.touchFieldActive = false;
+        v.touchFieldNdc = null;
+        v.touchFieldStrength = 0;
+      }
+
+      const start = touchStartRef.current;
+      touchStartRef.current = null;
+      if (!start) return;
+      const { locationX, locationY } = e.nativeEvent;
+      const dt = Date.now() - start.t;
+      const dist = Math.hypot(locationX - start.x, locationY - start.y);
+      if (dt > TAP_MAX_MS || dist > TAP_MAX_MOVE) return;
+
+      const ndc = toNdc(locationX, locationY);
+      if (!ndc) return;
+      if (ndc[0] < -0.12) onClusterTap?.('rules');
+      else if (ndc[0] > 0.12) onClusterTap?.('cards');
+    },
+    [vizRef, toNdc, onClusterTap, enabled],
+  );
 
   return (
     <View
@@ -85,7 +116,7 @@ export function VizInteractionBand({ vizRef }: VizInteractionBandProps) {
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchEnd}
-      pointerEvents="auto"
+      pointerEvents={enabled ? 'auto' : 'none'}
     />
   );
 }
@@ -96,7 +127,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: BAND_HEIGHT,
+    top: BAND_TOP_INSET,
     zIndex: 2,
   },
 });

@@ -89,6 +89,7 @@ const DEBUG_ENABLED_DEFAULT = false;
 
 /** When true, skip real RAG and inject dummy resolved payload for instrument-panel verification. */
 const DEBUG_SCENARIO = true;
+const SHOW_REVEAL_CHIPS = false;
 
 const dummySignals: AiUiSignals = {
   phase: 'resolved',
@@ -431,6 +432,10 @@ function VoiceScreen() {
   }, [setSignals]);
 
   useEffect(() => {
+    if (DEBUG_SCENARIO) {
+      setSignals(dummySignals);
+      return;
+    }
     const phase =
       mode === 'processing'
         ? 'processing'
@@ -866,7 +871,7 @@ function VoiceScreen() {
       const nudged = result.nudged;
       setResponseText(nudged);
       setValidationSummary(result.validationSummary);
-      triggerPulseAtCenter(vizRef);
+      emitEvent('chunkAccepted');
       if (
         result.validationSummary &&
         (result.validationSummary.stats.unknownCardCount > 0 ||
@@ -908,7 +913,7 @@ function VoiceScreen() {
       setMode('idle');
       return null;
     }
-  }, [transcribedText, setSignals]);
+  }, [transcribedText, setSignals, emitEvent]);
 
   const playText = useCallback(
     async (text: string) => {
@@ -1122,12 +1127,39 @@ function VoiceScreen() {
     : ((validationSummary?.rules?.length ?? 0) +
       (validationSummary?.cards?.length ?? 0));
   const canRevealPanels = DEBUG_SCENARIO || showContentPanels;
+  const anyPanelVisible =
+    revealedBlocks.answer ||
+    revealedBlocks.cards ||
+    revealedBlocks.rules ||
+    revealedBlocks.sources;
 
   const revealBlock = useCallback(
     (key: 'answer' | 'cards' | 'rules' | 'sources') => {
       setRevealedBlocks(prev => ({ ...prev, [key]: true }));
     },
     [],
+  );
+  const handleClusterTap = useCallback(
+    (cluster: 'rules' | 'cards') => {
+      if (cluster === 'rules') {
+        setRevealedBlocks({
+          answer: true,
+          cards: false,
+          rules: true,
+          sources: false,
+        });
+        emitEvent('tapCitation');
+      } else {
+        setRevealedBlocks({
+          answer: true,
+          cards: true,
+          rules: false,
+          sources: false,
+        });
+        emitEvent('tapCard');
+      }
+    },
+    [emitEvent],
   );
 
   useEffect(() => {
@@ -1176,6 +1208,7 @@ function VoiceScreen() {
           !debugEnabled ? handleUserModeLongPressStart : undefined
         }
         onLongPressEnd={!debugEnabled ? handleUserModeLongPressEnd : undefined}
+        onClusterTap={!debugEnabled ? handleClusterTap : undefined}
       >
         <ScrollView
             style={[styles.container, styles.scrollOverlay]}
@@ -1205,6 +1238,7 @@ function VoiceScreen() {
             </View>
             {(DEBUG_SCENARIO || showContentPanels) ? (
             <View style={styles.contentStack}>
+              {SHOW_REVEAL_CHIPS && (
               <View style={styles.revealDock}>
                 {!revealedBlocks.answer && (
                   <Pressable
@@ -1247,6 +1281,7 @@ function VoiceScreen() {
                   </Pressable>
                 )}
               </View>
+              )}
               {DEBUG_SCENARIO ? (
                 <>
                   {revealedBlocks.answer && (
@@ -1507,7 +1542,11 @@ function VoiceScreen() {
             ) : null}
           </ScrollView>
       </VizSurface>
-      <VizInteractionBand vizRef={vizRef} />
+      <VizInteractionBand
+        vizRef={vizRef}
+        onClusterTap={handleClusterTap}
+        enabled={!debugEnabled && !anyPanelVisible}
+      />
       {debugEnabled && (
         <View style={[StyleSheet.absoluteFill, styles.debugLayer]}>
           <ScrollView
@@ -1585,7 +1624,8 @@ function VoiceScreen() {
         </View>
       )}
       <Pressable
-        style={[styles.devToggle, { bottom: (insets.bottom || 16) + 12 }]}
+        style={[styles.devToggle, { bottom: (insets.bottom || 16) + 92 }]}
+        hitSlop={10}
         onPress={() => setDebugEnabled(prev => !prev)}
       >
         <Text style={styles.devToggleLabel}>
@@ -1912,6 +1952,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 20,
     backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 5,
+    elevation: 5,
   },
   devToggleLabel: {
     color: '#fff',

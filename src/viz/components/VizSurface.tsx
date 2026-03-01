@@ -25,6 +25,7 @@ export function VizSurface({
   canvasBackground,
   children,
   onShortTap,
+  onClusterTap,
   onDoubleTap,
   onLongPressStart,
   onLongPressEnd,
@@ -41,6 +42,7 @@ export function VizSurface({
         inputEnabled={inputEnabled}
         canvasBackground={canvasBackground}
         onShortTap={onShortTap}
+        onClusterTap={onClusterTap}
         onDoubleTap={onDoubleTap}
         onLongPressStart={onLongPressStart}
         onLongPressEnd={onLongPressEnd}

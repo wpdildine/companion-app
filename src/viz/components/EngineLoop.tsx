@@ -54,7 +54,17 @@ export function EngineLoop({ vizRef }: { vizRef: React.RefObject<VizEngineRef | 
           v.lastPulseIndex = (v.lastPulseIndex + 1) % 3;
         } else if (v.lastEvent === 'tapCard') {
           v.pulsePositions[i] = [...centers.cardsCenter];
-          v.pulseColors[i] = getPulseColorWithHue(v.paletteId, v.hueShift, 'tap', v.currentMode);
+          v.pulseColors[i] = getPulseColorWithHue(v.paletteId, v.hueShift, 'tapCard', v.currentMode);
+          v.pulseTimes[i] = v.lastEventTime;
+          v.lastPulseIndex = (v.lastPulseIndex + 1) % 3;
+        } else if (v.lastEvent === 'chunkAccepted') {
+          v.pulsePositions[i] = [...centers.rulesCenter];
+          v.pulseColors[i] = getPulseColorWithHue(v.paletteId, v.hueShift, 'chunkAccepted', v.currentMode);
+          v.pulseTimes[i] = v.lastEventTime;
+          v.lastPulseIndex = (v.lastPulseIndex + 1) % 3;
+        } else if (v.lastEvent === 'warning') {
+          v.pulsePositions[i] = [0, 0, 0];
+          v.pulseColors[i] = getPulseColorWithHue(v.paletteId, v.hueShift, 'warning', v.currentMode);
           v.pulseTimes[i] = v.lastEventTime;
           v.lastPulseIndex = (v.lastPulseIndex + 1) % 3;
         }

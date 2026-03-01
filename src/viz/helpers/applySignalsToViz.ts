@@ -26,11 +26,11 @@ export function applySignalsToViz(
   const v = vizRef.current;
   if (!v) return;
   const { panelRects, ...uiSignals } = signals;
-
-  v.signalsSnapshot = {
+  const mergedSignals = {
     ...(v.signalsSnapshot ?? ({} as AiUiSignals)),
     ...(uiSignals as Partial<AiUiSignals>),
   } as AiUiSignals;
+  v.signalsSnapshot = mergedSignals;
 
   if (signals.phase != null) {
     const mode = PHASE_TO_MODE[signals.phase];
@@ -50,9 +50,9 @@ export function applySignalsToViz(
   }
 
   const maxNodesPerCluster = 8;
-  const phase = signals.phase ?? 'idle';
-  const retrievalDepth = signals.retrievalDepth ?? 0;
-  const cardRefsCount = signals.cardRefsCount ?? 0;
+  const phase = mergedSignals.phase ?? 'idle';
+  const retrievalDepth = mergedSignals.retrievalDepth ?? 0;
+  const cardRefsCount = mergedSignals.cardRefsCount ?? 0;
 
   if (phase === 'processing') {
     v.rulesClusterCount = 0;
@@ -73,9 +73,9 @@ export function applySignalsToViz(
     );
   }
 
-  const grounded = signals.grounded !== false;
+  const grounded = mergedSignals.grounded !== false;
   v.deconWeight = grounded
-    ? Math.max(0, Math.min(1, 1 - (signals.confidence ?? 0.5)))
+    ? Math.max(0, Math.min(1, 1 - (mergedSignals.confidence ?? 0.5)))
     : 0.2;
   v.hueShift = grounded ? v.deconWeight * 0.08 : 0;
 

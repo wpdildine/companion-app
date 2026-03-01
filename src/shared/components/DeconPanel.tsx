@@ -154,7 +154,7 @@ export function DeconPanel({
     clearDismissTimer();
     dismissTriggeredRef.current = false;
     setDismissArmed(false);
-    dismissStartXRef.current = e.nativeEvent.locationX;
+    dismissStartXRef.current = e.nativeEvent.pageX;
     dismissTimerRef.current = setTimeout(() => {
       dismissTimerRef.current = null;
       setDismissArmed(true);
@@ -162,7 +162,7 @@ export function DeconPanel({
   };
   const handleHeaderTouchMove = (e: GestureResponderEvent) => {
     if (!dismissEnabled || !dismissArmed || dismissTriggeredRef.current) return;
-    const dx = e.nativeEvent.locationX - dismissStartXRef.current;
+    const dx = e.nativeEvent.pageX - dismissStartXRef.current;
     if (Math.abs(dx) >= DISMISS_SWIPE_PX) {
       dismissTriggeredRef.current = true;
       clearDismissTimer();

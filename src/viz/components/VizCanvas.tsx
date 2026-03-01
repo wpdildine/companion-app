@@ -61,6 +61,7 @@ export function VizCanvas({
   inputEnabled,
   canvasBackground,
   onShortTap,
+  onClusterTap,
   onDoubleTap,
   onLongPressStart,
   onLongPressEnd,
@@ -173,6 +174,7 @@ export function VizCanvas({
         inputEnabled={inputEnabled}
         canvasBackground={canvasBackground}
         onShortTap={onShortTap}
+        onClusterTap={onClusterTap}
         onDoubleTap={onDoubleTap}
         onLongPressStart={onLongPressStart}
         onLongPressEnd={onLongPressEnd}

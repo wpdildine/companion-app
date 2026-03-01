@@ -9,6 +9,7 @@ export type PulseEventType =
   | 'tap'
   | 'chunkAccepted'
   | 'tapCitation'
+  | 'tapCard'
   | 'warning'
   | null;
 
@@ -37,6 +38,9 @@ export function getPulseColor(
     b = Math.max(0, b * 0.85);
   } else if (eventType === 'tapCitation') {
     g = Math.min(1, g * 1.1);
+  } else if (eventType === 'tapCard') {
+    r = Math.min(1, r * 1.08);
+    b = Math.min(1, b * 1.08);
   } else if (eventType === 'chunkAccepted') {
     b = Math.min(1, b * 1.05);
   }
