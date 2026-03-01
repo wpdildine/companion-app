@@ -13,5 +13,6 @@ export {
   type AiUiSignals,
   type AiUiSignalsEvent,
   type VizIntensity,
+  type VizPanelRects,
 } from './types';
 export { withTouchStubs, type TouchCallbacks } from './interaction/touchHandlers';

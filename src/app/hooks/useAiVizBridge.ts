@@ -5,11 +5,18 @@
 
 import { useCallback, type RefObject } from 'react';
 import { applySignalsToViz } from '../../viz/helpers/applySignalsToViz';
-import type { VizEngineRef, AiUiSignals, AiUiSignalsEvent } from '../../viz/types';
+import type {
+  VizEngineRef,
+  AiUiSignals,
+  AiUiSignalsEvent,
+  VizPanelRects,
+} from '../../viz/types';
+
+type AiVizInput = Partial<AiUiSignals> & { panelRects?: VizPanelRects };
 
 export function useAiVizBridge(vizRef: RefObject<VizEngineRef | null>) {
   const setSignals = useCallback(
-    (signals: Partial<AiUiSignals>) => {
+    (signals: AiVizInput) => {
       applySignalsToViz(vizRef, signals);
     },
     [vizRef],

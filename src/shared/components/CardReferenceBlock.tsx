@@ -34,6 +34,8 @@ export type CardReferenceBlockProps = {
   reduceMotion?: boolean;
   onCardPress?: (cardId: string) => void;
   onRect?: (rect: { x: number; y: number; w: number; h: number }) => void;
+  dismissible?: boolean;
+  onDismiss?: () => void;
   style?: StyleProp<ViewStyle>;
   ink?: string;
   mutedInk?: string;
@@ -58,6 +60,8 @@ export function CardReferenceBlock({
   reduceMotion = false,
   onCardPress,
   onRect,
+  dismissible = false,
+  onDismiss,
   style,
   ink,
   mutedInk,
@@ -80,6 +84,8 @@ export function CardReferenceBlock({
       reduceMotion={reduceMotion}
       headerDecon
       onRect={onRect}
+      dismissible={dismissible}
+      onDismiss={onDismiss}
       style={style}
       ink={primaryText}
       mutedInk={secondaryText}

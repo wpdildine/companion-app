@@ -5,7 +5,7 @@
  */
 
 import type { RefObject } from 'react';
-import type { VizEngineRef, VizMode, AiUiSignals } from '../types';
+import type { VizEngineRef, VizMode, AiUiSignals, VizPanelRects } from '../types';
 import { TARGET_ACTIVITY_BY_MODE } from '../types';
 
 const PHASE_TO_MODE: Record<AiUiSignals['phase'], VizMode> = {
@@ -21,12 +21,16 @@ const PHASE_TO_MODE: Record<AiUiSignals['phase'], VizMode> = {
  */
 export function applySignalsToViz(
   vizRef: RefObject<VizEngineRef | null>,
-  signals: Partial<AiUiSignals>,
+  signals: Partial<AiUiSignals> & { panelRects?: VizPanelRects },
 ): void {
   const v = vizRef.current;
   if (!v) return;
+  const { panelRects, ...uiSignals } = signals;
 
-  v.signalsSnapshot = signals as AiUiSignals | undefined;
+  v.signalsSnapshot = {
+    ...(v.signalsSnapshot ?? ({} as AiUiSignals)),
+    ...(uiSignals as Partial<AiUiSignals>),
+  } as AiUiSignals;
 
   if (signals.phase != null) {
     const mode = PHASE_TO_MODE[signals.phase];
@@ -39,6 +43,10 @@ export function applySignalsToViz(
   if (signals.event != null) {
     v.lastEvent = signals.event;
     v.lastEventTime = v.clock;
+  }
+
+  if (panelRects != null) {
+    v.panelRects = panelRects;
   }
 
   const maxNodesPerCluster = 8;

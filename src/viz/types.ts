@@ -35,6 +35,12 @@ export interface TouchNdc {
 
 export type VizIntensity = 'off' | 'subtle' | 'full';
 
+export type VizPanelRects = {
+  answer?: { x: number; y: number; w: number; h: number };
+  cards?: { x: number; y: number; w: number; h: number };
+  rules?: { x: number; y: number; w: number; h: number };
+};
+
 export interface VizEngineRef {
   clock: number;
   activity: number;
@@ -93,11 +99,7 @@ export interface VizEngineRef {
   /** Optional snapshot for debug. */
   signalsSnapshot?: AiUiSignals;
   /** Panel rects in viewport-relative screen px (account for scroll before writing). VizSurface provides viewport size; GL converts to normalized. */
-  panelRects?: {
-    answer?: { x: number; y: number; w: number; h: number };
-    cards?: { x: number; y: number; w: number; h: number };
-    rules?: { x: number; y: number; w: number; h: number };
-  };
+  panelRects?: VizPanelRects;
   /** Derived in applySignalsToViz from signals (not in signals API). */
   rulesClusterCount: number;
   cardsClusterCount: number;

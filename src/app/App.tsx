@@ -11,6 +11,8 @@ import {
   ActivityIndicator,
   AppState,
   type AppStateStatus,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
   LogBox,
   NativeModules,
   Platform,
@@ -52,6 +54,7 @@ import {
   VizSurface,
   VizInteractionBand,
 } from '../viz';
+import type { VizPanelRects } from '../viz/types';
 import { useAiVizBridge } from './hooks/useAiVizBridge';
 
 // @react-native-voice/voice uses NativeEventEmitter in a way that triggers warnings on new arch (Fabric) when the native module doesn't expose addListener/removeListeners. Voice still works.
@@ -334,6 +337,12 @@ function VoiceScreen() {
   const [packError, setPackError] = useState<string | null>(null);
   const [debugEnabled, setDebugEnabled] = useState(DEBUG_ENABLED_DEFAULT);
   const [stateCycleOn, setStateCycleOn] = useState(false);
+  const [revealedBlocks, setRevealedBlocks] = useState({
+    answer: false,
+    cards: false,
+    rules: false,
+    sources: false,
+  });
   const vizRef = useRef(createDefaultVizRef());
   const recordingSessionIdRef = useRef(0);
   const requestIdRef = useRef(0);
@@ -365,6 +374,55 @@ function VoiceScreen() {
   const isAsking = mode === 'processing';
 
   const { setSignals, emitEvent } = useAiVizBridge(vizRef);
+  const scrollYRef = useRef(0);
+  const panelRectsContentRef = useRef<VizPanelRects>({});
+
+  const flushPanelRects = useCallback(() => {
+    const next: VizPanelRects = {};
+    const source = panelRectsContentRef.current;
+    const keys: Array<keyof VizPanelRects> = ['answer', 'cards', 'rules'];
+    for (const key of keys) {
+      const rect = source[key];
+      if (!rect) continue;
+      if (rect.w <= 0 || rect.h <= 0) continue;
+      next[key] = {
+        x: rect.x,
+        y: rect.y - scrollYRef.current,
+        w: rect.w,
+        h: rect.h,
+      };
+    }
+    setSignals({ panelRects: next });
+  }, [setSignals]);
+
+  const updatePanelRect = useCallback(
+    (key: keyof VizPanelRects, rect: { x: number; y: number; w: number; h: number }) => {
+      panelRectsContentRef.current = {
+        ...panelRectsContentRef.current,
+        [key]: rect,
+      };
+      flushPanelRects();
+    },
+    [flushPanelRects],
+  );
+
+  const clearPanelRect = useCallback(
+    (key: keyof VizPanelRects) => {
+      const next = { ...panelRectsContentRef.current };
+      delete next[key];
+      panelRectsContentRef.current = next;
+      flushPanelRects();
+    },
+    [flushPanelRects],
+  );
+
+  const handleOverlayScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      scrollYRef.current = e.nativeEvent.contentOffset.y;
+      flushPanelRects();
+    },
+    [flushPanelRects],
+  );
 
   useEffect(() => {
     if (DEBUG_SCENARIO) {
@@ -1053,6 +1111,54 @@ function VoiceScreen() {
     responseText != null ||
     validationSummary != null ||
     error != null;
+  const cardsCount = DEBUG_SCENARIO
+    ? dummyCards.length
+    : (validationSummary?.cards?.length ?? 0);
+  const rulesCount = DEBUG_SCENARIO
+    ? dummyRules.length
+    : (validationSummary?.rules?.length ?? 0);
+  const sourcesCount = DEBUG_SCENARIO
+    ? dummyRules.length + dummyCards.length
+    : ((validationSummary?.rules?.length ?? 0) +
+      (validationSummary?.cards?.length ?? 0));
+  const canRevealPanels = DEBUG_SCENARIO || showContentPanels;
+
+  const revealBlock = useCallback(
+    (key: 'answer' | 'cards' | 'rules' | 'sources') => {
+      setRevealedBlocks(prev => ({ ...prev, [key]: true }));
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!canRevealPanels) {
+      setRevealedBlocks({
+        answer: false,
+        cards: false,
+        rules: false,
+        sources: false,
+      });
+      return;
+    }
+    // Keep answer visible once user starts asking/seeing results in non-debug mode.
+    if (!DEBUG_SCENARIO && showContentPanels) {
+      setRevealedBlocks(prev => ({ ...prev, answer: true }));
+    }
+  }, [canRevealPanels, showContentPanels]);
+
+  useEffect(() => {
+    if (cardsCount === 0 || !revealedBlocks.cards) clearPanelRect('cards');
+    if (rulesCount === 0 || !revealedBlocks.rules) clearPanelRect('rules');
+    if (!canRevealPanels || !revealedBlocks.answer) clearPanelRect('answer');
+  }, [
+    cardsCount,
+    rulesCount,
+    canRevealPanels,
+    revealedBlocks.answer,
+    revealedBlocks.cards,
+    revealedBlocks.rules,
+    clearPanelRect,
+  ]);
 
   if (!voiceReady && !error) {
     return <VoiceLoadingView theme={theme} paddingTop={insets.top} />;
@@ -1077,6 +1183,8 @@ function VoiceScreen() {
               paddingTop: insets.top,
               paddingBottom: insets.bottom,
             }}
+            onScroll={handleOverlayScroll}
+            scrollEventThrottle={16}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator
           >
@@ -1097,8 +1205,51 @@ function VoiceScreen() {
             </View>
             {(DEBUG_SCENARIO || showContentPanels) ? (
             <View style={styles.contentStack}>
+              <View style={styles.revealDock}>
+                {!revealedBlocks.answer && (
+                  <Pressable
+                    style={[styles.revealChip, { borderColor }]}
+                    onPress={() => revealBlock('answer')}
+                  >
+                    <Text style={[styles.revealChipLabel, { color: textColor }]}>
+                      Reveal Answer
+                    </Text>
+                  </Pressable>
+                )}
+                {!revealedBlocks.cards && cardsCount > 0 && (
+                  <Pressable
+                    style={[styles.revealChip, { borderColor }]}
+                    onPress={() => revealBlock('cards')}
+                  >
+                    <Text style={[styles.revealChipLabel, { color: textColor }]}>
+                      Reveal Cards
+                    </Text>
+                  </Pressable>
+                )}
+                {!revealedBlocks.rules && rulesCount > 0 && (
+                  <Pressable
+                    style={[styles.revealChip, { borderColor }]}
+                    onPress={() => revealBlock('rules')}
+                  >
+                    <Text style={[styles.revealChipLabel, { color: textColor }]}>
+                      Reveal Rules
+                    </Text>
+                  </Pressable>
+                )}
+                {!revealedBlocks.sources && sourcesCount > 0 && (
+                  <Pressable
+                    style={[styles.revealChip, { borderColor }]}
+                    onPress={() => revealBlock('sources')}
+                  >
+                    <Text style={[styles.revealChipLabel, { color: textColor }]}>
+                      Reveal Sources
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
               {DEBUG_SCENARIO ? (
                 <>
+                  {revealedBlocks.answer && (
                   <DeconPanel
                     title="Answer"
                     subtitle="Grounded response"
@@ -1112,38 +1263,84 @@ function VoiceScreen() {
                     panelStroke={borderColor}
                     accentIntrusionA={theme.primary}
                     warn={theme.warning}
+                    onRect={rect => updatePanelRect('answer', rect)}
+                    dismissible
+                    onDismiss={() =>
+                      setRevealedBlocks(prev => ({ ...prev, answer: false }))
+                    }
                   >
                     <Text style={[styles.responseText, { color: textColor }]} selectable>
                       {dummyAnswer}
                     </Text>
                   </DeconPanel>
-                  {dummyCards.length > 0 && (
+                  )}
+                  {dummyCards.length > 0 && revealedBlocks.cards && (
                     <CardReferenceBlock
                       cards={dummyCards}
                       intensity={vizRef.current?.vizIntensity ?? 'subtle'}
                       reduceMotion={vizRef.current?.reduceMotion ?? false}
-                      onCardPress={() => emitEvent('tapCard')}
+                      onCardPress={() => {
+                        revealBlock('cards');
+                        emitEvent('tapCard');
+                      }}
                       ink={textColor}
                       mutedInk={mutedColor}
                       panelFill={theme.background}
                       panelStroke={borderColor}
                       accentIntrusionA={theme.primary}
                       warn={theme.warning}
+                      onRect={rect => updatePanelRect('cards', rect)}
+                      dismissible
+                      onDismiss={() =>
+                        setRevealedBlocks(prev => ({ ...prev, cards: false }))
+                      }
                     />
                   )}
-                  {dummyRules.length > 0 && (
+                  {dummyRules.length > 0 && revealedBlocks.rules && (
                     <SelectedRulesBlock
                       rules={dummyRules}
                       intensity={vizRef.current?.vizIntensity ?? 'subtle'}
                       reduceMotion={vizRef.current?.reduceMotion ?? false}
-                      onRulePress={() => emitEvent('tapCitation')}
+                      onRulePress={() => {
+                        revealBlock('rules');
+                        emitEvent('tapCitation');
+                      }}
                       ink={textColor}
                       mutedInk={mutedColor}
                       panelFill={theme.background}
                       panelStroke={borderColor}
                       accentIntrusionA={theme.primary}
                       warn={theme.warning}
+                      onRect={rect => updatePanelRect('rules', rect)}
+                      dismissible
+                      onDismiss={() =>
+                        setRevealedBlocks(prev => ({ ...prev, rules: false }))
+                      }
                     />
+                  )}
+                  {revealedBlocks.sources && (
+                    <DeconPanel
+                      title="Sources"
+                      subtitle="Auditable context summary"
+                      variant="neutral"
+                      intensity={vizRef.current?.vizIntensity ?? 'subtle'}
+                      reduceMotion={vizRef.current?.reduceMotion ?? false}
+                      headerDecon
+                      ink={textColor}
+                      mutedInk={mutedColor}
+                      panelFill={theme.background}
+                      panelStroke={borderColor}
+                      accentIntrusionA={theme.primary}
+                      warn={theme.warning}
+                      dismissible
+                      onDismiss={() =>
+                        setRevealedBlocks(prev => ({ ...prev, sources: false }))
+                      }
+                    >
+                      <Text style={[styles.responseText, { color: textColor }]}>
+                        {dummyRules.length} rule snippet(s), {dummyCards.length} card reference(s).
+                      </Text>
+                    </DeconPanel>
                   )}
                 </>
               ) : (
@@ -1167,6 +1364,7 @@ function VoiceScreen() {
                     </DeconPanel>
                   ) : null}
 
+                  {revealedBlocks.answer && (
                   <DeconPanel
                     title="Answer"
                     subtitle="Grounded response"
@@ -1186,6 +1384,11 @@ function VoiceScreen() {
                     panelStroke={borderColor}
                     accentIntrusionA={theme.primary}
                     warn={theme.warning}
+                    onRect={rect => updatePanelRect('answer', rect)}
+                    dismissible
+                    onDismiss={() =>
+                      setRevealedBlocks(prev => ({ ...prev, answer: false }))
+                    }
                   >
                     {isAsking ? (
                       <View style={styles.responseLoadingRow}>
@@ -1214,7 +1417,9 @@ function VoiceScreen() {
                       </Text>
                     )}
                   </DeconPanel>
+                  )}
 
+                  {revealedBlocks.cards && (
                   <CardReferenceBlock
                     cards={
                       validationSummary?.cards?.map(c => ({
@@ -1225,14 +1430,24 @@ function VoiceScreen() {
                     }
                     intensity={vizRef.current?.vizIntensity ?? 'subtle'}
                     reduceMotion={vizRef.current?.reduceMotion ?? false}
-                    onCardPress={() => emitEvent('tapCard')}
+                    onCardPress={() => {
+                      revealBlock('cards');
+                      emitEvent('tapCard');
+                    }}
                     ink={textColor}
                     mutedInk={mutedColor}
                     panelFill={theme.background}
                     panelStroke={borderColor}
                     accentIntrusionA={theme.primary}
                     warn={theme.warning}
+                    onRect={rect => updatePanelRect('cards', rect)}
+                    dismissible
+                    onDismiss={() =>
+                      setRevealedBlocks(prev => ({ ...prev, cards: false }))
+                    }
                   />
+                  )}
+                  {revealedBlocks.rules && (
                   <SelectedRulesBlock
                     rules={
                       validationSummary?.rules?.map(r => ({
@@ -1244,15 +1459,24 @@ function VoiceScreen() {
                     }
                     intensity={vizRef.current?.vizIntensity ?? 'subtle'}
                     reduceMotion={vizRef.current?.reduceMotion ?? false}
-                    onRulePress={() => emitEvent('tapCitation')}
+                    onRulePress={() => {
+                      revealBlock('rules');
+                      emitEvent('tapCitation');
+                    }}
                     ink={textColor}
                     mutedInk={mutedColor}
                     panelFill={theme.background}
                     panelStroke={borderColor}
                     accentIntrusionA={theme.primary}
                     warn={theme.warning}
+                    onRect={rect => updatePanelRect('rules', rect)}
+                    dismissible
+                    onDismiss={() =>
+                      setRevealedBlocks(prev => ({ ...prev, rules: false }))
+                    }
                   />
-                  {validationSummary ? (
+                  )}
+                  {validationSummary && revealedBlocks.sources ? (
                     <DeconPanel
                       title="Sources"
                       subtitle="Auditable context summary"
@@ -1266,6 +1490,10 @@ function VoiceScreen() {
                       panelStroke={borderColor}
                       accentIntrusionA={theme.primary}
                       warn={theme.warning}
+                      dismissible
+                      onDismiss={() =>
+                        setRevealedBlocks(prev => ({ ...prev, sources: false }))
+                      }
                     >
                       <Text style={[styles.responseText, { color: textColor }]}>
                         {validationSummary.rules.length} rule snippet(s),{' '}
@@ -1384,6 +1612,23 @@ const styles = StyleSheet.create({
   contentStack: {
     gap: 16,
     marginBottom: 8,
+  },
+  revealDock: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  revealChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+  },
+  revealChipLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
   },
   askTriggerRow: {
     marginBottom: 16,

@@ -30,6 +30,8 @@ export type SelectedRulesBlockProps = {
   reduceMotion?: boolean;
   onRulePress?: (ruleId: string) => void;
   onRect?: (rect: { x: number; y: number; w: number; h: number }) => void;
+  dismissible?: boolean;
+  onDismiss?: () => void;
   style?: StyleProp<ViewStyle>;
   ink?: string;
   mutedInk?: string;
@@ -50,6 +52,8 @@ export function SelectedRulesBlock({
   reduceMotion = false,
   onRulePress,
   onRect,
+  dismissible = false,
+  onDismiss,
   style,
   ink,
   mutedInk,
@@ -72,6 +76,8 @@ export function SelectedRulesBlock({
       reduceMotion={reduceMotion}
       headerDecon
       onRect={onRect}
+      dismissible={dismissible}
+      onDismiss={onDismiss}
       style={style}
       ink={primaryText}
       mutedInk={secondaryText}

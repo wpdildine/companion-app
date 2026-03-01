@@ -3,11 +3,12 @@
  * Decon treatment is header-only and never affects body layout.
  */
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   StyleSheet,
   Text,
   View,
+  type GestureResponderEvent,
   type LayoutChangeEvent,
   type StyleProp,
   type ViewStyle,
@@ -24,6 +25,8 @@ export type DeconPanelProps = {
   reduceMotion?: boolean;
   headerDecon?: boolean;
   onRect?: (rect: { x: number; y: number; w: number; h: number }) => void;
+  dismissible?: boolean;
+  onDismiss?: () => void;
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   ink?: string;
@@ -50,6 +53,8 @@ const DEFAULT_INK = '#f4f4f5';
 const DEFAULT_MUTED = '#9a9aa2';
 const DEFAULT_INTRUSION = '#6ea8ff';
 const DEFAULT_WARN = '#f59e0b';
+const DISMISS_HOLD_MS = 190;
+const DISMISS_SWIPE_PX = 28;
 
 function withAlpha(color: string, alpha: number): string {
   if (color.startsWith('rgba(')) {
@@ -88,6 +93,8 @@ export function DeconPanel({
   reduceMotion = false,
   headerDecon,
   onRect,
+  dismissible = false,
+  onDismiss,
   children,
   style,
   ink = DEFAULT_INK,
@@ -104,6 +111,10 @@ export function DeconPanel({
   const ghostOpacity = intensity === 'full' ? 0.1 : 0.08;
   const ghostOffsetX = intensity === 'full' ? 3 : 2;
   const ghostOffsetY = 1;
+  const dismissStartXRef = useRef(0);
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismissTriggeredRef = useRef(false);
+  const [dismissArmed, setDismissArmed] = useState(false);
 
   const titleStyle = variant === 'answer' ? styles.titleH1 : styles.titleH2;
 
@@ -121,13 +132,75 @@ export function DeconPanel({
     [panelFill, panelFillOpacity, panelStroke, borderOpacity],
   );
 
+  useEffect(() => {
+    return () => {
+      if (dismissTimerRef.current != null) {
+        clearTimeout(dismissTimerRef.current);
+        dismissTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const clearDismissTimer = () => {
+    if (dismissTimerRef.current != null) {
+      clearTimeout(dismissTimerRef.current);
+      dismissTimerRef.current = null;
+    }
+  };
+
+  const dismissEnabled = dismissible && typeof onDismiss === 'function';
+  const handleHeaderTouchStart = (e: GestureResponderEvent) => {
+    if (!dismissEnabled) return;
+    clearDismissTimer();
+    dismissTriggeredRef.current = false;
+    setDismissArmed(false);
+    dismissStartXRef.current = e.nativeEvent.locationX;
+    dismissTimerRef.current = setTimeout(() => {
+      dismissTimerRef.current = null;
+      setDismissArmed(true);
+    }, DISMISS_HOLD_MS);
+  };
+  const handleHeaderTouchMove = (e: GestureResponderEvent) => {
+    if (!dismissEnabled || !dismissArmed || dismissTriggeredRef.current) return;
+    const dx = e.nativeEvent.locationX - dismissStartXRef.current;
+    if (Math.abs(dx) >= DISMISS_SWIPE_PX) {
+      dismissTriggeredRef.current = true;
+      clearDismissTimer();
+      setDismissArmed(false);
+      onDismiss?.();
+    }
+  };
+  const handleHeaderTouchEnd = () => {
+    if (!dismissEnabled) return;
+    clearDismissTimer();
+    setDismissArmed(false);
+    dismissTriggeredRef.current = false;
+  };
+
   return (
     <View style={[styles.panel, panelStyle, style]} onLayout={onLayout}>
       {variant === 'warning' ? (
         <View style={[styles.warningBar, { backgroundColor: withAlpha(warn, 0.6) }]} />
       ) : null}
       {(title || subtitle) && (
-        <View style={styles.header}>
+        <View
+          style={[
+            styles.header,
+            dismissEnabled && styles.headerDismissZone,
+            dismissArmed && styles.headerArmed,
+          ]}
+          onTouchStart={dismissEnabled ? handleHeaderTouchStart : undefined}
+          onTouchMove={dismissEnabled ? handleHeaderTouchMove : undefined}
+          onTouchEnd={dismissEnabled ? handleHeaderTouchEnd : undefined}
+          onTouchCancel={dismissEnabled ? handleHeaderTouchEnd : undefined}
+        >
+          {dismissEnabled ? (
+            <View style={styles.dismissHintRow}>
+              <Text style={[styles.dismissHintText, { color: withAlpha(mutedInk, 0.9) }]}>
+                hold + swipe left or right to hide
+              </Text>
+            </View>
+          ) : null}
           {title ? (
             <View style={styles.titleWrap}>
               {shouldDeconHeader && intensity !== 'off' ? (
@@ -186,6 +259,28 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: HEADER_GAP,
+  },
+  headerDismissZone: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  headerArmed: {
+    opacity: 0.96,
+    borderColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  dismissHintRow: {
+    alignItems: 'flex-end',
+    marginBottom: 4,
+  },
+  dismissHintText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '500',
+    textTransform: 'lowercase',
   },
   titleWrap: {
     position: 'relative',
