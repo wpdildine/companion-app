@@ -9,20 +9,25 @@ import {
   View,
   Pressable,
   ScrollView,
-  useColorScheme,
 } from 'react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getTheme } from '../../shared/theme';
 import {
   TARGET_ACTIVITY_BY_MODE,
-  type VizEngineRef,
-  type VizMode,
+  type NodeMapEngineRef,
+  type NodeMapMode,
 } from '../types';
 import { triggerPulseAtCenter } from '../helpers/triggerPulse';
 
+/** Minimal theme for DevPanel; injected by App/DevScreen (no theme import in nodeMap). */
+export type DevPanelTheme = {
+  text: string;
+  textMuted: string;
+  background: string;
+};
+
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v));
-const APP_STATES: VizMode[] = [
+const APP_STATES: NodeMapMode[] = [
   'idle',
   'listening',
   'processing',
@@ -32,14 +37,14 @@ const APP_STATES: VizMode[] = [
 ];
 
 export function DevPanel({
-  vizRef,
+  nodeMapRef,
   onClose,
+  theme,
 }: {
-  vizRef: React.RefObject<VizEngineRef | null>;
+  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
   onClose: () => void;
+  theme: DevPanelTheme;
 }) {
-  const isDark = useColorScheme() === 'dark';
-  const theme = getTheme(isDark);
   const [, setUiVersion] = useState(0);
   const [stateCycleOn, setStateCycleOn] = useState(false);
   const stateCycleTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -47,17 +52,17 @@ export function DevPanel({
 
   const textColor = theme.text;
   const muted = theme.textMuted;
-  const bg = isDark ? 'rgba(30,30,30,0.95)' : 'rgba(250,250,250,0.95)';
+  const bg = theme.background;
 
   const withViz = useCallback(
-    (fn: (viz: VizEngineRef) => void) => {
-      const viz = vizRef.current;
+    (fn: (viz: NodeMapEngineRef) => void) => {
+      const viz = nodeMapRef.current;
       if (!viz) return;
       fn(viz);
       // Dev panel values are ref-backed; force repaint so controls reflect changes immediately.
       setUiVersion(v => v + 1);
     },
-    [vizRef],
+    [nodeMapRef],
   );
 
   const setPaletteId = (id: number) => {
@@ -116,7 +121,7 @@ export function DevPanel({
     });
   };
   const applyState = useCallback(
-    (state: VizMode) => {
+    (state: NodeMapMode) => {
       withViz(viz => {
         viz.targetActivity = TARGET_ACTIVITY_BY_MODE[state];
         if (state === 'touched') {
@@ -129,10 +134,10 @@ export function DevPanel({
       });
       if (state === 'released') {
         // Released mode should show quick pulse then settle.
-        triggerPulseAtCenter(vizRef);
+        triggerPulseAtCenter(nodeMapRef);
       }
     },
-    [vizRef, withViz],
+    [nodeMapRef, withViz],
   );
   const toggleStateCycle = () => {
     const next = !stateCycleOn;
@@ -159,7 +164,7 @@ export function DevPanel({
     };
   }, [stateCycleOn, applyState]);
 
-  const v = vizRef.current;
+  const v = nodeMapRef.current;
   if (!v) return null;
 
   return (
@@ -210,7 +215,7 @@ export function DevPanel({
             </View>
           </View>
           <Pressable
-            onPress={() => triggerPulseAtCenter(vizRef)}
+            onPress={() => triggerPulseAtCenter(nodeMapRef)}
             style={[styles.row, styles.button]}
           >
             <Text style={{ color: textColor }}>Debug pulses</Text>

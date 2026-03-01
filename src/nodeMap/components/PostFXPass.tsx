@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import type { VizEngineRef } from '../types';
+import type { NodeMapEngineRef } from '../types';
 
 const postVertex = `
   varying vec2 vUv;
@@ -47,9 +47,9 @@ const postFragment = `
 `;
 
 export function PostFXPass({
-  vizRef,
+  nodeMapRef,
 }: {
-  vizRef: React.RefObject<VizEngineRef | null>;
+  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
 }) {
   const { gl, scene, camera, size } = useThree();
   const postCamera = useMemo(
@@ -118,7 +118,7 @@ export function PostFXPass({
   }, [material, renderTarget]);
 
   useFrame((state, delta) => {
-    const v = vizRef.current;
+    const v = nodeMapRef.current;
     if (!v || !v.postFxEnabled) {
       gl.setRenderTarget(null);
       gl.clear();

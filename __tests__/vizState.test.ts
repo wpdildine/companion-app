@@ -1,13 +1,13 @@
 /**
- * Viz state: createDefaultVizRef and validateVizState.
+ * Node map state: createDefaultNodeMapRef and validateVizState.
  */
 
-import { createDefaultVizRef } from '../src/viz/types';
-import { validateVizState } from '../src/viz/helpers/validateVizState';
+import { createDefaultNodeMapRef } from '../src/nodeMap/types';
+import { validateVizState } from '../src/utils/validateVizState';
 
-describe('createDefaultVizRef', () => {
+describe('createDefaultNodeMapRef', () => {
   it('returns object with required fields', () => {
-    const ref = createDefaultVizRef();
+    const ref = createDefaultNodeMapRef();
     expect(ref).toHaveProperty('clock', 0);
     expect(ref).toHaveProperty('activity', 0);
     expect(ref).toHaveProperty('targetActivity', 0.1);
@@ -21,7 +21,7 @@ describe('createDefaultVizRef', () => {
 
 describe('validateVizState', () => {
   it('accepts valid default ref', () => {
-    const ref = createDefaultVizRef();
+    const ref = createDefaultNodeMapRef();
     const result = validateVizState(ref);
     expect(result.valid).toBe(true);
     expect(result.errors).toHaveLength(0);
@@ -34,7 +34,7 @@ describe('validateVizState', () => {
   });
 
   it('rejects invalid currentMode', () => {
-    const ref = createDefaultVizRef();
+    const ref = createDefaultNodeMapRef();
     (ref as { currentMode: string }).currentMode = 'invalid';
     const result = validateVizState(ref);
     expect(result.valid).toBe(false);
@@ -42,7 +42,7 @@ describe('validateVizState', () => {
   });
 
   it('rejects activity out of range', () => {
-    const ref = createDefaultVizRef();
+    const ref = createDefaultNodeMapRef();
     ref.activity = 1.5;
     const result = validateVizState(ref);
     expect(result.valid).toBe(false);

@@ -1,29 +1,29 @@
 /**
- * Single bridge: App writes to vizRef only via this function (and intensity/reduceMotion).
+ * Single bridge: App writes to nodeMapRef only via this function (and intensity/reduceMotion).
  * Derives currentMode from phase; stores lastEvent/lastEventTime; optional signalsSnapshot for debug.
  * Render params (layerCount, deconWeight, etc.) are derived here when needed; do not add them to the signals API.
  */
 
 import type { RefObject } from 'react';
-import type { VizEngineRef, VizMode, AiUiSignals, VizPanelRects } from '../types';
+import type { NodeMapEngineRef, NodeMapMode, AiUiSignals, NodeMapPanelRects } from '../types';
 import { TARGET_ACTIVITY_BY_MODE } from '../types';
 
-const PHASE_TO_MODE: Record<AiUiSignals['phase'], VizMode> = {
+const PHASE_TO_MODE: Record<AiUiSignals['phase'], NodeMapMode> = {
   idle: 'idle',
   processing: 'processing',
   resolved: 'speaking',
 };
 
 /**
- * Writes signals to vizRef. Derives currentMode from phase.
+ * Writes signals to nodeMapRef. Derives currentMode from phase.
  * When signals.event is set, stores lastEvent and lastEventTime (using ref.clock).
  * Does not expose or accept render knobs (layerCount, driftPx, etc.) in the API.
  */
-export function applySignalsToViz(
-  vizRef: RefObject<VizEngineRef | null>,
-  signals: Partial<AiUiSignals> & { panelRects?: VizPanelRects },
+export function applySignalsToNodeMap(
+  nodeMapRef: RefObject<NodeMapEngineRef | null>,
+  signals: Partial<AiUiSignals> & { panelRects?: NodeMapPanelRects },
 ): void {
-  const v = vizRef.current;
+  const v = nodeMapRef.current;
   if (!v) return;
   const { panelRects, ...uiSignals } = signals;
   const mergedSignals = {

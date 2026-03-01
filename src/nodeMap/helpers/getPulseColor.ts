@@ -3,7 +3,7 @@
  * RGB 0..1. Does not import theme; receives paletteId and optional hueShift.
  */
 
-import type { VizMode } from '../types';
+import type { NodeMapMode } from '../types';
 
 export type PulseEventType =
   | 'tap'
@@ -28,7 +28,7 @@ const PALETTE_BY_ID: [number, number, number][] = [
 export function getPulseColor(
   paletteId: number,
   eventType?: PulseEventType,
-  mode?: VizMode,
+  mode?: NodeMapMode,
 ): [number, number, number] {
   const idx = Math.max(0, Math.floor(paletteId)) % PALETTE_BY_ID.length;
   let [r, g, b] = PALETTE_BY_ID[idx];
@@ -56,13 +56,13 @@ export function getPulseColor(
 
 /**
  * Same as getPulseColor but applies hueShift in degrees (0..360) to the base color.
- * Simple hue rotation in RGB; for finer control pass hueShift from vizRef.
+ * Simple hue rotation in RGB; for finer control pass hueShift from nodeMapRef.
  */
 export function getPulseColorWithHue(
   paletteId: number,
   hueShiftDeg: number,
   eventType?: PulseEventType,
-  mode?: VizMode,
+  mode?: NodeMapMode,
 ): [number, number, number] {
   const [r, g, b] = getPulseColor(paletteId, eventType, mode);
   if (hueShiftDeg === 0) return [r, g, b];

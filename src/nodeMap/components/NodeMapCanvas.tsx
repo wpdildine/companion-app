@@ -1,31 +1,32 @@
 /**
- * Fullscreen viz canvas: R3F when available, otherwise 2D fallback (Lane B).
+ * Fullscreen node map canvas: R3F when available, otherwise 2D fallback (Lane B).
  * Loads R3F dynamically and uses an error boundary so R3F/expo-gl failures don't crash the app.
  */
 
 import React, { Component, useEffect, useState } from 'react';
 import { NativeModules, Platform } from 'react-native';
-import type { VizEngineRef } from '../types';
+import type { NodeMapEngineRef } from '../types';
 import type { TouchCallbacks } from '../interaction/touchHandlers';
-import { VizCanvasFallback } from './VizCanvasFallback';
+import { NodeMapCanvasFallback } from './NodeMapCanvasFallback';
 
 /** Skip loading R3F on Android; set false to try R3F + expo-gl on Android. */
 const SKIP_R3F_ON_ANDROID = false;
 const R3F_EXPO_WAIT_TIMEOUT_MS = 6000;
 const R3F_EXPO_WAIT_POLL_MS = 150;
 
-type VizCanvasProps = {
-  vizRef: React.RefObject<VizEngineRef | null>;
+type NodeMapCanvasProps = {
+  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
   controlsEnabled: boolean;
   inputEnabled: boolean;
   canvasBackground?: string;
+  clusterZoneHighlights?: boolean;
 } & TouchCallbacks;
 
-type R3FComponentType = React.ComponentType<VizCanvasProps>;
+type R3FComponentType = React.ComponentType<NodeMapCanvasProps>;
 
 type ErrorBoundaryState = { hasError: boolean };
 
-class VizErrorBoundary extends Component<
+class NodeMapErrorBoundary extends Component<
   {
     children: React.ReactNode;
     fallback: React.ReactNode;
@@ -41,7 +42,7 @@ class VizErrorBoundary extends Component<
 
   componentDidCatch(error: Error) {
     console.warn(
-      '[Viz] R3F canvas failed at render, using fallback:',
+      '[NodeMap] R3F canvas failed at render, using fallback:',
       error?.message ?? error,
     );
     this.props.onCaught?.();
@@ -55,11 +56,12 @@ class VizErrorBoundary extends Component<
   }
 }
 
-export function VizCanvas({
-  vizRef,
+export function NodeMapCanvas({
+  nodeMapRef,
   controlsEnabled,
   inputEnabled,
   canvasBackground,
+  clusterZoneHighlights = false,
   onShortTap,
   onClusterTap,
   onDoubleTap,
@@ -68,18 +70,18 @@ export function VizCanvas({
   onDragStart,
   onDragMove,
   onDragEnd,
-}: VizCanvasProps) {
+}: NodeMapCanvasProps) {
   const [R3FComponent, setR3FComponent] = useState<R3FComponentType | null>(null);
   const [r3fFailed, setR3FFailed] = useState(false);
 
   useEffect(() => {
-    console.log('[Viz] init: platform=', Platform.OS, 'r3fFailed=', r3fFailed);
+    console.log('[NodeMap] init: platform=', Platform.OS, 'r3fFailed=', r3fFailed);
     if (r3fFailed) {
-      console.log('[Viz] skipping R3F load (already failed)');
+      console.log('[NodeMap] skipping R3F load (already failed)');
       return;
     }
     if (SKIP_R3F_ON_ANDROID && Platform.OS === 'android') {
-      console.log('[Viz] using fallback (SKIP_R3F_ON_ANDROID=true)');
+      console.log('[NodeMap] using fallback (SKIP_R3F_ON_ANDROID=true)');
       return;
     }
     let cancelled = false;
@@ -87,16 +89,16 @@ export function VizCanvas({
     const tryLoadR3F = () => {
       if (cancelled) return;
       try {
-        const mod = require('./VizCanvasR3F');
-        if (mod?.VizCanvasR3F) {
-          console.log('[Viz] R3F module loaded, mounting Canvas');
-          setR3FComponent(() => mod.VizCanvasR3F);
+        const mod = require('./NodeMapCanvasR3F');
+        if (mod?.NodeMapCanvasR3F) {
+          console.log('[NodeMap] R3F module loaded, mounting Canvas');
+          setR3FComponent(() => mod.NodeMapCanvasR3F);
         } else {
-          console.warn('[Viz] R3F module missing VizCanvasR3F export');
+          console.warn('[NodeMap] R3F module missing NodeMapCanvasR3F export');
         }
       } catch (e) {
         console.warn(
-          '[Viz] R3F canvas unavailable (load), using fallback:',
+          '[NodeMap] R3F canvas unavailable (load), using fallback:',
           e instanceof Error ? e.message : String(e),
         );
       }
@@ -118,13 +120,13 @@ export function VizCanvas({
           // no-op; we'll keep polling until timeout
         }
         if (isExpoReady()) {
-          console.log('[Viz] Expo EventEmitter ready; loading R3F');
+          console.log('[NodeMap] Expo EventEmitter ready; loading R3F');
           tryLoadR3F();
           return true;
         }
         if (Date.now() - startedAt > R3F_EXPO_WAIT_TIMEOUT_MS) {
           console.warn(
-            `[Viz] Expo EventEmitter not ready after ${R3F_EXPO_WAIT_TIMEOUT_MS}ms; staying on fallback`,
+            `[NodeMap] Expo EventEmitter not ready after ${R3F_EXPO_WAIT_TIMEOUT_MS}ms; staying on fallback`,
           );
           return true;
         }
@@ -152,27 +154,28 @@ export function VizCanvas({
   }, [r3fFailed]);
 
   const dotsOnlyFallback = (
-    <VizCanvasFallback vizRef={vizRef} canvasBackground={canvasBackground} />
+    <NodeMapCanvasFallback nodeMapRef={nodeMapRef} canvasBackground={canvasBackground} />
   );
   const fallback = dotsOnlyFallback;
 
   if (!R3FComponent || r3fFailed) {
-    console.log('[Viz] render: fallback (no R3F)', { hasR3F: !!R3FComponent, r3fFailed });
+    console.log('[NodeMap] render: fallback (no R3F)', { hasR3F: !!R3FComponent, r3fFailed });
     return fallback;
   }
 
-  console.log('[Viz] render: R3F Canvas path');
+  console.log('[NodeMap] render: R3F Canvas path');
 
   return (
-    <VizErrorBoundary
+    <NodeMapErrorBoundary
       fallback={fallback}
       onCaught={() => setR3FFailed(true)}
     >
       <R3FComponent
-        vizRef={vizRef}
+        nodeMapRef={nodeMapRef}
         controlsEnabled={controlsEnabled}
         inputEnabled={inputEnabled}
         canvasBackground={canvasBackground}
+        clusterZoneHighlights={clusterZoneHighlights}
         onShortTap={onShortTap}
         onClusterTap={onClusterTap}
         onDoubleTap={onDoubleTap}
@@ -182,6 +185,6 @@ export function VizCanvas({
         onDragMove={onDragMove}
         onDragEnd={onDragEnd}
       />
-    </VizErrorBoundary>
+    </NodeMapErrorBoundary>
   );
 }

@@ -1,6 +1,6 @@
 # Viz Component Reference
 
-Reference for the `src/viz/` visualization layer: elements, responsibilities, and redundancy notes. See [ARCHITECTURE.md](ARCHITECTURE.md) for placement rules, [app-architecture.md](app-architecture.md) for high-level data flow and voice/RAG integration, and [README.md](../README.md) for product context.
+Reference for the `src/nodeMap/` visualization layer: elements, responsibilities, and redundancy notes. See [ARCHITECTURE.md](ARCHITECTURE.md) for placement rules, [app-architecture.md](app-architecture.md) for high-level data flow and voice/RAG integration, and [README.md](../README.md) for product context.
 
 ---
 
@@ -13,7 +13,7 @@ The viz layer is the **GL UI** for the node map: a fullscreen Three.js/R3F visua
 ## Directory Structure
 
 ```
-src/viz/
+src/nodeMap/
 ├── index.ts              # Public exports
 ├── types.ts               # VizEngineRef, VizMode, AiUiSignals, etc.
 ├── components/            # React components
@@ -53,7 +53,7 @@ src/viz/
 
 | Component | Purpose |
 |-----------|---------|
-| **VizInteractionBand** | Optional overlay that captures drag/tap and drives the canvas-owned touch field (`touchFieldActive`, `touchFieldNdc`, `touchFieldStrength`). On tap end, maps NDC to cluster: `ndc[0] < -0.12` → rules, `ndc[0] > 0.12` → cards; calls `onClusterTap`. Used when canvas has `pointerEvents="none"` (e.g. inside VizSurface). |
+| **VizInteractionBand** | Optional overlay that captures drag/tap and drives the canvas-owned touch field (`touchFieldActive`, `touchFieldNdc`, `touchFieldStrength`). On tap end, maps NDC to cluster: `ndc[0] < -0.12` → rules, `ndc[0] > 0.12` → cards; calls `onClusterTap`. Selection zones are highlighted in GL via stronger `ClusterTouchZones` emphasis when interaction mode is active. |
 
 ---
 

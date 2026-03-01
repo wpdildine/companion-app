@@ -1,5 +1,5 @@
 /**
- * Context glyphs: two clusters (rules + cards), breathing + drift + glow. Counts from vizRef; no glyphs when no evidence.
+ * Context glyphs: two clusters (rules + cards), breathing + drift + glow. Counts from nodeMapRef; no glyphs when no evidence.
  */
 
 import { useEffect, useMemo, useRef } from 'react';
@@ -7,12 +7,12 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { buildTwoClusters } from '../helpers/formations';
 import { nodeVertex, nodeFragment } from '../shaders/nodes';
-import type { VizEngineRef } from '../types';
+import type { NodeMapEngineRef } from '../types';
 
 const FORMATION = buildTwoClusters();
 const N = FORMATION.nodes.length;
 
-export function ContextGlyphs({ vizRef }: { vizRef: React.RefObject<VizEngineRef | null> }) {
+export function ContextGlyphs({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeMapEngineRef | null> }) {
   const meshRef = useRef<THREE.Points>(null);
   const visibleRef = useRef<Float32Array>(new Float32Array(N));
   const { positions, nodeSizes, nodeTypes, nodeColors, distanceFromRoot } = useMemo(() => {
@@ -94,10 +94,10 @@ export function ContextGlyphs({ vizRef }: { vizRef: React.RefObject<VizEngineRef
   const projectionMatrixRef = useRef(new THREE.Matrix4());
 
   useFrame((state, delta) => {
-    if (!meshRef.current?.material || !vizRef.current) return;
+    if (!meshRef.current?.material || !nodeMapRef.current) return;
     const points = meshRef.current;
     const geom = points.geometry;
-    const v = vizRef.current;
+    const v = nodeMapRef.current;
     const rulesCount = v.rulesClusterCount ?? 0;
     const cardsCount = v.cardsClusterCount ?? 0;
     for (let i = 0; i < 8; i++) visibleRef.current[i] = i < rulesCount ? 1 : 0;
@@ -162,7 +162,7 @@ export function ContextGlyphs({ vizRef }: { vizRef: React.RefObject<VizEngineRef
     decayDepth,
   ]);
 
-  if (vizRef.current?.vizIntensity === 'off') {
+  if (nodeMapRef.current?.vizIntensity === 'off') {
     return null;
   }
 

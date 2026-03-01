@@ -1,12 +1,12 @@
 /**
  * 2D fallback when R3F is unavailable (e.g. Android).
  * Renders a dark background with a sphere-projected grid of dots that pulse with activity.
- * No extra deps; drives visibility from vizRef.targetActivity.
+ * Never returns an empty View (plan: fallback must render a minimal field).
  */
 
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
-import type { VizEngineRef } from '../types';
+import type { NodeMapEngineRef } from '../types';
 
 const LOG_FALLBACK = true;
 
@@ -53,11 +53,11 @@ const NODES = buildFallbackNodes();
 
 const POLL_MS = 120;
 
-export function VizCanvasFallback({
-  vizRef,
+export function NodeMapCanvasFallback({
+  nodeMapRef,
   canvasBackground = DEFAULT_FALLBACK_BG,
 }: {
-  vizRef: React.RefObject<VizEngineRef | null>;
+  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
   canvasBackground?: string;
 }) {
   const { width, height } = useWindowDimensions();
@@ -65,23 +65,46 @@ export function VizCanvasFallback({
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    if (LOG_FALLBACK) console.log('[Viz] VizCanvasFallback mounted (2D dots)', { width, height });
+    if (LOG_FALLBACK) console.log('[NodeMap] NodeMapCanvasFallback mounted (2D dots)', { width, height });
   }, [width, height]);
 
   useEffect(() => {
     const id = setInterval(() => {
-      const target = vizRef?.current?.targetActivity ?? 0.1;
+      const target = nodeMapRef?.current?.targetActivity ?? 0.1;
       setActivity((a) => a * 0.85 + target * 0.15);
       setTick((n) => n + 1);
     }, POLL_MS);
     return () => clearInterval(id);
-  }, [vizRef]);
+  }, [nodeMapRef]);
 
+  // Minimal field: render dots so fallback is never an empty View
+  const opacity = 0.3 + activity * 0.5;
   return (
-    <View style={[StyleSheet.absoluteFill, styles.root, { backgroundColor: canvasBackground }]} />
+    <View style={[StyleSheet.absoluteFill, styles.root, { backgroundColor: canvasBackground }]}>
+      {NODES.map((node, i) => (
+        <View
+          key={i}
+          style={[
+            styles.dot,
+            {
+              left: node.x * width - node.size,
+              top: node.y * height - node.size,
+              width: node.size * 2,
+              height: node.size * 2,
+              borderRadius: node.size,
+              opacity: opacity * (0.7 + 0.3 * Math.sin(tick * 0.1 + node.phase)),
+            },
+          ]}
+        />
+      ))}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: {},
+  dot: {
+    position: 'absolute',
+    backgroundColor: 'rgba(180, 140, 255, 0.9)',
+  },
 });

@@ -1,9 +1,9 @@
 /**
- * Node map viz: engine state ref shape and mode type.
+ * Node map: engine state ref shape and mode type.
  * Plan: discrete mode in React; continuous animation in render loop via this ref.
  */
 
-export type VizMode =
+export type NodeMapMode =
   | 'idle'
   | 'listening'
   | 'processing'
@@ -11,7 +11,7 @@ export type VizMode =
   | 'touched'
   | 'released';
 
-/** UI-semantic signals for the viz layer only. Not render params. */
+/** UI-semantic signals for the node map layer only. Not render params. */
 export type AiUiSignalsEvent =
   | 'tapCitation'
   | 'chunkAccepted'
@@ -33,15 +33,15 @@ export interface TouchNdc {
   y: number;
 }
 
-export type VizIntensity = 'off' | 'subtle' | 'full';
+export type NodeMapIntensity = 'off' | 'subtle' | 'full';
 
-export type VizPanelRects = {
+export type NodeMapPanelRects = {
   answer?: { x: number; y: number; w: number; h: number };
   cards?: { x: number; y: number; w: number; h: number };
   rules?: { x: number; y: number; w: number; h: number };
 };
 
-export interface VizEngineRef {
+export interface NodeMapEngineRef {
   clock: number;
   activity: number;
   targetActivity: number;
@@ -82,14 +82,14 @@ export interface VizEngineRef {
   autoRotSpeedY: number;
   autoRotSpeedZ: number;
   /** Current app mode so render layers can map state-specific effects. */
-  currentMode: VizMode;
+  currentMode: NodeMapMode;
   /** Post FX controls. */
   postFxEnabled: boolean;
   postFxVignette: number;
   postFxChromatic: number;
   postFxGrain: number;
   /** Viz intensity: off | subtle | full. Default subtle until later. */
-  vizIntensity: VizIntensity;
+  vizIntensity: NodeMapIntensity;
   /** Reduce motion (accessibility). */
   reduceMotion: boolean;
   /** Last semantic event (for pulse/ripple). */
@@ -98,16 +98,16 @@ export interface VizEngineRef {
   lastEventTime: number;
   /** Optional snapshot for debug. */
   signalsSnapshot?: AiUiSignals;
-  /** Panel rects in viewport-relative screen px (account for scroll before writing). VizSurface provides viewport size; GL converts to normalized. */
-  panelRects?: VizPanelRects;
-  /** Derived in applySignalsToViz from signals (not in signals API). */
+  /** Panel rects in viewport-relative screen px (account for scroll before writing). NodeMapSurface provides viewport size; GL converts to normalized. */
+  panelRects?: NodeMapPanelRects;
+  /** Derived in applySignalsToNodeMap from signals (not in signals API). */
   rulesClusterCount: number;
   cardsClusterCount: number;
   layerCount: number;
   deconWeight: number;
   planeOpacity: number;
   driftPx: number;
-  /** Canvas-owned touch field for repulsion (viz band only). */
+  /** Canvas-owned touch field for repulsion (interaction band only). */
   touchFieldActive: boolean;
   touchFieldNdc: [number, number] | null;
   touchFieldStrength: number;
@@ -115,7 +115,7 @@ export interface VizEngineRef {
 
 const SENTINEL_FAR = 1e6;
 
-export function createDefaultVizRef(): VizEngineRef {
+export function createDefaultNodeMapRef(): NodeMapEngineRef {
   return {
     clock: 0,
     activity: 0,
@@ -174,7 +174,7 @@ export function createDefaultVizRef(): VizEngineRef {
 }
 
 /** targetActivity by mode (plan §1) */
-export const TARGET_ACTIVITY_BY_MODE: Record<VizMode, number> = {
+export const TARGET_ACTIVITY_BY_MODE: Record<NodeMapMode, number> = {
   idle: 0.1,
   listening: 0.6,
   processing: 1.0,

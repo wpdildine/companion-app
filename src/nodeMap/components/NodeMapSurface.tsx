@@ -6,23 +6,25 @@
 
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { VizCanvas } from './VizCanvas';
-import type { VizEngineRef } from '../types';
+import { NodeMapCanvas } from './NodeMapCanvas';
+import type { NodeMapEngineRef } from '../types';
 import type { TouchCallbacks } from '../interaction/touchHandlers';
 
-export type VizSurfaceProps = {
-  vizRef: React.RefObject<VizEngineRef | null>;
+export type NodeMapSurfaceProps = {
+  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
   controlsEnabled: boolean;
   inputEnabled: boolean;
   canvasBackground?: string;
+  clusterZoneHighlights?: boolean;
   children: React.ReactNode;
 } & TouchCallbacks;
 
-export function VizSurface({
-  vizRef,
+export function NodeMapSurface({
+  nodeMapRef,
   controlsEnabled,
   inputEnabled,
   canvasBackground,
+  clusterZoneHighlights = false,
   children,
   onShortTap,
   onClusterTap,
@@ -32,23 +34,24 @@ export function VizSurface({
   onDragStart,
   onDragMove,
   onDragEnd,
-}: VizSurfaceProps) {
+}: NodeMapSurfaceProps) {
   return (
     <View style={styles.root}>
       <View style={styles.canvas} pointerEvents="none">
-        <VizCanvas
-          vizRef={vizRef}
-        controlsEnabled={controlsEnabled}
-        inputEnabled={inputEnabled}
-        canvasBackground={canvasBackground}
-        onShortTap={onShortTap}
-        onClusterTap={onClusterTap}
-        onDoubleTap={onDoubleTap}
-        onLongPressStart={onLongPressStart}
-        onLongPressEnd={onLongPressEnd}
-        onDragStart={onDragStart}
-        onDragMove={onDragMove}
-        onDragEnd={onDragEnd}
+        <NodeMapCanvas
+          nodeMapRef={nodeMapRef}
+          controlsEnabled={controlsEnabled}
+          inputEnabled={inputEnabled}
+          canvasBackground={canvasBackground}
+          clusterZoneHighlights={clusterZoneHighlights}
+          onShortTap={onShortTap}
+          onClusterTap={onClusterTap}
+          onDoubleTap={onDoubleTap}
+          onLongPressStart={onLongPressStart}
+          onLongPressEnd={onLongPressEnd}
+          onDragStart={onDragStart}
+          onDragMove={onDragMove}
+          onDragEnd={onDragEnd}
         />
       </View>
       <View style={styles.content} pointerEvents="box-none">

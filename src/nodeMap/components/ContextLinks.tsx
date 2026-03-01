@@ -8,7 +8,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { buildTwoClusters } from '../helpers/formations';
 import { connectionVertex, connectionFragment } from '../shaders/connections';
-import type { VizEngineRef } from '../types';
+import type { NodeMapEngineRef } from '../types';
 
 const TWO_CLUSTERS = buildTwoClusters();
 const CLUSTER_SIZE = 8;
@@ -59,7 +59,7 @@ function sampleBezier(
   return [b, c, d];
 }
 
-export function ContextLinks({ vizRef }: { vizRef: React.RefObject<VizEngineRef | null> }) {
+export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeMapEngineRef | null> }) {
   const meshRef = useRef<THREE.LineSegments>(null);
   const { positions, tArr, startPoints, endPoints, strengths, pathIndices, colors } = useMemo(() => {
     const nodes = FORMATION.nodes;
@@ -136,10 +136,10 @@ export function ContextLinks({ vizRef }: { vizRef: React.RefObject<VizEngineRef 
   );
 
   useFrame((_, delta) => {
-    if (!meshRef.current?.material || !vizRef.current) return;
+    if (!meshRef.current?.material || !nodeMapRef.current) return;
     const lines = meshRef.current;
     const mat = lines.material as THREE.ShaderMaterial;
-    const v = vizRef.current;
+    const v = nodeMapRef.current;
     // Keep links front-facing (2D cluster topology), no 3D orbit rotation.
     lines.rotation.x = 0;
     lines.rotation.y = 0;
@@ -186,7 +186,7 @@ export function ContextLinks({ vizRef }: { vizRef: React.RefObject<VizEngineRef 
     return g;
   }, [positions, tArr, startPoints, endPoints, strengths, pathIndices, colors]);
 
-  const v = vizRef.current;
+  const v = nodeMapRef.current;
   const confidence = v?.signalsSnapshot?.confidence ?? 1;
   const showLinks = v?.vizIntensity === 'full' && confidence < 0.7;
   if (!showLinks) {

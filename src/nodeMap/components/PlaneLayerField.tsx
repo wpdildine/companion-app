@@ -1,11 +1,11 @@
 /**
- * 1–2 translucent planes (plan C2). layerCount, planeOpacity, driftPx, hueShift, reduceMotion from vizRef.
+ * 1–2 translucent planes (plan C2). layerCount, planeOpacity, driftPx, hueShift, reduceMotion from nodeMapRef.
  */
 
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import type { VizEngineRef } from '../types';
+import type { NodeMapEngineRef } from '../types';
 
 const BASE_HUE = 0.6;
 const BASE_SAT = 0.45;
@@ -13,9 +13,9 @@ const BASE_LUM = 0.55;
 const SEED = 12.9898;
 
 export function PlaneLayerField({
-  vizRef,
+  nodeMapRef,
 }: {
-  vizRef: React.RefObject<VizEngineRef | null>;
+  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
 }) {
   const g1 = useRef<THREE.Mesh>(null);
   const g2 = useRef<THREE.Mesh>(null);
@@ -57,7 +57,7 @@ export function PlaneLayerField({
   };
 
   useFrame(state => {
-    const v = vizRef.current;
+    const v = nodeMapRef.current;
     if (!v) return;
     const show = v.vizIntensity !== 'off';
     const opacity = show ? Math.max(0.25, Math.min(0.65, v.planeOpacity ?? 0.28)) : 0;

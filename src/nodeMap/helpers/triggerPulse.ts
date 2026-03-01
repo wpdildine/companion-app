@@ -4,13 +4,13 @@
  */
 
 import type { RefObject } from 'react';
-import type { VizEngineRef } from '../types';
+import type { NodeMapEngineRef } from '../types';
 import { getPulseColorWithHue } from './getPulseColor';
 
 export function triggerPulseAtCenter(
-  vizRef: RefObject<VizEngineRef | null>,
+  nodeMapRef: RefObject<NodeMapEngineRef | null>,
 ): void {
-  const v = vizRef.current;
+  const v = nodeMapRef.current;
   if (!v) return;
   const i = v.lastPulseIndex % 3;
   v.pulsePositions[i] = [0, 0, 0];

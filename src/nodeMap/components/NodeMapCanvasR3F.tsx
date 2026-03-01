@@ -1,5 +1,5 @@
 /**
- * R3F implementation of the viz canvas (constructivist planes + context glyphs).
+ * R3F implementation of the node map canvas (constructivist planes + context glyphs).
  * Touch: tap → raypick → pulse; double-tap / long-press / drag callbacks via stubs.
  * canvasBackground and callbacks are injected (no theme import).
  */
@@ -16,7 +16,7 @@ import { ClusterTouchZones } from './ClusterTouchZones';
 import { TouchRaycaster } from '../interaction/TouchRaycaster';
 import { CameraOrbit } from './CameraOrbit';
 import { PostFXPass } from './PostFXPass';
-import type { VizEngineRef } from '../types';
+import type { NodeMapEngineRef } from '../types';
 import { withTouchStubs, type TouchCallbacks } from '../interaction/touchHandlers';
 
 const TAP_MAX_MS = 300;
@@ -30,18 +30,20 @@ const DRAG_THRESHOLD = 8;
 
 const DEFAULT_CANVAS_BACKGROUND = '#0a0612';
 
-export type VizCanvasR3FProps = {
-  vizRef: React.RefObject<VizEngineRef | null>;
+export type NodeMapCanvasR3FProps = {
+  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
   controlsEnabled: boolean;
   inputEnabled: boolean;
   canvasBackground?: string;
+  clusterZoneHighlights?: boolean;
 } & TouchCallbacks;
 
-export function VizCanvasR3F({
-  vizRef,
+export function NodeMapCanvasR3F({
+  nodeMapRef,
   controlsEnabled,
   inputEnabled,
   canvasBackground = DEFAULT_CANVAS_BACKGROUND,
+  clusterZoneHighlights = false,
   onShortTap,
   onDoubleTap,
   onLongPressStart,
@@ -49,7 +51,7 @@ export function VizCanvasR3F({
   onDragStart,
   onDragMove,
   onDragEnd,
-}: VizCanvasR3FProps) {
+}: NodeMapCanvasR3FProps) {
   const touch = withTouchStubs({
     onShortTap,
     onDoubleTap,
@@ -69,9 +71,9 @@ export function VizCanvasR3F({
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
-    if (vizRef.current) {
-      vizRef.current.canvasWidth = width;
-      vizRef.current.canvasHeight = height;
+    if (nodeMapRef.current) {
+      nodeMapRef.current.canvasWidth = width;
+      nodeMapRef.current.canvasHeight = height;
     }
   };
 
@@ -82,14 +84,14 @@ export function VizCanvasR3F({
     lastMove.current = { x: locationX, y: locationY };
     longPressTriggered.current = false;
     dragActive.current = false;
-    if (vizRef.current) {
-      const v = vizRef.current;
+    if (nodeMapRef.current) {
+      const v = nodeMapRef.current;
       const w = v.canvasWidth ?? 1;
       const h = v.canvasHeight ?? 1;
       v.touchFieldActive = true;
       v.touchFieldNdc = [(locationX / w) * 2 - 1, 1 - (locationY / h) * 2];
       v.touchFieldStrength = 1;
-      console.log('[Viz] touchStart → ref', { touchFieldActive: true, touchFieldNdc: v.touchFieldNdc, canvasSize: [w, h] });
+      console.log('[NodeMap] touchStart → ref', { touchFieldActive: true, touchFieldNdc: v.touchFieldNdc, canvasSize: [w, h] });
     }
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
@@ -112,7 +114,7 @@ export function VizCanvasR3F({
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
     }
-    const v = vizRef.current;
+    const v = nodeMapRef.current;
     if (v && v.canvasWidth != null && v.canvasHeight != null) {
       v.touchFieldNdc = [(locationX / v.canvasWidth) * 2 - 1, 1 - (locationY / v.canvasHeight) * 2];
       v.touchFieldStrength = 1;
@@ -133,11 +135,11 @@ export function VizCanvasR3F({
 
   const onTouchEnd = (e: GestureResponderEvent) => {
     if (!inputEnabled) return;
-    if (vizRef.current) {
-      vizRef.current.touchFieldActive = false;
-      vizRef.current.touchFieldNdc = null;
-      vizRef.current.touchFieldStrength = 0;
-      console.log('[Viz] touchEnd → ref', { touchFieldActive: false });
+    if (nodeMapRef.current) {
+      nodeMapRef.current.touchFieldActive = false;
+      nodeMapRef.current.touchFieldNdc = null;
+      nodeMapRef.current.touchFieldStrength = 0;
+      console.log('[NodeMap] touchEnd → ref', { touchFieldActive: false });
     }
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
@@ -147,7 +149,7 @@ export function VizCanvasR3F({
       dragActive.current = false;
       touch.onDragEnd();
     }
-    const v = vizRef.current;
+    const v = nodeMapRef.current;
     const { locationX, locationY } = e.nativeEvent;
     const dt = Date.now() - touchStart.current.t;
     const dist = Math.hypot(
@@ -208,13 +210,16 @@ export function VizCanvasR3F({
         }}
       >
         <color attach="background" args={[canvasBackground]} />
-        <EngineLoop vizRef={vizRef} />
-        <TouchRaycaster vizRef={vizRef} />
-        <CameraOrbit vizRef={vizRef} />
-        <ClusterTouchZones vizRef={vizRef} />
-        <ContextGlyphs vizRef={vizRef} />
-        <ContextLinks vizRef={vizRef} />
-        <PostFXPass vizRef={vizRef} />
+        <EngineLoop nodeMapRef={nodeMapRef} />
+        <TouchRaycaster nodeMapRef={nodeMapRef} />
+        <CameraOrbit nodeMapRef={nodeMapRef} />
+        <ClusterTouchZones
+          nodeMapRef={nodeMapRef}
+          highlighted={clusterZoneHighlights}
+        />
+        <ContextGlyphs nodeMapRef={nodeMapRef} />
+        <ContextLinks nodeMapRef={nodeMapRef} />
+        <PostFXPass nodeMapRef={nodeMapRef} />
       </Canvas>
     </View>
   );

@@ -6,7 +6,7 @@
 import { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import type { VizEngineRef } from '../types';
+import type { NodeMapEngineRef } from '../types';
 
 const ZOOM = 1;
 
@@ -14,7 +14,7 @@ function syncCamera(
   camera: THREE.Camera,
   width: number,
   height: number,
-  vizRef: React.RefObject<VizEngineRef | null>,
+  nodeMapRef: React.RefObject<NodeMapEngineRef | null>,
 ) {
   if (!(camera instanceof THREE.OrthographicCamera) || width <= 0 || height <= 0) return;
   const aspect = width / height;
@@ -25,24 +25,24 @@ function syncCamera(
   camera.near = 0.1;
   camera.far = 100;
   camera.updateProjectionMatrix();
-  if (vizRef?.current) {
-    vizRef.current.canvasWidth = width;
-    vizRef.current.canvasHeight = height;
+  if (nodeMapRef?.current) {
+    nodeMapRef.current.canvasWidth = width;
+    nodeMapRef.current.canvasHeight = height;
   }
 }
 
-export function CameraSync({ vizRef }: { vizRef: React.RefObject<VizEngineRef | null> }) {
+export function CameraSync({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeMapEngineRef | null> }) {
   const { camera, size } = useThree();
   const prevSize = useRef({ width: 0, height: 0 });
 
   useEffect(() => {
-    syncCamera(camera, size.width, size.height, vizRef);
-  }, [camera, size.width, size.height, vizRef]);
+    syncCamera(camera, size.width, size.height, nodeMapRef);
+  }, [camera, size.width, size.height, nodeMapRef]);
 
   useFrame(() => {
     if (size.width === prevSize.current.width && size.height === prevSize.current.height) return;
     prevSize.current = { width: size.width, height: size.height };
-    syncCamera(camera, size.width, size.height, vizRef);
+    syncCamera(camera, size.width, size.height, nodeMapRef);
   });
 
   return null;

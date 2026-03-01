@@ -2,7 +2,7 @@
 
 MTG Rules Companion and Timer App — React Native (New Architecture), with [llama.rn](https://github.com/mybigday/llama.rn) for on-device LLM. Voice input, offline TTS (Piper), and a **deterministic context provider** for grounded MTG rules/cards answers — no vector retrieval in-app.
 
-**AI agents:** Follow [docs/ai/AGENT_RULES.md](docs/ai/AGENT_RULES.md). See the [Architecture Navigation Map](docs/ARCHITECTURE.md) for where code lives (app, rag, viz, shared).
+**AI agents:** Follow [docs/ai/AGENT_RULES.md](docs/ai/AGENT_RULES.md). See the [Architecture Navigation Map](docs/ARCHITECTURE.md) for where code lives (app, rag, nodeMap, theme, ui, utils, shared).
 
 This is a [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
 
@@ -30,12 +30,15 @@ Context provider logic is shared with **mtg_rules**: the app consumes **@mtg/run
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full Architecture Navigation Map.
 
-- **`src/app/`** — App entry + navigation. `App.tsx` composes `SafeAreaProvider`, `VoiceScreen` (state, handlers, NodeMapCanvas and UI).
-- **`src/shared/`** — Reusable building blocks: theme (`getTheme(isDark)`), components (e.g. `VoiceLoadingView`), helpers (e.g. `log`), services (e.g. native PluginDiagnostics), types.
-- **`src/viz/`** — GL UI (3D visualization): R3F canvas, 2D fallback, touch, shaders. **Pure visualization layer**: injected theme primitives, engine ref, touch callbacks (with stubs when not wired). Touch API: short tap, double-tap, long-press, drag; see `viz/interaction/touchHandlers.ts`.
+- **`src/app/`** — App entry + navigation. `App.tsx` composes `SafeAreaProvider` and `VoiceScreen`. VoiceScreen holds state, handlers, and composes NodeMapSurface + UI.
+- **`src/theme/`** — Pure theme values: `getTheme(isDark)` returns RN tokens and viz primitives (canvasBackground, paletteA, paletteB, nodePalette). Injected into RN and nodeMap; no theme import inside nodeMap.
+- **`src/ui/`** — Screen-level UI: VoiceLoadingView, UserVoiceView, DevScreen, DebugZoneOverlay. Panel state types for gestures.
+- **`src/nodeMap/`** — **Pure visualization layer**: NodeMapCanvas, NodeMapSurface, 2D fallback (dots), R3F scene, touch callbacks. Consumes only injected theme primitives and engine ref; no app state or voice. Touch API: short tap, double-tap, long-press, drag; see `nodeMap/interaction/touchHandlers.ts`.
+- **`src/utils/`** — Pure or side-effect isolated: `log` (logModeChange, logPulse), `validateVizState`. No React or theme imports.
+- **`src/shared/`** — Reusable building blocks: components, helpers, services, types.
 - **`src/rag/`** — RAG pipeline, context provider, pack DB.
 
-The app does **not** use Skia. Graphics are driven by Three.js/R3F and the theme’s viz primitives.
+The app does **not** use Skia. Graphics are driven by Three.js/R3F and the theme’s viz primitives. To add features: theme → `src/theme`, UI → `src/ui`, node map → `src/nodeMap`.
 
 ---
 

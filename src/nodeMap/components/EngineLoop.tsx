@@ -7,14 +7,14 @@
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import type { VizEngineRef } from '../types';
+import type { NodeMapEngineRef } from '../types';
 import { getTwoClusterCenters } from '../helpers/formations';
 import { getPulseColorWithHue } from '../helpers/getPulseColor';
 
 const DT_CAP = 0.1;
 const PULSE_DECAY_MS = 900;
 
-export function EngineLoop({ vizRef }: { vizRef: React.RefObject<VizEngineRef | null> }) {
+export function EngineLoop({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeMapEngineRef | null> }) {
   const didLog = useRef(false);
   const touchNdcVec = useRef(new THREE.Vector2());
   const raycaster = useRef(new THREE.Raycaster());
@@ -26,11 +26,11 @@ export function EngineLoop({ vizRef }: { vizRef: React.RefObject<VizEngineRef | 
   const touchLogAt = useRef(0);
 
   useFrame((state, delta) => {
-    const v = vizRef.current;
+    const v = nodeMapRef.current;
     if (!v) return;
     didLog.current = true;
     v.clock = state.clock.getElapsedTime();
-    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const now = Date.now();
     if (v.touchFieldActive && now - touchLogAt.current > 400) {
       touchLogAt.current = now;
       console.log('[Viz] EngineLoop touchField', { touchFieldNdc: v.touchFieldNdc, touchWorld: v.touchWorld, touchInfluence: v.touchInfluence.toFixed(3), reduceMotion: v.reduceMotion });

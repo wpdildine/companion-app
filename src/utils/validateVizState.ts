@@ -3,9 +3,9 @@
  * Use in __DEV__ or tests.
  */
 
-import type { VizEngineRef, VizMode, VizIntensity } from '../types';
+import type { NodeMapEngineRef, NodeMapMode, NodeMapIntensity } from '../nodeMap/types';
 
-const VIZ_MODES: VizMode[] = [
+const NODE_MAP_MODES: NodeMapMode[] = [
   'idle',
   'listening',
   'processing',
@@ -55,8 +55,8 @@ export function validateVizState(state: unknown): ValidationResult {
   if (typeof s.lastPulseIndex !== 'number' || s.lastPulseIndex < 0 || s.lastPulseIndex > 2) {
     errors.push('lastPulseIndex must be 0, 1, or 2');
   }
-  if (!VIZ_MODES.includes(s.currentMode as VizMode)) {
-    errors.push(`currentMode must be one of ${VIZ_MODES.join(', ')}`);
+  if (!NODE_MAP_MODES.includes(s.currentMode as NodeMapMode)) {
+    errors.push(`currentMode must be one of ${NODE_MAP_MODES.join(', ')}`);
   }
   if (s.touchWorld !== null && !Array.isArray(s.touchWorld)) {
     errors.push('touchWorld must be null or [number, number, number]');
@@ -64,9 +64,9 @@ export function validateVizState(state: unknown): ValidationResult {
   if (s.pendingTapNdc !== null && !Array.isArray(s.pendingTapNdc)) {
     errors.push('pendingTapNdc must be null or [number, number]');
   }
-  const VIZ_INTENSITIES: VizIntensity[] = ['off', 'subtle', 'full'];
-  if (s.vizIntensity != null && !VIZ_INTENSITIES.includes(s.vizIntensity as VizIntensity)) {
-    errors.push(`vizIntensity must be one of ${VIZ_INTENSITIES.join(', ')}`);
+  const NODE_MAP_INTENSITIES: NodeMapIntensity[] = ['off', 'subtle', 'full'];
+  if (s.vizIntensity != null && !NODE_MAP_INTENSITIES.includes(s.vizIntensity as NodeMapIntensity)) {
+    errors.push(`vizIntensity must be one of ${NODE_MAP_INTENSITIES.join(', ')}`);
   }
   if (s.reduceMotion != null && typeof s.reduceMotion !== 'boolean') {
     errors.push('reduceMotion must be a boolean');

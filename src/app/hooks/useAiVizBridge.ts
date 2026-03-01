@@ -1,33 +1,33 @@
 /**
- * Hook: single place for App to push AiUiSignals and events to the viz ref.
- * Exposes setSignals and emitEvent; all writes go through applySignalsToViz.
+ * Hook: single place for App to push AiUiSignals and events to the node map ref.
+ * Exposes setSignals and emitEvent; all writes go through applySignalsToNodeMap.
  */
 
 import { useCallback, type RefObject } from 'react';
-import { applySignalsToViz } from '../../viz/helpers/applySignalsToViz';
+import { applySignalsToNodeMap } from '../../nodeMap/helpers/applySignalsToNodeMap';
 import type {
-  VizEngineRef,
+  NodeMapEngineRef,
   AiUiSignals,
   AiUiSignalsEvent,
-  VizPanelRects,
-} from '../../viz/types';
+  NodeMapPanelRects,
+} from '../../nodeMap/types';
 
-type AiVizInput = Partial<AiUiSignals> & { panelRects?: VizPanelRects };
+type AiVizInput = Partial<AiUiSignals> & { panelRects?: NodeMapPanelRects };
 
-export function useAiVizBridge(vizRef: RefObject<VizEngineRef | null>) {
+export function useAiVizBridge(nodeMapRef: RefObject<NodeMapEngineRef | null>) {
   const setSignals = useCallback(
     (signals: AiVizInput) => {
-      applySignalsToViz(vizRef, signals);
+      applySignalsToNodeMap(nodeMapRef, signals);
     },
-    [vizRef],
+    [nodeMapRef],
   );
 
   const emitEvent = useCallback(
     (eventType: AiUiSignalsEvent) => {
       if (eventType == null) return;
-      applySignalsToViz(vizRef, { event: eventType });
+      applySignalsToNodeMap(nodeMapRef, { event: eventType });
     },
-    [vizRef],
+    [nodeMapRef],
   );
 
   return { setSignals, emitEvent };
