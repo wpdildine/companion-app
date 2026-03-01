@@ -19,7 +19,6 @@ import {
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   useColorScheme,
   View,
 } from 'react-native';
@@ -27,18 +26,6 @@ import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
-import { getTheme } from '../shared/theme';
-import { VoiceLoadingView } from '../shared/components/VoiceLoadingView';
-import { CardReferenceBlock } from '../shared/components/CardReferenceBlock';
-import { SelectedRulesBlock } from '../shared/components/SelectedRulesBlock';
-import {
-  createDefaultVizRef,
-  VizSurface,
-  TARGET_ACTIVITY_BY_MODE,
-  triggerPulseAtCenter,
-  type VizMode,
-} from '../viz';
-import { useAiVizBridge } from './hooks/useAiVizBridge';
 import {
   BUNDLE_PACK_ROOT,
   copyBundlePackToDocuments,
@@ -52,6 +39,20 @@ import {
   init as ragInit,
   type ValidationSummary,
 } from '../rag';
+import { CardReferenceBlock, type CardRef } from '../shared/components/CardReferenceBlock';
+import { DeconPanel } from '../shared/components/DeconPanel';
+import { SelectedRulesBlock, type SelectedRule } from '../shared/components/SelectedRulesBlock';
+import { VoiceLoadingView } from '../shared/components/VoiceLoadingView';
+import { getTheme } from '../shared/theme';
+import {
+  createDefaultVizRef,
+  triggerPulseAtCenter,
+  type VizMode,
+  type AiUiSignals,
+  VizSurface,
+  VizInteractionBand,
+} from '../viz';
+import { useAiVizBridge } from './hooks/useAiVizBridge';
 
 // @react-native-voice/voice uses NativeEventEmitter in a way that triggers warnings on new arch (Fabric) when the native module doesn't expose addListener/removeListeners. Voice still works.
 LogBox.ignoreLogs([
@@ -80,8 +81,69 @@ const DEV_APP_STATES: VizMode[] = [
 ];
 const DOUBLE_TAP_MS = 280;
 
-/** Set to false to hide all UI over the canvas; focus on viz to spec. */
-const SHOW_UI_OVERLAY = false;
+/** Single gate for debug layer; when false, DevPanel is not in the tree. */
+const DEBUG_ENABLED_DEFAULT = false;
+
+/** When true, skip real RAG and inject dummy resolved payload for instrument-panel verification. */
+const DEBUG_SCENARIO = true;
+
+const dummySignals: AiUiSignals = {
+  phase: 'resolved',
+  grounded: true,
+  confidence: 0.82,
+  retrievalDepth: 3,
+  cardRefsCount: 2,
+  event: null,
+};
+
+const dummyAnswer = `
+Blood Moon turns all nonbasic lands into Mountains.
+This removes their abilities unless those abilities are intrinsic to being a Mountain.
+Continuous effects are applied in layer 4 and layer 6 depending on the interaction.
+`;
+
+const dummyCards: CardRef[] = [
+  {
+    id: 'blood-moon',
+    name: 'Blood Moon',
+    imageUri: undefined,
+    typeLine: 'Enchantment',
+    manaCost: '{2}{R}',
+    oracle: 'Nonbasic lands are Mountains.',
+  },
+  {
+    id: 'urborg',
+    name: 'Urborg, Tomb of Yawgmoth',
+    imageUri: undefined,
+    typeLine: 'Legendary Land',
+    manaCost: '',
+    oracle: 'Each land is a Swamp in addition to its other land types.',
+  },
+];
+
+const dummyRules: SelectedRule[] = [
+  {
+    id: '613.1',
+    title: 'Layer System',
+    excerpt:
+      'The values of objects are determined by applying continuous effects in a series of layers.',
+    used: true,
+  },
+  {
+    id: '305.7',
+    title: 'Land Type Changing Effects',
+    excerpt:
+      "If an effect sets a land's subtype to one or more basic land types, the land loses all abilities and gains the corresponding mana abilities.",
+    used: true,
+  },
+  {
+    id: '604.1',
+    title: 'Static Abilities',
+    excerpt:
+      'Static abilities do something all the time rather than being activated or triggered.',
+    used: false,
+  },
+];
 
 /** Resolve embed + chat model paths: pack in Documents (primary on Android), then bundle, then app files/models/. */
 async function getOnDeviceModelPaths(packRootInDocuments?: string): Promise<{
@@ -169,9 +231,15 @@ async function getOnDeviceModelPaths(packRootInDocuments?: string): Promise<{
         modelsDir = await RagPackReader.getAppModelsPath();
         if (modelsDir && typeof modelsDir === 'string') {
           const dir = modelsDir.replace(/\/+$/, '');
-          if (!embedModelPath && (await fileExists(`${dir}/${EMBED_MODEL_FILENAME}`)))
+          if (
+            !embedModelPath &&
+            (await fileExists(`${dir}/${EMBED_MODEL_FILENAME}`))
+          )
             embedModelPath = `${dir}/${EMBED_MODEL_FILENAME}`;
-          if (!chatModelPath && (await fileExists(`${dir}/${CHAT_MODEL_FILENAME}`)))
+          if (
+            !chatModelPath &&
+            (await fileExists(`${dir}/${CHAT_MODEL_FILENAME}`))
+          )
             chatModelPath = `${dir}/${CHAT_MODEL_FILENAME}`;
         }
       }
@@ -181,14 +249,27 @@ async function getOnDeviceModelPaths(packRootInDocuments?: string): Promise<{
   }
 
   if (embedModelPath || chatModelPath) {
-    console.log('[RAG] Model paths:', { embed: embedModelPath || null, chat: chatModelPath || null });
+    console.log('[RAG] Model paths:', {
+      embed: embedModelPath || null,
+      chat: chatModelPath || null,
+    });
   }
   if (!chatModelPath) {
     const packPath = packRootInDocuments?.trim()
-      ? `${packRootInDocuments.replace(/\/+$/, '')}/models/llm/${CHAT_MODEL_FILENAME}`
+      ? `${packRootInDocuments.replace(
+          /\/+$/,
+          '',
+        )}/models/llm/${CHAT_MODEL_FILENAME}`
       : null;
-    const appPath = modelsDir ? `${modelsDir.replace(/\/+$/, '')}/${CHAT_MODEL_FILENAME}` : null;
-    console.warn('[RAG] Chat model not found. Checked pack:', packPath, 'files/models:', appPath);
+    const appPath = modelsDir
+      ? `${modelsDir.replace(/\/+$/, '')}/${CHAT_MODEL_FILENAME}`
+      : null;
+    console.warn(
+      '[RAG] Chat model not found. Checked pack:',
+      packPath,
+      'files/models:',
+      appPath,
+    );
   }
   return { embedModelPath, chatModelPath };
 }
@@ -234,16 +315,16 @@ function VoiceScreen() {
   const insets = useSafeAreaInsets();
   const isDarkMode = useColorScheme() === 'dark';
   const [transcribedText, setTranscribedText] = useState('What is a trigger?');
-  const [partialText, setPartialText] = useState('');
+  const [_partialText, setPartialText] = useState('');
   const [mode, setMode] = useState<VizMode>('idle');
   const [error, setError] = useState<string | null>(null);
   const [voiceReady, setVoiceReady] = useState(false);
-  const [voiceAvailable, setVoiceAvailable] = useState(false);
+  const [_voiceAvailable, setVoiceAvailable] = useState(false);
   const voiceRef = useRef<VoiceModule | null>(null);
   const ttsRef = useRef<TtsModule | null>(null);
   const committedTextRef = useRef('');
   const [piperAvailable, setPiperAvailable] = useState<boolean | null>(null);
-  const [piperDebugInfo, setPiperDebugInfo] = useState<string | null>(null);
+  const [_piperDebugInfo, setPiperDebugInfo] = useState<string | null>(null);
   const [responseText, setResponseText] = useState<string | null>(null);
   const [validationSummary, setValidationSummary] =
     useState<ValidationSummary | null>(null);
@@ -251,9 +332,8 @@ function VoiceScreen() {
     'idle' | 'loading' | 'ready' | 'error'
   >('idle');
   const [packError, setPackError] = useState<string | null>(null);
-  const [showDevScreen, setShowDevScreen] = useState(false);
+  const [debugEnabled, setDebugEnabled] = useState(DEBUG_ENABLED_DEFAULT);
   const [stateCycleOn, setStateCycleOn] = useState(false);
-  const [_devUiVersion, setDevUiVersion] = useState(0);
   const vizRef = useRef(createDefaultVizRef());
   const recordingSessionIdRef = useRef(0);
   const requestIdRef = useRef(0);
@@ -262,13 +342,13 @@ function VoiceScreen() {
     null,
   );
   const stateCycleIdxRef = useRef(0);
-  const pressStartedWhileListeningRef = useRef(false);
-  const longPressTriggeredRef = useRef(false);
   const userModeLongPressActiveRef = useRef(false);
   const lastTapAtRef = useRef(0);
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playbackInterruptedRef = useRef(false);
   const autoStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const askHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ASK_HOLD_MS = 400;
   const MAX_LISTEN_MS = 12000;
   modeRef.current = mode;
 
@@ -282,46 +362,42 @@ function VoiceScreen() {
     console.debug('[Voice] earcon: error');
   }, []);
 
-  const isListening = mode === 'listening';
   const isAsking = mode === 'processing';
-  const isSpeaking = mode === 'speaking';
 
-  const { setSignals } = useAiVizBridge(vizRef);
+  const { setSignals, emitEvent } = useAiVizBridge(vizRef);
 
   useEffect(() => {
-    const v = vizRef.current;
-    if (!v) return;
-    v.targetActivity = TARGET_ACTIVITY_BY_MODE[mode];
-    if (!SHOW_UI_OVERLAY) {
-      setSignals({
-        phase: 'resolved',
-        grounded: true,
-        confidence: 0.8,
-        retrievalDepth: 4,
-        cardRefsCount: 3,
-      });
-      return;
+    if (DEBUG_SCENARIO) {
+      setSignals(dummySignals);
     }
+  }, [setSignals]);
+
+  useEffect(() => {
     const phase =
       mode === 'processing'
         ? 'processing'
         : mode === 'speaking'
-          ? 'resolved'
-          : 'idle';
+        ? 'resolved'
+        : 'idle';
     const grounded =
       validationSummary != null
         ? validationSummary.stats.unknownCardCount === 0 &&
           validationSummary.stats.invalidRuleCount === 0
         : true;
     const confidence = grounded ? 0.9 : 0.5;
+    const retrievalDepth =
+      phase === 'processing' ? 0 : (validationSummary?.rules?.length ?? 0);
+    const cardRefsCount =
+      phase === 'processing' ? 0 : (validationSummary?.cards?.length ?? 0);
     setSignals({
       phase,
       grounded,
       confidence,
-      retrievalDepth: validationSummary?.rules?.length ?? 0,
-      cardRefsCount: validationSummary?.cards?.length ?? 0,
+      retrievalDepth,
+      cardRefsCount,
     });
   }, [mode, validationSummary, setSignals]);
+  // Note: targetActivity/activity are set inside applySignalsToViz from phase; no direct vizRef write here.
 
   useEffect(() => {
     const setReduceMotion = (enabled: boolean) => {
@@ -346,11 +422,22 @@ function VoiceScreen() {
   useEffect(() => {
     const run = () => {
       const PiperTts = NativeModules.PiperTts ?? require('piper-tts').default;
-      const copy = typeof PiperTts?.copyModelToFiles === 'function' ? PiperTts.copyModelToFiles : null;
+      const copy =
+        typeof PiperTts?.copyModelToFiles === 'function'
+          ? PiperTts.copyModelToFiles
+          : null;
       if (!copy) return;
       copy()
-        .then((path: string) => path && console.log('[Piper] Model copied to', path))
-        .catch((e: unknown) => console.warn('[Piper] copyModelToFiles failed:', e instanceof Error ? e.message : e));
+        .then(
+          (path: string) =>
+            path && console.log('[Piper] Model copied to', path),
+        )
+        .catch((e: unknown) =>
+          console.warn(
+            '[Piper] copyModelToFiles failed:',
+            e instanceof Error ? e.message : e,
+          ),
+        );
     };
     run();
     const t = setTimeout(run, 1500);
@@ -362,8 +449,6 @@ function VoiceScreen() {
   const mutedColor = theme.textMuted;
   const inputBg = theme.surface;
   const borderColor = theme.border;
-  const clamp = (x: number, min: number, max: number) =>
-    Math.max(min, Math.min(max, x));
 
   const getVoiceNative = () => {
     const direct = (NativeModules?.Voice ?? null) as {
@@ -393,7 +478,6 @@ function VoiceScreen() {
       const v = vizRef.current;
       if (!v) return;
       fn(v);
-      setDevUiVersion(i => i + 1);
     },
     [],
   );
@@ -401,24 +485,11 @@ function VoiceScreen() {
   const applyVizState = useCallback(
     (state: VizMode) => {
       setMode(state);
-      withViz(v => {
-        const target = TARGET_ACTIVITY_BY_MODE[state];
-        v.targetActivity = target;
-        // Make state tests immediately visible instead of waiting on easing.
-        v.activity = target;
-        if (state === 'touched') {
-          v.touchActive = true;
-          v.touchWorld = [0, 0, 0];
-        } else {
-          v.touchActive = false;
-          v.touchWorld = null;
-        }
-      });
       if (state === 'released') {
         triggerPulseAtCenter(vizRef);
       }
     },
-    [withViz],
+    [],
   );
 
   useEffect(() => {
@@ -519,7 +590,9 @@ function VoiceScreen() {
       for (const delay of retryDelaysMs) {
         if (cancelled) return;
         if (delay > 0)
-          await new Promise<void>(resolve => setTimeout(() => resolve(), delay));
+          await new Promise<void>(resolve =>
+            setTimeout(() => resolve(), delay),
+          );
         try {
           const available = await PiperTts.isModelAvailable();
           if (cancelled) return;
@@ -681,6 +754,11 @@ function VoiceScreen() {
   }, [stopListening]);
 
   const handleSubmit = useCallback(async (): Promise<string | null> => {
+    if (DEBUG_SCENARIO) {
+      setSignals(dummySignals);
+      setMode('idle');
+      return null;
+    }
     const question = transcribedText.trim().replace(/\s+/g, ' ');
     if (!question) return null;
     requestIdRef.current += 1;
@@ -772,12 +850,7 @@ function VoiceScreen() {
       setMode('idle');
       return null;
     }
-  }, [transcribedText]);
-
-  const handleClear = useCallback(() => {
-    setTranscribedText('');
-    setPartialText('');
-  }, []);
+  }, [transcribedText, setSignals]);
 
   const playText = useCallback(
     async (text: string) => {
@@ -913,15 +986,6 @@ function VoiceScreen() {
     }, 120);
   }, []);
 
-  const handlePlayback = useCallback(async () => {
-    const text = (partialText || transcribedText).trim();
-    if (!text) {
-      console.log('[Playback] no text, skipping');
-      return;
-    }
-    await playText(text);
-  }, [partialText, transcribedText, playText]);
-
   const handleUserModeTap = useCallback(() => {
     const now = Date.now();
     const sinceLast = now - lastTapAtRef.current;
@@ -967,7 +1031,28 @@ function VoiceScreen() {
     })();
   }, [stopListening, handleSubmit]);
 
-  const displayText = partialText || transcribedText;
+  const handleAskPressIn = useCallback(() => {
+    if (askHoldTimerRef.current) clearTimeout(askHoldTimerRef.current);
+    askHoldTimerRef.current = setTimeout(() => {
+      askHoldTimerRef.current = null;
+      handleUserModeLongPressStart();
+    }, ASK_HOLD_MS);
+  }, [handleUserModeLongPressStart]);
+
+  const handleAskPressOut = useCallback(() => {
+    if (userModeLongPressActiveRef.current) {
+      handleUserModeLongPressEnd();
+    } else if (askHoldTimerRef.current) {
+      clearTimeout(askHoldTimerRef.current);
+      askHoldTimerRef.current = null;
+    }
+  }, [handleUserModeLongPressEnd]);
+
+  const showContentPanels =
+    mode !== 'idle' ||
+    responseText != null ||
+    validationSummary != null ||
+    error != null;
 
   if (!voiceReady && !error) {
     return <VoiceLoadingView theme={theme} paddingTop={insets.top} />;
@@ -977,832 +1062,308 @@ function VoiceScreen() {
     <View style={styles.screenWrapper}>
       <VizSurface
         vizRef={vizRef}
-        controlsEnabled={showDevScreen}
+        controlsEnabled={debugEnabled}
         inputEnabled
         canvasBackground={theme.viz.canvasBackground}
-        onShortTap={!showDevScreen ? handleUserModeTap : undefined}
+        onShortTap={!debugEnabled ? handleUserModeTap : undefined}
         onLongPressStart={
-          !showDevScreen ? handleUserModeLongPressStart : undefined
+          !debugEnabled ? handleUserModeLongPressStart : undefined
         }
-        onLongPressEnd={!showDevScreen ? handleUserModeLongPressEnd : undefined}
+        onLongPressEnd={!debugEnabled ? handleUserModeLongPressEnd : undefined}
       >
-        {SHOW_UI_OVERLAY ? (
         <ScrollView
-          style={[styles.container, styles.scrollOverlay]}
-          contentContainerStyle={{
-            paddingTop: insets.top,
-            paddingBottom: insets.bottom,
-          }}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator
-        >
-          {showDevScreen && (
-            <>
-              <Text style={[styles.title, { color: textColor }]}>Developer</Text>
-
-          <View style={styles.piperStatusRow}>
-            <Text style={[styles.piperStatusLabel, { color: mutedColor }]}>
-              Piper model:{' '}
-            </Text>
-            {piperAvailable === null ? (
-              <Text style={[styles.piperStatusValue, { color: mutedColor }]}>
-                Checking…
-              </Text>
-            ) : piperAvailable === true ? (
-              <Text style={[styles.piperStatusValue, styles.piperStatusOk]}>
-                ✓ File present
-              </Text>
-            ) : (
-              <Text
-                style={[styles.piperStatusValue, styles.piperStatusMissing]}
-              >
-                Not found — run: pnpm run download-piper then rebuild
-                (ios/android).
-              </Text>
-            )}
-          </View>
-          {piperAvailable === false && piperDebugInfo ? (
-            <View style={styles.piperDebugBox}>
-              <Text
-                style={[styles.piperDebugText, { color: mutedColor }]}
-                selectable
-              >
-                {piperDebugInfo}
-              </Text>
-            </View>
-          ) : null}
-
-          <View style={styles.packStatusRow}>
-            <Text style={[styles.packStatusLabel, { color: mutedColor }]}>
-              Content pack:{' '}
-            </Text>
-            {packStatus === 'loading' ? (
-              <View style={styles.packStatusValueRow}>
-                <ActivityIndicator size="small" color={mutedColor} />
-                <Text style={[styles.packStatusValue, { color: mutedColor }]}>
-                  Loading…
-                </Text>
-              </View>
-            ) : packStatus === 'ready' ? (
-              <Text style={[styles.packStatusValue, styles.packStatusOk]}>
-                Ready
-              </Text>
-            ) : packStatus === 'error' ? (
-              <Text
-                style={[styles.packStatusValue, styles.packStatusMissing]}
-                numberOfLines={2}
-              >
-                Error: {packError ?? 'Unknown'}
-              </Text>
-            ) : (
-              <Text style={[styles.packStatusValue, { color: mutedColor }]}>
-                Not loaded
-              </Text>
-            )}
-          </View>
-
-          <View
-            style={[
-              styles.devToolsCard,
-              { backgroundColor: inputBg, borderColor },
-            ]}
+            style={[styles.container, styles.scrollOverlay]}
+            contentContainerStyle={{
+              paddingTop: insets.top,
+              paddingBottom: insets.bottom,
+            }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator
           >
-            <Text style={[styles.sectionLabel, { color: mutedColor }]}>
-              Dev Tools
-            </Text>
-
-            <View style={styles.devToolsRow}>
-              <Text style={[styles.devToolsLabel, { color: textColor }]}>
-                Viz intensity
-              </Text>
+            <View style={styles.askTriggerRow}>
               <Pressable
-                onPress={() =>
-                  withViz(v => {
-                    v.vizIntensity =
-                      v.vizIntensity === 'off'
-                        ? 'subtle'
-                        : v.vizIntensity === 'subtle'
-                          ? 'full'
-                          : 'off';
-                  })
-                }
+                style={[styles.askTrigger, { borderColor, backgroundColor: inputBg }]}
+                onPressIn={handleAskPressIn}
+                onPressOut={handleAskPressOut}
+                onPress={handleUserModeTap}
               >
-                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-                  {vizRef.current?.vizIntensity ?? 'subtle'}
+                <Text style={[styles.askTriggerLabel, { color: textColor }]}>
+                  Hold to speak, release to ask
+                </Text>
+                <Text style={[styles.askTriggerHint, { color: mutedColor }]}>
+                  Tap to play answer or cancel
                 </Text>
               </Pressable>
             </View>
-            <View style={styles.devToolsRow}>
-              <Text style={[styles.devToolsLabel, { color: textColor }]}>
-                Star count mult
-              </Text>
-              <View style={styles.devToolsStepper}>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.starCountMultiplier = clamp(
-                        v.starCountMultiplier - 0.2,
-                        0.1,
-                        3,
-                      );
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    -
-                  </Text>
-                </Pressable>
-                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-                  {(vizRef.current?.starCountMultiplier ?? 1).toFixed(1)}
-                </Text>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.starCountMultiplier = clamp(
-                        v.starCountMultiplier + 0.2,
-                        0.1,
-                        3,
-                      );
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    +
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-
-            <Pressable
-              style={styles.devToolsButton}
-              onPress={() => triggerPulseAtCenter(vizRef)}
-            >
-              <Text style={[styles.devToolsButtonText, { color: textColor }]}>
-                Debug pulse
-              </Text>
-            </Pressable>
-
-            <View style={styles.devToolsRow}>
-              <Text style={[styles.devToolsLabel, { color: textColor }]}>
-                Cycle states
-              </Text>
-              <Pressable onPress={() => setStateCycleOn(x => !x)}>
-                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-                  {stateCycleOn ? 'ON' : 'OFF'}
-                </Text>
-              </Pressable>
-            </View>
-            <View style={styles.devToolsStateGrid}>
-              {DEV_APP_STATES.map(state => (
-                <Pressable
-                  key={state}
-                  style={styles.devToolsStateButton}
-                  onPress={() => applyVizState(state)}
-                >
-                  <Text
-                    style={[
-                      styles.devToolsStateButtonText,
-                      { color: textColor },
-                    ]}
-                  >
-                    {state}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <View style={styles.devToolsRow}>
-              <Text style={[styles.devToolsLabel, { color: textColor }]}>
-                Post FX
-              </Text>
-              <Pressable
-                onPress={() =>
-                  withViz(v => {
-                    v.postFxEnabled = !v.postFxEnabled;
-                  })
-                }
-              >
-                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-                  {vizRef.current?.postFxEnabled ? 'ON' : 'OFF'}
-                </Text>
-              </Pressable>
-            </View>
-            <View style={styles.devToolsRow}>
-              <Text style={[styles.devToolsLabel, { color: textColor }]}>
-                Vignette
-              </Text>
-              <View style={styles.devToolsStepper}>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.postFxVignette = clamp(v.postFxVignette - 0.05, 0, 1);
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    -
-                  </Text>
-                </Pressable>
-                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-                  {(vizRef.current?.postFxVignette ?? 0).toFixed(2)}
-                </Text>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.postFxVignette = clamp(v.postFxVignette + 0.05, 0, 1);
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    +
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-            <View style={styles.devToolsRow}>
-              <Text style={[styles.devToolsLabel, { color: textColor }]}>
-                Chromatic
-              </Text>
-              <View style={styles.devToolsStepper}>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.postFxChromatic = clamp(
-                        v.postFxChromatic - 0.0005,
-                        0,
-                        0.01,
-                      );
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    -
-                  </Text>
-                </Pressable>
-                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-                  {(vizRef.current?.postFxChromatic ?? 0).toFixed(4)}
-                </Text>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.postFxChromatic = clamp(
-                        v.postFxChromatic + 0.0005,
-                        0,
-                        0.01,
-                      );
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    +
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-            <View style={styles.devToolsRow}>
-              <Text style={[styles.devToolsLabel, { color: textColor }]}>
-                Grain
-              </Text>
-              <View style={styles.devToolsStepper}>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.postFxGrain = clamp(v.postFxGrain - 0.01, 0, 0.2);
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    -
-                  </Text>
-                </Pressable>
-                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-                  {(vizRef.current?.postFxGrain ?? 0).toFixed(2)}
-                </Text>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.postFxGrain = clamp(v.postFxGrain + 0.01, 0, 0.2);
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    +
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-
-            <View style={styles.devToolsRow}>
-              <Text style={[styles.devToolsLabel, { color: textColor }]}>
-                activityLambda
-              </Text>
-              <View style={styles.devToolsStepper}>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.activityLambda = clamp(v.activityLambda - 1, 0.5, 20);
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    -
-                  </Text>
-                </Pressable>
-                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-                  {(vizRef.current?.activityLambda ?? 0).toFixed(1)}
-                </Text>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.activityLambda = clamp(v.activityLambda + 1, 0.5, 20);
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    +
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-            <View style={styles.devToolsRow}>
-              <Text style={[styles.devToolsLabel, { color: textColor }]}>
-                lambdaUp
-              </Text>
-              <View style={styles.devToolsStepper}>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.lambdaUp = clamp(v.lambdaUp - 1, 0.5, 20);
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    -
-                  </Text>
-                </Pressable>
-                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-                  {(vizRef.current?.lambdaUp ?? 0).toFixed(1)}
-                </Text>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.lambdaUp = clamp(v.lambdaUp + 1, 0.5, 20);
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    +
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-            <View style={styles.devToolsRow}>
-              <Text style={[styles.devToolsLabel, { color: textColor }]}>
-                lambdaDown
-              </Text>
-              <View style={styles.devToolsStepper}>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.lambdaDown = clamp(v.lambdaDown - 1, 0.5, 20);
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    -
-                  </Text>
-                </Pressable>
-                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-                  {(vizRef.current?.lambdaDown ?? 0).toFixed(1)}
-                </Text>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.lambdaDown = clamp(v.lambdaDown + 1, 0.5, 20);
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    +
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-
-            <View style={styles.devToolsRow}>
-              <Text style={[styles.devToolsLabel, { color: textColor }]}>
-                paletteId
-              </Text>
-              <View style={styles.devToolsStepper}>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.paletteId = Math.max(0, Math.floor(v.paletteId - 1));
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    -
-                  </Text>
-                </Pressable>
-                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-                  {Math.floor(vizRef.current?.paletteId ?? 0)}
-                </Text>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.paletteId = Math.max(0, Math.floor(v.paletteId + 1));
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    +
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-            <View style={styles.devToolsRow}>
-              <Text style={[styles.devToolsLabel, { color: textColor }]}>
-                hueShift
-              </Text>
-              <View style={styles.devToolsStepper}>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.hueShift = clamp(v.hueShift - 0.02, -0.1, 0.1);
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    -
-                  </Text>
-                </Pressable>
-                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-                  {(vizRef.current?.hueShift ?? 0).toFixed(2)}
-                </Text>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.hueShift = clamp(v.hueShift + 0.02, -0.1, 0.1);
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    +
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-            <View style={styles.devToolsRow}>
-              <Text style={[styles.devToolsLabel, { color: textColor }]}>
-                satBoost
-              </Text>
-              <View style={styles.devToolsStepper}>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.satBoost = clamp(v.satBoost - 0.1, 0.5, 1.5);
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    -
-                  </Text>
-                </Pressable>
-                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-                  {(vizRef.current?.satBoost ?? 0).toFixed(1)}
-                </Text>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.satBoost = clamp(v.satBoost + 0.1, 0.5, 1.5);
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    +
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-            <View style={styles.devToolsRow}>
-              <Text style={[styles.devToolsLabel, { color: textColor }]}>
-                lumBoost
-              </Text>
-              <View style={styles.devToolsStepper}>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.lumBoost = clamp(v.lumBoost - 0.1, 0.5, 1.5);
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    -
-                  </Text>
-                </Pressable>
-                <Text style={[styles.devToolsValue, { color: mutedColor }]}>
-                  {(vizRef.current?.lumBoost ?? 0).toFixed(1)}
-                </Text>
-                <Pressable
-                  onPress={() =>
-                    withViz(v => {
-                      v.lumBoost = clamp(v.lumBoost + 0.1, 0.5, 1.5);
-                    })
-                  }
-                >
-                  <Text
-                    style={[styles.devToolsButtonText, { color: textColor }]}
-                  >
-                    +
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          </View>
-              </>
-            )}
-
-          <Text style={[styles.sectionLabel, { color: mutedColor }]}>
-            Question
-          </Text>
-          <View
-            style={[styles.textBox, { backgroundColor: inputBg, borderColor }]}
-          >
-            <TextInput
-              style={[styles.textInput, { color: textColor }]}
-              placeholder="Type or speak your question..."
-              placeholderTextColor={mutedColor}
-              value={displayText}
-              onChangeText={t => {
-                if (!partialText) setTranscribedText(t);
-              }}
-              editable={!isListening}
-              multiline
-            />
-            {partialText ? (
-              <Text style={[styles.partialHint, { color: mutedColor }]}>
-                Listening...
-              </Text>
-            ) : null}
-            <Pressable
-              style={[styles.playbackButton, { borderColor }]}
-              onPress={handlePlayback}
-              disabled={!displayText.trim() || isSpeaking}
-            >
-              {isSpeaking ? (
-                <View
-                  style={[
-                    styles.playbackButtonContent,
-                    styles.playbackSpeakingRow,
-                  ]}
-                >
-                  <ActivityIndicator size="small" color={textColor} />
-                  <Text
-                    style={[
-                      styles.playbackHint,
-                      styles.playbackSpeakingHint,
-                      { color: mutedColor },
-                    ]}
-                  >
-                    Synthesizing…
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.playbackButtonContent}>
-                  <Text style={[styles.playbackLabel, { color: textColor }]}>
-                    ▶ {piperAvailable ? 'Play (Piper)' : 'Playback'}
-                  </Text>
-                  {piperAvailable === true && (
-                    <Text style={[styles.playbackHint, { color: mutedColor }]}>
-                      Offline voice
-                    </Text>
-                  )}
-                </View>
-              )}
-            </Pressable>
-          </View>
-
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-          <Text style={[styles.sectionLabel, { color: mutedColor }]}>
-            Response
-          </Text>
-          {isAsking ? (
-            <View
-              style={[
-                styles.responseBox,
-                styles.responseLoadingRow,
-                { backgroundColor: inputBg, borderColor },
-              ]}
-            >
-              <ActivityIndicator size="small" color={textColor} />
-              <Text
-                style={[
-                  styles.responseLabel,
-                  styles.responseLabelInline,
-                  { color: mutedColor },
-                ]}
-              >
-                Loading…
-              </Text>
-            </View>
-          ) : (
-            <View
-              style={[
-                styles.responseBox,
-                { backgroundColor: inputBg, borderColor },
-              ]}
-            >
-              <Text style={[styles.responseLabel, { color: mutedColor }]}>
-                Answer
-              </Text>
-              {responseText != null ? (
+            {(DEBUG_SCENARIO || showContentPanels) ? (
+            <View style={styles.contentStack}>
+              {DEBUG_SCENARIO ? (
                 <>
-                  <Text
-                    style={[styles.responseText, { color: textColor }]}
-                    selectable
+                  <DeconPanel
+                    title="Answer"
+                    subtitle="Grounded response"
+                    variant="answer"
+                    intensity={vizRef.current?.vizIntensity ?? 'subtle'}
+                    reduceMotion={vizRef.current?.reduceMotion ?? false}
+                    headerDecon={false}
+                    ink={textColor}
+                    mutedInk={mutedColor}
+                    panelFill={theme.background}
+                    panelStroke={borderColor}
+                    accentIntrusionA={theme.primary}
+                    warn={theme.warning}
                   >
-                    {responseText}
-                  </Text>
-                  {validationSummary &&
-                  (validationSummary.stats.unknownCardCount > 0 ||
-                    validationSummary.stats.invalidRuleCount > 0) ? (
-                    <Text
-                      style={[styles.validationHint, { color: mutedColor }]}
-                    >
-                      Corrected {validationSummary.stats.unknownCardCount}{' '}
-                      name(s), {validationSummary.stats.invalidRuleCount}{' '}
-                      rule(s) invalid.
+                    <Text style={[styles.responseText, { color: textColor }]} selectable>
+                      {dummyAnswer}
                     </Text>
-                  ) : null}
+                  </DeconPanel>
+                  {dummyCards.length > 0 && (
+                    <CardReferenceBlock
+                      cards={dummyCards}
+                      intensity={vizRef.current?.vizIntensity ?? 'subtle'}
+                      reduceMotion={vizRef.current?.reduceMotion ?? false}
+                      onCardPress={() => emitEvent('tapCard')}
+                      ink={textColor}
+                      mutedInk={mutedColor}
+                      panelFill={theme.background}
+                      panelStroke={borderColor}
+                      accentIntrusionA={theme.primary}
+                      warn={theme.warning}
+                    />
+                  )}
+                  {dummyRules.length > 0 && (
+                    <SelectedRulesBlock
+                      rules={dummyRules}
+                      intensity={vizRef.current?.vizIntensity ?? 'subtle'}
+                      reduceMotion={vizRef.current?.reduceMotion ?? false}
+                      onRulePress={() => emitEvent('tapCitation')}
+                      ink={textColor}
+                      mutedInk={mutedColor}
+                      panelFill={theme.background}
+                      panelStroke={borderColor}
+                      accentIntrusionA={theme.primary}
+                      warn={theme.warning}
+                    />
+                  )}
                 </>
               ) : (
-                <Text
-                  style={[styles.responsePlaceholder, { color: mutedColor }]}
-                >
-                  Submit a question to see the answer here.
+                <>
+                  {error ? (
+                    <DeconPanel
+                      title="Input Error"
+                      subtitle="Please retry"
+                      variant="warning"
+                      intensity={vizRef.current?.vizIntensity ?? 'subtle'}
+                      reduceMotion={vizRef.current?.reduceMotion ?? false}
+                      headerDecon={false}
+                      ink={textColor}
+                      mutedInk={mutedColor}
+                      panelFill={theme.background}
+                      panelStroke={borderColor}
+                      accentIntrusionA={theme.primary}
+                      warn={theme.warning}
+                    >
+                      <Text style={styles.errorText}>{error}</Text>
+                    </DeconPanel>
+                  ) : null}
+
+                  <DeconPanel
+                    title="Answer"
+                    subtitle="Grounded response"
+                    variant={
+                      validationSummary &&
+                      (validationSummary.stats.unknownCardCount > 0 ||
+                        validationSummary.stats.invalidRuleCount > 0)
+                        ? 'warning'
+                        : 'answer'
+                    }
+                    intensity={vizRef.current?.vizIntensity ?? 'subtle'}
+                    reduceMotion={vizRef.current?.reduceMotion ?? false}
+                    headerDecon={false}
+                    ink={textColor}
+                    mutedInk={mutedColor}
+                    panelFill={theme.background}
+                    panelStroke={borderColor}
+                    accentIntrusionA={theme.primary}
+                    warn={theme.warning}
+                  >
+                    {isAsking ? (
+                      <View style={styles.responseLoadingRow}>
+                        <ActivityIndicator size="small" color={textColor} />
+                        <Text style={[styles.responseLabelInline, { color: mutedColor }]}>
+                          Loading…
+                        </Text>
+                      </View>
+                    ) : responseText != null ? (
+                      <>
+                        <Text style={[styles.responseText, { color: textColor }]} selectable>
+                          {responseText}
+                        </Text>
+                        {validationSummary &&
+                        (validationSummary.stats.unknownCardCount > 0 ||
+                          validationSummary.stats.invalidRuleCount > 0) ? (
+                          <Text style={[styles.validationHint, { color: mutedColor }]}>
+                            Corrected {validationSummary.stats.unknownCardCount} name(s),{' '}
+                            {validationSummary.stats.invalidRuleCount} rule(s) invalid.
+                          </Text>
+                        ) : null}
+                      </>
+                    ) : (
+                      <Text style={[styles.responsePlaceholder, { color: mutedColor }]}>
+                        Submit a question to see the answer here.
+                      </Text>
+                    )}
+                  </DeconPanel>
+
+                  <CardReferenceBlock
+                    cards={
+                      validationSummary?.cards?.map(c => ({
+                        id: c.doc_id ?? c.raw,
+                        name: c.canonical ?? c.raw,
+                        imageUri: null,
+                      })) ?? []
+                    }
+                    intensity={vizRef.current?.vizIntensity ?? 'subtle'}
+                    reduceMotion={vizRef.current?.reduceMotion ?? false}
+                    onCardPress={() => emitEvent('tapCard')}
+                    ink={textColor}
+                    mutedInk={mutedColor}
+                    panelFill={theme.background}
+                    panelStroke={borderColor}
+                    accentIntrusionA={theme.primary}
+                    warn={theme.warning}
+                  />
+                  <SelectedRulesBlock
+                    rules={
+                      validationSummary?.rules?.map(r => ({
+                        id: r.canonical ?? r.raw,
+                        title: r.raw,
+                        excerpt: r.raw.length > 160 ? r.raw.slice(0, 160) + '…' : r.raw,
+                        used: r.status === 'valid',
+                      })) ?? []
+                    }
+                    intensity={vizRef.current?.vizIntensity ?? 'subtle'}
+                    reduceMotion={vizRef.current?.reduceMotion ?? false}
+                    onRulePress={() => emitEvent('tapCitation')}
+                    ink={textColor}
+                    mutedInk={mutedColor}
+                    panelFill={theme.background}
+                    panelStroke={borderColor}
+                    accentIntrusionA={theme.primary}
+                    warn={theme.warning}
+                  />
+                  {validationSummary ? (
+                    <DeconPanel
+                      title="Sources"
+                      subtitle="Auditable context summary"
+                      variant="neutral"
+                      intensity={vizRef.current?.vizIntensity ?? 'subtle'}
+                      reduceMotion={vizRef.current?.reduceMotion ?? false}
+                      headerDecon
+                      ink={textColor}
+                      mutedInk={mutedColor}
+                      panelFill={theme.background}
+                      panelStroke={borderColor}
+                      accentIntrusionA={theme.primary}
+                      warn={theme.warning}
+                    >
+                      <Text style={[styles.responseText, { color: textColor }]}>
+                        {validationSummary.rules.length} rule snippet(s),{' '}
+                        {validationSummary.cards.length} card reference(s).
+                      </Text>
+                    </DeconPanel>
+                  ) : null}
+                </>
+              )}
+            </View>
+            ) : null}
+          </ScrollView>
+      </VizSurface>
+      <VizInteractionBand vizRef={vizRef} />
+      {debugEnabled && (
+        <View style={[StyleSheet.absoluteFill, styles.debugLayer]}>
+          <ScrollView
+            style={styles.debugScroll}
+            contentContainerStyle={[styles.debugScrollContent, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
+          >
+            <Text style={[styles.title, { color: textColor }]}>Developer</Text>
+            <View style={styles.piperStatusRow}>
+              <Text style={[styles.piperStatusLabel, { color: mutedColor }]}>Piper model: </Text>
+              {piperAvailable === null ? (
+                <Text style={[styles.piperStatusValue, { color: mutedColor }]}>Checking…</Text>
+              ) : piperAvailable === true ? (
+                <Text style={[styles.piperStatusValue, styles.piperStatusOk]}>✓ File present</Text>
+              ) : (
+                <Text style={[styles.piperStatusValue, styles.piperStatusMissing]}>
+                  Not found — run: pnpm run download-piper then rebuild
                 </Text>
               )}
             </View>
-          )}
-
-          <CardReferenceBlock
-            cards={
-              validationSummary?.cards?.map(c => ({
-                id: c.doc_id ?? c.raw,
-                name: c.canonical ?? c.raw,
-                imageUrl: null,
-              })) ?? []
-            }
-            textColor={textColor}
-            mutedColor={mutedColor}
-          />
-          <SelectedRulesBlock
-            rules={
-              validationSummary?.rules?.map(r => ({
-                id: r.canonical ?? r.raw,
-                title: r.raw,
-                excerpt: r.raw.length > 120 ? r.raw.slice(0, 120) + '…' : r.raw,
-                used: r.status === 'valid',
-              })) ?? []
-            }
-            textColor={textColor}
-            mutedColor={mutedColor}
-          />
-
-          <View style={[styles.buttons, styles.buttonsCompactTop]}>
-            <Pressable
-              style={[
-                styles.button,
-                styles.micButton,
-                isListening && styles.micButtonActive,
-                !voiceReady && styles.buttonDisabled,
-              ]}
-              onPressIn={() => {
-                longPressTriggeredRef.current = false;
-                pressStartedWhileListeningRef.current =
-                  modeRef.current === 'listening';
-                setMode('touched');
-                vizRef.current.touchActive = true;
-                vizRef.current.touchWorld = [0, 0, 0];
-              }}
-              onLongPress={() => {
-                longPressTriggeredRef.current = true;
-                (async () => {
-                  if (modeRef.current === 'listening') {
-                    await stopListening();
-                  }
-                  const answer = await handleSubmit();
-                  if (answer) {
-                    await playText(answer);
-                  }
-                })();
-              }}
-              delayLongPress={500}
-              onPressOut={() => {
-                vizRef.current.touchActive = false;
-                vizRef.current.touchWorld = null;
-                if (longPressTriggeredRef.current) {
-                  return;
-                }
-                setMode('released');
-                if (pressStartedWhileListeningRef.current) {
-                  stopListening();
-                } else {
-                  startListening();
-                }
-              }}
-              disabled={
-                !voiceReady || !voiceAvailable || isAsking || isSpeaking
-              }
-            >
-              {isListening ? (
-                <ActivityIndicator color="#fff" />
+            <View style={styles.packStatusRow}>
+              <Text style={[styles.packStatusLabel, { color: mutedColor }]}>Content pack: </Text>
+              {packStatus === 'loading' ? (
+                <View style={styles.packStatusValueRow}>
+                  <ActivityIndicator size="small" color={mutedColor} />
+                  <Text style={[styles.packStatusValue, { color: mutedColor }]}>Loading…</Text>
+                </View>
+              ) : packStatus === 'ready' ? (
+                <Text style={[styles.packStatusValue, styles.packStatusOk]}>Ready</Text>
+              ) : packStatus === 'error' ? (
+                <Text style={[styles.packStatusValue, styles.packStatusMissing]} numberOfLines={2}>
+                  Error: {packError ?? 'Unknown'}
+                </Text>
               ) : (
-                <Text style={styles.micButtonLabel}>Start voice</Text>
+                <Text style={[styles.packStatusValue, { color: mutedColor }]}>Not loaded</Text>
               )}
-            </Pressable>
-
-            <Pressable
-              style={[styles.button, { borderColor }]}
-              onPress={handleClear}
+            </View>
+            <DeconPanel
+              title="Dev Tools"
+              variant="neutral"
+              intensity={vizRef.current?.vizIntensity ?? 'subtle'}
+              reduceMotion={vizRef.current?.reduceMotion ?? false}
+              headerDecon={false}
+              ink={textColor}
+              mutedInk={mutedColor}
+              panelFill={inputBg}
+              panelStroke={borderColor}
             >
-              <Text style={[styles.submitButtonLabel, { color: textColor }]}>
-                Clear
-              </Text>
+              <View style={styles.devToolsRow}>
+                <Text style={[styles.devToolsLabel, { color: textColor }]}>Viz intensity</Text>
+                <Pressable onPress={() => withViz(v => { v.vizIntensity = v.vizIntensity === 'off' ? 'subtle' : v.vizIntensity === 'subtle' ? 'full' : 'off'; })}>
+                  <Text style={[styles.devToolsValue, { color: mutedColor }]}>{vizRef.current?.vizIntensity ?? 'subtle'}</Text>
+                </Pressable>
+              </View>
+              <Pressable style={styles.devToolsButton} onPress={() => triggerPulseAtCenter(vizRef)}>
+                <Text style={[styles.devToolsButtonText, { color: textColor }]}>Debug pulse</Text>
+              </Pressable>
+              <View style={styles.devToolsRow}>
+                <Text style={[styles.devToolsLabel, { color: textColor }]}>Cycle states</Text>
+                <Pressable onPress={() => setStateCycleOn(x => !x)}>
+                  <Text style={[styles.devToolsValue, { color: mutedColor }]}>{stateCycleOn ? 'ON' : 'OFF'}</Text>
+                </Pressable>
+              </View>
+              <View style={styles.devToolsStateGrid}>
+                {DEV_APP_STATES.map(s => (
+                  <Pressable key={s} style={styles.devToolsStateButton} onPress={() => applyVizState(s)}>
+                    <Text style={[styles.devToolsStateButtonText, { color: textColor }]}>{s}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </DeconPanel>
+            <Pressable style={[styles.button, { borderColor }]} onPress={() => setDebugEnabled(false)}>
+              <Text style={[styles.playbackLabel, { color: textColor }]}>User mode</Text>
             </Pressable>
-
-            <Pressable
-              style={[styles.button, styles.submitButton, { borderColor }]}
-              onPress={handleSubmit}
-              disabled={isAsking || isSpeaking}
-            >
-              <Text style={styles.submitButtonLabel}>
-                {isAsking ? '…' : 'Submit'}
-              </Text>
-            </Pressable>
-          </View>
-        </ScrollView>
-        ) : null}
-      </VizSurface>
-      {SHOW_UI_OVERLAY && (
-        <Pressable
-          style={[
-            styles.devToggle,
-            {
-              bottom: (insets.bottom || 16) + 12,
-            },
-          ]}
-          onPress={() => setShowDevScreen(prev => !prev)}
-        >
-          <Text style={styles.devToggleLabel}>
-            {showDevScreen ? 'User' : 'Dev'}
-          </Text>
-        </Pressable>
+          </ScrollView>
+        </View>
       )}
+      <Pressable
+        style={[styles.devToggle, { bottom: (insets.bottom || 16) + 12 }]}
+        onPress={() => setDebugEnabled(prev => !prev)}
+      >
+        <Text style={styles.devToggleLabel}>
+          {debugEnabled ? 'User' : 'Dev'}
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -1819,6 +1380,39 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingTop: 16,
+  },
+  contentStack: {
+    gap: 16,
+    marginBottom: 8,
+  },
+  askTriggerRow: {
+    marginBottom: 16,
+  },
+  askTrigger: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 14,
+  },
+  askTriggerLabel: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '600',
+  },
+  askTriggerHint: {
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 4,
+    fontWeight: '500',
+  },
+  debugLayer: {
+    zIndex: 3,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+  },
+  debugScroll: {
+    flex: 1,
+  },
+  debugScrollContent: {
+    paddingHorizontal: 16,
   },
   loader: {
     marginTop: 24,
@@ -1901,13 +1495,16 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   textInput: {
-    fontSize: 13,
-    minHeight: 70,
+    fontSize: 15,
+    lineHeight: 22,
+    minHeight: 88,
     textAlignVertical: 'top',
   },
   partialHint: {
     fontSize: 12,
-    marginTop: 4,
+    lineHeight: 16,
+    fontWeight: '500',
+    marginTop: 8,
   },
   playbackButton: {
     marginTop: 6,
@@ -1928,11 +1525,14 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   playbackLabel: {
-    fontSize: 13,
+    fontSize: 15,
+    lineHeight: 22,
     fontWeight: '600',
   },
   playbackHint: {
-    fontSize: 10,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '500',
   },
   errorText: {
     color: '#dc2626',
@@ -1958,17 +1558,19 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   responseText: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 15,
+    lineHeight: 22,
   },
   responsePlaceholder: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 15,
+    lineHeight: 22,
     fontStyle: 'italic',
   },
   validationHint: {
-    fontSize: 10,
-    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '500',
+    marginTop: 8,
   },
   buttons: {
     gap: 8,

@@ -34,7 +34,7 @@ export function VizSurface({
 }: VizSurfaceProps) {
   return (
     <View style={styles.root}>
-      <View style={styles.canvas}>
+      <View style={styles.canvas} pointerEvents="none">
         <VizCanvas
           vizRef={vizRef}
         controlsEnabled={controlsEnabled}

@@ -6,6 +6,7 @@
 
 import type { RefObject } from 'react';
 import type { VizEngineRef, VizMode, AiUiSignals } from '../types';
+import { TARGET_ACTIVITY_BY_MODE } from '../types';
 
 const PHASE_TO_MODE: Record<AiUiSignals['phase'], VizMode> = {
   idle: 'idle',
@@ -28,7 +29,11 @@ export function applySignalsToViz(
   v.signalsSnapshot = signals as AiUiSignals | undefined;
 
   if (signals.phase != null) {
-    v.currentMode = PHASE_TO_MODE[signals.phase];
+    const mode = PHASE_TO_MODE[signals.phase];
+    v.currentMode = mode;
+    const target = TARGET_ACTIVITY_BY_MODE[mode];
+    v.targetActivity = target;
+    v.activity = target;
   }
 
   if (signals.event != null) {
