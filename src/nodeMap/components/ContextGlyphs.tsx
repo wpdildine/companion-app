@@ -11,29 +11,38 @@ import type { NodeMapEngineRef } from '../types';
 
 export function ContextGlyphs({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeMapEngineRef | null> }) {
   const scene = nodeMapRef.current?.scene;
-  const nodes = scene?.clusters?.nodes ?? [];
+  const nodes = useMemo(
+    () => scene?.clusters?.nodes ?? [],
+    [scene?.clusters?.nodes],
+  );
   const N = nodes.length;
 
   const meshRef = useRef<THREE.Points>(null);
   const visibleRef = useRef<Float32Array>(new Float32Array(Math.max(N, 1)));
   const { positions, nodeSizes, nodeTypes, nodeColors, distanceFromRoot } = useMemo(() => {
-    const positions = new Float32Array(N * 3);
-    const nodeSizes = new Float32Array(N);
-    const nodeTypes = new Float32Array(N);
-    const nodeColors = new Float32Array(N * 3);
-    const distanceFromRoot = new Float32Array(N);
+    const pos = new Float32Array(N * 3);
+    const sizes = new Float32Array(N);
+    const types = new Float32Array(N);
+    const colors = new Float32Array(N * 3);
+    const distFromRoot = new Float32Array(N);
     nodes.forEach((node, i) => {
-      positions[i * 3] = node.position[0];
-      positions[i * 3 + 1] = node.position[1];
-      positions[i * 3 + 2] = node.position[2];
-      nodeSizes[i] = node.size;
-      nodeTypes[i] = node.type;
-      nodeColors[i * 3] = node.color[0];
-      nodeColors[i * 3 + 1] = node.color[1];
-      nodeColors[i * 3 + 2] = node.color[2];
-      distanceFromRoot[i] = node.distanceFromRoot;
+      pos[i * 3] = node.position[0];
+      pos[i * 3 + 1] = node.position[1];
+      pos[i * 3 + 2] = node.position[2];
+      sizes[i] = node.size;
+      types[i] = node.type;
+      colors[i * 3] = node.color[0];
+      colors[i * 3 + 1] = node.color[1];
+      colors[i * 3 + 2] = node.color[2];
+      distFromRoot[i] = node.distanceFromRoot;
     });
-    return { positions, nodeSizes, nodeTypes, nodeColors, distanceFromRoot };
+    return {
+      positions: pos,
+      nodeSizes: sizes,
+      nodeTypes: types,
+      nodeColors: colors,
+      distanceFromRoot: distFromRoot,
+    };
   }, [nodes, N]);
   const { decayPhase, decayRate, decayDepth } = useMemo(() => {
     const phase = new Float32Array(N);

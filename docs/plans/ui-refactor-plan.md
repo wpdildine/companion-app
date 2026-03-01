@@ -72,7 +72,7 @@ src/
 │   ├── touchHandlers.ts  # callback types + stub map (no theme import)
 │   ├── NodeMapCanvas.tsx
 │   ├── NodeMapCanvasR3F.tsx
-│   ├── NodeMapFallback.tsx
+│   ├── NodeMapCanvasFallback.tsx
 │   ├── ... (rest)
 │   └── shaders/          # no theme import; receive primitives only
 ├── rag/
@@ -104,7 +104,7 @@ This avoids circular dependency risk and keeps the viz layer decoupled from the 
 
 ---
 
-## 3. NodeMapFallback vs NodeMapCanvasR3F: avoid duplication
+## 3. NodeMapCanvasFallback vs NodeMapCanvasR3F: avoid duplication
 
 - **Do not duplicate:** palette wiring, touch API mapping, or engine loop logic between R3F and Fallback.
 - **Shared EngineLoop:** Keep a single engine loop concept (e.g. clock, activity easing, touchInfluence). R3F uses it in `useFrame`; Fallback can use the same ref and a JS-driven tick or requestAnimationFrame if needed.
@@ -139,7 +139,7 @@ If EngineLoop stays **pure (math + ref mutation on derived fields only)**, it st
   - RN: `text`, `textMuted`, `background`, `surface`, `border`, `primary`, `success`, `error`, `warning`.
   - Viz (primitives only): `canvasBackground` (hex), `paletteA`, `paletteB` (RGB 0–1), `nodePalette` (array for formations). Optional: mode colors for shaders as arrays.
 - **Wire RN:** App and DevPanel/DevScreen use theme; replace hardcoded colors. DevPanel overrides change only viz palette (e.g. passed into nodeMap), not RN theme.
-- **Wire 3D:** App (or root) gets theme and passes **only primitives** into NodeMap: canvas background, palette arrays. NodeMapCanvasR3F and NodeMapFallback use those; starfieldData and formations accept optional palette args (arrays), never theme object. Shaders get data via uniforms from the component that holds theme, not from importing theme.
+- **Wire 3D:** App (or root) gets theme and passes **only primitives** into NodeMap: canvas background, palette arrays. NodeMapCanvasR3F and NodeMapCanvasFallback use those; starfieldData and formations accept optional palette args (arrays), never theme object. Shaders get data via uniforms from the component that holds theme, not from importing theme.
 
 ---
 

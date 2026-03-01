@@ -1,6 +1,6 @@
 # NodeMap Component Reference
 
-Reference for the `src/nodeMap/` visualization layer: components, ownership boundaries, and current behavior. See [ARCHITECTURE.md](ARCHITECTURE.md), [app-architecture.md](app-architecture.md), and [README.md](../README.md).
+Reference for the `src/nodeMap/` visualization layer: components, ownership boundaries, and current behavior. See [ARCHITECTURE.md](./ARCHITECTURE.md), [APP_ARCHITECTURE.md](./APP_ARCHITECTURE.md), and [README.md](../README.md).
 
 ## Overview
 
@@ -101,4 +101,3 @@ When `NodeMapSurface` is used:
 
 - `CameraSync.tsx` exists and is not wired.
 - `PlaneLayerField.tsx` exists and is not wired in the live scene path.
-

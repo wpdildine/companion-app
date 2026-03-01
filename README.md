@@ -2,7 +2,7 @@
 
 MTG Rules Companion and Timer App — React Native (New Architecture), with [llama.rn](https://github.com/mybigday/llama.rn) for on-device LLM. Voice input, offline TTS (Piper), and a **deterministic context provider** for grounded MTG rules/cards answers — no vector retrieval in-app.
 
-**AI agents:** Follow [docs/ai/AGENT_RULES.md](docs/ai/AGENT_RULES.md). See the [Architecture Navigation Map](docs/ARCHITECTURE.md) for where code lives (app, rag, nodeMap, theme, ui, utils, shared).
+**AI agents:** Follow [docs/AGENT_RULES.md](docs/AGENT_RULES.md). See the [Architecture Navigation Map](docs/ARCHITECTURE.md) for where code lives (app, rag, nodeMap, theme, ui, utils, shared).
 
 This is a [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
 
@@ -12,7 +12,7 @@ This is a [**React Native**](https://reactnative.dev) project, bootstrapped usin
 
 ## How the app works
 
-- **Node map:** The voice screen uses a fullscreen Three.js/R3F visualization (starfield, node cloud, connections) as the background. Mode (idle, listening, processing, speaking, touched, released) drives activity and pulses; see [docs/app-architecture.md](docs/app-architecture.md) for high- and low-level architecture.
+- **Node map:** The voice screen uses a fullscreen Three.js/R3F visualization (starfield, node cloud, connections) as the background. Mode (idle, listening, processing, speaking, touched, released) drives activity and pulses; see [docs/APP_ARCHITECTURE.md](docs/APP_ARCHITECTURE.md) for high- and low-level architecture.
 - **Voice:** Speech-to-text via `@react-native-voice/voice` (lazy-loaded). You speak; the app turns it into text and sends it to the RAG pipeline.
 - **TTS:** Piper (offline) as the main voice; fallback to `react-native-tts` when the Piper model isn’t installed.
 - **RAG / “Ask” path:** The app does **not** run embeddings or vector search on-device. It uses a **deterministic context provider** that:
@@ -69,7 +69,7 @@ This app is the **mobile consumer** of the **mtg_rules** (Rules Service) pipelin
 - **Link mtg_rules for dev (optional):** `node scripts/link-mtg-rules.js link [path]` — symlinks `assets/content_pack` and wires **@mtg/runtime**. For release, run `sync-pack-small` so the bundle is a real directory.
 - **@mtg/runtime** is wired as `"file:../mtg_rules/runtime-ts"`. The app uses the React Native entrypoint; the Node entrypoint is for parity tests only.
 
-See **[docs/content-pack-setup.md](docs/content-pack-setup.md)** for pack layout, build contract, and model path resolution. The plan **[TS parallel runtime and context provider](.cursor/plans/ts_parallel_runtime_and_context_provider_0bc942e0.plan.md)** (in Cursor plans) describes the spec surface, reference traces, and parity strategy between Python and TS.
+See **[docs/CONTENT_PACK_SETUP.md](docs/CONTENT_PACK_SETUP.md)** for pack layout, build contract, and model path resolution. The plan **[TS parallel runtime and context provider](.cursor/plans/ts_parallel_runtime_and_context_provider_0bc942e0.plan.md)** (in Cursor plans) describes the spec surface, reference traces, and parity strategy between Python and TS.
 
 ---
 
@@ -84,7 +84,7 @@ The app needs a content pack in `assets/content_pack/` (manifest, router, rules.
 - **Sync from mtg_rules:**  
   In mtg_rules run `./run.sh pack --from-flat --out ./content_pack`. Then in companion-app:  
   `pnpm run sync-pack-small`  
-  (or `sync-pack-full` if you want to ship the pack with models once; see docs/content-pack-setup.md.)
+  (or `sync-pack-full` if you want to ship the pack with models once; see docs/CONTENT_PACK_SETUP.md.)
 
 - **Dev link:**  
   `node scripts/link-mtg-rules.js link` to symlink `assets/content_pack` to your mtg_rules repo. Before any build that must work without the symlink, run `pnpm run sync-pack-small`.
@@ -131,7 +131,7 @@ Edit `App.tsx` (or any source); [Fast Refresh](https://reactnative.dev/docs/fast
 # Troubleshooting
 
 - **React Native / Metro / build issues:** See the [React Native Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-- **Pack / RAG:** Ensure `assets/content_pack/` is a real directory with `manifest.json`, `router/router_map.json`, `rules/rules.db`, `cards/cards.db`, and `context_provider_spec.json`. If you linked with `link-mtg-rules`, run `pnpm run sync-pack-small` before building. See [docs/content-pack-setup.md](docs/content-pack-setup.md).
+- **Pack / RAG:** Ensure `assets/content_pack/` is a real directory with `manifest.json`, `router/router_map.json`, `rules/rules.db`, `cards/cards.db`, and `context_provider_spec.json`. If you linked with `link-mtg-rules`, run `pnpm run sync-pack-small` before building. See [docs/CONTENT_PACK_SETUP.md](docs/CONTENT_PACK_SETUP.md).
 - **“Deterministic context provider not available”:** Pack not loaded or packRoot not set; ensure init ran with a reader that can read the pack (e.g. after copying bundle pack to Documents). Check that the pack has the `context_provider` capability and required files.
 
 ---
@@ -140,4 +140,4 @@ Edit `App.tsx` (or any source); [Fast Refresh](https://reactnative.dev/docs/fast
 
 - [React Native](https://reactnative.dev) — docs and getting started.
 - **mtg_rules** repository (sibling or `MTG_RULES_PATH`) — rules service pipeline, content pack, context provider, and evaluation; see that repo’s README.
-- [docs/content-pack-setup.md](docs/content-pack-setup.md) — how the app gets the pack and where models live.
+- [docs/CONTENT_PACK_SETUP.md](docs/CONTENT_PACK_SETUP.md) — how the app gets the pack and where models live.

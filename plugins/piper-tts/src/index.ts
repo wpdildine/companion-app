@@ -8,8 +8,6 @@ import type { PluginEventPayload } from '../../../src/shared/types/plugin-contra
 const MODULE_MISSING_MSG =
   'Native module PiperTts is not loaded. Rebuild the app (clean + pod install) and ensure the Piper TTS pod is linked.';
 
-const SOURCE_NAME = 'PiperTts';
-
 type EventListener = (event: PluginEventPayload) => void;
 const listeners: EventListener[] = [];
 

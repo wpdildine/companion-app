@@ -515,6 +515,18 @@ RCT_EXPORT_METHOD(speak:(NSString *)text
   }
 }
 
+RCT_EXPORT_METHOD(copyModelToFiles:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+  // On iOS the model is used from the bundle; no copy from assets. Resolve with model dir for API consistency with Android.
+  NSString *modelPath = [PiperTtsModule piperModelPathInBundle:[NSBundle mainBundle]];
+  if (modelPath.length) {
+    resolve([modelPath stringByDeletingLastPathComponent]);
+  } else {
+    resolve(@"");
+  }
+}
+
 RCT_EXPORT_METHOD(isModelAvailable:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {

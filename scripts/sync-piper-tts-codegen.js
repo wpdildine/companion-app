@@ -15,16 +15,20 @@ const nodeModulesSrc = path.join(projectRoot, 'node_modules', 'piper-tts', 'src'
 
 const filesToSync = ['NativePiperTts.ts', 'errors.ts'];
 
-if (!fs.existsSync(path.join(projectRoot, 'node_modules', 'piper-tts'))) return;
+function run() {
+  if (!fs.existsSync(path.join(projectRoot, 'node_modules', 'piper-tts'))) return;
 
-if (!fs.existsSync(nodeModulesSrc)) {
-  fs.mkdirSync(nodeModulesSrc, { recursive: true });
-}
+  if (!fs.existsSync(nodeModulesSrc)) {
+    fs.mkdirSync(nodeModulesSrc, { recursive: true });
+  }
 
-for (const name of filesToSync) {
-  const from = path.join(pluginSrc, name);
-  const to = path.join(nodeModulesSrc, name);
-  if (fs.existsSync(from)) {
-    fs.copyFileSync(from, to);
+  for (const name of filesToSync) {
+    const from = path.join(pluginSrc, name);
+    const to = path.join(nodeModulesSrc, name);
+    if (fs.existsSync(from)) {
+      fs.copyFileSync(from, to);
+    }
   }
 }
+
+run();

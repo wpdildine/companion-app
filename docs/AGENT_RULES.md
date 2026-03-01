@@ -8,7 +8,7 @@ Drop-in doc for Cursor/Copilot. Goal: keep code small, reusable, non-duplicative
 
 **Before creating a new file, search for (procedural):** similar file names; similar exported functions; similar types; similar comments. If similar logic exists, extend or merge instead of duplicating. Make this explicit so the agent follows it every time.
 
-**2) Navigation rules** — Use the repo Architecture Map (README / docs/ARCHITECTURE.md) as first reference. Feature-specific work stays in rag/ or nodeMap/; reusable UI in ui/; theme in theme/; pure utils in utils/; reusable work goes in shared/. If unsure: default to the relevant feature folder (rag/ or viz/); only move to shared/ after a real second use. **Hard constraint:** No new top-level folders under src without updating ARCHITECTURE.md (allow-list: app, rag, viz, shared). (Prevents accidental infra/, core/, lib/, engine/, manager/ sprawl.)
+**2) Navigation rules** — Use the repo Architecture Map (README / docs/ARCHITECTURE.md) as first reference. Feature-specific work stays in rag/ or nodeMap/; reusable UI in ui/; theme in theme/; pure utils in utils/; reusable work goes in shared/. If unsure: default to the relevant feature folder (rag/ or nodeMap/); only move to shared/ after a real second use. **Hard constraint:** No new top-level folders under src without updating ARCHITECTURE.md (allow-list: app, rag, nodeMap, shared, theme, ui, utils). (Prevents accidental infra/, core/, lib/, engine/, manager/ sprawl.)
 
 **3) Anti-bloat** — Prefer files under ~200 lines, functions under ~60; split by responsibility. No duplicate "almost-the-same" helpers: merge or add option/parameter; never formatThing(), formatThing2(), normalizeX() in 3 places. helpers/ is not a dumping ground: only if used by multiple files or a clearly named transformation; if used once, keep local.
 
@@ -26,4 +26,4 @@ Drop-in doc for Cursor/Copilot. Goal: keep code small, reusable, non-duplicative
 
 **10) PR checklist** — No duplicated helpers; new files have justification in PR/notes; architecture map still makes sense; behavior changes have tests; no silent smoothing; code stays compact. If unsure, request clarification; do not invent new abstraction.
 
-**Where to put it:** `docs/ai/AGENT_RULES.md`. In README near top: "AI agents must follow: docs/ai/AGENT_RULES.md". If Cursor supports Project Instructions, paste Prime directive + Anti-bloat + No smoothing sections verbatim.
+**Where to put it:** `docs/AGENT_RULES.md`. In README near top: "AI agents must follow: docs/AGENT_RULES.md". If Cursor supports Project Instructions, paste Prime directive + Anti-bloat + No smoothing sections verbatim.

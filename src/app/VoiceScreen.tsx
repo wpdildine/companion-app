@@ -307,14 +307,14 @@ export default function VoiceScreen() {
   const [responseText, setResponseText] = useState<string | null>(null);
   const [validationSummary, setValidationSummary] =
     useState<ValidationSummary | null>(null);
-  const [packStatus, setPackStatus] = useState<
+  const [_packStatus, setPackStatus] = useState<
     'idle' | 'loading' | 'ready' | 'error'
   >('idle');
-  const [packError, setPackError] = useState<string | null>(null);
+  const [_packError, setPackError] = useState<string | null>(null);
   const [debugEnabled, setDebugEnabled] = useState(DEBUG_ENABLED_DEFAULT);
-  const [debugShowZones, setDebugShowZones] = useState(false);
+  const [debugShowZones, _setDebugShowZones] = useState(false);
   const [panelRectsForDebug, setPanelRectsForDebug] = useState<NodeMapPanelRects>({});
-  const [stateCycleOn, setStateCycleOn] = useState(false);
+  const [stateCycleOn, _setStateCycleOn] = useState(false);
   const [revealedBlocks, setRevealedBlocks] = useState({
     answer: false,
     cards: false,
@@ -522,15 +522,6 @@ export default function VoiceScreen() {
     if (rct?.startSpeech || rct?.stopSpeech) return rct;
     return direct ?? rct ?? null;
   };
-
-  const withViz = useCallback(
-    (fn: (v: ReturnType<typeof createDefaultNodeMapRef>) => void) => {
-      const v = nodeMapRef.current;
-      if (!v) return;
-      fn(v);
-    },
-    [],
-  );
 
   const applyVizState = useCallback(
     (state: NodeMapMode) => {

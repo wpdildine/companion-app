@@ -3,7 +3,7 @@
  * Use in __DEV__ or tests.
  */
 
-import type { NodeMapEngineRef, NodeMapMode, NodeMapIntensity } from '../nodeMap/types';
+import type { NodeMapMode, NodeMapIntensity } from '../nodeMap/types';
 
 const NODE_MAP_MODES: NodeMapMode[] = [
   'idle',
@@ -52,7 +52,11 @@ export function validateVizState(state: unknown): ValidationResult {
   if (!Array.isArray(s.pulseColors) || s.pulseColors.length !== 3) {
     errors.push('pulseColors must be array of length 3');
   }
-  if (typeof s.lastPulseIndex !== 'number' || s.lastPulseIndex < 0 || s.lastPulseIndex > 2) {
+  if (
+    typeof s.lastPulseIndex !== 'number' ||
+    s.lastPulseIndex < 0 ||
+    s.lastPulseIndex > 2
+  ) {
     errors.push('lastPulseIndex must be 0, 1, or 2');
   }
   if (!NODE_MAP_MODES.includes(s.currentMode as NodeMapMode)) {
@@ -65,26 +69,48 @@ export function validateVizState(state: unknown): ValidationResult {
     errors.push('pendingTapNdc must be null or [number, number]');
   }
   const NODE_MAP_INTENSITIES: NodeMapIntensity[] = ['off', 'subtle', 'full'];
-  if (s.vizIntensity != null && !NODE_MAP_INTENSITIES.includes(s.vizIntensity as NodeMapIntensity)) {
-    errors.push(`vizIntensity must be one of ${NODE_MAP_INTENSITIES.join(', ')}`);
+  if (
+    s.vizIntensity != null &&
+    !NODE_MAP_INTENSITIES.includes(s.vizIntensity as NodeMapIntensity)
+  ) {
+    errors.push(
+      `vizIntensity must be one of ${NODE_MAP_INTENSITIES.join(', ')}`,
+    );
   }
   if (s.reduceMotion != null && typeof s.reduceMotion !== 'boolean') {
     errors.push('reduceMotion must be a boolean');
   }
   const validEvents = ['tapCitation', 'chunkAccepted', 'warning', 'tapCard'];
   if (s.lastEvent != null && !validEvents.includes(s.lastEvent as string)) {
-    errors.push('lastEvent must be tapCitation | chunkAccepted | warning | tapCard | null');
+    errors.push(
+      'lastEvent must be tapCitation | chunkAccepted | warning | tapCard | null',
+    );
   }
-  if (s.lastEventTime != null && (typeof s.lastEventTime !== 'number' || Number.isNaN(s.lastEventTime))) {
+  if (
+    s.lastEventTime != null &&
+    (typeof s.lastEventTime !== 'number' || Number.isNaN(s.lastEventTime))
+  ) {
     errors.push('lastEventTime must be a number');
   }
-  if (typeof s.rulesClusterCount !== 'number' || s.rulesClusterCount < 0 || s.rulesClusterCount > 8) {
+  if (
+    typeof s.rulesClusterCount !== 'number' ||
+    s.rulesClusterCount < 0 ||
+    s.rulesClusterCount > 8
+  ) {
     errors.push('rulesClusterCount must be 0..8');
   }
-  if (typeof s.cardsClusterCount !== 'number' || s.cardsClusterCount < 0 || s.cardsClusterCount > 8) {
+  if (
+    typeof s.cardsClusterCount !== 'number' ||
+    s.cardsClusterCount < 0 ||
+    s.cardsClusterCount > 8
+  ) {
     errors.push('cardsClusterCount must be 0..8');
   }
-  if (typeof s.layerCount !== 'number' || s.layerCount < 0 || s.layerCount > 4) {
+  if (
+    typeof s.layerCount !== 'number' ||
+    s.layerCount < 0 ||
+    s.layerCount > 4
+  ) {
     errors.push('layerCount must be 0..4');
   }
   if (!inRange(s.deconWeight as number, 0, 1)) {
@@ -102,11 +128,17 @@ export function validateVizState(state: unknown): ValidationResult {
   if (s.touchFieldNdc !== null && !Array.isArray(s.touchFieldNdc)) {
     errors.push('touchFieldNdc must be null or [number, number]');
   }
-  if (s.touchFieldStrength != null && !inRange(s.touchFieldStrength as number, 0, 1)) {
+  if (
+    s.touchFieldStrength != null &&
+    !inRange(s.touchFieldStrength as number, 0, 1)
+  ) {
     errors.push('touchFieldStrength must be in [0,1]');
   }
   const validZoneArmed = [null, 'rules', 'cards'];
-  if (s.zoneArmed != null && !validZoneArmed.includes(s.zoneArmed as 'rules' | 'cards' | null)) {
+  if (
+    s.zoneArmed != null &&
+    !validZoneArmed.includes(s.zoneArmed as 'rules' | 'cards' | null)
+  ) {
     errors.push('zoneArmed must be null, "rules", or "cards"');
   }
 
