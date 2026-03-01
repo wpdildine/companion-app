@@ -68,6 +68,8 @@ const styles = StyleSheet.create({
   },
   canvas: {
     ...StyleSheet.absoluteFillObject,
+    borderWidth: 6,
+    borderColor: '#00d4ff',
   },
   content: {
     ...StyleSheet.absoluteFillObject,

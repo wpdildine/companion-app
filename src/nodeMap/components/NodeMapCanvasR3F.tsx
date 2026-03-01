@@ -4,20 +4,23 @@
  * canvasBackground and callbacks are injected (no theme import).
  */
 
-import React, { useCallback, useEffect, useRef } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
-import type { LayoutChangeEvent, GestureResponderEvent } from 'react-native';
 import { Canvas } from '@react-three/fiber/native';
+import React, { useCallback, useRef } from 'react';
+import type { GestureResponderEvent, LayoutChangeEvent } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import * as THREE from 'three';
+import {
+  withTouchStubs,
+  type TouchCallbacks,
+} from '../interaction/touchHandlers';
+import { TouchRaycaster } from '../interaction/TouchRaycaster';
+import type { NodeMapEngineRef } from '../types';
+import { CameraOrbit } from './CameraOrbit';
+import { ClusterTouchZones } from './ClusterTouchZones';
 import { ContextGlyphs } from './ContextGlyphs';
 import { ContextLinks } from './ContextLinks';
 import { EngineLoop } from './EngineLoop';
-import { ClusterTouchZones } from './ClusterTouchZones';
-import { TouchRaycaster } from '../interaction/TouchRaycaster';
-import { CameraOrbit } from './CameraOrbit';
 import { PostFXPass } from './PostFXPass';
-import type { NodeMapEngineRef } from '../types';
-import { withTouchStubs, type TouchCallbacks } from '../interaction/touchHandlers';
 
 const TAP_MAX_MS = 300;
 const TAP_MAX_MOVE = 15;
@@ -91,7 +94,11 @@ export function NodeMapCanvasR3F({
       v.touchFieldActive = true;
       v.touchFieldNdc = [(locationX / w) * 2 - 1, 1 - (locationY / h) * 2];
       v.touchFieldStrength = 1;
-      console.log('[NodeMap] touchStart → ref', { touchFieldActive: true, touchFieldNdc: v.touchFieldNdc, canvasSize: [w, h] });
+      console.log('[NodeMap] touchStart → ref', {
+        touchFieldActive: true,
+        touchFieldNdc: v.touchFieldNdc,
+        canvasSize: [w, h],
+      });
     }
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
@@ -116,7 +123,10 @@ export function NodeMapCanvasR3F({
     }
     const v = nodeMapRef.current;
     if (v && v.canvasWidth != null && v.canvasHeight != null) {
-      v.touchFieldNdc = [(locationX / v.canvasWidth) * 2 - 1, 1 - (locationY / v.canvasHeight) * 2];
+      v.touchFieldNdc = [
+        (locationX / v.canvasWidth) * 2 - 1,
+        1 - (locationY / v.canvasHeight) * 2,
+      ];
       v.touchFieldStrength = 1;
     }
     const dx = (locationX - lastMove.current.x) * ORBIT_SENSITIVITY;
@@ -126,7 +136,10 @@ export function NodeMapCanvasR3F({
         dragActive.current = true;
         touch.onDragStart();
       }
-      touch.onDragMove(locationX - lastMove.current.x, locationY - lastMove.current.y);
+      touch.onDragMove(
+        locationX - lastMove.current.x,
+        locationY - lastMove.current.y,
+      );
       v.orbitTheta -= dx;
       v.orbitPhi = Math.max(0.1, Math.min(Math.PI - 0.1, v.orbitPhi + dy));
     }
@@ -170,7 +183,8 @@ export function NodeMapCanvasR3F({
       const isDoubleTap =
         prev &&
         now - prev.t <= DOUBLE_TAP_MS &&
-        Math.hypot(locationX - prev.x, locationY - prev.y) <= DOUBLE_TAP_MAX_MOVE;
+        Math.hypot(locationX - prev.x, locationY - prev.y) <=
+          DOUBLE_TAP_MAX_MOVE;
       if (isDoubleTap) {
         lastTap.current = null;
         touch.onDoubleTap();

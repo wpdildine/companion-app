@@ -121,7 +121,7 @@ If everything is set up correctly, the app runs in the Android Emulator, iOS Sim
 
 ## Step 4: Modify your app
 
-Edit `App.tsx` (or any source); [Fast Refresh](https://reactnative.dev/docs/fast-refresh) will update the app. Main entry is `App.tsx`; add or change UI in `src/ui/`, theme tokens in `src/theme/`, and 3D/viz behavior in `src/nodeMap/`. To force a full reload:
+Edit `App.tsx` (or any source); [Fast Refresh](https://reactnative.dev/docs/fast-refresh) will update the app. Root entry is `App.tsx`, which re-exports `src/app/App.tsx`; most screen orchestration lives in `src/app/VoiceScreen.tsx`. Add or change UI in `src/ui/`, theme tokens in `src/theme/`, and 3D/node-map behavior in `src/nodeMap/`. To force a full reload:
 
 - **Android:** Double-tap <kbd>R</kbd> or Dev Menu (<kbd>Ctrl</kbd>+<kbd>M</kbd> / <kbd>Cmd</kbd>+<kbd>M</kbd>) → Reload.
 - **iOS:** <kbd>R</kbd> in the simulator.

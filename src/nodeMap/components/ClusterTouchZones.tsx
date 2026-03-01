@@ -3,11 +3,21 @@
  * Shows lightweight ring zones where users can tap to reveal related UI blocks.
  */
 
-import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { getTwoClusterCenters } from '../helpers/formations';
 import type { NodeMapEngineRef } from '../types';
+
+// Single source of truth for touch-zone colors. Changing these values updates
+// both ring and area materials at runtime.
+const RULES_ZONE_COLOR = '#ffffff';
+const CARDS_ZONE_COLOR = '#2659d9';
+const CENTER_ZONE_COLOR = '#bfc7e0';
+const RING_BASE_OPACITY = 0.45;
+const RING_HIGHLIGHT_BASE_OPACITY = 0.68;
+const AREA_BASE_OPACITY = 0.36;
+const CENTER_AREA_OPACITY = 0.2;
 
 export function ClusterTouchZones({
   nodeMapRef,
@@ -26,22 +36,21 @@ export function ClusterTouchZones({
   const cameraPosRef = useRef(new THREE.Vector3());
   const cameraDirRef = useRef(new THREE.Vector3());
 
-  useFrame((state) => {
+  useFrame(state => {
     const v = nodeMapRef.current;
     if (!v) return;
     const show = v.vizIntensity !== 'off';
     const rulesVisible = show && (v.rulesClusterCount ?? 0) > 0;
     const cardsVisible = show && (v.cardsClusterCount ?? 0) > 0;
-    const beat = 0.5 + 0.5 * Math.sin(v.clock * 4.2);
-    const targetScale = highlighted ? 1.15 + beat * 0.08 : 1;
+    const targetScale = highlighted ? 1.15 : 1;
     const scaleLerp = 0.18;
     if (rulesRingRef.current?.material) {
       rulesRingRef.current.visible = rulesVisible;
       const m = rulesRingRef.current.material as THREE.MeshBasicMaterial;
+      m.color.set(RULES_ZONE_COLOR);
       m.opacity = highlighted
-        ? 0.22 + beat * 0.11 + Math.min(0.15, v.touchInfluence * 0.25)
-        : 0.12 + Math.min(0.12, v.touchInfluence * 0.2);
-      rulesRingRef.current.rotation.z += highlighted ? 0.008 : 0.004;
+        ? RING_HIGHLIGHT_BASE_OPACITY + Math.min(0.16, v.touchInfluence * 0.25)
+        : RING_BASE_OPACITY + Math.min(0.14, v.touchInfluence * 0.2);
       rulesRingRef.current.scale.x +=
         (targetScale - rulesRingRef.current.scale.x) * scaleLerp;
       rulesRingRef.current.scale.y +=
@@ -52,10 +61,10 @@ export function ClusterTouchZones({
     if (cardsRingRef.current?.material) {
       cardsRingRef.current.visible = cardsVisible;
       const m = cardsRingRef.current.material as THREE.MeshBasicMaterial;
+      m.color.set(CARDS_ZONE_COLOR);
       m.opacity = highlighted
-        ? 0.22 + beat * 0.11 + Math.min(0.15, v.touchInfluence * 0.25)
-        : 0.12 + Math.min(0.12, v.touchInfluence * 0.2);
-      cardsRingRef.current.rotation.z -= highlighted ? 0.008 : 0.004;
+        ? RING_HIGHLIGHT_BASE_OPACITY + Math.min(0.16, v.touchInfluence * 0.25)
+        : RING_BASE_OPACITY + Math.min(0.14, v.touchInfluence * 0.2);
       cardsRingRef.current.scale.x +=
         (targetScale - cardsRingRef.current.scale.x) * scaleLerp;
       cardsRingRef.current.scale.y +=
@@ -90,8 +99,7 @@ export function ClusterTouchZones({
     const leftRatio = 0.44; // NDC split: x < -0.12
     const centerRatio = 0.12; // NDC dead strip: -0.12..0.12
     const rightRatio = 0.44; // NDC split: x > 0.12
-    const beatSlow = 0.5 + 0.5 * Math.sin(v.clock * 1.8);
-    const areaScaleY = 1 + beatSlow * 0.04;
+    const areaScaleY = 1;
 
     cam.getWorldPosition(cameraPosRef.current);
     cam.getWorldDirection(cameraDirRef.current);
@@ -101,64 +109,81 @@ export function ClusterTouchZones({
     areaGroupRef.current.quaternion.copy(cam.quaternion);
 
     if (rulesAreaRef.current?.material) {
-      rulesAreaRef.current.scale.set(viewWidth * leftRatio, activeHeight * areaScaleY, 1);
+      rulesAreaRef.current.scale.set(
+        viewWidth * leftRatio,
+        activeHeight * areaScaleY,
+        1,
+      );
       rulesAreaRef.current.position.set(
         -viewWidth * (0.5 - leftRatio * 0.5),
         centerY,
         0,
       );
       const m = rulesAreaRef.current.material as THREE.MeshBasicMaterial;
-      m.opacity = 0.09 + beatSlow * 0.04;
+      m.color.set(RULES_ZONE_COLOR);
+      m.opacity = AREA_BASE_OPACITY;
     }
     if (centerAreaRef.current?.material) {
       centerAreaRef.current.scale.set(viewWidth * centerRatio, activeHeight, 1);
       centerAreaRef.current.position.set(0, centerY, 0);
       const m = centerAreaRef.current.material as THREE.MeshBasicMaterial;
-      m.opacity = 0.035;
+      m.color.set(CENTER_ZONE_COLOR);
+      m.opacity = CENTER_AREA_OPACITY;
     }
     if (cardsAreaRef.current?.material) {
-      cardsAreaRef.current.scale.set(viewWidth * rightRatio, activeHeight * areaScaleY, 1);
+      cardsAreaRef.current.scale.set(
+        viewWidth * rightRatio,
+        activeHeight * areaScaleY,
+        1,
+      );
       cardsAreaRef.current.position.set(
         viewWidth * (0.5 - rightRatio * 0.5),
         centerY,
         0,
       );
       const m = cardsAreaRef.current.material as THREE.MeshBasicMaterial;
-      m.opacity = 0.09 + beatSlow * 0.04;
+      m.color.set(CARDS_ZONE_COLOR);
+      m.opacity = AREA_BASE_OPACITY;
     }
   });
 
   return (
     <>
-      <group ref={areaGroupRef} visible={false}>
-        <mesh ref={rulesAreaRef}>
+      <group ref={areaGroupRef} visible={false} renderOrder={980}>
+        <mesh ref={rulesAreaRef} renderOrder={981}>
           <planeGeometry args={[1, 1]} />
           <meshBasicMaterial
-            color={new THREE.Color(0.35, 0.55, 1.0)}
+            color={RULES_ZONE_COLOR}
             transparent
             opacity={0.12}
+            toneMapped={false}
+            blending={THREE.AdditiveBlending}
             side={THREE.DoubleSide}
             depthWrite={false}
             depthTest={false}
           />
         </mesh>
-        <mesh ref={centerAreaRef}>
+        <mesh ref={centerAreaRef} renderOrder={982}>
           <planeGeometry args={[1, 1]} />
           <meshBasicMaterial
-            color={new THREE.Color(0.75, 0.78, 0.88)}
+            color={CENTER_ZONE_COLOR}
             transparent
             opacity={0.035}
+            toneMapped={false}
+            blending={THREE.AdditiveBlending}
             side={THREE.DoubleSide}
             depthWrite={false}
             depthTest={false}
           />
         </mesh>
-        <mesh ref={cardsAreaRef}>
+        <mesh ref={cardsAreaRef} renderOrder={983}>
           <planeGeometry args={[1, 1]} />
           <meshBasicMaterial
-            color={new THREE.Color(0.95, 0.35, 0.85)}
+            color={CARDS_ZONE_COLOR}
             transparent
             opacity={0.12}
+            toneMapped={false}
+            blending={THREE.AdditiveBlending}
             side={THREE.DoubleSide}
             depthWrite={false}
             depthTest={false}
@@ -173,14 +198,18 @@ export function ClusterTouchZones({
           centers.rulesCenter[2] + 0.02,
         ]}
         visible={false}
+        renderOrder={984}
       >
         <ringGeometry args={[0.95, 1.15, 48]} />
         <meshBasicMaterial
-          color={new THREE.Color(0.35, 0.55, 1.0)}
+          color={RULES_ZONE_COLOR}
           transparent
           opacity={0.16}
+          toneMapped={false}
+          blending={THREE.AdditiveBlending}
           side={THREE.DoubleSide}
           depthWrite={false}
+          depthTest={false}
         />
       </mesh>
       <mesh
@@ -191,14 +220,18 @@ export function ClusterTouchZones({
           centers.cardsCenter[2] + 0.02,
         ]}
         visible={false}
+        renderOrder={985}
       >
         <ringGeometry args={[0.95, 1.15, 48]} />
         <meshBasicMaterial
-          color={new THREE.Color(0.95, 0.35, 0.85)}
+          color={CARDS_ZONE_COLOR}
           transparent
           opacity={0.16}
+          toneMapped={false}
+          blending={THREE.AdditiveBlending}
           side={THREE.DoubleSide}
           depthWrite={false}
+          depthTest={false}
         />
       </mesh>
     </>

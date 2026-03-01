@@ -5,14 +5,26 @@
 - Product UI is RN-only (ScrollView + blocks).
 - Canvas is GL-only background.
 - Canvas never owns product layout or panels.
-- Only VizInteractionBand captures drag (optional).
+- Only NodeMapInteractionBand captures drag (optional).
 - DevPanel is gated + diagnostic-only.
 
-**UI blocks must be separate components:** You must implement these blocks as separate RN components (not DevPanel): AnswerCard, CardReferenceBlock, SelectedRulesBlock. The screen must render correctly with VizSurface removed.
+**UI blocks must be separate components:** You must implement these blocks as separate RN components (not DevPanel): AnswerCard, CardReferenceBlock, SelectedRulesBlock. The screen must render correctly with NodeMapSurface removed.
 
 ---
 
-> **Current repo reality:** Canonical structure is `src/nodeMap/` with NodeMap\* components (NodeMapCanvas, NodeMapCanvasR3F, NodeMapFallback). This plan uses that structure throughout. If you see `src/viz/` or Viz\* in the codebase, treat it as an alias or prior naming; align to `src/nodeMap/` and NodeMap\* when implementing this plan.
+> **Current repo reality:** Canonical structure is `src/nodeMap/` with NodeMap* components (`NodeMapCanvas`, `NodeMapCanvasR3F`, `NodeMapCanvasFallback`). This plan uses that structure throughout. If you see `src/viz/` or Viz* in historical notes, treat it as legacy naming and align implementation to `src/nodeMap/` + `NodeMap*`.
+
+---
+
+## Execution Status (2026-03-01)
+
+- Done: folder/theme/utils migration to `src/nodeMap`, `src/theme`, `src/ui`, `src/utils`
+- Done: fallback dots path (`NodeMapCanvasFallback`) is non-empty
+- Done: `App.tsx` slimmed; screen composition centered in `VoiceScreen`
+- Done: `UserVoiceView` and `DevScreen` are wired into `VoiceScreen`
+- Done: `NodeMapInteractionBand` is enabled in user mode when no panels are visible
+- Done: GL interaction affordance now reflects tap mapping (left active / center neutral / right active) in `ClusterTouchZones`
+- Partial: panel gesture/arbitration system in `src/ui` (header drag/snap/dismiss/restore + ownership arbitration) is not fully implemented
 
 ---
 
@@ -141,8 +153,8 @@ If EngineLoop stays **pure (math + ref mutation on derived fields only)**, it st
 
 ## 8. Tests, state validation, and logging
 
-- **State validation:** `src/utils/validateVizState.ts` for VizEngineRef; pure, no React/theme. Use in __DEV__ or tests.
-- **Unit tests:** theme (getTheme keys and valid colors), viz state (createDefaultVizRef, validateVizState), touch classification if extracted, optional UI snapshots.
+- **State validation:** `src/utils/validateVizState.ts` for `NodeMapEngineRef`; pure, no React/theme. Use in __DEV__ or tests.
+- **Unit tests:** theme (getTheme keys and valid colors), viz state (createDefaultNodeMapRef, validateVizState), touch classification if extracted, optional UI snapshots.
 - **Logging tests (required):** At least one test must assert:
   - Mode change logs include a session identifier (e.g. `sessionId` or equivalent).
   - Pulse logs include slot index (or equivalent).
@@ -287,7 +299,7 @@ At any moment, exactly one of these may "own" the touch sequence:
 1. Scroll (vertical ScrollView)
 2. Panel Gesture (header drag / dismiss / snap)
 3. Panel Tap (header tap to expand/collapse)
-4. Canvas Gesture (only if you explicitly enable a VizInteractionBand)
+4. Canvas Gesture (only if you explicitly enable a NodeMapInteractionBand)
 
 If one claims the gesture, the others must fail / not fire.
 
@@ -367,12 +379,12 @@ If you're using "active zones" (expand/collapse) on headers:
 
 **Default:** Canvas does not receive pointer events.
 
-**This pass:** VizInteractionBand is OFF by default; do not add canvas touch handlers.
+**Current pass:** `NodeMapInteractionBand` is ON only in user mode with no panels visible (`!debugEnabled && !anyPanelVisible`), and OFF otherwise.
 
-If you add a VizInteractionBand:
-- It must be a dedicated, visible region
-- It must not overlap panel headers
-- It must not overlap the ScrollView main interaction area
+When `NodeMapInteractionBand` is on:
+- It must remain subordinate to product UI interactions.
+- It must disable when panels are visible so panel/header gestures and content scroll can own touch.
+- Its active-map affordance must stay explicit in GL (`ClusterTouchZones` overlay bands).
 
 **Priority:** Panel header gestures > scroll > canvas band
 
