@@ -49,6 +49,15 @@ export function NodeMapInteractionBand({
     [nodeMapRef],
   );
 
+  const setZoneArmedFromNdc = useCallback(
+    (v: NodeMapEngineRef, ndc: [number, number]) => {
+      const t = v.scene?.zones?.layout?.deadStripThreshold;
+      if (t == null) return;
+      v.zoneArmed = ndc[0] < -t ? 'rules' : ndc[0] > t ? 'cards' : null;
+    },
+    [],
+  );
+
   const handleTouchStart = useCallback(
     (e: GestureResponderEvent) => {
       if (!enabled) return;
@@ -61,9 +70,10 @@ export function NodeMapInteractionBand({
         v.touchFieldActive = true;
         v.touchFieldNdc = ndc;
         v.touchFieldStrength = 1;
+        setZoneArmedFromNdc(v, ndc);
       }
     },
-    [nodeMapRef, toNdc, enabled],
+    [nodeMapRef, toNdc, enabled, setZoneArmedFromNdc],
   );
 
   const handleTouchMove = useCallback(
@@ -76,9 +86,10 @@ export function NodeMapInteractionBand({
       if (ndc) {
         v.touchFieldNdc = ndc;
         v.touchFieldStrength = 1;
+        setZoneArmedFromNdc(v, ndc);
       }
     },
-    [nodeMapRef, toNdc, enabled],
+    [nodeMapRef, toNdc, enabled, setZoneArmedFromNdc],
   );
 
   const handleTouchEnd = useCallback(
@@ -89,6 +100,7 @@ export function NodeMapInteractionBand({
         v.touchFieldActive = false;
         v.touchFieldNdc = null;
         v.touchFieldStrength = 0;
+        v.zoneArmed = null;
       }
 
       const start = touchStartRef.current;
@@ -101,8 +113,10 @@ export function NodeMapInteractionBand({
 
       const ndc = toNdc(locationX, locationY);
       if (!ndc) return;
-      if (ndc[0] < -0.12) onClusterTap?.('rules');
-      else if (ndc[0] > 0.12) onClusterTap?.('cards');
+      const t = v?.scene?.zones?.layout?.deadStripThreshold;
+      if (t == null) return;
+      if (ndc[0] < -t) onClusterTap?.('rules');
+      else if (ndc[0] > t) onClusterTap?.('cards');
     },
     [nodeMapRef, toNdc, onClusterTap, enabled],
   );

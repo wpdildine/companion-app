@@ -4,6 +4,7 @@ export { NodeMapInteractionBand } from './components/NodeMapInteractionBand';
 export { DevPanel } from './components/DevPanel';
 export { triggerPulseAtCenter } from './helpers/triggerPulse';
 export { applySignalsToNodeMap } from './helpers/applySignalsToNodeMap';
+export { getSceneDescription, type GLSceneDescription } from './helpers/formations';
 export {
   createDefaultNodeMapRef,
   TARGET_ACTIVITY_BY_MODE,

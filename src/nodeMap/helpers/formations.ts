@@ -15,7 +15,10 @@ export interface Node {
 }
 
 /** Fibonacci sphere: N points distributed on a sphere */
-function fibonacciSphere(n: number, radius: number): [number, number, number][] {
+function fibonacciSphere(
+  n: number,
+  radius: number,
+): [number, number, number][] {
   const points: [number, number, number][] = [];
   const phi = Math.PI * (3 - Math.sqrt(5));
   for (let i = 0; i < n; i++) {
@@ -46,7 +49,10 @@ export function buildCrystallineSphere(
   lateralK = 2,
   longRangeK = 1,
   nodePalette?: [number, number, number][],
-): { nodes: Node[]; edges: { a: number; b: number; strength: number; pathIndex: number }[] } {
+): {
+  nodes: Node[];
+  edges: { a: number; b: number; strength: number; pathIndex: number }[];
+} {
   const palette = nodePalette?.length ? nodePalette : DEFAULT_NODE_PALETTE;
   const nodes: Node[] = [];
   let id = 0;
@@ -60,7 +66,9 @@ export function buildCrystallineSphere(
     const color = palette[L % palette.length];
     for (let i = 0; i < n; i++) {
       const pos = positions[i];
-      const distanceFromRoot = Math.sqrt(pos[0] ** 2 + pos[1] ** 2 + pos[2] ** 2) / (radii[radii.length - 1] || 1);
+      const distanceFromRoot =
+        Math.sqrt(pos[0] ** 2 + pos[1] ** 2 + pos[2] ** 2) /
+        (radii[radii.length - 1] || 1);
       nodes.push({
         id: id++,
         position: [pos[0], pos[1], pos[2]],
@@ -74,7 +82,8 @@ export function buildCrystallineSphere(
     }
   }
 
-  const edges: { a: number; b: number; strength: number; pathIndex: number }[] = [];
+  const edges: { a: number; b: number; strength: number; pathIndex: number }[] =
+    [];
   let pathIndex = 0;
 
   // Lateral: within same layer, connect each node to next K
@@ -117,25 +126,63 @@ export function buildCrystallineSphere(
 }
 
 const MAX_PER_CLUSTER = 8;
-const RULES_COLOR: [number, number, number] = [0.34, 0.58, 0.98];
-const CARDS_COLOR: [number, number, number] = [0.92, 0.42, 0.82];
+
+/** Cluster node: used by ContextGlyphs and ContextLinks; single source in scene.clusters.nodes */
+export type ClusterNode = Node & { clusterId: number; indexInCluster: number };
 
 /** Seeded pseudo-random in [0,1] */
 function seeded(i: number, seed: number): number {
   return Math.abs(Math.sin((i + 1) * seed));
 }
 
-/** Two front-facing (2D) clusters (rules left, cards right). Max 8 per cluster, 16 total. */
-export function buildTwoClusters(): {
-  nodes: (Node & { clusterId: number; indexInCluster: number })[];
-} {
-  const nodes: (Node & { clusterId: number; indexInCluster: number })[] = [];
-  const radius = 1.15;
-  const zJitter = 0.035;
+/** Two front-facing (2D) clusters (rules left, cards right). Max 8 per cluster, 16 total. Legacy; prefer scene.clusters.nodes. */
+export function buildTwoClusters(): { nodes: ClusterNode[] } {
+  return {
+    nodes: buildClusterNodesFromParams({
+      rulesRgb: [0.34, 0.58, 0.98],
+      cardsRgb: [0.92, 0.42, 0.82],
+      radius: 1.15,
+      zJitter: 0.035,
+      sizeBaseRules: 0.1,
+      sizeJitterRules: 0.02,
+      sizeBaseCards: 0.085,
+      sizeJitterCards: 0.018,
+    }),
+  };
+}
+
+export type ClusterNodesParams = {
+  rulesRgb: [number, number, number];
+  cardsRgb: [number, number, number];
+  radius: number;
+  zJitter: number;
+  sizeBaseRules: number;
+  sizeJitterRules: number;
+  sizeBaseCards: number;
+  sizeJitterCards: number;
+};
+
+/** Build 16 cluster nodes from style/layout params; single source for positions and colors. */
+export function buildClusterNodesFromParams(
+  params: ClusterNodesParams,
+): ClusterNode[] {
+  const {
+    rulesRgb,
+    cardsRgb,
+    radius,
+    zJitter,
+    sizeBaseRules,
+    sizeJitterRules,
+    sizeBaseCards,
+    sizeJitterCards,
+  } = params;
+  const nodes: ClusterNode[] = [];
   for (let i = 0; i < MAX_PER_CLUSTER; i++) {
-    const theta = (i / MAX_PER_CLUSTER) * Math.PI * 1.9 + seeded(i, 12.9898) * 0.35;
+    const theta =
+      (i / MAX_PER_CLUSTER) * Math.PI * 1.9 + seeded(i, 12.9898) * 0.35;
     const x = -radius * 0.62 + Math.cos(theta) * radius * 0.42;
-    const y = Math.sin(theta) * radius * 0.52 + (seeded(i, 78.233) - 0.5) * 0.12;
+    const y =
+      Math.sin(theta) * radius * 0.52 + (seeded(i, 78.233) - 0.5) * 0.12;
     const z = (seeded(i, 37.719) - 0.5) * zJitter;
     nodes.push({
       id: i,
@@ -143,17 +190,19 @@ export function buildTwoClusters(): {
       connections: [],
       level: 0,
       type: 0,
-      size: 0.10 + seeded(i, 37.719) * 0.02,
+      size: sizeBaseRules + seeded(i, 37.719) * sizeJitterRules,
       distanceFromRoot: Math.sqrt(x * x + y * y) / (radius * 1.2),
-      color: [...RULES_COLOR],
+      color: [...rulesRgb],
       clusterId: 0,
       indexInCluster: i,
     });
   }
   for (let i = 0; i < MAX_PER_CLUSTER; i++) {
-    const theta = (i / MAX_PER_CLUSTER) * Math.PI * 1.9 + seeded(i + 8, 12.9898) * 0.35;
+    const theta =
+      (i / MAX_PER_CLUSTER) * Math.PI * 1.9 + seeded(i + 8, 12.9898) * 0.35;
     const x = radius * 0.62 + Math.cos(theta) * radius * 0.42;
-    const y = Math.sin(theta) * radius * 0.52 + (seeded(i + 8, 78.233) - 0.5) * 0.12;
+    const y =
+      Math.sin(theta) * radius * 0.52 + (seeded(i + 8, 78.233) - 0.5) * 0.12;
     const z = (seeded(i + 8, 37.719) - 0.5) * zJitter;
     nodes.push({
       id: MAX_PER_CLUSTER + i,
@@ -161,14 +210,14 @@ export function buildTwoClusters(): {
       connections: [],
       level: 1,
       type: 1,
-      size: 0.085 + seeded(i + 8, 37.719) * 0.018,
+      size: sizeBaseCards + seeded(i + 8, 37.719) * sizeJitterCards,
       distanceFromRoot: Math.sqrt(x * x + y * y) / (radius * 1.2),
-      color: [...CARDS_COLOR],
+      color: [...cardsRgb],
       clusterId: 1,
       indexInCluster: i,
     });
   }
-  return { nodes };
+  return nodes;
 }
 
 /** World-space centers of the two clusters for event pulses (tapCitation → rules, tapCard → cards). */
@@ -179,10 +228,229 @@ export function getTwoClusterCenters(): {
   const { nodes } = buildTwoClusters();
   const rules = nodes.filter(n => n.clusterId === 0);
   const cards = nodes.filter(n => n.clusterId === 1);
-  const sum = (arr: (Node & { clusterId: number; indexInCluster: number })[], i: 0 | 1 | 2) =>
-    arr.reduce((a, n) => a + n.position[i], 0) / arr.length;
+  const sum = (
+    arr: (Node & { clusterId: number; indexInCluster: number })[],
+    i: 0 | 1 | 2,
+  ) => arr.reduce((a, n) => a + n.position[i], 0) / arr.length;
   return {
     rulesCenter: [sum(rules, 0), sum(rules, 1), sum(rules, 2)],
     cardsCenter: [sum(cards, 0), sum(cards, 1), sum(cards, 2)],
+  };
+}
+
+// --- GL scene description (single source of truth for zone/cluster/pulse aesthetics) ---
+
+export type GLSceneZonesLayout = {
+  leftRatio: number;
+  centerRatio: number;
+  rightRatio: number;
+  bandTopInsetPx: number;
+  deadStripThreshold: number;
+};
+
+export type GLSceneZonesStyle = {
+  rulesColor: string;
+  cardsColor: string;
+  centerColor: string;
+  areaBaseOpacity: number;
+  centerAreaOpacity: number;
+  areaPlaneOpacityRules: number;
+  areaPlaneOpacityCenter: number;
+  areaPlaneOpacityCards: number;
+  edgeColor: string;
+};
+
+export type GLScenePulseAnchors = {
+  rules: [number, number, number];
+  cards: [number, number, number];
+  center: [number, number, number];
+};
+
+export type GLSceneClustersStyle = {
+  rulesRgb: [number, number, number];
+  cardsRgb: [number, number, number];
+};
+
+export type GLSceneClustersLayout = {
+  radius: number;
+  zJitter: number;
+  sizeBaseRules: number;
+  sizeJitterRules: number;
+  sizeBaseCards: number;
+  sizeJitterCards: number;
+};
+
+export type GLSceneClusters = {
+  style: GLSceneClustersStyle;
+  layout: GLSceneClustersLayout;
+  nodes: ClusterNode[];
+};
+
+export type GLSceneLinkEdge = {
+  a: number;
+  b: number;
+  strength: number;
+  pathIndex: number;
+};
+
+export type GLSceneLinks = {
+  edges: GLSceneLinkEdge[];
+  segmentsPerEdge: number;
+};
+
+export type GLSceneBackgroundPlanes = {
+  count: number;
+  opacityBase: number;
+  opacitySecond: number;
+  driftPxNorm: number;
+  hue: number;
+  sat: number;
+  lum: number;
+};
+
+export type GLSceneDescription = {
+  zones: {
+    layout: GLSceneZonesLayout;
+    style: GLSceneZonesStyle;
+  };
+  pulseAnchors: GLScenePulseAnchors;
+  clusterAnchors: {
+    rulesCenter: [number, number, number];
+    cardsCenter: [number, number, number];
+  };
+  maxPerCluster: number;
+  clusters: GLSceneClusters;
+  links: GLSceneLinks;
+  backgroundPlanes: GLSceneBackgroundPlanes;
+};
+
+export type GetSceneDescriptionOptions = {
+  paletteId?: number;
+  vizIntensityProfile?: string;
+};
+
+/** Build link topology: same-cluster ring + cross edges (matches ContextLinks layout). */
+function buildLinkEdges(): GLSceneLinkEdge[] {
+  const edges: GLSceneLinkEdge[] = [];
+  let pathIndex = 0;
+  const CLUSTER_SIZE = MAX_PER_CLUSTER;
+  for (let c = 0; c < 2; c++) {
+    const start = c * CLUSTER_SIZE;
+    for (let i = 0; i < CLUSTER_SIZE; i++) {
+      const a = start + i;
+      const b = start + ((i + 1) % CLUSTER_SIZE);
+      const d = start + ((i + 3) % CLUSTER_SIZE);
+      edges.push({ a, b, strength: 0.9, pathIndex: pathIndex++ });
+      edges.push({ a, b: d, strength: 0.55, pathIndex: pathIndex++ });
+    }
+  }
+  return edges;
+}
+
+/** Hex to RGB 0–1. Expects #RRGGBB (7 chars); validates in dev to avoid silent garbage. */
+function hexToRgb(hex: string): [number, number, number] {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    if (!/^#[0-9A-Fa-f]{6}$/.test(hex)) {
+      throw new Error(
+        `hexToRgb: expected #RRGGBB, got "${hex}". Use 6-digit hex (e.g. #ffffff).`,
+      );
+    }
+  }
+  const n = parseInt(hex.slice(1), 16);
+  return [
+    Math.floor(n / 65536) / 255,
+    Math.floor((n % 65536) / 256) / 255,
+    (n % 256) / 255,
+  ];
+}
+
+/**
+ * Single source of truth for GL scene: zones, clusters (nodes + colors), links, pulse anchors, background planes.
+ * Recomputed only when paletteId or vizIntensityProfile changes; stored on nodeMapRef.current.scene.
+ */
+export function getSceneDescription(
+  _options?: GetSceneDescriptionOptions,
+): GLSceneDescription {
+  const zonesStyle = {
+    rulesColor: '#ffffff',
+    cardsColor: '#2659d9',
+    centerColor: '#bfc7e0',
+    areaBaseOpacity: 0.36,
+    centerAreaOpacity: 0.2,
+    areaPlaneOpacityRules: 0.12,
+    areaPlaneOpacityCenter: 0.035,
+    areaPlaneOpacityCards: 0.12,
+    edgeColor: '#00d4ff',
+  };
+
+  const clustersStyle: GLSceneClustersStyle = {
+    rulesRgb: hexToRgb(zonesStyle.rulesColor),
+    cardsRgb: hexToRgb(zonesStyle.cardsColor),
+  };
+  const clustersLayout: GLSceneClustersLayout = {
+    radius: 1.15,
+    zJitter: 0.035,
+    sizeBaseRules: 0.1,
+    sizeJitterRules: 0.02,
+    sizeBaseCards: 0.085,
+    sizeJitterCards: 0.018,
+  };
+
+  const nodes = buildClusterNodesFromParams({
+    ...clustersStyle,
+    ...clustersLayout,
+  });
+
+  const rules = nodes.filter(n => n.clusterId === 0);
+  const cards = nodes.filter(n => n.clusterId === 1);
+  const sum = (arr: ClusterNode[], i: 0 | 1 | 2) =>
+    arr.reduce((a, n) => a + n.position[i], 0) / arr.length;
+  const rulesCenter: [number, number, number] = [
+    sum(rules, 0),
+    sum(rules, 1),
+    sum(rules, 2),
+  ];
+  const cardsCenter: [number, number, number] = [
+    sum(cards, 0),
+    sum(cards, 1),
+    sum(cards, 2),
+  ];
+
+  return {
+    zones: {
+      layout: {
+        leftRatio: 0.44,
+        centerRatio: 0.12,
+        rightRatio: 0.44,
+        bandTopInsetPx: 112,
+        deadStripThreshold: 0.12,
+      },
+      style: zonesStyle,
+    },
+    pulseAnchors: {
+      rules: rulesCenter,
+      cards: cardsCenter,
+      center: [0, 0, 0],
+    },
+    clusterAnchors: { rulesCenter, cardsCenter },
+    maxPerCluster: MAX_PER_CLUSTER,
+    clusters: {
+      style: clustersStyle,
+      layout: clustersLayout,
+      nodes,
+    },
+    links: {
+      edges: buildLinkEdges(),
+      segmentsPerEdge: 12,
+    },
+    backgroundPlanes: {
+      count: 0,
+      opacityBase: 0.28,
+      opacitySecond: 0.2,
+      driftPxNorm: 2 / 500,
+      hue: 0.6,
+      sat: 0.45,
+      lum: 0.55,
+    },
   };
 }

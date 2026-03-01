@@ -1,27 +1,28 @@
 /**
  * Context glyphs: two clusters (rules + cards), breathing + drift + glow. Counts from nodeMapRef; no glyphs when no evidence.
+ * All positions and colors from nodeMapRef.current.scene.clusters.nodes (no fallback constants).
  */
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { buildTwoClusters } from '../helpers/formations';
 import { nodeVertex, nodeFragment } from '../shaders/nodes';
 import type { NodeMapEngineRef } from '../types';
 
-const FORMATION = buildTwoClusters();
-const N = FORMATION.nodes.length;
-
 export function ContextGlyphs({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeMapEngineRef | null> }) {
+  const scene = nodeMapRef.current?.scene;
+  const nodes = scene?.clusters?.nodes ?? [];
+  const N = nodes.length;
+
   const meshRef = useRef<THREE.Points>(null);
-  const visibleRef = useRef<Float32Array>(new Float32Array(N));
+  const visibleRef = useRef<Float32Array>(new Float32Array(Math.max(N, 1)));
   const { positions, nodeSizes, nodeTypes, nodeColors, distanceFromRoot } = useMemo(() => {
     const positions = new Float32Array(N * 3);
     const nodeSizes = new Float32Array(N);
     const nodeTypes = new Float32Array(N);
     const nodeColors = new Float32Array(N * 3);
     const distanceFromRoot = new Float32Array(N);
-    FORMATION.nodes.forEach((node, i) => {
+    nodes.forEach((node, i) => {
       positions[i * 3] = node.position[0];
       positions[i * 3 + 1] = node.position[1];
       positions[i * 3 + 2] = node.position[2];
@@ -33,7 +34,7 @@ export function ContextGlyphs({ nodeMapRef }: { nodeMapRef: React.RefObject<Node
       distanceFromRoot[i] = node.distanceFromRoot;
     });
     return { positions, nodeSizes, nodeTypes, nodeColors, distanceFromRoot };
-  }, []);
+  }, [nodes, N]);
   const { decayPhase, decayRate, decayDepth } = useMemo(() => {
     const phase = new Float32Array(N);
     const rate = new Float32Array(N);
@@ -47,7 +48,7 @@ export function ContextGlyphs({ nodeMapRef }: { nodeMapRef: React.RefObject<Node
       depth[i] = 0.12 + r3 * 0.35;
     }
     return { decayPhase: phase, decayRate: rate, decayDepth: depth };
-  }, []);
+  }, [N]);
   const MODE_TO_ID: Record<string, number> = {
     idle: 0,
     listening: 1,
@@ -100,8 +101,12 @@ export function ContextGlyphs({ nodeMapRef }: { nodeMapRef: React.RefObject<Node
     const v = nodeMapRef.current;
     const rulesCount = v.rulesClusterCount ?? 0;
     const cardsCount = v.cardsClusterCount ?? 0;
-    for (let i = 0; i < 8; i++) visibleRef.current[i] = i < rulesCount ? 1 : 0;
-    for (let i = 8; i < 16; i++) visibleRef.current[i] = i - 8 < cardsCount ? 1 : 0;
+    const maxPer = v.scene?.maxPerCluster ?? 8;
+    if (visibleRef.current.length < N) {
+      visibleRef.current = new Float32Array(N);
+    }
+    for (let i = 0; i < maxPer && i < N; i++) visibleRef.current[i] = i < rulesCount ? 1 : 0;
+    for (let i = maxPer; i < N; i++) visibleRef.current[i] = i - maxPer < cardsCount ? 1 : 0;
     const visibleAttr = geom.getAttribute('visible');
     if (visibleAttr) {
       visibleAttr.needsUpdate = true;
@@ -163,6 +168,14 @@ export function ContextGlyphs({ nodeMapRef }: { nodeMapRef: React.RefObject<Node
   ]);
 
   if (nodeMapRef.current?.vizIntensity === 'off') {
+    return null;
+  }
+  if (N === 0) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__ && nodeMapRef.current && !scene?.clusters?.nodes?.length) {
+      console.error(
+        '[ContextGlyphs] scene.clusters.nodes is missing or empty. Set nodeMapRef.current.scene = getSceneDescription() in the screen that mounts the viz.',
+      );
+    }
     return null;
   }
 

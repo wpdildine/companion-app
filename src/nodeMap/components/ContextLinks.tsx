@@ -1,40 +1,13 @@
 /**
  * Context links: precomputed curved segments (bezier), flow + pulse in shader. uActivity.
- * Visibility gated by vizIntensity (Full mode only).
+ * Visibility gated by vizIntensity (Full mode only). Endpoints and topology from nodeMapRef.current.scene.
  */
 
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { buildTwoClusters } from '../helpers/formations';
 import { connectionVertex, connectionFragment } from '../shaders/connections';
 import type { NodeMapEngineRef } from '../types';
-
-const TWO_CLUSTERS = buildTwoClusters();
-const CLUSTER_SIZE = 8;
-const FORMATION = {
-  nodes: TWO_CLUSTERS.nodes.map(n => ({
-    position: n.position,
-    color: n.color as [number, number, number],
-    clusterId: n.clusterId,
-  })),
-  edges: (() => {
-    const edges: { a: number; b: number; strength: number; pathIndex: number }[] = [];
-    let pathIndex = 0;
-    for (let c = 0; c < 2; c++) {
-      const start = c * CLUSTER_SIZE;
-      for (let i = 0; i < CLUSTER_SIZE; i++) {
-        const a = start + i;
-        const b = start + ((i + 1) % CLUSTER_SIZE);
-        const d = start + ((i + 3) % CLUSTER_SIZE);
-        edges.push({ a, b, strength: 0.9, pathIndex: pathIndex++ });
-        edges.push({ a, b: d, strength: 0.55, pathIndex: pathIndex++ });
-      }
-    }
-    return edges;
-  })(),
-};
-const SEGMENTS_PER_EDGE = 12;
 
 function sampleBezier(
   start: [number, number, number],
@@ -59,12 +32,30 @@ function sampleBezier(
   return [b, c, d];
 }
 
+const EMPTY_NODES: { position: [number, number, number]; color: [number, number, number]; clusterId: number }[] = [];
+const EMPTY_EDGES: { a: number; b: number; strength: number; pathIndex: number }[] = [];
+
 export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeMapEngineRef | null> }) {
+  const scene = nodeMapRef.current?.scene;
+  const nodes = scene?.clusters?.nodes ?? EMPTY_NODES;
+  const edges = scene?.links?.edges ?? EMPTY_EDGES;
+  const segmentsPerEdge = scene?.links?.segmentsPerEdge ?? 12;
+
   const meshRef = useRef<THREE.LineSegments>(null);
-  const { positions, tArr, startPoints, endPoints, strengths, pathIndices, colors } = useMemo(() => {
-    const nodes = FORMATION.nodes;
-    const edges = FORMATION.edges;
-    const vertexCount = edges.length * (SEGMENTS_PER_EDGE + 1);
+  const { positions, tArr, startPoints, endPoints, strengths, pathIndices, colors, vertexCount } = useMemo(() => {
+    if (!nodes.length || !edges.length) {
+      return {
+        positions: new Float32Array(0),
+        tArr: new Float32Array(0),
+        startPoints: new Float32Array(0),
+        endPoints: new Float32Array(0),
+        strengths: new Float32Array(0),
+        pathIndices: new Float32Array(0),
+        colors: new Float32Array(0),
+        vertexCount: 0,
+      };
+    }
+    const vertexCount = edges.length * (segmentsPerEdge + 1);
     const positions = new Float32Array(vertexCount * 3);
     const tArr = new Float32Array(vertexCount);
     const startPoints = new Float32Array(vertexCount * 3);
@@ -77,8 +68,8 @@ export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeM
       const start = nodes[edge.a].position;
       const end = nodes[edge.b].position;
       const color = nodes[edge.a].color;
-      for (let i = 0; i <= SEGMENTS_PER_EDGE; i++) {
-        const t = i / SEGMENTS_PER_EDGE;
+      for (let i = 0; i <= segmentsPerEdge; i++) {
+        const t = i / segmentsPerEdge;
         const p = sampleBezier(start, end, edge.pathIndex, t);
         positions[idx * 3] = p[0];
         positions[idx * 3 + 1] = p[1];
@@ -108,7 +99,7 @@ export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeM
       colors,
       vertexCount,
     };
-  }, []);
+  }, [nodes, edges, segmentsPerEdge]);
 
   const uniforms = useMemo(
     () => ({
@@ -173,8 +164,8 @@ export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeM
       (() => {
         const indices: number[] = [];
         let v = 0;
-        for (const _ of FORMATION.edges) {
-          for (let i = 0; i < SEGMENTS_PER_EDGE; i++) {
+        for (let e = 0; e < edges.length; e++) {
+          for (let i = 0; i < segmentsPerEdge; i++) {
             indices.push(v, v + 1);
             v++;
           }
@@ -184,12 +175,12 @@ export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeM
       })(),
     );
     return g;
-  }, [positions, tArr, startPoints, endPoints, strengths, pathIndices, colors]);
+  }, [positions, tArr, startPoints, endPoints, strengths, pathIndices, colors, edges, segmentsPerEdge]);
 
   const v = nodeMapRef.current;
   const confidence = v?.signalsSnapshot?.confidence ?? 1;
   const showLinks = v?.vizIntensity === 'full' && confidence < 0.7;
-  if (!showLinks) {
+  if (!showLinks || vertexCount === 0) {
     return null;
   }
 

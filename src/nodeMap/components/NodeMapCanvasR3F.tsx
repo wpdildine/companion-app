@@ -16,8 +16,9 @@ import {
 import { TouchRaycaster } from '../interaction/TouchRaycaster';
 import type { NodeMapEngineRef } from '../types';
 import { CameraOrbit } from './CameraOrbit';
-import { ClusterTouchZones } from './ClusterTouchZones';
+import { TouchZones } from './TouchZones';
 import { ContextGlyphs } from './ContextGlyphs';
+import { PlaneLayerField } from './PlaneLayerField';
 import { ContextLinks } from './ContextLinks';
 import { EngineLoop } from './EngineLoop';
 import { PostFXPass } from './PostFXPass';
@@ -87,18 +88,12 @@ export function NodeMapCanvasR3F({
     lastMove.current = { x: locationX, y: locationY };
     longPressTriggered.current = false;
     dragActive.current = false;
+    // Touch field is written only by RN NodeMapInteractionBand; canvas does not set touchField*.
     if (nodeMapRef.current) {
       const v = nodeMapRef.current;
       const w = v.canvasWidth ?? 1;
       const h = v.canvasHeight ?? 1;
-      v.touchFieldActive = true;
-      v.touchFieldNdc = [(locationX / w) * 2 - 1, 1 - (locationY / h) * 2];
-      v.touchFieldStrength = 1;
-      console.log('[NodeMap] touchStart → ref', {
-        touchFieldActive: true,
-        touchFieldNdc: v.touchFieldNdc,
-        canvasSize: [w, h],
-      });
+      console.log('[NodeMap] touchStart', { canvasSize: [w, h] });
     }
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
@@ -121,14 +116,8 @@ export function NodeMapCanvasR3F({
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
     }
+    // Touch field is written only by RN NodeMapInteractionBand.
     const v = nodeMapRef.current;
-    if (v && v.canvasWidth != null && v.canvasHeight != null) {
-      v.touchFieldNdc = [
-        (locationX / v.canvasWidth) * 2 - 1,
-        1 - (locationY / v.canvasHeight) * 2,
-      ];
-      v.touchFieldStrength = 1;
-    }
     const dx = (locationX - lastMove.current.x) * ORBIT_SENSITIVITY;
     const dy = (locationY - lastMove.current.y) * ORBIT_SENSITIVITY;
     if (v && controlsEnabled && moved > DRAG_THRESHOLD) {
@@ -148,11 +137,9 @@ export function NodeMapCanvasR3F({
 
   const onTouchEnd = (e: GestureResponderEvent) => {
     if (!inputEnabled) return;
+    // Touch field is cleared only by RN NodeMapInteractionBand.
     if (nodeMapRef.current) {
-      nodeMapRef.current.touchFieldActive = false;
-      nodeMapRef.current.touchFieldNdc = null;
-      nodeMapRef.current.touchFieldStrength = 0;
-      console.log('[NodeMap] touchEnd → ref', { touchFieldActive: false });
+      console.log('[NodeMap] touchEnd');
     }
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
@@ -224,10 +211,11 @@ export function NodeMapCanvasR3F({
         }}
       >
         <color attach="background" args={[canvasBackground]} />
+        <PlaneLayerField nodeMapRef={nodeMapRef} />
         <EngineLoop nodeMapRef={nodeMapRef} />
         <TouchRaycaster nodeMapRef={nodeMapRef} />
         <CameraOrbit nodeMapRef={nodeMapRef} />
-        <ClusterTouchZones
+        <TouchZones
           nodeMapRef={nodeMapRef}
           highlighted={clusterZoneHighlights}
         />

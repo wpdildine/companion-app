@@ -10,6 +10,12 @@ NodeMap is a pure visualization subsystem.
 - It does not own app state, voice lifecycle, navigation, or RAG decisions.
 - React writes targets/events into the engine ref; render loop computes continuous visual state.
 
+### GL state and scene description
+
+- **Scene at runtime:** `getSceneDescription()` (formations) is computed once at mount and stored on `nodeMapRef.current.scene`. All GL components read zones, pulse anchors, and cluster anchors from that single instance. Scene recomputes only when `paletteId` or `vizIntensityProfile` changes so anchors/pulses stay deterministic.
+- **Single aesthetic source:** All visual constants (zone colors, opacities, ratios, ring radii, edge color, etc.) live in formations / `getSceneDescription()`. Render components do viewport math and camera-facing placement only; they do not define style or zone policy. Missing scene values are a bug (no fallback constants).
+- **Mode-driven GL state:** Idle — planes calm, zones faint, no clusters unless last answer had evidence. Processing — planes tighten, subtle motion, no new evidence clusters. Resolved (no evidence) — planes settle, no clusters. Resolved (with evidence) — rules/cards cluster counts appear, zone outlines strengthen. Warning / low confidence — links show in full mode; optional warning pulse at center.
+
 ## Directory
 
 ```text
@@ -31,8 +37,10 @@ src/nodeMap/
 - `triggerPulseAtCenter`
 - `applySignalsToNodeMap`
 - `createDefaultNodeMapRef`
+- `getSceneDescription`
 - `TARGET_ACTIVITY_BY_MODE`
 - `withTouchStubs`
+- types: `NodeMapEngineRef`, `GLSceneDescription`, etc.
 
 ## Core Components
 
@@ -50,14 +58,13 @@ src/nodeMap/
 - `CameraOrbit`: camera placement/orbit state.
 - `ContextGlyphs`: point clusters (rules/cards).
 - `ContextLinks`: links between cluster nodes.
-- `ClusterTouchZones`:
-  - ring meshes at cluster centers
-  - GL interaction-map overlays when `highlighted=true` (left active area, center neutral strip, right active area)
+- `ClusterTouchZones`: dumb renderer; reads layout and style from `nodeMapRef.current.scene` only. Ring outlines at cluster anchors; camera-facing zone planes (rules / center / cards) when `highlighted`. No hardcoded colors, ratios, or opacities.
+- `PlaneLayerField`: background drift planes; reads layerCount, planeOpacity, driftPx from ref (future: scene.backgroundPlanes.style).
 - `PostFXPass`: optional post effects.
 
 ### Interaction
 
-- `NodeMapInteractionBand`: top-layer touch capture for cluster taps + touch field updates.
+- `NodeMapInteractionBand`: top-layer touch capture; **only** writer of `touchFieldActive`, `touchFieldNdc`, `touchFieldStrength`. Sets `zoneArmed` from NDC vs scene zone bounds; on release in zone calls `onClusterTap`. RN owns panel visibility; GL emits events only.
 - Tap mapping (in band):
   - `ndcX < -0.12` => `rules`
   - `ndcX > 0.12` => `cards`

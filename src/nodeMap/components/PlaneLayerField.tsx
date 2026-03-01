@@ -1,5 +1,6 @@
 /**
- * 1–2 translucent planes (plan C2). layerCount, planeOpacity, driftPx, hueShift, reduceMotion from nodeMapRef.
+ * Background planes (decon-modern field). Layout and style from nodeMapRef.current.scene.backgroundPlanes;
+ * only dynamic signals (clock, reduceMotion, panelRects) from ref.
  */
 
 import { useRef } from 'react';
@@ -7,9 +8,6 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { NodeMapEngineRef } from '../types';
 
-const BASE_HUE = 0.6;
-const BASE_SAT = 0.45;
-const BASE_LUM = 0.55;
 const SEED = 12.9898;
 
 export function PlaneLayerField({
@@ -59,12 +57,23 @@ export function PlaneLayerField({
   useFrame(state => {
     const v = nodeMapRef.current;
     if (!v) return;
+    const bp = v.scene?.backgroundPlanes;
     const show = v.vizIntensity !== 'off';
-    const opacity = show ? Math.max(0.25, Math.min(0.65, v.planeOpacity ?? 0.28)) : 0;
-    const drift = v.reduceMotion ? 0 : (v.driftPx ?? 2) / 500;
-    const n = show ? Math.min(2, Math.max(0, v.layerCount ?? 2)) : 0;
+    if (!show) {
+      if (g1.current?.material) (g1.current.material as THREE.MeshBasicMaterial).opacity = 0;
+      if (g2.current?.material) (g2.current.material as THREE.MeshBasicMaterial).opacity = 0;
+      return;
+    }
+    if (!bp) {
+      if (g1.current?.material) (g1.current.material as THREE.MeshBasicMaterial).opacity = 0;
+      if (g2.current?.material) (g2.current.material as THREE.MeshBasicMaterial).opacity = 0;
+      return;
+    }
     const hueShift = v.hueShift ?? 0;
-    colorRef.current.setHSL((BASE_HUE + hueShift) % 1, BASE_SAT, BASE_LUM);
+    colorRef.current.setHSL((bp.hue + hueShift) % 1, bp.sat, bp.lum);
+    const opacity = Math.max(0.25, Math.min(0.65, bp.opacityBase));
+    const drift = v.reduceMotion ? 0 : bp.driftPxNorm;
+    const n = Math.min(bp.count, 2);
     if (g1.current?.material) {
       (g1.current.material as THREE.MeshBasicMaterial).color.copy(colorRef.current);
       (g1.current.material as THREE.MeshBasicMaterial).opacity = n >= 1 ? opacity : 0;
@@ -73,7 +82,7 @@ export function PlaneLayerField({
     }
     if (g2.current?.material) {
       (g2.current.material as THREE.MeshBasicMaterial).color.copy(colorRef.current);
-      (g2.current.material as THREE.MeshBasicMaterial).opacity = n >= 2 ? opacity * 0.75 : 0;
+      (g2.current.material as THREE.MeshBasicMaterial).opacity = n >= 2 ? opacity * (bp.opacitySecond / bp.opacityBase) : 0;
       g2.current.position.x = Math.sin(v.clock * 0.35 + SEED) * drift;
       g2.current.position.y = Math.cos(v.clock * 0.31 + SEED) * drift;
     }
@@ -129,7 +138,17 @@ export function PlaneLayerField({
     );
   });
 
-  const color = new THREE.Color().setHSL(BASE_HUE, BASE_SAT, BASE_LUM);
+  const bp = nodeMapRef.current?.scene?.backgroundPlanes;
+  if (!bp) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error(
+        '[PlaneLayerField] nodeMapRef.current.scene.backgroundPlanes is missing. Set nodeMapRef.current.scene = getSceneDescription() in the screen that mounts the viz (e.g. VoiceScreen ref initializer).',
+      );
+    }
+    return null;
+  }
+
+  const color = new THREE.Color().setHSL(bp.hue, bp.sat, bp.lum);
 
   return (
     <>

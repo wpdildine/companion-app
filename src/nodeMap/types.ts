@@ -3,6 +3,8 @@
  * Plan: discrete mode in React; continuous animation in render loop via this ref.
  */
 
+import type { GLSceneDescription } from './helpers/formations';
+
 export type NodeMapMode =
   | 'idle'
   | 'listening'
@@ -111,6 +113,10 @@ export interface NodeMapEngineRef {
   touchFieldActive: boolean;
   touchFieldNdc: [number, number] | null;
   touchFieldStrength: number;
+  /** GL scene description; set at mount or when paletteId/vizIntensityProfile changes. All GL components read from this. */
+  scene?: GLSceneDescription;
+  /** Zone currently under touch (for armed state). Set by interaction band. */
+  zoneArmed: 'rules' | 'cards' | null;
 }
 
 const SENTINEL_FAR = 1e6;
@@ -170,6 +176,8 @@ export function createDefaultNodeMapRef(): NodeMapEngineRef {
     touchFieldActive: false,
     touchFieldNdc: null,
     touchFieldStrength: 0,
+    scene: undefined,
+    zoneArmed: null,
   };
 }
 

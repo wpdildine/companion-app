@@ -39,6 +39,7 @@ import { VoiceLoadingView, DebugZoneOverlay, UserVoiceView, DevScreen } from '..
 import { getTheme } from '../theme';
 import {
   createDefaultNodeMapRef,
+  getSceneDescription,
   triggerPulseAtCenter,
   type NodeMapMode,
   type AiUiSignals,
@@ -320,7 +321,11 @@ export default function VoiceScreen() {
     rules: false,
     sources: false,
   });
-  const nodeMapRef = useRef(createDefaultNodeMapRef());
+  const nodeMapRef = useRef((() => {
+    const r = createDefaultNodeMapRef();
+    r.scene = getSceneDescription();
+    return r;
+  })());
   const recordingSessionIdRef = useRef(0);
   const requestIdRef = useRef(0);
   const modeRef = useRef(mode);

@@ -8,7 +8,6 @@ import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { NodeMapEngineRef } from '../types';
-import { getTwoClusterCenters } from '../helpers/formations';
 import { getPulseColorWithHue } from '../helpers/getPulseColor';
 
 const DT_CAP = 0.1;
@@ -22,7 +21,6 @@ export function EngineLoop({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeMap
   const touchHit = useRef(new THREE.Vector3());
   const touchViewVec = useRef(new THREE.Vector3());
   const lastProcessedEventTime = useRef(0);
-  const clusterCenters = useRef(getTwoClusterCenters());
   const touchLogAt = useRef(0);
 
   useFrame((state, delta) => {
@@ -44,26 +42,26 @@ export function EngineLoop({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeMap
     if (v.lastEvent && v.lastEventTime > lastProcessedEventTime.current) {
       lastProcessedEventTime.current = v.lastEventTime;
       const age = (v.clock - v.lastEventTime) * 1000;
-      if (age < PULSE_DECAY_MS) {
-        const centers = clusterCenters.current;
+      if (age < PULSE_DECAY_MS && v.scene?.pulseAnchors) {
+        const anchors = v.scene.pulseAnchors;
         const i = v.lastPulseIndex % 3;
         if (v.lastEvent === 'tapCitation') {
-          v.pulsePositions[i] = [...centers.rulesCenter];
+          v.pulsePositions[i] = [...anchors.rules];
           v.pulseColors[i] = getPulseColorWithHue(v.paletteId, v.hueShift, 'tapCitation', v.currentMode);
           v.pulseTimes[i] = v.lastEventTime;
           v.lastPulseIndex = (v.lastPulseIndex + 1) % 3;
         } else if (v.lastEvent === 'tapCard') {
-          v.pulsePositions[i] = [...centers.cardsCenter];
+          v.pulsePositions[i] = [...anchors.cards];
           v.pulseColors[i] = getPulseColorWithHue(v.paletteId, v.hueShift, 'tapCard', v.currentMode);
           v.pulseTimes[i] = v.lastEventTime;
           v.lastPulseIndex = (v.lastPulseIndex + 1) % 3;
         } else if (v.lastEvent === 'chunkAccepted') {
-          v.pulsePositions[i] = [...centers.rulesCenter];
+          v.pulsePositions[i] = [...anchors.rules];
           v.pulseColors[i] = getPulseColorWithHue(v.paletteId, v.hueShift, 'chunkAccepted', v.currentMode);
           v.pulseTimes[i] = v.lastEventTime;
           v.lastPulseIndex = (v.lastPulseIndex + 1) % 3;
         } else if (v.lastEvent === 'warning') {
-          v.pulsePositions[i] = [0, 0, 0];
+          v.pulsePositions[i] = [...anchors.center];
           v.pulseColors[i] = getPulseColorWithHue(v.paletteId, v.hueShift, 'warning', v.currentMode);
           v.pulseTimes[i] = v.lastEventTime;
           v.lastPulseIndex = (v.lastPulseIndex + 1) % 3;

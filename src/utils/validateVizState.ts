@@ -105,6 +105,10 @@ export function validateVizState(state: unknown): ValidationResult {
   if (s.touchFieldStrength != null && !inRange(s.touchFieldStrength as number, 0, 1)) {
     errors.push('touchFieldStrength must be in [0,1]');
   }
+  const validZoneArmed = [null, 'rules', 'cards'];
+  if (s.zoneArmed != null && !validZoneArmed.includes(s.zoneArmed as 'rules' | 'cards' | null)) {
+    errors.push('zoneArmed must be null, "rules", or "cards"');
+  }
 
   if (!inRange(s.postFxVignette as number, 0, 1)) {
     warnings.push('postFxVignette should be in [0,1]');
