@@ -76,6 +76,8 @@ const DEBUG_ENABLED_DEFAULT = false;
 /** When true, skip real RAG and inject dummy resolved payload for instrument-panel verification. */
 const DEBUG_SCENARIO = true;
 const SHOW_REVEAL_CHIPS = false;
+/** When false, hide the hold-to-speak trigger row. */
+const SHOW_HOLD_TO_SPEAK = false;
 
 const dummySignals: AiUiSignals = {
   phase: 'resolved',
@@ -1195,6 +1197,7 @@ export default function VoiceScreen() {
           onScroll={handleOverlayScroll}
         >
           <View style={[styles.container, styles.scrollOverlay]}>
+            {SHOW_HOLD_TO_SPEAK && (
             <View style={styles.askTriggerRow}>
               <Pressable
                 style={[styles.askTrigger, { borderColor, backgroundColor: inputBg }]}
@@ -1210,6 +1213,7 @@ export default function VoiceScreen() {
                 </Text>
               </Pressable>
             </View>
+            )}
             {(DEBUG_SCENARIO || showContentPanels) ? (
             <View style={styles.contentStack}>
               {SHOW_REVEAL_CHIPS && (

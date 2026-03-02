@@ -458,7 +458,7 @@ export function getSceneDescription(
       segmentsPerEdge: 12,
     },
     backgroundPlanes: {
-      count: 0,
+      count: 1,
       opacityBase: 0.28,
       opacitySecond: 0.2,
       driftPxNorm: 2 / 500,

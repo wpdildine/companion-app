@@ -6,9 +6,9 @@
 
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { NodeMapCanvas } from './NodeMapCanvas';
-import type { NodeMapEngineRef } from '../types';
 import type { TouchCallbacks } from '../interaction/touchHandlers';
+import type { NodeMapEngineRef } from '../types';
+import { NodeMapCanvas } from './NodeMapCanvas';
 
 export type NodeMapSurfaceProps = {
   nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
   },
   canvas: {
     ...StyleSheet.absoluteFillObject,
-    borderWidth: 6,
+    borderWidth: 0,
     borderColor: '#00d4ff',
   },
   content: {
