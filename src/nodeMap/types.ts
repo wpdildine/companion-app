@@ -191,7 +191,7 @@ export function createDefaultNodeMapRef(): NodeMapEngineRef {
     scene: undefined,
     zoneArmed: null,
     showTouchZones: false,
-    spineUseHalftonePlanes: true,
+    spineUseHalftonePlanes: false,
     stateCycleOn: false,
     stateCycleTimerId: null,
     stateCycleIdx: 0,

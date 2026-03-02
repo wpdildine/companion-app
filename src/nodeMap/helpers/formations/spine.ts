@@ -203,8 +203,8 @@ export function buildSpineDescription(): GLSceneSpine {
     },
     style: {
       color: '#b7d2ff',
-      /** High enough that planeColors read over dark canvas; 0.34 blended everything to drab grey. */
-      opacity: 0.62,
+      /** Elevated base opacity so center halftone plane reads clearly. */
+      opacity: 0.78,
       /** Normal blending so planeColors read as tonal hierarchy; additive washes the stack to one tone. */
       blend: 'normal',
       overlayDistance: 10,
@@ -215,7 +215,7 @@ export function buildSpineDescription(): GLSceneSpine {
       planeGap: -0.12,
       planeOffsetY: [0.02, -0.01, 0.0, 0.015, -0.02],
       planeHeightScale: [0.82, 0.92, 1.22, 0.9, 0.84],
-      planeColors: ['#8a9fc9', '#9eb3e0', '#e84a4a', '#a2b8e8', '#889bc4'],
+      planeColors: ['#8a9fc9', '#9eb3e0', '#ff3b3b', '#a2b8e8', '#889bc4'],
       driftAmpX: 0.028,
       driftAmpY: 0.02,
       perPlaneDriftScale: 0.8,
