@@ -5,10 +5,10 @@
  */
 
 import { useFrame } from '@react-three/fiber';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { validateSceneDescription } from '../helpers/validateSceneDescription';
 import type { CanonicalSpineMode } from '../helpers/formations/spine';
+import { validateSceneDescription } from '../helpers/validateSceneDescription';
 import type { NodeMapEngineRef } from '../types';
 
 const EDGE_HALFTONE_VERTEX = `
@@ -19,7 +19,8 @@ void main() {
 }
 `;
 
-const EDGE_HALFTONE_FRAGMENT = `
+/** Per-plane halftone: same screen-space pattern but uPlanePhase individualizes each mesh. */
+const PLANE_HALFTONE_FRAGMENT = `
 precision highp float;
 varying vec2 vUv;
 uniform vec3 uColor;
@@ -27,15 +28,26 @@ uniform float uOpacity;
 uniform float uIntensity;
 uniform float uDensity;
 uniform float uTime;
+uniform vec2 uResolution;
+uniform float uPlanePhase;
 
 void main() {
-  float density = mix(18.0, 44.0, clamp(uDensity / 2.0, 0.0, 1.0));
-  vec2 uv = vUv + vec2(sin(uTime * 0.7) * 0.003, cos(uTime * 0.6) * 0.003);
-  vec2 cellUv = fract(uv * vec2(density, density * 0.62)) - 0.5;
+  vec2 suv = gl_FragCoord.xy / max(uResolution, vec2(1.0));
+
+  float density = mix(18.0, 52.0, clamp(uDensity / 2.5, 0.0, 1.0));
+
+  vec2 uv = suv + vec2(
+    sin(uTime * 0.35 + uPlanePhase) * 0.0012,
+    cos(uTime * 0.31 + uPlanePhase * 1.3) * 0.0012
+  );
+
+  vec2 cellUv = fract(uv * density) - 0.5;
   float d = length(cellUv);
-  float dotMask = 1.0 - smoothstep(0.12, 0.38, d);
-  float stripe = 0.82 + 0.18 * sin((uv.y + uTime * 0.08) * 30.0);
-  float a = uOpacity * uIntensity * mix(0.35, 1.0, dotMask) * stripe;
+  float dotMask = 1.0 - smoothstep(0.12, 0.40, d);
+
+  float stripe = 0.86 + 0.14 * sin((uv.y + uTime * 0.06 + uPlanePhase * 2.0) * 36.0);
+
+  float a = uOpacity * clamp(uIntensity, 0.0, 1.0) * mix(0.35, 1.0, dotMask) * stripe;
   gl_FragColor = vec4(uColor, a);
 }
 `;
@@ -81,6 +93,65 @@ export function Spine({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const planeRefs = useRef<(THREE.Mesh | null)[]>([]);
+  /** Per-plane materials so R3F never shares one material across planes (ensures planeColors read). */
+  const planeMaterialsRef = useRef<THREE.MeshBasicMaterial[] | null>(null);
+  if (!planeMaterialsRef.current) {
+    const PLANE_COLORS = [
+      '#8a9fc9',
+      '#9eb3e0',
+      '#c5dcff',
+      '#a2b8e8',
+      '#889bc4',
+    ];
+    planeMaterialsRef.current = PLANE_COLORS.map(
+      color =>
+        new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          toneMapped: false,
+          depthWrite: false,
+          depthTest: false,
+          side: THREE.DoubleSide,
+        }),
+    );
+  }
+  const planeMats = planeMaterialsRef.current;
+
+  /** Per-plane halftone shader materials (swap via spineUseHalftonePlanes). */
+  const planeHalftoneMatsRef = useRef<THREE.ShaderMaterial[] | null>(null);
+  if (!planeHalftoneMatsRef.current) {
+    planeHalftoneMatsRef.current = Array.from({ length: 5 }, (_, i) => {
+      return new THREE.ShaderMaterial({
+        uniforms: {
+          uColor: { value: new THREE.Color() },
+          uOpacity: { value: 0.6 },
+          uIntensity: { value: 0 },
+          uDensity: { value: 1 },
+          uTime: { value: 0 },
+          uResolution: { value: new THREE.Vector2(1, 1) },
+          uPlanePhase: { value: i * 1.7 },
+        },
+        vertexShader: EDGE_HALFTONE_VERTEX,
+        fragmentShader: PLANE_HALFTONE_FRAGMENT,
+        transparent: true,
+        toneMapped: false,
+        depthWrite: false,
+        depthTest: false,
+        side: THREE.DoubleSide,
+        blending: THREE.NormalBlending,
+      });
+    });
+  }
+  const planeHalftoneMats = planeHalftoneMatsRef.current;
+
+  useEffect(
+    () => () => {
+      planeMats.forEach(m => m.dispose());
+      planeHalftoneMats.forEach(m => m.dispose());
+    },
+    [planeMats, planeHalftoneMats],
+  );
+  const shardRefs = useRef<(THREE.Mesh | null)[]>([]);
   const leftEdgeRef = useRef<THREE.Mesh>(null);
   const rightEdgeRef = useRef<THREE.Mesh>(null);
   const leftEdgeMatRef = useRef<THREE.ShaderMaterial>(null);
@@ -91,6 +162,8 @@ export function Spine({
     uIntensity: { value: 0 },
     uDensity: { value: 1 },
     uTime: { value: 0 },
+    uResolution: { value: new THREE.Vector2(1, 1) },
+    uPlanePhase: { value: 0 },
   });
   const rightEdgeUniformsRef = useRef({
     uColor: { value: new THREE.Color() },
@@ -98,6 +171,8 @@ export function Spine({
     uIntensity: { value: 0 },
     uDensity: { value: 1 },
     uTime: { value: 0 },
+    uResolution: { value: new THREE.Vector2(1, 1) },
+    uPlanePhase: { value: 0 },
   });
   const cameraPosRef = useRef(new THREE.Vector3());
   const cameraDirRef = useRef(new THREE.Vector3());
@@ -154,7 +229,7 @@ export function Spine({
     if (canonicalMode !== lastCanonicalModeRef.current) {
       prevSpreadRef.current = { ...currentSpreadRef.current };
       lastCanonicalModeRef.current = canonicalMode;
-      rampRef.current = 0;
+      rampRef.current = canonicalMode === 'processing' ? 1 : 0;
     }
     const targetProfile = spine.spreadProfiles[canonicalMode];
     const halftoneProfile = spine.halftoneProfiles[canonicalMode];
@@ -179,14 +254,24 @@ export function Spine({
     };
 
     const spread = currentSpreadRef.current;
-    const processingOverflow =
-      canonicalMode === 'processing' ? spine.style.processingOverflowBoost : 1;
+    const idleBreath =
+      canonicalMode === 'idle' || canonicalMode === 'listening'
+        ? 1 +
+          Math.sin(v.clock * 2 * Math.PI * spine.style.idleBreathHz) *
+            spine.style.idleBreathAmp
+        : 1;
+    const effectiveVerticalSpread = spread.verticalSpread * idleBreath;
+    const effectiveBandWidth = spread.bandWidth * idleBreath;
+    const isProcessing = canonicalMode === 'processing';
+    const processingOverflow = isProcessing
+      ? spine.style.processingOverflowBoost
+      : 1;
     const viewW = viewWidth;
     const actH = activeHeight;
     const envelopeWidthWorld =
-      viewW * spine.envelopeNdc.width * spread.bandWidth * processingOverflow;
+      viewW * spine.envelopeNdc.width * effectiveBandWidth * processingOverflow;
     const envelopeHeightWorld =
-      actH * (spine.envelopeNdc.height / 2) * spread.verticalSpread;
+      actH * (spine.envelopeNdc.height / 2) * effectiveVerticalSpread;
     const spineCenterWorldY =
       centerNdcY * (viewHeight * 0.5) +
       spine.envelopeNdc.centerY * (activeHeight * 0.5);
@@ -212,7 +297,10 @@ export function Spine({
     }
     const driftRate =
       spine.style.driftHz *
-      (canonicalMode === 'processing' ? spine.style.processingOverflowBoost : 1);
+      (isProcessing
+        ? spine.style.processingOverflowBoost *
+          spine.style.processingMotionBoost
+        : 1);
     const driftX =
       envelopeWidthWorld *
       spine.style.driftAmpX *
@@ -232,53 +320,144 @@ export function Spine({
     groupRef.current.quaternion.copy(cam.quaternion);
 
     const planeCount = spine.planeCount;
-    const gap = Math.max(0, spine.style.planeGap);
-    const unitHeight = envelopeHeightWorld / (planeCount + gap * (planeCount - 1));
+    const gap =
+      spine.style.planeGap +
+      (isProcessing ? spine.style.processingExtraOverlap : 0);
+    const unitHeight =
+      envelopeHeightWorld / (planeCount + gap * (planeCount - 1));
     const totalHeight = unitHeight * (planeCount + gap * (planeCount - 1));
     const halfHeight = totalHeight / 2;
-    const dynamicOpacityBoost = 1 + halftoneProfile.intensity * 0.45;
+    const dynamicOpacityBoost = 1 + halftoneProfile.intensity * 0.7;
+
+    const useHalftone = v.spineUseHalftonePlanes ?? false;
+    const pixelRatio = Math.max(1, state.gl.getPixelRatio?.() ?? 1);
+    const resX = w * pixelRatio;
+    const resY = h * pixelRatio;
+    const edgeIntensity = Math.max(0, Math.min(1, halftoneProfile.intensity));
 
     for (let i = 0; i < planeCount; i++) {
       const mesh = planeRefs.current[i];
       if (!mesh) continue;
       const widthScale = spine.style.planeWidthScale[i] ?? 1;
+      const baseHeightScale = spine.style.planeHeightScale?.[i] ?? 1;
+      const heightScale =
+        baseHeightScale *
+        (isProcessing ? spine.style.processingHeightBoost : 1);
       const offsetX = spine.style.planeOffsetX[i] ?? 0;
       const opacityScale = spine.style.planeOpacityScale[i] ?? 1;
+      const offsetY =
+        (spine.style.planeOffsetY?.[i] ?? 0) * envelopeHeightWorld;
       const localY =
-        -halfHeight + unitHeight * (i + 0.5) + unitHeight * gap * i;
+        -halfHeight + unitHeight * (i + 0.5) + unitHeight * gap * i + offsetY;
+
+      const perPlanePhase = i * spine.style.perPlaneDriftPhaseStep;
+      const scale = spine.style.perPlaneDriftScale;
+      const perPlaneX =
+        envelopeWidthWorld *
+        spine.style.driftAmpX *
+        driftFactor *
+        scale *
+        Math.sin(v.clock * driftRate * 2 * Math.PI + perPlanePhase);
+      const perPlaneY =
+        envelopeHeightWorld *
+        spine.style.driftAmpY *
+        driftFactor *
+        scale *
+        Math.cos(v.clock * driftRate * 1.7 * 2 * Math.PI + perPlanePhase);
+
       mesh.position.set(
-        envelopeWidthWorld * offsetX,
-        localY,
+        envelopeWidthWorld * offsetX + perPlaneX,
+        localY + perPlaneY,
         (i - (planeCount - 1) / 2) * zStep,
       );
-      mesh.scale.set(envelopeWidthWorld * widthScale, unitHeight, 1);
-      if (mesh.material) {
-        const mat = mesh.material as THREE.MeshBasicMaterial;
-        mat.opacity =
-          spine.style.opacity * opacityScale * dynamicOpacityBoost;
+      mesh.scale.set(
+        envelopeWidthWorld * widthScale,
+        unitHeight * heightScale,
+        1,
+      );
+
+      mesh.material = useHalftone ? planeHalftoneMats[i] : planeMats[i];
+
+      const planeColor = spine.style.planeColors?.[i] ?? spine.style.color;
+      const planeOpacity =
+        spine.style.opacity * opacityScale * dynamicOpacityBoost;
+      const blending =
+        spine.style.blend === 'additive'
+          ? THREE.AdditiveBlending
+          : THREE.NormalBlending;
+
+      if (useHalftone) {
+        const hm = planeHalftoneMats[i];
+        hm.uniforms.uColor.value.set(planeColor);
+        hm.uniforms.uOpacity.value = planeOpacity;
+        hm.uniforms.uIntensity.value = edgeIntensity;
+        hm.uniforms.uDensity.value = halftoneProfile.density;
+        hm.uniforms.uTime.value = v.clock;
+        hm.uniforms.uResolution.value.set(resX, resY);
+        hm.uniforms.uPlanePhase.value = i * 1.7;
+        hm.blending = blending;
+      } else {
+        const mat = planeMats[i];
+        mat.color.set(planeColor);
+        mat.opacity = planeOpacity;
+        mat.blending = blending;
       }
     }
 
-    const edgeWidth = envelopeWidthWorld * spine.style.edgeBandWidth;
+    const edgeBandWidth =
+      spine.style.edgeBandWidth *
+      (isProcessing ? spine.style.processingEdgeBoost : 1);
+    const edgeWidth = envelopeWidthWorld * edgeBandWidth;
     const edgeHeight = envelopeHeightWorld;
     const edgeOffset = envelopeWidthWorld * 0.5 - edgeWidth * 0.5;
+    // Two strips only: uncovered center = envelopeWidthWorld - 2*edgeWidth = (1 - 2*edgeBandWidth) of spine.
+    // With edgeBandWidth 0.22 that's 56% with no halftone ("halftone | nothing | halftone"). For full-surface
+    // halftone use spineUseHalftonePlanes (per-plane shader) so the planes themselves carry the pattern.
+    const edgeVisible = !useHalftone;
     if (leftEdgeRef.current) {
+      leftEdgeRef.current.visible = edgeVisible;
       leftEdgeRef.current.position.set(-edgeOffset, 0, zStep * 0.4);
       leftEdgeRef.current.scale.set(edgeWidth, edgeHeight, 1);
     }
     if (rightEdgeRef.current) {
+      rightEdgeRef.current.visible = edgeVisible;
       rightEdgeRef.current.position.set(edgeOffset, 0, zStep * 0.4);
       rightEdgeRef.current.scale.set(edgeWidth, edgeHeight, 1);
     }
-    const edgeIntensity = Math.max(0, Math.min(1, halftoneProfile.intensity));
+    const shards = spine.shards ?? [];
+    const shardWidthScale = spine.style.shardWidthScale ?? 0.28;
+    for (let s = 0; s < shards.length; s++) {
+      const mesh = shardRefs.current[s];
+      const shard = shards[s];
+      if (!mesh || !shard) continue;
+      mesh.position.set(
+        envelopeWidthWorld * shard.offsetX,
+        0,
+        shard.zOffset * zStep,
+      );
+      mesh.scale.set(
+        envelopeWidthWorld * shardWidthScale,
+        unitHeight * shard.heightScale,
+        1,
+      );
+      if (mesh.material) {
+        const mat = mesh.material as THREE.MeshBasicMaterial;
+        mat.color.set(spine.style.color);
+        mat.opacity =
+          spine.style.opacity * shard.opacityScale * dynamicOpacityBoost;
+      }
+    }
+
     for (const matRef of [leftEdgeMatRef, rightEdgeMatRef]) {
       const mat = matRef.current;
       if (!mat) continue;
       mat.uniforms.uColor.value.set(spine.style.color);
-      mat.uniforms.uOpacity.value = spine.style.edgeOpacity;
+      mat.uniforms.uOpacity.value = edgeVisible ? spine.style.edgeOpacity : 0;
       mat.uniforms.uIntensity.value = edgeIntensity;
       mat.uniforms.uDensity.value = halftoneProfile.density;
       mat.uniforms.uTime.value = v.clock;
+      mat.uniforms.uResolution.value.set(resX, resY);
+      mat.uniforms.uPlanePhase.value = 0;
     }
   });
 
@@ -293,11 +472,12 @@ export function Spine({
   }
   const spine = scene!.spine;
 
-  const color = new THREE.Color(spine.style.color);
   const blending =
     spine.style.blend === 'additive'
       ? THREE.AdditiveBlending
       : THREE.NormalBlending;
+
+  const shards = spine.shards ?? [];
 
   return (
     <group
@@ -305,19 +485,19 @@ export function Spine({
       visible={nodeMapRef.current?.vizIntensity !== 'off'}
       renderOrder={900}
     >
-      {Array.from({ length: spine.planeCount }, (_, i) => (
+      {shards.map((shard, i) => (
         <mesh
-          key={i}
+          key={`shard-${i}`}
           ref={el => {
-            planeRefs.current[i] = el;
+            shardRefs.current[i] = el;
           }}
-          renderOrder={901 + i}
+          renderOrder={895 + i}
         >
           <planeGeometry args={[1, 1]} />
           <meshBasicMaterial
-            color={color}
+            color={spine.style.color}
             transparent
-            opacity={spine.style.opacity}
+            opacity={spine.style.opacity * (shard.opacityScale ?? 0.7)}
             toneMapped={false}
             blending={blending}
             side={THREE.DoubleSide}
@@ -326,13 +506,25 @@ export function Spine({
           />
         </mesh>
       ))}
+      {Array.from({ length: spine.planeCount }, (_, i) => (
+        <mesh
+          key={`plane-${i}`}
+          ref={el => {
+            planeRefs.current[i] = el;
+            if (el) el.material = planeMats[i];
+          }}
+          renderOrder={901 + i}
+        >
+          <planeGeometry args={[1, 1]} />
+        </mesh>
+      ))}
       <mesh ref={leftEdgeRef} renderOrder={916}>
         <planeGeometry args={[1, 1]} />
         <shaderMaterial
           ref={leftEdgeMatRef}
           uniforms={leftEdgeUniformsRef.current}
           vertexShader={EDGE_HALFTONE_VERTEX}
-          fragmentShader={EDGE_HALFTONE_FRAGMENT}
+          fragmentShader={PLANE_HALFTONE_FRAGMENT}
           transparent
           toneMapped={false}
           blending={THREE.AdditiveBlending}
@@ -347,7 +539,7 @@ export function Spine({
           ref={rightEdgeMatRef}
           uniforms={rightEdgeUniformsRef.current}
           vertexShader={EDGE_HALFTONE_VERTEX}
-          fragmentShader={EDGE_HALFTONE_FRAGMENT}
+          fragmentShader={PLANE_HALFTONE_FRAGMENT}
           transparent
           toneMapped={false}
           blending={THREE.AdditiveBlending}

@@ -3,6 +3,9 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { NodeMapEngineRef } from '../types';
 
+/** Set to false to re-enable vignette / grain / chromatic. */
+const POST_FX_DISABLED = true;
+
 const postVertex = `
   varying vec2 vUv;
   void main() {
@@ -119,7 +122,7 @@ export function PostFXPass({
 
   useFrame((state, delta) => {
     const v = nodeMapRef.current;
-    if (!v || !v.postFxEnabled) {
+    if (!v || POST_FX_DISABLED) {
       gl.setRenderTarget(null);
       gl.clear();
       gl.render(scene, camera);

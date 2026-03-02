@@ -95,6 +95,7 @@ export function TouchZones({
     if (centerAreaRef.current?.material) {
       centerAreaRef.current.scale.set(viewWidth * centerRatio, activeHeight, 1);
       centerAreaRef.current.position.set(0, centerY, 0);
+      centerAreaRef.current.visible = false;
       const m = centerAreaRef.current.material as THREE.MeshBasicMaterial;
       m.color.set(style.centerColor);
       m.opacity = style.areaPlaneOpacityCenter;
@@ -103,6 +104,7 @@ export function TouchZones({
           centerAreaRef.current.position,
         );
         centerAreaEdgesRef.current.scale.copy(centerAreaRef.current.scale);
+        centerAreaEdgesRef.current.visible = false;
       }
     }
     if (cardsAreaRef.current?.material) {

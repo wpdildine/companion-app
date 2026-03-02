@@ -119,6 +119,8 @@ export interface NodeMapEngineRef {
   zoneArmed: 'rules' | 'cards' | null;
   /** Show touch zone debug meshes (rules/center/cards). Default off; toggle in Dev panel. */
   showTouchZones: boolean;
+  /** Spine planes: true = per-plane halftone shader, false = solid MeshBasicMaterial. Toggle in Dev panel. */
+  spineUseHalftonePlanes: boolean;
   /** Dev: cycle-all-states toggle and timer (persists when panel closes). */
   stateCycleOn: boolean;
   stateCycleTimerId: ReturnType<typeof setInterval> | null;
@@ -189,6 +191,7 @@ export function createDefaultNodeMapRef(): NodeMapEngineRef {
     scene: undefined,
     zoneArmed: null,
     showTouchZones: false,
+    spineUseHalftonePlanes: true,
     stateCycleOn: false,
     stateCycleTimerId: null,
     stateCycleIdx: 0,

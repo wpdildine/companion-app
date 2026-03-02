@@ -121,6 +121,11 @@ export function DevPanel({
       viz.postFxGrain = clamp(x, 0, 0.2);
     });
   };
+  const togglePostFxEnabled = () => {
+    withViz(viz => {
+      viz.postFxEnabled = !viz.postFxEnabled;
+    });
+  };
   const applyState = useCallback(
     (state: NodeMapMode) => {
       withViz(viz => {
@@ -253,6 +258,20 @@ export function DevPanel({
               <Text style={{ color: muted }}>{v.showTouchZones ? 'ON' : 'OFF'}</Text>
             </Pressable>
           </View>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>Spine halftone planes</Text>
+            <Pressable
+              onPress={() => {
+                withViz(viz => {
+                  viz.spineUseHalftonePlanes = !viz.spineUseHalftonePlanes;
+                });
+              }}
+            >
+              <Text style={{ color: muted }}>
+                {v.spineUseHalftonePlanes ? 'ON' : 'OFF'}
+              </Text>
+            </Pressable>
+          </View>
 
           <Text style={[styles.section, { color: muted }]}>State tests</Text>
           <View style={[styles.row, styles.currentStateRow]}>
@@ -283,8 +302,12 @@ export function DevPanel({
 
           <Text style={[styles.section, { color: muted }]}>Post FX</Text>
           <View style={styles.row}>
-            <Text style={{ color: textColor }}>Enable post FX</Text>
-            <Text style={{ color: muted }}>{v.postFxEnabled ? 'ON' : 'OFF'}</Text>
+            <Text style={{ color: textColor }}>Post FX</Text>
+            <Pressable onPress={togglePostFxEnabled}>
+              <Text style={{ color: muted }}>
+                {v.postFxEnabled ? 'ON' : 'OFF'} (tap to toggle — OFF = raw scene)
+              </Text>
+            </Pressable>
           </View>
           <View style={styles.row}>
             <Text style={{ color: textColor }}>Vignette</Text>

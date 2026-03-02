@@ -185,9 +185,12 @@ export function NodeMapCanvasR3F({
 
   const onCanvasCreated = useCallback(
     (state: { gl: THREE.WebGLRenderer; scene: THREE.Scene }) => {
+      const gl = state.gl;
       const hex = new THREE.Color(canvasBackground).getHex();
-      state.gl.setClearColor(hex, 1);
+      gl.setClearColor(hex, 1);
       state.scene.background = new THREE.Color(canvasBackground);
+      gl.toneMapping = THREE.NoToneMapping;
+      if ('outputColorSpace' in gl) (gl as THREE.WebGLRenderer).outputColorSpace = THREE.SRGBColorSpace;
     },
     [canvasBackground],
   );

@@ -43,9 +43,15 @@ export function validateSceneDescription(
     Array.isArray(style?.planeOffsetX) &&
     Array.isArray(style?.planeWidthScale) &&
     Array.isArray(style?.planeOpacityScale) &&
+    Array.isArray(style?.planeOffsetY) &&
+    Array.isArray(style?.planeHeightScale) &&
+    Array.isArray(style?.planeColors) &&
     style.planeOffsetX.length === spine.planeCount &&
     style.planeWidthScale.length === spine.planeCount &&
-    style.planeOpacityScale.length === spine.planeCount;
+    style.planeOpacityScale.length === spine.planeCount &&
+    style.planeOffsetY.length === spine.planeCount &&
+    style.planeHeightScale.length === spine.planeCount &&
+    style.planeColors.length === spine.planeCount;
   if (!styleArraysValid) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error(
@@ -61,9 +67,23 @@ export function validateSceneDescription(
     typeof style.planeGap === 'number' &&
     typeof style.driftAmpX === 'number' &&
     typeof style.driftAmpY === 'number' &&
+    typeof style.perPlaneDriftScale === 'number' &&
+    typeof style.perPlaneDriftPhaseStep === 'number' &&
     typeof style.driftHz === 'number' &&
+    typeof style.idleBreathAmp === 'number' &&
+    typeof style.idleBreathHz === 'number' &&
+    style.idleBreathHz > 0 &&
     typeof style.processingOverflowBoost === 'number' &&
     style.processingOverflowBoost >= 1 &&
+    typeof style.processingExtraOverlap === 'number' &&
+    typeof style.processingHeightBoost === 'number' &&
+    style.processingHeightBoost >= 1 &&
+    typeof style.processingMotionBoost === 'number' &&
+    style.processingMotionBoost >= 1 &&
+    typeof style.processingEdgeBoost === 'number' &&
+    style.processingEdgeBoost >= 1 &&
+    typeof style.shardWidthScale === 'number' &&
+    style.shardWidthScale > 0 &&
     typeof style.edgeBandWidth === 'number' &&
     style.edgeBandWidth > 0 &&
     style.edgeBandWidth < 0.5 &&
