@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import type { CanonicalSpineMode } from '../helpers/formations/spine';
 import { validateSceneDescription } from '../helpers/validateSceneDescription';
 import type { NodeMapEngineRef } from '../types';
+import { SHADER_DEBUG_FLAGS } from './shaderDebugFlags';
 
 const EDGE_HALFTONE_VERTEX = `
 varying vec2 vUv;
@@ -197,6 +198,9 @@ export function Spine({
     depthSpread: 1,
   });
   const lastCanonicalModeRef = useRef<CanonicalSpineMode>('idle');
+  const smoothPlaneOpacityRef = useRef<number[]>(Array(5).fill(0));
+  const smoothPlaneIntensityRef = useRef<number[]>(Array(5).fill(0));
+  const smoothShardOpacityRef = useRef<number[]>([]);
 
   useFrame((state, delta) => {
     const v = nodeMapRef.current;
@@ -236,7 +240,8 @@ export function Spine({
     if (canonicalMode !== lastCanonicalModeRef.current) {
       prevSpreadRef.current = { ...currentSpreadRef.current };
       lastCanonicalModeRef.current = canonicalMode;
-      rampRef.current = canonicalMode === 'processing' ? 1 : 0;
+      // Always restart ramp on mode change (prevents one-frame pops/flicker).
+      rampRef.current = 0;
     }
     const targetProfile = spine.spreadProfiles[canonicalMode];
     const halftoneProfile = spine.halftoneProfiles[canonicalMode];
@@ -343,6 +348,9 @@ export function Spine({
     const totalHeight = unitHeight * (planeCount + gap * (planeCount - 1));
     const halfHeight = totalHeight / 2;
     const dynamicOpacityBoost = 1 + halftoneProfile.intensity * 0.7;
+    const kOpacity = 1.0 - Math.exp(-Math.max(0, delta) / 0.18);
+    const maxOpacityStep = Math.max(0.008, delta * 2.4);
+    const maxIntensityStep = Math.max(0.01, delta * 2.8);
 
     const halftonePlaneIndex = Math.floor((planeCount - 1) / 2);
     const pixelRatio = Math.max(1, state.gl.getPixelRatio?.() ?? 1);
@@ -391,23 +399,47 @@ export function Spine({
         1,
       );
 
-      const planeUsesHalftone = i === halftonePlaneIndex;
-      mesh.material = planeUsesHalftone ? planeHalftoneMats[i] : planeMats[i];
-
+      // Never swap materials per frame — assigned once in ref. Only update uniforms.
+      const planeUsesHalftone =
+        SHADER_DEBUG_FLAGS.spineHalftone && i === halftonePlaneIndex;
       const planeColor = spine.style.planeColors?.[i] ?? spine.style.color;
-      const planeOpacity =
+      const targetPlaneOpacity =
         spine.style.opacity * opacityScale * dynamicOpacityBoost;
-      const blending =
-        spine.style.blend === 'additive'
-          ? THREE.AdditiveBlending
-          : THREE.NormalBlending;
+      if (smoothPlaneOpacityRef.current[i] == null) {
+        smoothPlaneOpacityRef.current[i] = targetPlaneOpacity;
+      }
+      const currentOpacity = smoothPlaneOpacityRef.current[i];
+      const nextOpacityRaw =
+        currentOpacity + (targetPlaneOpacity - currentOpacity) * kOpacity;
+      const nextOpacity =
+        currentOpacity +
+        THREE.MathUtils.clamp(
+          nextOpacityRaw - currentOpacity,
+          -maxOpacityStep,
+          maxOpacityStep,
+        );
+      smoothPlaneOpacityRef.current[i] = nextOpacity;
 
       if (planeUsesHalftone) {
         const hm = planeHalftoneMats[i];
         hm.uniforms.uColor.value.set(planeColor);
-        hm.uniforms.uOpacity.value = Math.min(1, planeOpacity * 1.7);
-        // Keep center plane clearly visible across modes.
-        hm.uniforms.uIntensity.value = Math.max(0.72, edgeIntensity);
+        hm.uniforms.uOpacity.value = Math.min(1, nextOpacity * 1.35);
+        const targetIntensity = Math.max(0.72, edgeIntensity);
+        if (smoothPlaneIntensityRef.current[i] == null) {
+          smoothPlaneIntensityRef.current[i] = targetIntensity;
+        }
+        const currentIntensity = smoothPlaneIntensityRef.current[i];
+        const nextIntensityRaw =
+          currentIntensity + (targetIntensity - currentIntensity) * kOpacity;
+        const nextIntensity =
+          currentIntensity +
+          THREE.MathUtils.clamp(
+            nextIntensityRaw - currentIntensity,
+            -maxIntensityStep,
+            maxIntensityStep,
+          );
+        smoothPlaneIntensityRef.current[i] = nextIntensity;
+        hm.uniforms.uIntensity.value = nextIntensity;
         hm.uniforms.uDensity.value = halftoneProfile.density;
         hm.uniforms.uTime.value = v.clock;
         hm.uniforms.uResolution.value.set(resX, resY);
@@ -415,12 +447,10 @@ export function Spine({
         const planeW = envelopeWidthWorld * widthScale;
         const planeH = unitHeight * heightScale;
         hm.uniforms.uPlaneSize.value.set(planeW, planeH);
-        hm.blending = THREE.AdditiveBlending;
       } else {
         const mat = planeMats[i];
         mat.color.set(planeColor);
-        mat.opacity = planeOpacity;
-        mat.blending = blending;
+        mat.opacity = nextOpacity;
       }
     }
 
@@ -463,8 +493,24 @@ export function Spine({
       if (mesh.material) {
         const mat = mesh.material as THREE.MeshBasicMaterial;
         mat.color.set(spine.style.color);
-        mat.opacity =
+        const targetShardOpacity =
           spine.style.opacity * shard.opacityScale * dynamicOpacityBoost;
+        if (smoothShardOpacityRef.current[s] == null) {
+          smoothShardOpacityRef.current[s] = targetShardOpacity;
+        }
+        const currentShardOpacity = smoothShardOpacityRef.current[s];
+        const nextShardOpacityRaw =
+          currentShardOpacity +
+          (targetShardOpacity - currentShardOpacity) * kOpacity;
+        const nextShardOpacity =
+          currentShardOpacity +
+          THREE.MathUtils.clamp(
+            nextShardOpacityRaw - currentShardOpacity,
+            -maxOpacityStep,
+            maxOpacityStep,
+          );
+        smoothShardOpacityRef.current[s] = nextShardOpacity;
+        mat.opacity = nextShardOpacity;
       }
     }
 
@@ -527,19 +573,35 @@ export function Spine({
           />
         </mesh>
       ))}
-      {Array.from({ length: spine.planeCount }, (_, i) => (
-        <mesh
-          key={`plane-${i}`}
-          ref={el => {
-            planeRefs.current[i] = el;
-            if (el) el.material = planeMats[i];
-          }}
-          renderOrder={901 + i}
-        >
-          <planeGeometry args={[1, 1]} />
-        </mesh>
-      ))}
-      <mesh ref={leftEdgeRef} renderOrder={916}>
+      {Array.from({ length: spine.planeCount }, (_, i) => {
+        const halftoneIndex = Math.floor((spine.planeCount - 1) / 2);
+        const isHalftonePlane = i === halftoneIndex;
+        const planeBlend =
+          spine.style.blend === 'additive'
+            ? THREE.AdditiveBlending
+            : THREE.NormalBlending;
+        return (
+          <mesh
+            key={`plane-${i}`}
+            ref={el => {
+              planeRefs.current[i] = el;
+              if (el) {
+                const mat = isHalftonePlane
+                  ? planeHalftoneMats[i]
+                  : planeMats[i];
+                el.material = mat;
+                mat.blending = isHalftonePlane
+                  ? THREE.AdditiveBlending
+                  : planeBlend;
+              }
+            }}
+            renderOrder={901 + i}
+          >
+            <planeGeometry args={[1, 1]} />
+          </mesh>
+        );
+      })}
+      <mesh ref={leftEdgeRef} renderOrder={916} visible={false}>
         <planeGeometry args={[1, 1]} />
         <shaderMaterial
           ref={leftEdgeMatRef}
@@ -554,7 +616,7 @@ export function Spine({
           side={THREE.DoubleSide}
         />
       </mesh>
-      <mesh ref={rightEdgeRef} renderOrder={917}>
+      <mesh ref={rightEdgeRef} renderOrder={917} visible={false}>
         <planeGeometry args={[1, 1]} />
         <shaderMaterial
           ref={rightEdgeMatRef}

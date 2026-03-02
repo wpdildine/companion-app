@@ -8,6 +8,7 @@ import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { connectionVertex, connectionFragment } from '../shaders/connections';
 import type { NodeMapEngineRef } from '../types';
+import { SHADER_DEBUG_FLAGS } from './shaderDebugFlags';
 
 function sampleBezier(
   start: [number, number, number],
@@ -208,7 +209,7 @@ export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeM
   const v = nodeMapRef.current;
   const confidence = v?.signalsSnapshot?.confidence ?? 1;
   const showLinks = v?.vizIntensity === 'full' && confidence < 0.7;
-  if (!showLinks || vertexCount === 0) {
+  if (!SHADER_DEBUG_FLAGS.contextLinks || !showLinks || vertexCount === 0) {
     return null;
   }
 

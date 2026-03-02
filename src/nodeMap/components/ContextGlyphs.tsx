@@ -8,6 +8,7 @@ import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { nodeVertex, nodeFragment } from '../shaders/nodes';
 import type { NodeMapEngineRef } from '../types';
+import { SHADER_DEBUG_FLAGS } from './shaderDebugFlags';
 
 export function ContextGlyphs({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeMapEngineRef | null> }) {
   const scene = nodeMapRef.current?.scene;
@@ -177,6 +178,9 @@ export function ContextGlyphs({ nodeMapRef }: { nodeMapRef: React.RefObject<Node
   ]);
 
   if (nodeMapRef.current?.vizIntensity === 'off') {
+    return null;
+  }
+  if (!SHADER_DEBUG_FLAGS.contextGlyphs) {
     return null;
   }
   if (N === 0) {

@@ -1,10 +1,21 @@
 import { useFrame, useThree } from '@react-three/fiber/native';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { NodeMapEngineRef } from '../types';
+import { SHADER_DEBUG_FLAGS } from './shaderDebugFlags';
 
 /** Set to false to re-enable vignette / grain / chromatic (cinematic). */
 const POST_FX_DISABLED = false;
+
+/** Post-FX tuning knobs (single place to adjust look). */
+const POSTFX_DEFAULT_VIGNETTE = 0.78;
+const POSTFX_MIN_VIGNETTE = 0.62;
+const POSTFX_DEFAULT_CHROMATIC = 0.0018;
+const POSTFX_DEFAULT_GRAIN = 0.05;
+const POSTFX_SMOOTH_SECONDS = 0.18;
+const POSTFX_VIGNETTE_INNER = 0.06;
+const POSTFX_VIGNETTE_OUTER = 0.42;
+const POSTFX_CHROMA_REF_MIN_RES = 1080;
 
 /** Layer index for background-only pass (vignette/grain). Foreground stays on layer 0. */
 export const BACKGROUND_LAYER = 1;
@@ -31,34 +42,39 @@ const postFragment = `
   uniform float uVignette;
   uniform float uChromatic;
   uniform float uGrain;
-
-  float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-  }
+  uniform sampler2D uGrainTex;
 
   void main() {
     vec2 centered = vUv - 0.5;
     float r2 = dot(centered, centered);
 
-    // Chromatic offset: subtle radial CA.
-    vec2 dir = normalize(centered + vec2(1e-6, 0.0));
-    vec2 ca = dir * uChromatic * (0.35 + r2 * 0.85);
-
-    float sceneR = texture2D(uScene, clamp(vUv + ca, 0.0, 1.0)).r;
-    float sceneG = texture2D(uScene, vUv).g;
-    float sceneB = texture2D(uScene, clamp(vUv - ca, 0.0, 1.0)).b;
-    vec3 col = vec3(sceneR, sceneG, sceneB);
+    vec3 col;
+    if (uChromatic <= 0.000001) {
+      col = texture2D(uScene, vUv).rgb;
+    } else {
+      // Chromatic offset: subtle radial CA.
+      vec2 dir = normalize(centered + vec2(1e-6, 0.0));
+      vec2 ca = dir * uChromatic * (0.35 + r2 * 0.85);
+      float sceneR = texture2D(uScene, clamp(vUv + ca, 0.0, 1.0)).r;
+      float sceneG = texture2D(uScene, vUv).g;
+      float sceneB = texture2D(uScene, clamp(vUv - ca, 0.0, 1.0)).b;
+      col = vec3(sceneR, sceneG, sceneB);
+    }
 
     // Vignette: r2 is 0 at center, ~0.5 at corners.
     // ramp = 0 at center -> 1 at edges.
-    float ramp = smoothstep(0.10, 0.55, r2);
+    float ramp = smoothstep(${POSTFX_VIGNETTE_INNER.toFixed(
+      2,
+    )}, ${POSTFX_VIGNETTE_OUTER.toFixed(2)}, r2);
     float vig = 1.0 - ramp;
     col *= mix(1.0, vig, clamp(uVignette, 0.0, 1.0));
 
-    // Grain: stable per-frame to avoid shimmer/flicker on mobile.
-    float frame = floor(uTime * 60.0);
-    float n = hash(vUv * uResolution.xy + frame * 19.19) - 0.5;
-    col += n * uGrain;
+    // Grain: texture-based (blue-noise-style) to avoid hash artifacts on mobile GPUs.
+    if (uGrain > 0.000001) {
+      vec2 grainUv = fract(vUv * (uResolution.xy / 64.0) + vec2(uTime * 0.013, uTime * 0.017));
+      float n = texture2D(uGrainTex, grainUv).r - 0.5;
+      col += n * uGrain;
+    }
 
     gl_FragColor = vec4(col, 1.0);
   }
@@ -75,6 +91,27 @@ export function PostFXPass({
     [],
   );
   const postScene = useMemo(() => new THREE.Scene(), []);
+  const grainTex = useMemo(() => {
+    const size = 64;
+    const data = new Uint8Array(size * size * 4);
+    for (let i = 0; i < size * size; i++) {
+      // Uniform grayscale noise packed in RGB; alpha opaque.
+      const v = Math.floor(Math.random() * 256);
+      const o = i * 4;
+      data[o] = v;
+      data[o + 1] = v;
+      data[o + 2] = v;
+      data[o + 3] = 255;
+    }
+    const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.minFilter = THREE.NearestFilter;
+    tex.magFilter = THREE.NearestFilter;
+    tex.generateMipmaps = false;
+    tex.needsUpdate = true;
+    return tex;
+  }, []);
   const renderTarget = useMemo(
     () =>
       new THREE.WebGLRenderTarget(1, 1, {
@@ -96,20 +133,34 @@ export function PostFXPass({
           uScene: { value: null as THREE.Texture | null },
           uResolution: { value: new THREE.Vector2(1, 1) },
           uTime: { value: 0 },
-          uVignette: { value: 0.28 },
-          uChromatic: { value: 0.0018 },
-          uGrain: { value: 0.05 },
+          uVignette: { value: POSTFX_DEFAULT_VIGNETTE },
+          uChromatic: { value: POSTFX_DEFAULT_CHROMATIC },
+          uGrain: { value: POSTFX_DEFAULT_GRAIN },
+          uGrainTex: { value: grainTex },
         },
         vertexShader: postVertex,
         fragmentShader: postFragment,
         depthWrite: false,
         depthTest: false,
       }),
-    [],
+    [grainTex],
   );
 
   useEffect(() => {
-    const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+    // Fullscreen triangle avoids diagonal seam artifacts that can appear with 2-triangle quads.
+    const tri = new THREE.BufferGeometry();
+    tri.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(
+        [-1, -1, 0, 3, -1, 0, -1, 3, 0],
+        3,
+      ),
+    );
+    tri.setAttribute(
+      'uv',
+      new THREE.Float32BufferAttribute([0, 0, 2, 0, 0, 2], 2),
+    );
+    const quad = new THREE.Mesh(tri, material);
     postScene.add(quad);
     return () => {
       postScene.remove(quad);
@@ -129,65 +180,103 @@ export function PostFXPass({
     return () => {
       renderTarget.dispose();
       material.dispose();
+      grainTex.dispose();
     };
-  }, [material, renderTarget]);
+  }, [grainTex, material, renderTarget]);
+
+  const smoothFxRef = useRef({
+    vignette: POSTFX_DEFAULT_VIGNETTE,
+    chromatic: POSTFX_DEFAULT_CHROMATIC,
+    grain: POSTFX_DEFAULT_GRAIN,
+  });
+  const postReadyRef = useRef(false);
+  const postWarmupFramesRef = useRef(0);
+  const lastRtSizeRef = useRef({ w: 0, h: 0 });
 
   useFrame((_state, delta) => {
     const v = nodeMapRef.current;
-    if (!v || POST_FX_DISABLED) {
+    if (!v || POST_FX_DISABLED || !SHADER_DEBUG_FLAGS.postFx) {
       gl.setRenderTarget(null);
       gl.clear();
       gl.render(scene, camera);
       return;
     }
 
-    // Save and disable autoClear for manual multi-pass compositing.
-    const prevAutoClear = gl.autoClear;
-    const prevAutoClearColor = gl.autoClearColor;
-    const prevAutoClearDepth = gl.autoClearDepth;
-    const prevAutoClearStencil = gl.autoClearStencil;
-
-    // We manage clearing manually for multi-pass compositing.
-    gl.autoClear = false;
-    gl.autoClearColor = false;
-    gl.autoClearDepth = false;
-    gl.autoClearStencil = false;
+    const pixelRatio = Math.max(1, gl.getPixelRatio?.() ?? 1);
+    const expectedW = Math.max(1, Math.floor(size.width * pixelRatio));
+    const expectedH = Math.max(1, Math.floor(size.height * pixelRatio));
+    const rtW = (renderTarget as unknown as { width?: number }).width ?? 0;
+    const rtH = (renderTarget as unknown as { height?: number }).height ?? 0;
+    const sizeChanged =
+      expectedW !== lastRtSizeRef.current.w ||
+      expectedH !== lastRtSizeRef.current.h;
+    if (sizeChanged) {
+      lastRtSizeRef.current = { w: expectedW, h: expectedH };
+      postReadyRef.current = false;
+      postWarmupFramesRef.current = 0;
+    }
+    if (rtW !== expectedW || rtH !== expectedH) {
+      gl.setRenderTarget(null);
+      gl.clear();
+      gl.render(scene, camera);
+      return;
+    }
+    if (!postReadyRef.current) {
+      postWarmupFramesRef.current += 1;
+      if (postWarmupFramesRef.current < 3) {
+        gl.setRenderTarget(null);
+        gl.clear();
+        gl.render(scene, camera);
+        return;
+      }
+      postReadyRef.current = true;
+    }
 
     material.uniforms.uScene.value = renderTarget.texture;
     material.uniforms.uTime.value = _state.clock.getElapsedTime();
-    material.uniforms.uVignette.value = v.postFxVignette;
-    material.uniforms.uChromatic.value = v.postFxChromatic;
-    material.uniforms.uGrain.value = v.postFxGrain;
+
+    // Smooth post-FX over ~180ms to prevent step-change flash on mode flip
+    const kFx = 1.0 - Math.exp(-Math.max(0, delta) / POSTFX_SMOOTH_SECONDS);
+    let targetVignette = Math.max(POSTFX_MIN_VIGNETTE, v.postFxVignette);
+    let targetChromatic = Math.max(
+      POSTFX_DEFAULT_CHROMATIC,
+      v.postFxChromatic,
+    );
+    let targetGrain = Math.max(POSTFX_DEFAULT_GRAIN, v.postFxGrain);
+    smoothFxRef.current.vignette +=
+      (targetVignette - smoothFxRef.current.vignette) * kFx;
+    // Normalize chroma in pixel space so perceived strength is consistent across resolutions.
+    const minRes = Math.max(1, Math.min(expectedW, expectedH));
+    const chromaResolutionScale = THREE.MathUtils.clamp(
+      POSTFX_CHROMA_REF_MIN_RES / minRes,
+      0.65,
+      1.6,
+    );
+    const effectiveTargetChromatic = targetChromatic * chromaResolutionScale;
+    const effectiveTargetGrain = targetGrain;
+    smoothFxRef.current.chromatic +=
+      (effectiveTargetChromatic - smoothFxRef.current.chromatic) * kFx;
+    smoothFxRef.current.grain +=
+      (effectiveTargetGrain - smoothFxRef.current.grain) * kFx;
+    material.uniforms.uVignette.value = smoothFxRef.current.vignette;
+    material.uniforms.uChromatic.value = smoothFxRef.current.chromatic;
+    material.uniforms.uGrain.value = smoothFxRef.current.grain;
 
     const cam = camera as THREE.PerspectiveCamera;
     const prevLayers = cam.layers.mask;
 
-    // Pass A: render only background (layer 1) to renderTarget
-    cam.layers.set(BACKGROUND_LAYER);
+    // Pass A: render full scene into post target so chromatic/vignette/grain apply globally.
+    cam.layers.enableAll();
     gl.setRenderTarget(renderTarget);
     gl.clear();
     gl.render(scene, camera);
 
-    // Draw post-processed background to screen
+    // Draw post-processed image to screen.
     gl.setRenderTarget(null);
     gl.clear();
     gl.render(postScene, postCamera);
 
-    // Clear depth only so foreground composites over the already-drawn post quad.
-    gl.clearDepth();
-    gl.clear(false, true, false);
-
-    // Pass B: render foreground (layer 0) on top, no PostFX
-    cam.layers.set(0);
-    gl.render(scene, camera);
-
     cam.layers.mask = prevLayers;
-
-    // Restore renderer autoClear flags.
-    gl.autoClear = prevAutoClear;
-    gl.autoClearColor = prevAutoClearColor;
-    gl.autoClearDepth = prevAutoClearDepth;
-    gl.autoClearStencil = prevAutoClearStencil;
   }, 1);
 
   return null;

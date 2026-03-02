@@ -4,11 +4,12 @@
  * Plane 1 (base): broad gradient + vignette + low-freq noise. Plane 2 (detail): halftone + microgrid + speckle (screen feel).
  */
 
-import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
+import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { NodeMapEngineRef } from '../types';
 import { BACKGROUND_LAYER } from './PostFXPass';
+import { SHADER_DEBUG_FLAGS } from './shaderDebugFlags';
 
 const SEED = 12.9898;
 
@@ -87,13 +88,16 @@ float noise(vec2 p) {
 }
 
 void main() {
-  // Screen-space UV so the pattern does not stretch with plane scaling.
-  vec2 uv = gl_FragCoord.xy / max(uResolution, vec2(1.0));
-  float speckle = noise(uv * 60.0 + uNoisePhase * 0.6) - 0.5;
+  // Aspect-correct screen-space UV so halftone dots stay circular on non-square viewports.
+  vec2 res = max(uResolution, vec2(1.0));
+  vec2 uv = gl_FragCoord.xy / res;
+  float aspect = res.x / res.y;
+  vec2 uvIso = vec2(uv.x * aspect, uv.y);
+  float speckle = noise(uvIso * 60.0 + uNoisePhase * 0.6) - 0.5;
 
   float microgrid = 0.0;
   float gridFreq = 140.0;
-  vec2 g = fract(uv * gridFreq);
+  vec2 g = fract(uvIso * gridFreq);
   // Derivative-free AA approximation based on pixel size.
   float px = 1.0 / max(1.0, min(uResolution.x, uResolution.y));
   float aaX = px * gridFreq;
@@ -103,8 +107,8 @@ void main() {
   microgrid = clamp((lineX + lineY) * 0.35, 0.0, 1.0);
 
   // Halftone: AA circular dots in screen space.
-  float cell = (8.0 / max(0.25, uHalftoneScale)); // larger -> fewer dots
-  vec2 p = uv * cell + uNoisePhase * 0.15;
+  float cell = (72.0 / max(0.25, uHalftoneScale)); // larger -> more dots
+  vec2 p = uvIso * cell + uNoisePhase * 0.15;
   vec2 f = fract(p) - 0.5;
   float d = length(f);
   float dotR = 0.28;
@@ -172,6 +176,11 @@ export function PlaneLayerField({
   const tmpRight = useRef(new THREE.Vector3());
   const tmpUp = useRef(new THREE.Vector3());
   const tmpPos = useRef(new THREE.Vector3());
+  const bgInitializedRef = useRef(false);
+  const bgWarmupFramesRef = useRef(0);
+  const smoothIntensityRef = useRef(0.8);
+  const smoothThresholdRef = useRef(0.4);
+  const smoothScaleRef = useRef(1.0);
 
   const baseMatRef = useRef<THREE.ShaderMaterial | null>(null);
   const detailMatRef = useRef<THREE.ShaderMaterial | null>(null);
@@ -272,18 +281,26 @@ export function PlaneLayerField({
     mesh.visible = true;
   };
 
-  useFrame(state => {
+  useFrame((state, delta) => {
     const v = nodeMapRef.current;
     if (!v) return;
     const bp = v.scene?.backgroundPlanes;
     const show = v.vizIntensity !== 'off';
     if (!show) {
+      if (g1.current) g1.current.visible = false;
+      if (g2.current) g2.current.visible = false;
+      bgInitializedRef.current = false;
+      bgWarmupFramesRef.current = 0;
       if (baseMatRef.current) baseMatRef.current.uniforms.uIntensity.value = 0;
       if (detailMatRef.current)
         detailMatRef.current.uniforms.uIntensity.value = 0;
       return;
     }
     if (!bp) {
+      if (g1.current) g1.current.visible = false;
+      if (g2.current) g2.current.visible = false;
+      bgInitializedRef.current = false;
+      bgWarmupFramesRef.current = 0;
       if (baseMatRef.current) baseMatRef.current.uniforms.uOpacity.value = 0;
       if (detailMatRef.current)
         detailMatRef.current.uniforms.uOpacity.value = 0;
@@ -318,11 +335,23 @@ export function PlaneLayerField({
 
     const noisePhase = v.clock * 0.12;
     const isProcessing = v.currentMode === 'processing';
-    const intensityRamp = isProcessing
+    const targetIntensity = isProcessing
       ? 0.85 + v.activity * 0.15
       : 0.6 + v.activity * 0.25;
-    const halftoneThreshold = 0.38 + 0.08 * Math.sin(v.clock * 0.4);
-    const halftoneScale = 0.92 + 0.12 * Math.sin(v.clock * 0.28);
+    const targetThreshold = 0.38 + 0.08 * Math.sin(v.clock * 0.4);
+    const targetScale = 0.92 + 0.12 * Math.sin(v.clock * 0.28);
+
+    // ~200ms smoothing to prevent one-frame pops on mode change
+    const k = 1.0 - Math.exp(-Math.max(0, delta) / 0.2);
+    smoothIntensityRef.current +=
+      (targetIntensity - smoothIntensityRef.current) * k;
+    smoothThresholdRef.current +=
+      (targetThreshold - smoothThresholdRef.current) * k;
+    smoothScaleRef.current += (targetScale - smoothScaleRef.current) * k;
+
+    const intensityRamp = smoothIntensityRef.current;
+    const halftoneThreshold = smoothThresholdRef.current;
+    const halftoneScale = smoothScaleRef.current;
 
     if (baseMatRef.current) {
       baseMatRef.current.uniforms.uColor.value.set(
@@ -330,7 +359,8 @@ export function PlaneLayerField({
         colorRef.current.g,
         colorRef.current.b,
       );
-      baseMatRef.current.uniforms.uOpacity.value = n >= 1 ? opacity : 0;
+      baseMatRef.current.uniforms.uOpacity.value =
+        SHADER_DEBUG_FLAGS.backgroundBase && n >= 1 ? opacity : 0;
       baseMatRef.current.uniforms.uNoisePhase.value = noisePhase;
       baseMatRef.current.uniforms.uIntensity.value = n >= 1 ? intensityRamp : 0;
     }
@@ -341,7 +371,9 @@ export function PlaneLayerField({
         colorRef.current.b,
       );
       detailMatRef.current.uniforms.uOpacity.value =
-        n >= 2 ? opacity * (bp.opacitySecond / bp.opacityBase) : 0;
+        SHADER_DEBUG_FLAGS.backgroundDetail && n >= 2
+          ? opacity * (bp.opacitySecond / bp.opacityBase)
+          : 0;
       detailMatRef.current.uniforms.uNoisePhase.value = noisePhase;
       detailMatRef.current.uniforms.uIntensity.value =
         n >= 2 ? intensityRamp : 0;
@@ -352,37 +384,42 @@ export function PlaneLayerField({
 
     if (g1.current) {
       const d1 = 6.5;
-      const dx1 = Math.sin(v.clock * 0.3) * driftWorld;
-      const dy1 = Math.cos(v.clock * 0.27) * driftWorld;
       g1.current.position
         .copy(tmpCamPos.current)
-        .addScaledVector(tmpDir.current, d1)
-        .addScaledVector(tmpRight.current, dx1)
-        .addScaledVector(tmpUp.current, dy1);
-
+        .addScaledVector(tmpDir.current, d1);
       const view1 = getViewSizeAtPos(camera, g1.current.position, {
         width: viewportWidth,
         height: viewportHeight,
       });
-      g1.current.scale.set(view1.width * 1.02, view1.height * 1.02, 1);
+      g1.current.scale.set(view1.width * 1.22, view1.height * 1.22, 1);
       g1.current.quaternion.copy(camera.quaternion);
     }
     if (g2.current) {
       const d2 = 6.7;
-      const dx2 = Math.sin(v.clock * 0.35 + SEED) * driftWorld;
-      const dy2 = Math.cos(v.clock * 0.31 + SEED) * driftWorld;
       g2.current.position
         .copy(tmpCamPos.current)
-        .addScaledVector(tmpDir.current, d2)
-        .addScaledVector(tmpRight.current, dx2)
-        .addScaledVector(tmpUp.current, dy2);
-
+        .addScaledVector(tmpDir.current, d2);
       const view2 = getViewSizeAtPos(camera, g2.current.position, {
         width: viewportWidth,
         height: viewportHeight,
       });
-      g2.current.scale.set(view2.width * 1.05, view2.height * 1.05, 1);
+      g2.current.scale.set(view2.width * 1.6, view2.height * 1.6, 1);
       g2.current.quaternion.copy(camera.quaternion);
+    }
+
+    // Prevent one-frame flash of default mesh transform on mount/refresh.
+    // Require two stable frames before revealing planes.
+    if (!bgInitializedRef.current) {
+      bgWarmupFramesRef.current += 1;
+      if (bgWarmupFramesRef.current >= 2) {
+        bgInitializedRef.current = true;
+        if (g1.current) g1.current.visible = SHADER_DEBUG_FLAGS.backgroundBase;
+        if (g2.current)
+          g2.current.visible = SHADER_DEBUG_FLAGS.backgroundDetail;
+      } else {
+        if (g1.current) g1.current.visible = false;
+        if (g2.current) g2.current.visible = false;
+      }
     }
 
     const panelOpacity = opacity * 0.48;
@@ -443,7 +480,7 @@ export function PlaneLayerField({
       camera,
       6.35,
     );
-  });
+  }, 10);
 
   const bp = nodeMapRef.current?.scene?.backgroundPlanes;
   if (!bp) {
@@ -463,6 +500,7 @@ export function PlaneLayerField({
         ref={g1}
         position={[0, 0, 0]}
         scale={[1, 1, 1]}
+        visible={false}
         layers={BACKGROUND_LAYER}
         frustumCulled={false}
         renderOrder={-100}
@@ -474,6 +512,7 @@ export function PlaneLayerField({
         ref={g2}
         position={[0, 0, 0]}
         scale={[1, 1, 1]}
+        visible={false}
         layers={BACKGROUND_LAYER}
         frustumCulled={false}
         renderOrder={-99}
