@@ -4,7 +4,7 @@
  * Same envelope convention as TouchZones (active region NDC, centerY = 0 = center of active region).
  */
 
-import { useFrame } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber/native';
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import type { CanonicalSpineMode } from '../helpers/formations/spine';

@@ -3,7 +3,7 @@
  * camera-facing placement only; all layout and style from nodeMapRef.current.scene.
  */
 
-import { useFrame } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber/native';
 import { useRef } from 'react';
 import * as THREE from 'three';
 import type { NodeMapEngineRef } from '../types';

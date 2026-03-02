@@ -1,10 +1,13 @@
+import { useFrame, useThree } from '@react-three/fiber/native';
 import { useEffect, useMemo } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { NodeMapEngineRef } from '../types';
 
-/** Set to false to re-enable vignette / grain / chromatic. */
-const POST_FX_DISABLED = true;
+/** Set to false to re-enable vignette / grain / chromatic (cinematic). */
+const POST_FX_DISABLED = false;
+
+/** Layer index for background-only pass (vignette/grain). Foreground stays on layer 0. */
+export const BACKGROUND_LAYER = 1;
 
 const postVertex = `
   varying vec2 vUv;
@@ -15,7 +18,12 @@ const postVertex = `
 `;
 
 const postFragment = `
+  #ifdef GL_FRAGMENT_PRECISION_HIGH
   precision highp float;
+  #else
+  precision mediump float;
+  #endif
+
   varying vec2 vUv;
   uniform sampler2D uScene;
   uniform vec2 uResolution;
@@ -31,6 +39,8 @@ const postFragment = `
   void main() {
     vec2 centered = vUv - 0.5;
     float r2 = dot(centered, centered);
+
+    // Chromatic offset: subtle radial CA.
     vec2 dir = normalize(centered + vec2(1e-6, 0.0));
     vec2 ca = dir * uChromatic * (0.35 + r2 * 0.85);
 
@@ -39,10 +49,15 @@ const postFragment = `
     float sceneB = texture2D(uScene, clamp(vUv - ca, 0.0, 1.0)).b;
     vec3 col = vec3(sceneR, sceneG, sceneB);
 
-    float vig = smoothstep(0.95, 0.2, r2);
+    // Vignette: r2 is 0 at center, ~0.5 at corners.
+    // ramp = 0 at center -> 1 at edges.
+    float ramp = smoothstep(0.10, 0.55, r2);
+    float vig = 1.0 - ramp;
     col *= mix(1.0, vig, clamp(uVignette, 0.0, 1.0));
 
-    float n = hash(vUv * uResolution.xy + uTime * 61.7) - 0.5;
+    // Grain: stable per-frame to avoid shimmer/flicker on mobile.
+    float frame = floor(uTime * 60.0);
+    float n = hash(vUv * uResolution.xy + frame * 19.19) - 0.5;
     col += n * uGrain;
 
     gl_FragColor = vec4(col, 1.0);
@@ -107,10 +122,7 @@ export function PostFXPass({
     const w = Math.max(1, Math.floor(size.width * pixelRatio));
     const h = Math.max(1, Math.floor(size.height * pixelRatio));
     renderTarget.setSize(w, h);
-    material.uniforms.uResolution.value.set(
-      w,
-      h,
-    );
+    material.uniforms.uResolution.value.set(w, h);
   }, [gl, material, renderTarget, size.width, size.height]);
 
   useEffect(() => {
@@ -120,7 +132,7 @@ export function PostFXPass({
     };
   }, [material, renderTarget]);
 
-  useFrame((state, delta) => {
+  useFrame((_state, delta) => {
     const v = nodeMapRef.current;
     if (!v || POST_FX_DISABLED) {
       gl.setRenderTarget(null);
@@ -129,18 +141,53 @@ export function PostFXPass({
       return;
     }
 
+    // Save and disable autoClear for manual multi-pass compositing.
+    const prevAutoClear = gl.autoClear;
+    const prevAutoClearColor = gl.autoClearColor;
+    const prevAutoClearDepth = gl.autoClearDepth;
+    const prevAutoClearStencil = gl.autoClearStencil;
+
+    // We manage clearing manually for multi-pass compositing.
+    gl.autoClear = false;
+    gl.autoClearColor = false;
+    gl.autoClearDepth = false;
+    gl.autoClearStencil = false;
+
     material.uniforms.uScene.value = renderTarget.texture;
-    material.uniforms.uTime.value += delta;
+    material.uniforms.uTime.value = _state.clock.getElapsedTime();
     material.uniforms.uVignette.value = v.postFxVignette;
     material.uniforms.uChromatic.value = v.postFxChromatic;
     material.uniforms.uGrain.value = v.postFxGrain;
 
+    const cam = camera as THREE.PerspectiveCamera;
+    const prevLayers = cam.layers.mask;
+
+    // Pass A: render only background (layer 1) to renderTarget
+    cam.layers.set(BACKGROUND_LAYER);
     gl.setRenderTarget(renderTarget);
     gl.clear();
     gl.render(scene, camera);
+
+    // Draw post-processed background to screen
     gl.setRenderTarget(null);
     gl.clear();
     gl.render(postScene, postCamera);
+
+    // Clear depth only so foreground composites over the already-drawn post quad.
+    gl.clearDepth();
+    gl.clear(false, true, false);
+
+    // Pass B: render foreground (layer 0) on top, no PostFX
+    cam.layers.set(0);
+    gl.render(scene, camera);
+
+    cam.layers.mask = prevLayers;
+
+    // Restore renderer autoClear flags.
+    gl.autoClear = prevAutoClear;
+    gl.autoClearColor = prevAutoClearColor;
+    gl.autoClearDepth = prevAutoClearDepth;
+    gl.autoClearStencil = prevAutoClearStencil;
   }, 1);
 
   return null;

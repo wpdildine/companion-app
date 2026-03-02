@@ -3,7 +3,7 @@
  * triggers pulse at 3D intersection (reference: triggerPulse(clientX, clientY)).
  */
 
-import { useFrame, useThree } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { useRef } from 'react';
 import type { NodeMapEngineRef } from '../types';

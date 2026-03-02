@@ -2,7 +2,7 @@
  * Positions camera from orbit angles (drag-to-explore). Reference: OrbitControls.
  */
 
-import { useFrame, useThree } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber/native';
 import { useRef } from 'react';
 import type { NodeMapEngineRef } from '../types';
 

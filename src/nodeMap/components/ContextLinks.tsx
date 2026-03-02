@@ -4,7 +4,7 @@
  */
 
 import { useMemo, useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { connectionVertex, connectionFragment } from '../shaders/connections';
 import type { NodeMapEngineRef } from '../types';

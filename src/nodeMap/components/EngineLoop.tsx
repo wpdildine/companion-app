@@ -5,7 +5,7 @@
  */
 
 import { useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import type { NodeMapEngineRef } from '../types';
 import { getPulseColorWithHue } from '../helpers/getPulseColor';
