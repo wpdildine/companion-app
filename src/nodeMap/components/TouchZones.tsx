@@ -90,7 +90,7 @@ export function TouchZones({
       );
       const m = rulesAreaRef.current.material as THREE.MeshBasicMaterial;
       m.color.set(style.rulesColor);
-      m.opacity = style.areaBaseOpacity;
+      m.opacity = style.areaPlaneOpacityRules;
       if (rulesAreaEdgesRef.current) {
         rulesAreaEdgesRef.current.position.copy(rulesAreaRef.current.position);
         rulesAreaEdgesRef.current.scale.copy(rulesAreaRef.current.scale);
@@ -105,7 +105,7 @@ export function TouchZones({
       centerAreaRef.current.position.set(0, centerY, 0);
       const m = centerAreaRef.current.material as THREE.MeshBasicMaterial;
       m.color.set(style.centerColor);
-      m.opacity = style.centerAreaOpacity;
+      m.opacity = style.areaPlaneOpacityCenter;
       if (centerAreaEdgesRef.current) {
         centerAreaEdgesRef.current.position.copy(centerAreaRef.current.position);
         centerAreaEdgesRef.current.scale.copy(centerAreaRef.current.scale);
@@ -124,7 +124,7 @@ export function TouchZones({
       );
       const m = cardsAreaRef.current.material as THREE.MeshBasicMaterial;
       m.color.set(style.cardsColor);
-      m.opacity = style.areaBaseOpacity;
+      m.opacity = style.areaPlaneOpacityCards;
       if (cardsAreaEdgesRef.current) {
         cardsAreaEdgesRef.current.position.copy(cardsAreaRef.current.position);
         cardsAreaEdgesRef.current.scale.copy(cardsAreaRef.current.scale);

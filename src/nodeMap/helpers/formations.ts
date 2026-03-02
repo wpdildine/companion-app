@@ -125,6 +125,10 @@ export function buildCrystallineSphere(
   return { nodes, edges };
 }
 
+/**
+ * Fixed cluster size: buildClusterNodesFromParams and buildLinkEdges use this; scene.maxPerCluster exposes it for glyph visibility and validation.
+ * Making max-per-cluster dynamic is a deliberate future change: it must update cluster node generation, link topology, scene.maxPerCluster, and any consumer logic—do not change scene.maxPerCluster alone.
+ */
 const MAX_PER_CLUSTER = 8;
 
 /** Cluster node: used by ContextGlyphs and ContextLinks; single source in scene.clusters.nodes */
@@ -252,8 +256,6 @@ export type GLSceneZonesStyle = {
   rulesColor: string;
   cardsColor: string;
   centerColor: string;
-  areaBaseOpacity: number;
-  centerAreaOpacity: number;
   areaPlaneOpacityRules: number;
   areaPlaneOpacityCenter: number;
   areaPlaneOpacityCards: number;
@@ -295,6 +297,7 @@ export type GLSceneLinkEdge = {
 
 export type GLSceneLinks = {
   edges: GLSceneLinkEdge[];
+  /** Must be >= 1. Zero means "no links" and is not a valid draw value. */
   segmentsPerEdge: number;
 };
 
@@ -366,7 +369,7 @@ function hexToRgb(hex: string): [number, number, number] {
 
 /**
  * Single source of truth for GL scene: zones, clusters (nodes + colors), links, pulse anchors, background planes.
- * Recomputed only when paletteId or vizIntensityProfile changes; stored on nodeMapRef.current.scene.
+ * Computed on each call; store the result on nodeMapRef.current.scene. _options is reserved for future use (e.g. paletteId, vizIntensityProfile).
  */
 export function getSceneDescription(
   _options?: GetSceneDescriptionOptions,
@@ -375,8 +378,6 @@ export function getSceneDescription(
     rulesColor: '#ffffff',
     cardsColor: '#2659d9',
     centerColor: '#bfc7e0',
-    areaBaseOpacity: 0.36,
-    centerAreaOpacity: 0.2,
     areaPlaneOpacityRules: 0.12,
     areaPlaneOpacityCenter: 0.035,
     areaPlaneOpacityCards: 0.12,

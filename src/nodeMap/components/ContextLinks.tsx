@@ -35,41 +35,58 @@ function sampleBezier(
 const EMPTY_NODES: { position: [number, number, number]; color: [number, number, number]; clusterId: number }[] = [];
 const EMPTY_EDGES: { a: number; b: number; strength: number; pathIndex: number }[] = [];
 
-export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeMapEngineRef | null> }) {
-  const scene = nodeMapRef.current?.scene;
-  const nodes = scene?.clusters?.nodes ?? EMPTY_NODES;
-  const edges = scene?.links?.edges ?? EMPTY_EDGES;
-  const segmentsPerEdge = scene?.links?.segmentsPerEdge ?? 12;
+const EMPTY_BUFFERS = {
+  positions: new Float32Array(0),
+  tArr: new Float32Array(0),
+  startPoints: new Float32Array(0),
+  endPoints: new Float32Array(0),
+  strengths: new Float32Array(0),
+  pathIndices: new Float32Array(0),
+  colors: new Float32Array(0),
+  vertexCount: 0,
+  edgesLength: 0,
+  segmentsPerEdge: 0,
+};
 
+export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeMapEngineRef | null> }) {
   const meshRef = useRef<THREE.LineSegments>(null);
-  const { positions, tArr, startPoints, endPoints, strengths, pathIndices, colors, vertexCount } = useMemo(() => {
-    if (!nodes.length || !edges.length) {
-      return {
-        positions: new Float32Array(0),
-        tArr: new Float32Array(0),
-        startPoints: new Float32Array(0),
-        endPoints: new Float32Array(0),
-        strengths: new Float32Array(0),
-        pathIndices: new Float32Array(0),
-        colors: new Float32Array(0),
-        vertexCount: 0,
-      };
+
+  const gate = useMemo(() => {
+    const scene = nodeMapRef.current?.scene;
+    const links = scene?.links;
+    const valid =
+      !!(
+        scene &&
+        links &&
+        typeof links.segmentsPerEdge === 'number' &&
+        links.segmentsPerEdge >= 1
+      );
+    const nodes = valid ? (scene!.clusters?.nodes ?? EMPTY_NODES) : EMPTY_NODES;
+    const edges = valid ? (links!.edges ?? EMPTY_EDGES) : EMPTY_EDGES;
+    const segmentsPerEdge = valid ? links!.segmentsPerEdge : 0;
+    return { valid, nodes, edges, segmentsPerEdge };
+  }, [nodeMapRef.current?.scene]); // eslint-disable-line react-hooks/exhaustive-deps -- gate reads ref at run time; scene set by parent then re-render
+
+  const { positions, tArr, startPoints, endPoints, strengths, pathIndices, colors, vertexCount, edgesLength, segmentsPerEdge } = useMemo(() => {
+    if (!gate.valid || !gate.nodes.length || !gate.edges.length) {
+      return EMPTY_BUFFERS;
     }
-    const vertexCount = edges.length * (segmentsPerEdge + 1);
-    const positions = new Float32Array(vertexCount * 3);
-    const tArr = new Float32Array(vertexCount);
-    const startPoints = new Float32Array(vertexCount * 3);
-    const endPoints = new Float32Array(vertexCount * 3);
-    const strengths = new Float32Array(vertexCount);
-    const pathIndices = new Float32Array(vertexCount);
-    const colors = new Float32Array(vertexCount * 3);
+    const { nodes, edges, segmentsPerEdge: seg } = gate;
+    const vCount = edges.length * (seg + 1);
+    const positions = new Float32Array(vCount * 3);
+    const tArr = new Float32Array(vCount);
+    const startPoints = new Float32Array(vCount * 3);
+    const endPoints = new Float32Array(vCount * 3);
+    const strengths = new Float32Array(vCount);
+    const pathIndices = new Float32Array(vCount);
+    const colors = new Float32Array(vCount * 3);
     let idx = 0;
     for (const edge of edges) {
       const start = nodes[edge.a].position;
       const end = nodes[edge.b].position;
       const color = nodes[edge.a].color;
-      for (let i = 0; i <= segmentsPerEdge; i++) {
-        const t = i / segmentsPerEdge;
+      for (let i = 0; i <= seg; i++) {
+        const t = i / seg;
         const p = sampleBezier(start, end, edge.pathIndex, t);
         positions[idx * 3] = p[0];
         positions[idx * 3 + 1] = p[1];
@@ -97,9 +114,11 @@ export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeM
       strengths,
       pathIndices,
       colors,
-      vertexCount,
+      vertexCount: vCount,
+      edgesLength: edges.length,
+      segmentsPerEdge: seg,
     };
-  }, [nodes, edges, segmentsPerEdge]);
+  }, [gate]);
 
   const uniforms = useMemo(
     () => ({
@@ -164,7 +183,7 @@ export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeM
       (() => {
         const indices: number[] = [];
         let v = 0;
-        for (let e = 0; e < edges.length; e++) {
+        for (let e = 0; e < edgesLength; e++) {
           for (let i = 0; i < segmentsPerEdge; i++) {
             indices.push(v, v + 1);
             v++;
@@ -175,7 +194,16 @@ export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeM
       })(),
     );
     return g;
-  }, [positions, tArr, startPoints, endPoints, strengths, pathIndices, colors, edges, segmentsPerEdge]);
+  }, [positions, tArr, startPoints, endPoints, strengths, pathIndices, colors, edgesLength, segmentsPerEdge]);
+
+  if (!gate.valid) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error(
+        '[ContextLinks] nodeMapRef.current.scene or scene.links is missing, or scene.links.segmentsPerEdge < 1. Set nodeMapRef.current.scene = getSceneDescription() in the screen that mounts the viz.',
+      );
+    }
+    return null;
+  }
 
   const v = nodeMapRef.current;
   const confidence = v?.signalsSnapshot?.confidence ?? 1;

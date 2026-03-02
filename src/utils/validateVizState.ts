@@ -1,9 +1,13 @@
 /**
  * Validate VizEngineRef shape and ranges. Pure; no React/theme.
  * Use in __DEV__ or tests.
+ * Cluster counts (rulesClusterCount, cardsClusterCount) are validated against options.maxPerCluster (default 8).
+ * Usage: when validating state and scene is available, pass { maxPerCluster: scene.maxPerCluster } so validation matches the scene contract.
  */
 
 import type { NodeMapMode, NodeMapIntensity } from '../nodeMap/types';
+
+const DEFAULT_MAX_PER_CLUSTER = 8;
 
 const NODE_MAP_MODES: NodeMapMode[] = [
   'idle',
@@ -24,9 +28,18 @@ function inRange(x: number, min: number, max: number): boolean {
   return typeof x === 'number' && !Number.isNaN(x) && x >= min && x <= max;
 }
 
-export function validateVizState(state: unknown): ValidationResult {
+export type ValidateVizStateOptions = {
+  /** Max count per cluster (rules/cards). Default 8. Pass scene.maxPerCluster to align with scene. */
+  maxPerCluster?: number;
+};
+
+export function validateVizState(
+  state: unknown,
+  options?: ValidateVizStateOptions,
+): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const maxPerCluster = options?.maxPerCluster ?? DEFAULT_MAX_PER_CLUSTER;
 
   if (!state || typeof state !== 'object') {
     return { valid: false, errors: ['state must be an object'], warnings: [] };
@@ -95,16 +108,16 @@ export function validateVizState(state: unknown): ValidationResult {
   if (
     typeof s.rulesClusterCount !== 'number' ||
     s.rulesClusterCount < 0 ||
-    s.rulesClusterCount > 8
+    s.rulesClusterCount > maxPerCluster
   ) {
-    errors.push('rulesClusterCount must be 0..8');
+    errors.push(`rulesClusterCount must be 0..${maxPerCluster}`);
   }
   if (
     typeof s.cardsClusterCount !== 'number' ||
     s.cardsClusterCount < 0 ||
-    s.cardsClusterCount > 8
+    s.cardsClusterCount > maxPerCluster
   ) {
-    errors.push('cardsClusterCount must be 0..8');
+    errors.push(`cardsClusterCount must be 0..${maxPerCluster}`);
   }
   if (
     typeof s.layerCount !== 'number' ||
