@@ -11,8 +11,6 @@ import type { NodeMapEngineRef } from '../types';
 import { BACKGROUND_LAYER } from './PostFXPass';
 import { SHADER_DEBUG_FLAGS } from './shaderDebugFlags';
 
-const SEED = 12.9898;
-
 // ---- Plane 1: base (gradient + vignette + low-freq noise) ----
 const BASE_PLANE_VERTEX = `
 varying vec2 vUv;
