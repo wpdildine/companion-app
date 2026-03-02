@@ -1520,7 +1520,7 @@ export default function VoiceScreen() {
       <NodeMapInteractionBand
         nodeMapRef={nodeMapRef}
         onClusterTap={handleClusterTap}
-        enabled={!debugEnabled && !anyPanelVisible}
+        enabled={!debugEnabled && !anyPanelVisible && mode !== 'processing'}
       />
       <DebugZoneOverlay panelRects={panelRectsForDebug} visible={debugShowZones} />
       {debugEnabled && (

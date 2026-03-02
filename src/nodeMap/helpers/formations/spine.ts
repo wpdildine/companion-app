@@ -54,6 +54,8 @@ export type GLSceneSpineStyle = {
   color: string;
   opacity: number;
   blend?: 'additive' | 'normal';
+  /** Camera-facing overlay distance from camera in world units. */
+  overlayDistance: number;
   zStep: number;
   /** Relative horizontal offsets by plane index (length must equal planeCount). */
   planeOffsetX: number[];
@@ -63,6 +65,16 @@ export type GLSceneSpineStyle = {
   planeOpacityScale: number[];
   /** Gap between planes as a fraction of plane height. */
   planeGap: number;
+  /** Per-mode micro drift amplitudes in world-space envelope fractions. */
+  driftAmpX: number;
+  driftAmpY: number;
+  /** Drift frequency in Hz-like scalar. */
+  driftHz: number;
+  /** Extra width multiplier in processing to express overflow intent. */
+  processingOverflowBoost: number;
+  /** Edge-band overlay style (halftone carrier). */
+  edgeBandWidth: number;
+  edgeOpacity: number;
 };
 
 export type GLSceneSpine = {
@@ -127,11 +139,18 @@ export function buildSpineDescription(): GLSceneSpine {
       color: '#b7d2ff',
       opacity: 0.22,
       blend: 'additive',
+      overlayDistance: 10,
       zStep: 0.012,
       planeOffsetX: [-0.018, 0.010, 0.0, -0.008, 0.016],
       planeWidthScale: [0.88, 0.96, 1.06, 0.94, 0.86],
       planeOpacityScale: [0.78, 0.88, 1.0, 0.86, 0.74],
       planeGap: 0.22,
+      driftAmpX: 0.012,
+      driftAmpY: 0.008,
+      driftHz: 0.12,
+      processingOverflowBoost: 1.08,
+      edgeBandWidth: 0.16,
+      edgeOpacity: 0.2,
     },
     transitionMsIn: 220,
     transitionMsOut: 280,

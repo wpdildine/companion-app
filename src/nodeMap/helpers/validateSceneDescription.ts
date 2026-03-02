@@ -54,6 +54,28 @@ export function validateSceneDescription(
     }
     return false;
   }
+  const numericStyleValid =
+    typeof style.overlayDistance === 'number' &&
+    style.overlayDistance > 0 &&
+    typeof style.zStep === 'number' &&
+    typeof style.planeGap === 'number' &&
+    typeof style.driftAmpX === 'number' &&
+    typeof style.driftAmpY === 'number' &&
+    typeof style.driftHz === 'number' &&
+    typeof style.processingOverflowBoost === 'number' &&
+    style.processingOverflowBoost >= 1 &&
+    typeof style.edgeBandWidth === 'number' &&
+    style.edgeBandWidth > 0 &&
+    style.edgeBandWidth < 0.5 &&
+    typeof style.edgeOpacity === 'number';
+  if (!numericStyleValid) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error(
+        '[validateSceneDescription] scene.spine.style numeric fields are missing or invalid.',
+      );
+    }
+    return false;
+  }
   for (const key of CANONICAL_KEYS) {
     if (!spine.spreadProfiles[key] || !spine.halftoneProfiles[key]) {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {

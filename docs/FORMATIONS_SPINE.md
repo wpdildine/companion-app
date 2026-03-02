@@ -256,6 +256,8 @@ If the scene is missing, components should **dev-error and return null** (no sil
 - `nodeMapRef.current.scene` is set by the screen mounting the viz (e.g. VoiceScreen) via `getSceneDescription()`.
 - TouchZones is a debug affordance renderer and should remain **stylistically neutral** beyond faithfully rendering scene style.
 - **Spine:** Scene spine is **envelopeNdc** (viewport-relative). Same convention as TouchZones: vertical axis = active region (below bandTopInsetPx); **centerY = 0** = center of that active region (centerY is in active-region NDC, not full viewport NDC). **scene.spine.style** (color, opacity, blend, zStep) and **scene.spine.transitionMsIn / transitionMsOut / easing** supply all renderer inputs so the spine component defines no local constants or timing. **Profiles** are canonical-only (`idle`, `listening`, `processing`, `speaking`); the renderer maps non-canonical modes (e.g. touched, released) to a canonical state before indexing.
+- **Spine style contract (implemented):** `scene.spine.style` now also carries `overlayDistance`, per-plane arrays (`planeOffsetX`, `planeWidthScale`, `planeOpacityScale`), `planeGap`, drift knobs (`driftAmpX`, `driftAmpY`, `driftHz`), processing overflow intent (`processingOverflowBoost`), and edge-band halftone carrier settings (`edgeBandWidth`, `edgeOpacity`). Renderer reads these values only; no local styling constants.
+- **Processing interaction semantics (implemented):** `NodeMapInteractionBand` is disabled while app mode is `processing`, matching “machine-owned time” behavior.
 
 ---
 
