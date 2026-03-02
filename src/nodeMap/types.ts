@@ -117,6 +117,8 @@ export interface NodeMapEngineRef {
   scene?: GLSceneDescription;
   /** Zone currently under touch (for armed state). Set by interaction band. */
   zoneArmed: 'rules' | 'cards' | null;
+  /** Show touch zone debug meshes (rules/center/cards). Default off; toggle in Dev panel. */
+  showTouchZones: boolean;
 }
 
 const SENTINEL_FAR = 1e6;
@@ -178,6 +180,7 @@ export function createDefaultNodeMapRef(): NodeMapEngineRef {
     touchFieldStrength: 0,
     scene: undefined,
     zoneArmed: null,
+    showTouchZones: false,
   };
 }
 

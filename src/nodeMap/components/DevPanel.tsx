@@ -36,6 +36,10 @@ const APP_STATES: NodeMapMode[] = [
   'released',
 ];
 
+/** Canonical modes only — for spine validation (Cycle canonical). Temporary: remove when done. */
+const CANONICAL_MODES: NodeMapMode[] = ['idle', 'listening', 'processing', 'speaking'];
+const CANONICAL_CYCLE_MS = 2500;
+
 export function DevPanel({
   nodeMapRef,
   onClose,
@@ -47,8 +51,11 @@ export function DevPanel({
 }) {
   const [, setUiVersion] = useState(0);
   const [stateCycleOn, setStateCycleOn] = useState(false);
+  const [canonicalCycleOn, setCanonicalCycleOn] = useState(false);
   const stateCycleTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const canonicalCycleTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const stateIdx = useRef(0);
+  const canonicalIdx = useRef(0);
 
   const textColor = theme.text;
   const muted = theme.textMuted;
@@ -123,6 +130,7 @@ export function DevPanel({
   const applyState = useCallback(
     (state: NodeMapMode) => {
       withViz(viz => {
+        viz.currentMode = state;
         viz.targetActivity = TARGET_ACTIVITY_BY_MODE[state];
         if (state === 'touched') {
           viz.touchActive = true;
@@ -163,6 +171,26 @@ export function DevPanel({
       }
     };
   }, [stateCycleOn, applyState]);
+
+  // Spine validation – remove when done. Cycle canonical modes only, 2.5s each.
+  useEffect(() => {
+    if (canonicalCycleOn) {
+      canonicalCycleTimer.current = setInterval(() => {
+        const mode = CANONICAL_MODES[canonicalIdx.current % CANONICAL_MODES.length]!;
+        applyState(mode);
+        canonicalIdx.current = (canonicalIdx.current + 1) % CANONICAL_MODES.length;
+      }, CANONICAL_CYCLE_MS);
+    } else if (canonicalCycleTimer.current) {
+      clearInterval(canonicalCycleTimer.current);
+      canonicalCycleTimer.current = null;
+    }
+    return () => {
+      if (canonicalCycleTimer.current) {
+        clearInterval(canonicalCycleTimer.current);
+        canonicalCycleTimer.current = null;
+      }
+    };
+  }, [canonicalCycleOn, applyState]);
 
   const v = nodeMapRef.current;
   if (!v) return null;
@@ -220,12 +248,30 @@ export function DevPanel({
           >
             <Text style={{ color: textColor }}>Debug pulses</Text>
           </Pressable>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>Touch zone meshes</Text>
+            <Pressable
+              onPress={() => {
+                withViz(viz => {
+                  viz.showTouchZones = !viz.showTouchZones;
+                });
+              }}
+            >
+              <Text style={{ color: muted }}>{v.showTouchZones ? 'ON' : 'OFF'}</Text>
+            </Pressable>
+          </View>
 
           <Text style={[styles.section, { color: muted }]}>State tests</Text>
           <View style={styles.row}>
             <Text style={{ color: textColor }}>Cycle all states</Text>
             <Pressable onPress={toggleStateCycle}>
               <Text style={{ color: muted }}>{stateCycleOn ? 'ON' : 'OFF'}</Text>
+            </Pressable>
+          </View>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>Cycle canonical (spine)</Text>
+            <Pressable onPress={() => { setCanonicalCycleOn(c => !c); setUiVersion(v => v + 1); }}>
+              <Text style={{ color: muted }}>{canonicalCycleOn ? 'ON' : 'OFF'}</Text>
             </Pressable>
           </View>
           {APP_STATES.map(state => (

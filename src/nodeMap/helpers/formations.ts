@@ -319,6 +319,8 @@ export type GLSceneBackgroundPlanes = {
   lum: number;
 };
 
+export type { GLSceneSpine } from './formations/spine';
+
 export type GLSceneDescription = {
   zones: {
     layout: GLSceneZonesLayout;
@@ -333,6 +335,7 @@ export type GLSceneDescription = {
   clusters: GLSceneClusters;
   links: GLSceneLinks;
   backgroundPlanes: GLSceneBackgroundPlanes;
+  spine: GLSceneSpine;
 };
 
 export type GetSceneDescriptionOptions = {
@@ -375,8 +378,10 @@ function hexToRgb(hex: string): [number, number, number] {
   ];
 }
 
+import { buildSpineDescription, type GLSceneSpine } from './formations/spine';
+
 /**
- * Single source of truth for GL scene: zones, clusters (nodes + colors), links, pulse anchors, background planes.
+ * Single source of truth for GL scene: zones, clusters (nodes + colors), links, pulse anchors, background planes, spine.
  * Computed on each call; store the result on nodeMapRef.current.scene. _options is reserved for future use (e.g. paletteId, vizIntensityProfile).
  */
 export function getSceneDescription(
@@ -461,5 +466,6 @@ export function getSceneDescription(
       sat: 0.45,
       lum: 0.55,
     },
+    spine: buildSpineDescription(),
   };
 }

@@ -16,10 +16,11 @@ import {
 import { TouchRaycaster } from '../interaction/TouchRaycaster';
 import type { NodeMapEngineRef } from '../types';
 import { CameraOrbit } from './CameraOrbit';
-import { TouchZones } from './TouchZones';
 import { ContextGlyphs } from './ContextGlyphs';
-import { PlaneLayerField } from './PlaneLayerField';
 import { ContextLinks } from './ContextLinks';
+import { PlaneLayerField } from './PlaneLayerField';
+import { Spine } from './Spine';
+import { TouchZones } from './TouchZones';
 import { EngineLoop } from './EngineLoop';
 import { PostFXPass } from './PostFXPass';
 
@@ -47,7 +48,6 @@ export function NodeMapCanvasR3F({
   controlsEnabled,
   inputEnabled,
   canvasBackground = DEFAULT_CANVAS_BACKGROUND,
-  clusterZoneHighlights = false,
   onShortTap,
   onDoubleTap,
   onLongPressStart,
@@ -212,15 +212,13 @@ export function NodeMapCanvasR3F({
       >
         <color attach="background" args={[canvasBackground]} />
         <PlaneLayerField nodeMapRef={nodeMapRef} />
+        <Spine nodeMapRef={nodeMapRef} />
         <EngineLoop nodeMapRef={nodeMapRef} />
         <TouchRaycaster nodeMapRef={nodeMapRef} />
         <CameraOrbit nodeMapRef={nodeMapRef} />
-        <TouchZones
-          nodeMapRef={nodeMapRef}
-          highlighted={clusterZoneHighlights}
-        />
-        <ContextGlyphs nodeMapRef={nodeMapRef} />
         <ContextLinks nodeMapRef={nodeMapRef} />
+        <ContextGlyphs nodeMapRef={nodeMapRef} />
+        <TouchZones nodeMapRef={nodeMapRef} />
         <PostFXPass nodeMapRef={nodeMapRef} />
       </Canvas>
     </View>

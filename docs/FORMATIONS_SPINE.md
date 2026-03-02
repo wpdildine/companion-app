@@ -255,10 +255,11 @@ If the scene is missing, components should **dev-error and return null** (no sil
 
 - `nodeMapRef.current.scene` is set by the screen mounting the viz (e.g. VoiceScreen) via `getSceneDescription()`.
 - TouchZones is a debug affordance renderer and should remain **stylistically neutral** beyond faithfully rendering scene style.
+- **Spine:** Scene spine is **envelopeNdc** (viewport-relative). Same convention as TouchZones: vertical axis = active region (below bandTopInsetPx); **centerY = 0** = center of that active region (centerY is in active-region NDC, not full viewport NDC). **scene.spine.style** (color, opacity, blend, zStep) and **scene.spine.transitionMsIn / transitionMsOut / easing** supply all renderer inputs so the spine component defines no local constants or timing. **Profiles** are canonical-only (`idle`, `listening`, `processing`, `speaking`); the renderer maps non-canonical modes (e.g. touched, released) to a canonical state before indexing.
 
 ---
 
 ## Next steps (future work)
 
-- Add explicit spine parameters to `GLSceneDescription` (e.g. `spine: { planeCount, envelope, spreadProfiles, halftoneProfiles }`) and drive the new spine component purely from scene.
-- Implement the Modern–Decon spine renderer that consumes those parameters (this doc is the contract).
+- Halftone on band edges (shader/visual); spine types and halftoneProfiles already in scene.
+- Processing overflow / touch off when mode is processing (already specified in state grammar).

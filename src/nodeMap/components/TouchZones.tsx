@@ -8,15 +8,14 @@ import { useRef } from 'react';
 import * as THREE from 'three';
 import type { NodeMapEngineRef } from '../types';
 
-const planeEdgesGeometry = new THREE.EdgesGeometry(new THREE.PlaneGeometry(1, 1));
-const OVERLAY_DISTANCE = 10;
+const planeEdgesGeometry = new THREE.EdgesGeometry(
+  new THREE.PlaneGeometry(1, 1),
+);
 
 export function TouchZones({
   nodeMapRef,
-  highlighted = false,
 }: {
   nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
-  highlighted?: boolean;
 }) {
   const areaGroupRef = useRef<THREE.Group>(null);
   const rulesAreaRef = useRef<THREE.Mesh>(null);
@@ -43,11 +42,12 @@ export function TouchZones({
 
     const { layout, style } = scene.zones;
     const show = v.vizIntensity !== 'off';
+    const showZones = v.showTouchZones ?? false;
 
     if (!areaGroupRef.current) return;
     const w = v.canvasWidth > 0 ? v.canvasWidth : state.size.width;
     const h = v.canvasHeight > 0 ? v.canvasHeight : state.size.height;
-    const areaVisible = highlighted && show && w > 0 && h > 0;
+    const areaVisible = showZones && show && w > 0 && h > 0;
     areaGroupRef.current.visible = areaVisible;
     if (!areaVisible) return;
 
@@ -61,7 +61,7 @@ export function TouchZones({
     const cam = state.camera as THREE.PerspectiveCamera;
     const fovDeg = typeof cam.fov === 'number' ? cam.fov : 60;
     const viewHeight =
-      2 * Math.tan(THREE.MathUtils.degToRad(fovDeg) * 0.5) * OVERLAY_DISTANCE;
+      2 * Math.tan(THREE.MathUtils.degToRad(fovDeg) * 0.5) * 10;
     const viewWidth = viewHeight * (w / h);
     const activeHeight = viewHeight * activeHeightRatio;
     const centerY = centerNdcY * (viewHeight * 0.5);
@@ -74,15 +74,11 @@ export function TouchZones({
     cam.getWorldDirection(cameraDirRef.current);
     areaGroupRef.current.position
       .copy(cameraPosRef.current)
-      .add(cameraDirRef.current.multiplyScalar(OVERLAY_DISTANCE));
+      .add(cameraDirRef.current.multiplyScalar(10));
     areaGroupRef.current.quaternion.copy(cam.quaternion);
 
     if (rulesAreaRef.current?.material) {
-      rulesAreaRef.current.scale.set(
-        viewWidth * leftRatio,
-        activeHeight,
-        1,
-      );
+      rulesAreaRef.current.scale.set(viewWidth * leftRatio, activeHeight, 1);
       rulesAreaRef.current.position.set(
         -viewWidth * (0.5 - leftRatio * 0.5),
         centerY,
@@ -97,26 +93,20 @@ export function TouchZones({
       }
     }
     if (centerAreaRef.current?.material) {
-      centerAreaRef.current.scale.set(
-        viewWidth * centerRatio,
-        activeHeight,
-        1,
-      );
+      centerAreaRef.current.scale.set(viewWidth * centerRatio, activeHeight, 1);
       centerAreaRef.current.position.set(0, centerY, 0);
       const m = centerAreaRef.current.material as THREE.MeshBasicMaterial;
       m.color.set(style.centerColor);
       m.opacity = style.areaPlaneOpacityCenter;
       if (centerAreaEdgesRef.current) {
-        centerAreaEdgesRef.current.position.copy(centerAreaRef.current.position);
+        centerAreaEdgesRef.current.position.copy(
+          centerAreaRef.current.position,
+        );
         centerAreaEdgesRef.current.scale.copy(centerAreaRef.current.scale);
       }
     }
     if (cardsAreaRef.current?.material) {
-      cardsAreaRef.current.scale.set(
-        viewWidth * rightRatio,
-        activeHeight,
-        1,
-      );
+      cardsAreaRef.current.scale.set(viewWidth * rightRatio, activeHeight, 1);
       cardsAreaRef.current.position.set(
         viewWidth * (0.5 - rightRatio * 0.5),
         centerY,
