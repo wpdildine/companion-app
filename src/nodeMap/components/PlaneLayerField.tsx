@@ -325,10 +325,6 @@ export function PlaneLayerField({
     camera.getWorldDirection(tmpDir.current);
     tmpRight.current.crossVectors(tmpDir.current, camera.up).normalize();
     tmpUp.current.crossVectors(tmpRight.current, tmpDir.current).normalize();
-    const viewportMin = Math.min(viewportWidth, viewportHeight);
-    const driftBase = bp.driftPxNorm * viewportMin;
-    const modeFactor = v.currentMode === 'processing' ? 1.2 : 1;
-    const driftWorld = v.reduceMotion ? 0 : driftBase * 0.1 * modeFactor;
     const n = Math.min(bp.count, 2);
 
     const noisePhase = v.clock * 0.12;
