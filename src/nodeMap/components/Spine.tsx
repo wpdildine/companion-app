@@ -12,7 +12,6 @@ import type { CanonicalSpineMode } from '../helpers/formations/spine';
 import type { NodeMapEngineRef } from '../types';
 
 const OVERLAY_DISTANCE = 10;
-const PLANE_COUNT = 5;
 
 /**
  * Map engine currentMode to canonical spine mode. Non-canonical modes (touched, released)
@@ -109,6 +108,7 @@ export function Spine({
       rampRef.current = 0;
     }
     const targetProfile = spine.spreadProfiles[canonicalMode];
+    const halftoneProfile = spine.halftoneProfiles[canonicalMode];
     const rampingDown =
       targetProfile.verticalSpread <= prevSpreadRef.current.verticalSpread;
     const transitionMs = rampingDown
@@ -151,14 +151,32 @@ export function Spine({
     groupRef.current.position.add(cameraUp.multiplyScalar(spineCenterWorldY));
     groupRef.current.quaternion.copy(cam.quaternion);
 
-    const planeHeight = envelopeHeightWorld / PLANE_COUNT;
-    const halfHeight = (planeHeight * PLANE_COUNT) / 2;
-    for (let i = 0; i < PLANE_COUNT; i++) {
+    const planeCount = spine.planeCount;
+    const gap = Math.max(0, spine.style.planeGap);
+    const unitHeight = envelopeHeightWorld / (planeCount + gap * (planeCount - 1));
+    const totalHeight = unitHeight * (planeCount + gap * (planeCount - 1));
+    const halfHeight = totalHeight / 2;
+    const dynamicOpacityBoost = 1 + halftoneProfile.intensity * 0.45;
+
+    for (let i = 0; i < planeCount; i++) {
       const mesh = planeRefs.current[i];
       if (!mesh) continue;
-      const localY = -halfHeight + planeHeight * (i + 0.5);
-      mesh.position.set(0, localY, (i - (PLANE_COUNT - 1) / 2) * zStep);
-      mesh.scale.set(envelopeWidthWorld, planeHeight, 1);
+      const widthScale = spine.style.planeWidthScale[i] ?? 1;
+      const offsetX = spine.style.planeOffsetX[i] ?? 0;
+      const opacityScale = spine.style.planeOpacityScale[i] ?? 1;
+      const localY =
+        -halfHeight + unitHeight * (i + 0.5) + unitHeight * gap * i;
+      mesh.position.set(
+        envelopeWidthWorld * offsetX,
+        localY,
+        (i - (planeCount - 1) / 2) * zStep,
+      );
+      mesh.scale.set(envelopeWidthWorld * widthScale, unitHeight, 1);
+      if (mesh.material) {
+        const mat = mesh.material as THREE.MeshBasicMaterial;
+        mat.opacity =
+          spine.style.opacity * opacityScale * dynamicOpacityBoost;
+      }
     }
   });
 
@@ -185,7 +203,7 @@ export function Spine({
       visible={nodeMapRef.current?.vizIntensity !== 'off'}
       renderOrder={900}
     >
-      {Array.from({ length: PLANE_COUNT }, (_, i) => (
+      {Array.from({ length: spine.planeCount }, (_, i) => (
         <mesh
           key={i}
           ref={el => {

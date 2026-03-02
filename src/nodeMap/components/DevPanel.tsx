@@ -10,7 +10,7 @@ import {
   Pressable,
   ScrollView,
 } from 'react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   TARGET_ACTIVITY_BY_MODE,
   type NodeMapEngineRef,
@@ -50,12 +50,6 @@ export function DevPanel({
   theme: DevPanelTheme;
 }) {
   const [, setUiVersion] = useState(0);
-  const [stateCycleOn, setStateCycleOn] = useState(false);
-  const [canonicalCycleOn, setCanonicalCycleOn] = useState(false);
-  const stateCycleTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const canonicalCycleTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const stateIdx = useRef(0);
-  const canonicalIdx = useRef(0);
 
   const textColor = theme.text;
   const muted = theme.textMuted;
@@ -147,50 +141,49 @@ export function DevPanel({
     },
     [nodeMapRef, withViz],
   );
-  const toggleStateCycle = () => {
-    const next = !stateCycleOn;
-    setStateCycleOn(next);
-    setUiVersion(v => v + 1);
-  };
-
-  useEffect(() => {
-    if (stateCycleOn) {
-      stateCycleTimer.current = setInterval(() => {
-        const mode = APP_STATES[stateIdx.current % APP_STATES.length]!;
-        applyState(mode);
-        stateIdx.current = (stateIdx.current + 1) % APP_STATES.length;
+  const toggleStateCycle = useCallback(() => {
+    const viz = nodeMapRef.current;
+    if (!viz) return;
+    viz.stateCycleOn = !viz.stateCycleOn;
+    if (viz.stateCycleOn) {
+      if (viz.stateCycleTimerId != null) clearInterval(viz.stateCycleTimerId);
+      applyState(APP_STATES[viz.stateCycleIdx % APP_STATES.length]!);
+      viz.stateCycleTimerId = setInterval(() => {
+        const v = nodeMapRef.current;
+        if (!v) return;
+        v.stateCycleIdx = (v.stateCycleIdx + 1) % APP_STATES.length;
+        applyState(APP_STATES[v.stateCycleIdx]!);
       }, 1300);
-    } else if (stateCycleTimer.current) {
-      clearInterval(stateCycleTimer.current);
-      stateCycleTimer.current = null;
-    }
-    return () => {
-      if (stateCycleTimer.current) {
-        clearInterval(stateCycleTimer.current);
-        stateCycleTimer.current = null;
+    } else {
+      if (viz.stateCycleTimerId != null) {
+        clearInterval(viz.stateCycleTimerId);
+        viz.stateCycleTimerId = null;
       }
-    };
-  }, [stateCycleOn, applyState]);
+    }
+    setUiVersion(u => u + 1);
+  }, [nodeMapRef, applyState]);
 
-  // Spine validation – remove when done. Cycle canonical modes only, 2.5s each.
-  useEffect(() => {
-    if (canonicalCycleOn) {
-      canonicalCycleTimer.current = setInterval(() => {
-        const mode = CANONICAL_MODES[canonicalIdx.current % CANONICAL_MODES.length]!;
-        applyState(mode);
-        canonicalIdx.current = (canonicalIdx.current + 1) % CANONICAL_MODES.length;
+  const toggleCanonicalCycle = useCallback(() => {
+    const viz = nodeMapRef.current;
+    if (!viz) return;
+    viz.canonicalCycleOn = !viz.canonicalCycleOn;
+    if (viz.canonicalCycleOn) {
+      if (viz.canonicalCycleTimerId != null) clearInterval(viz.canonicalCycleTimerId);
+      applyState(CANONICAL_MODES[viz.canonicalCycleIdx % CANONICAL_MODES.length]!);
+      viz.canonicalCycleTimerId = setInterval(() => {
+        const v = nodeMapRef.current;
+        if (!v) return;
+        v.canonicalCycleIdx = (v.canonicalCycleIdx + 1) % CANONICAL_MODES.length;
+        applyState(CANONICAL_MODES[v.canonicalCycleIdx]!);
       }, CANONICAL_CYCLE_MS);
-    } else if (canonicalCycleTimer.current) {
-      clearInterval(canonicalCycleTimer.current);
-      canonicalCycleTimer.current = null;
-    }
-    return () => {
-      if (canonicalCycleTimer.current) {
-        clearInterval(canonicalCycleTimer.current);
-        canonicalCycleTimer.current = null;
+    } else {
+      if (viz.canonicalCycleTimerId != null) {
+        clearInterval(viz.canonicalCycleTimerId);
+        viz.canonicalCycleTimerId = null;
       }
-    };
-  }, [canonicalCycleOn, applyState]);
+    }
+    setUiVersion(u => u + 1);
+  }, [nodeMapRef, applyState]);
 
   const v = nodeMapRef.current;
   if (!v) return null;
@@ -262,16 +255,20 @@ export function DevPanel({
           </View>
 
           <Text style={[styles.section, { color: muted }]}>State tests</Text>
+          <View style={[styles.row, styles.currentStateRow]}>
+            <Text style={{ color: muted }}>Current state</Text>
+            <Text style={{ color: textColor, fontWeight: '600' }}>{v.currentMode}</Text>
+          </View>
           <View style={styles.row}>
             <Text style={{ color: textColor }}>Cycle all states</Text>
             <Pressable onPress={toggleStateCycle}>
-              <Text style={{ color: muted }}>{stateCycleOn ? 'ON' : 'OFF'}</Text>
+              <Text style={{ color: muted }}>{v.stateCycleOn ? 'ON' : 'OFF'}</Text>
             </Pressable>
           </View>
           <View style={styles.row}>
             <Text style={{ color: textColor }}>Cycle canonical (spine)</Text>
-            <Pressable onPress={() => { setCanonicalCycleOn(c => !c); setUiVersion(v => v + 1); }}>
-              <Text style={{ color: muted }}>{canonicalCycleOn ? 'ON' : 'OFF'}</Text>
+            <Pressable onPress={toggleCanonicalCycle}>
+              <Text style={{ color: muted }}>{v.canonicalCycleOn ? 'ON' : 'OFF'}</Text>
             </Pressable>
           </View>
           {APP_STATES.map(state => (
@@ -473,6 +470,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 6,
+  },
+  currentStateRow: {
+    marginBottom: 4,
   },
   button: {
     marginTop: 8,

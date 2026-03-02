@@ -119,6 +119,14 @@ export interface NodeMapEngineRef {
   zoneArmed: 'rules' | 'cards' | null;
   /** Show touch zone debug meshes (rules/center/cards). Default off; toggle in Dev panel. */
   showTouchZones: boolean;
+  /** Dev: cycle-all-states toggle and timer (persists when panel closes). */
+  stateCycleOn: boolean;
+  stateCycleTimerId: ReturnType<typeof setInterval> | null;
+  stateCycleIdx: number;
+  /** Dev: cycle-canonical toggle and timer (persists when panel closes). */
+  canonicalCycleOn: boolean;
+  canonicalCycleTimerId: ReturnType<typeof setInterval> | null;
+  canonicalCycleIdx: number;
 }
 
 const SENTINEL_FAR = 1e6;
@@ -181,6 +189,12 @@ export function createDefaultNodeMapRef(): NodeMapEngineRef {
     scene: undefined,
     zoneArmed: null,
     showTouchZones: false,
+    stateCycleOn: false,
+    stateCycleTimerId: null,
+    stateCycleIdx: 0,
+    canonicalCycleOn: false,
+    canonicalCycleTimerId: null,
+    canonicalCycleIdx: 0,
   };
 }
 

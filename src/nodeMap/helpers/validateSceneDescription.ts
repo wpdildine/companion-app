@@ -38,6 +38,22 @@ export function validateSceneDescription(
     }
     return false;
   }
+  const style = spine.style;
+  const styleArraysValid =
+    Array.isArray(style?.planeOffsetX) &&
+    Array.isArray(style?.planeWidthScale) &&
+    Array.isArray(style?.planeOpacityScale) &&
+    style.planeOffsetX.length === spine.planeCount &&
+    style.planeWidthScale.length === spine.planeCount &&
+    style.planeOpacityScale.length === spine.planeCount;
+  if (!styleArraysValid) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error(
+        '[validateSceneDescription] scene.spine.style plane arrays must exist and match planeCount.',
+      );
+    }
+    return false;
+  }
   for (const key of CANONICAL_KEYS) {
     if (!spine.spreadProfiles[key] || !spine.halftoneProfiles[key]) {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {

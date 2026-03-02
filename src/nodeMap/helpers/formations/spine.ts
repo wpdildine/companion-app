@@ -55,6 +55,14 @@ export type GLSceneSpineStyle = {
   opacity: number;
   blend?: 'additive' | 'normal';
   zStep: number;
+  /** Relative horizontal offsets by plane index (length must equal planeCount). */
+  planeOffsetX: number[];
+  /** Relative width scale by plane index (length must equal planeCount). */
+  planeWidthScale: number[];
+  /** Relative opacity multipliers by plane index (length must equal planeCount). */
+  planeOpacityScale: number[];
+  /** Gap between planes as a fraction of plane height. */
+  planeGap: number;
 };
 
 export type GLSceneSpine = {
@@ -107,18 +115,23 @@ const HALFTONE_SPEAKING: SpineHalftoneProfile = {
  * Build spine description with canonical table defaults. Composed by getSceneDescription().
  */
 export function buildSpineDescription(): GLSceneSpine {
+  const planeCount = 5 as const;
   return {
-    planeCount: 5,
+    planeCount,
     envelopeNdc: {
       width: 0.12,
-      height: 2,
+      height: 1.86,
       centerY: 0,
     },
     style: {
-      color: '#bfc7e0',
-      opacity: 0.65,
-      blend: 'normal',
-      zStep: 0.02,
+      color: '#b7d2ff',
+      opacity: 0.22,
+      blend: 'additive',
+      zStep: 0.012,
+      planeOffsetX: [-0.018, 0.010, 0.0, -0.008, 0.016],
+      planeWidthScale: [0.88, 0.96, 1.06, 0.94, 0.86],
+      planeOpacityScale: [0.78, 0.88, 1.0, 0.86, 0.74],
+      planeGap: 0.22,
     },
     transitionMsIn: 220,
     transitionMsOut: 280,
