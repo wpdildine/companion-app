@@ -1,6 +1,14 @@
 /**
- * Node class and Crystalline Sphere formation for the node map.
- * Reference: Quantum Neural Network style — Fibonacci layers + lateral + long-range edges.
+ * GL scene “formations” (single aesthetic control plane).
+ *
+ * Contract:
+ * - `getSceneDescription()` is the ONLY public entrypoint for GL aesthetics (zones/clusters/links/pulses/background/spine).
+ * - GL components must consume `nodeMapRef.current.scene` and must not introduce independent palette/layout constants.
+ *
+ * Organization rule:
+ * - Keep this file as the contract + assembly layer.
+ * - When logic grows, split implementation into helper modules under `src/nodeMap/helpers/formations/*`
+ *   (e.g. colors/spine/halftone/zones/clusters/background) and have this file compose them.
  */
 
 export interface Node {
