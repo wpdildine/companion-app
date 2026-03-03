@@ -50,6 +50,31 @@ export type SpineEnvelopeNdc = {
   centerY: number;
 };
 
+/**
+ * Spine style preset: single source of truth for plane count, per-plane arrays,
+ * zStep, planeGap, and idle drift. Spine.tsx consumes scene.spine only; arrays come from here.
+ */
+export type SpineStylePreset = {
+  planeCount: 5;
+  planeWidthScale: number[];
+  planeHeightScale: number[];
+  planeOffsetX: number[];
+  planeOffsetY: number[];
+  planeOpacityScale: number[];
+  planeColors: string[];
+  zStep: number;
+  planeGap: number;
+  driftAmpX: number;
+  driftAmpY: number;
+  driftHz: number;
+  idleBreathAmp: number;
+  idleBreathHz: number;
+  perPlaneDriftScale: number;
+  perPlaneDriftPhaseStep: number;
+  /** Halftone on central plane: scene-driven; default true so release is not gated by debug flag. */
+  halftoneEnabled: boolean;
+};
+
 export type GLSceneSpineStyle = {
   color: string;
   opacity: number;
@@ -74,6 +99,8 @@ export type GLSceneSpineStyle = {
   planeHeightScale: number[];
   /** Per-plane hex color (tonal hierarchy). Length = planeCount. Center strongest luminance, outer dimmer. */
   planeColors: string[];
+  /** When true, central plane uses halftone shader (scene-driven; debug flag may override). */
+  halftoneEnabled: boolean;
   /** Per-mode micro drift amplitudes in world-space envelope fractions. */
   driftAmpX: number;
   driftAmpY: number;
@@ -129,6 +156,31 @@ export type GLSceneSpine = {
   halftoneProfiles: CanonicalHalftoneProfiles;
 };
 
+/**
+ * Single spine style preset. Arrays are source of truth; Spine.tsx consumes via scene.spine.
+ * Constraints: widthScale (≥2 ≤0.55, ≥1 ≥0.85), offsetX (≥2 opposite signs), offsetY (≥1 non-zero),
+ * opacityScale (≥1 ≤0.55, ≥1 ≥0.9), planeColors (≥1 accent, 3–5 tones).
+ */
+export const SPINE_STYLE_PRESET: SpineStylePreset = {
+  planeCount: 5,
+  planeWidthScale: [0.48, 0.52, 1.0, 0.5, 0.45],
+  planeHeightScale: [0.82, 0.92, 1.22, 0.9, 0.84],
+  planeOffsetX: [-0.08, 0.06, 0, -0.03, 0.04],
+  planeOffsetY: [0.02, -0.01, 0, 0.015, -0.02],
+  planeOpacityScale: [0.5, 0.7, 0.95, 0.6, 0.45],
+  planeColors: ['#7a8fb5', '#8fa3c9', '#c9a86c', '#9eb0d4', '#6e82a8'],
+  zStep: 0.035,
+  planeGap: -0.12,
+  driftAmpX: 0.018,
+  driftAmpY: 0.012,
+  driftHz: 0.14,
+  idleBreathAmp: 0.04,
+  idleBreathHz: 0.1,
+  perPlaneDriftScale: 0.5,
+  perPlaneDriftPhaseStep: 1.2,
+  halftoneEnabled: true,
+};
+
 const SPREAD_IDLE: SpineSpreadProfile = {
   verticalSpread: 1.0,
   bandWidth: 1.0,
@@ -150,14 +202,14 @@ const SPREAD_SPEAKING: SpineSpreadProfile = {
   depthSpread: 1.0,
 };
 
-const HALFTONE_IDLE: SpineHalftoneProfile = { intensity: 0, density: 1 };
+const HALFTONE_IDLE: SpineHalftoneProfile = { intensity: 0.14, density: 1.0 };
 const HALFTONE_LISTENING: SpineHalftoneProfile = {
-  intensity: 0.12,
-  density: 1.0,
+  intensity: 0.42,
+  density: 1.2,
 };
 const HALFTONE_PROCESSING: SpineHalftoneProfile = {
-  intensity: 0.6,
-  density: 2.2,
+  intensity: 0.8,
+  density: 1.9,
 };
 const HALFTONE_SPEAKING: SpineHalftoneProfile = {
   intensity: 0,
@@ -190,10 +242,12 @@ function buildShards(seed: number): SpineShard[] {
 }
 
 /**
- * Build spine description with canonical table defaults. Composed by getSceneDescription().
+ * Build spine description from preset (arrays + zStep, planeGap, idle drift) and fixed overrides.
+ * Composed by getSceneDescription(). Arrays are source of truth; Spine.tsx consumes scene.spine only.
  */
 export function buildSpineDescription(): GLSceneSpine {
-  const planeCount = 5 as const;
+  const preset = SPINE_STYLE_PRESET;
+  const planeCount = preset.planeCount;
   return {
     planeCount,
     envelopeNdc: {
@@ -203,26 +257,25 @@ export function buildSpineDescription(): GLSceneSpine {
     },
     style: {
       color: '#b7d2ff',
-      /** Elevated base opacity so center halftone plane reads clearly. */
       opacity: 0.78,
-      /** Normal blending so planeColors read as tonal hierarchy; additive washes the stack to one tone. */
       blend: 'normal',
       overlayDistance: 10,
-      zStep: 0.02,
-      planeOffsetX: [-0.018, 0.01, 0.0, -0.008, 0.016],
-      planeWidthScale: [0.88, 0.96, 1.06, 0.94, 0.86],
-      planeOpacityScale: [0.78, 0.88, 1.0, 0.86, 0.74],
-      planeGap: -0.12,
-      planeOffsetY: [0.02, -0.01, 0.0, 0.015, -0.02],
-      planeHeightScale: [0.82, 0.92, 1.22, 0.9, 0.84],
-      planeColors: ['#8a9fc9', '#9eb3e0', '#ff3b3b', '#a2b8e8', '#889bc4'],
-      driftAmpX: 0.028,
-      driftAmpY: 0.02,
-      perPlaneDriftScale: 0.8,
-      perPlaneDriftPhaseStep: 1.4,
-      driftHz: 0.22,
-      idleBreathAmp: 0.06,
-      idleBreathHz: 0.12,
+      zStep: preset.zStep,
+      planeOffsetX: [...preset.planeOffsetX],
+      planeWidthScale: [...preset.planeWidthScale],
+      planeOpacityScale: [...preset.planeOpacityScale],
+      planeGap: preset.planeGap,
+      planeOffsetY: [...preset.planeOffsetY],
+      planeHeightScale: [...preset.planeHeightScale],
+      planeColors: [...preset.planeColors],
+      halftoneEnabled: preset.halftoneEnabled,
+      driftAmpX: preset.driftAmpX,
+      driftAmpY: preset.driftAmpY,
+      perPlaneDriftScale: preset.perPlaneDriftScale,
+      perPlaneDriftPhaseStep: preset.perPlaneDriftPhaseStep,
+      driftHz: preset.driftHz,
+      idleBreathAmp: preset.idleBreathAmp,
+      idleBreathHz: preset.idleBreathHz,
       processingOverflowBoost: 1.12,
       processingExtraOverlap: -0.06,
       processingHeightBoost: 1.08,

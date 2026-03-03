@@ -87,7 +87,8 @@ export function validateSceneDescription(
     typeof style.edgeBandWidth === 'number' &&
     style.edgeBandWidth > 0 &&
     style.edgeBandWidth < 0.5 &&
-    typeof style.edgeOpacity === 'number';
+    typeof style.edgeOpacity === 'number' &&
+    typeof style.halftoneEnabled === 'boolean';
   if (!numericStyleValid) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error(
