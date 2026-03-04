@@ -361,7 +361,7 @@ export function Spine({
         }
         halftoneMat.uniforms.uColor.value.set(planeColor);
         halftoneMat.uniforms.uOpacity.value = Math.min(1, nextOpacity * 1.7);
-        const targetIntensity = Math.max(0.72, edgeIntensity);
+        const targetIntensity = edgeIntensity;
         if (smoothPlaneIntensityRef.current[i] == null) {
           smoothPlaneIntensityRef.current[i] = targetIntensity;
         }
@@ -384,7 +384,6 @@ export function Spine({
         const planeW = envelopeWidthWorld * widthScale;
         const planeH = unitHeight * heightScale;
         halftoneMat.uniforms.uPlaneSize.value.set(planeW, planeH);
-        halftoneMat.blending = THREE.AdditiveBlending;
       } else {
         if (mesh.material !== planeMats[i]) {
           mesh.material = planeMats[i];
@@ -415,24 +414,44 @@ export function Spine({
       rightEdgeRef.current.scale.set(edgeWidth, edgeHeight, 1);
     }
     const shards = spine.shards ?? [];
-    const shardWidthScale = spine.style.shardWidthScale ?? 0.28;
+    const shardBaseWidthScale = spine.style.shardWidthScale ?? 0.28;
+    const visibleShardCount =
+      spine.shardCountByMode?.[canonicalMode] ?? shards.length;
     for (let s = 0; s < shards.length; s++) {
       const mesh = shardRefs.current[s];
       const shard = shards[s];
       if (!mesh || !shard) continue;
+      mesh.visible = s < visibleShardCount;
+      if (!mesh.visible) continue;
+      const shardRate = driftRate * (shard.driftRateScale ?? 1);
+      const shardDriftScale = (shard.driftScale ?? 1) * 0.32;
+      const shardDriftX = !v.reduceMotion
+        ? envelopeWidthWorld *
+          spine.style.driftAmpX *
+          driftFactor *
+          shardDriftScale *
+          Math.sin(v.clock * shardRate * 2 * Math.PI + shard.driftPhase)
+        : 0;
+      const shardDriftY = !v.reduceMotion
+        ? envelopeHeightWorld *
+          spine.style.driftAmpY *
+          driftFactor *
+          shardDriftScale *
+          Math.cos(v.clock * shardRate * 1.7 * 2 * Math.PI + shard.driftPhase)
+        : 0;
       mesh.position.set(
-        envelopeWidthWorld * shard.offsetX,
-        0,
+        envelopeWidthWorld * shard.offsetX + shardDriftX,
+        envelopeHeightWorld * shard.offsetY + shardDriftY,
         shard.zOffset * zStep,
       );
       mesh.scale.set(
-        envelopeWidthWorld * shardWidthScale,
+        envelopeWidthWorld * (shard.widthScale ?? shardBaseWidthScale),
         unitHeight * shard.heightScale,
         1,
       );
       if (mesh.material) {
         const mat = mesh.material as THREE.MeshBasicMaterial;
-        mat.color.set(spine.style.color);
+        mat.color.set(shard.color ?? spine.style.color);
         const targetShardOpacity =
           spine.style.opacity * shard.opacityScale * dynamicOpacityBoost;
         if (smoothShardOpacityRef.current[s] == null) {
@@ -502,7 +521,7 @@ export function Spine({
         >
           <planeGeometry args={[1, 1]} />
           <meshBasicMaterial
-            color={spine.style.color}
+            color={shard.color ?? spine.style.color}
             transparent
             opacity={spine.style.opacity * (shard.opacityScale ?? 0.7)}
             toneMapped={false}

@@ -5,8 +5,7 @@ import { HALFTONE_FRAGMENT } from './halftone.frag';
 /**
  * Creates the single halftone ShaderMaterial for the center spine plane.
  * Render-state (blending, depthWrite, depthTest, side) is set once here.
- * The center spine halftone uses additive blending to match the known-good
- * rendering path.
+ * Blending is owned by this material factory, not mutated in Spine.tsx.
  */
 export function createHalftoneMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
@@ -27,6 +26,6 @@ export function createHalftoneMaterial(): THREE.ShaderMaterial {
     depthWrite: false,
     depthTest: false,
     side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending,
+    blending: THREE.NormalBlending,
   });
 }

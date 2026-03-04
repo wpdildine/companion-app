@@ -135,12 +135,24 @@ export type GLSceneSpineStyle = {
 export type SpineShard = {
   /** X offset as fraction of envelope width (-0.5..0.5). */
   offsetX: number;
+  /** Y offset as fraction of envelope height (-0.5..0.5). */
+  offsetY: number;
   /** Height as fraction of main plane unit height (e.g. 0.12–0.35). */
   heightScale: number;
+  /** Width as fraction of envelope width. */
+  widthScale: number;
   /** Z in zStep units; negative = behind main stack. */
   zOffset: number;
   /** Opacity multiplier (e.g. 0.5–0.8). */
   opacityScale: number;
+  /** Per-shard tonal color for depth hierarchy. */
+  color: string;
+  /** Phase seed for deterministic micro drift. */
+  driftPhase: number;
+  /** Relative drift amplitude scale. */
+  driftScale: number;
+  /** Relative drift rate scale. */
+  driftRateScale: number;
 };
 
 export type GLSceneSpine = {
@@ -149,6 +161,8 @@ export type GLSceneSpine = {
   style: GLSceneSpineStyle;
   /** Secondary thin sliver planes (2–4), seeded layout. */
   shards: SpineShard[];
+  /** Mode-specific visible shard counts for depth stack presence. */
+  shardCountByMode: Record<CanonicalSpineMode, number>;
   transitionMsIn: number;
   transitionMsOut: number;
   easing?: 'cubic' | 'inOutCubic';
@@ -163,20 +177,20 @@ export type GLSceneSpine = {
  */
 export const SPINE_STYLE_PRESET: SpineStylePreset = {
   planeCount: 5,
-  planeWidthScale: [0.48, 0.52, 1.0, 0.5, 0.45],
-  planeHeightScale: [0.82, 0.92, 1.22, 0.9, 0.84],
-  planeOffsetX: [-0.08, 0.06, 0, -0.03, 0.04],
-  planeOffsetY: [0.02, -0.01, 0, 0.015, -0.02],
-  planeOpacityScale: [0.5, 0.7, 0.95, 0.6, 0.45],
-  planeColors: ['#7a8fb5', '#8fa3c9', '#c9a86c', '#9eb0d4', '#6e82a8'],
+  planeWidthScale: [0.4, 0.56, 1.08, 0.52, 0.38],
+  planeHeightScale: [0.8, 0.9, 1.26, 0.88, 0.82],
+  planeOffsetX: [-0.14, 0.11, 0, -0.07, 0.13],
+  planeOffsetY: [0.05, -0.038, 0, 0.03, -0.046],
+  planeOpacityScale: [0.26, 0.5, 1.0, 0.48, 0.24],
+  planeColors: ['#4f6285', '#6e84ac', '#f0c784', '#697ea6', '#445777'],
   zStep: 0.035,
-  planeGap: -0.12,
-  driftAmpX: 0.018,
-  driftAmpY: 0.012,
+  planeGap: -0.22,
+  driftAmpX: 0.038,
+  driftAmpY: 0.025,
   driftHz: 0.14,
   idleBreathAmp: 0.04,
   idleBreathHz: 0.1,
-  perPlaneDriftScale: 0.5,
+  perPlaneDriftScale: 0.62,
   perPlaneDriftPhaseStep: 1.2,
   halftoneEnabled: true,
 };
@@ -202,17 +216,17 @@ const SPREAD_SPEAKING: SpineSpreadProfile = {
   depthSpread: 1.0,
 };
 
-const HALFTONE_IDLE: SpineHalftoneProfile = { intensity: 0.14, density: 1.0 };
+const HALFTONE_IDLE: SpineHalftoneProfile = { intensity: 0.2, density: 1.0 };
 const HALFTONE_LISTENING: SpineHalftoneProfile = {
-  intensity: 0.42,
-  density: 1.2,
+  intensity: 0.68,
+  density: 1.55,
 };
 const HALFTONE_PROCESSING: SpineHalftoneProfile = {
-  intensity: 0.8,
-  density: 1.9,
+  intensity: 1.0,
+  density: 2.6,
 };
 const HALFTONE_SPEAKING: SpineHalftoneProfile = {
-  intensity: 0,
+  intensity: 0.12,
   density: 1.0,
 };
 
@@ -225,17 +239,50 @@ function createSeededRng(seed: number): () => number {
   };
 }
 
-/** Build 2–4 shard descriptors with seeded random layout (behind/around main stack). */
-function buildShards(seed: number): SpineShard[] {
+/** Build shard field with deterministic depth/palette distribution. */
+function buildShards(seed: number, count: number): SpineShard[] {
   const rng = createSeededRng(seed);
-  const count = 2 + Math.floor(rng() * 3); // 2, 3, or 4
+  const coolPalette = ['#6e85ad', '#5f789f', '#738db6', '#6783b0'];
+  const ghostPalette = ['#2a3144', '#232b3d', '#303a50'];
+  const accentPalette = ['#c8a56f', '#d6b67f'];
   const shards: SpineShard[] = [];
   for (let i = 0; i < count; i++) {
+    const p = rng();
+    let color: string;
+    if (p < 0.7) {
+      color = coolPalette[Math.floor(rng() * coolPalette.length)]!;
+    } else if (p < 0.9) {
+      color = ghostPalette[Math.floor(rng() * ghostPalette.length)]!;
+    } else {
+      color = accentPalette[Math.floor(rng() * accentPalette.length)]!;
+    }
+    // Bias depth slightly behind spine while still spanning in front.
+    const zBehindBias = (rng() - 0.62) * 5.0; // roughly [-3.1, 1.9]
+    const kind = rng();
+    let widthScale = 0.1 + rng() * 0.34;
+    let heightScale = 0.16 + rng() * 0.58;
+    // Morphology mix: tall-thin, short-wide, and tiny chips.
+    if (kind < 0.34) {
+      widthScale = 0.08 + rng() * 0.12;
+      heightScale = 0.42 + rng() * 0.42;
+    } else if (kind < 0.68) {
+      widthScale = 0.22 + rng() * 0.24;
+      heightScale = 0.12 + rng() * 0.24;
+    } else {
+      widthScale = 0.06 + rng() * 0.1;
+      heightScale = 0.08 + rng() * 0.18;
+    }
     shards.push({
-      offsetX: (rng() - 0.5) * 0.85,
-      heightScale: 0.12 + rng() * 0.24,
-      zOffset: -3.2 + rng() * 1.4,
-      opacityScale: 0.5 + rng() * 0.32,
+      offsetX: (rng() - 0.5) * 1.34,
+      offsetY: (rng() - 0.5) * 0.42,
+      heightScale,
+      widthScale,
+      zOffset: Math.max(-2.5, Math.min(2.5, zBehindBias)),
+      opacityScale: 0.2 + rng() * 0.55,
+      color,
+      driftPhase: rng() * Math.PI * 2,
+      driftScale: 0.35 + rng() * 0.8,
+      driftRateScale: 0.72 + rng() * 0.5,
     });
   }
   return shards;
@@ -248,10 +295,22 @@ function buildShards(seed: number): SpineShard[] {
 export function buildSpineDescription(): GLSceneSpine {
   const preset = SPINE_STYLE_PRESET;
   const planeCount = preset.planeCount;
+  const shardCountByMode: Record<CanonicalSpineMode, number> = {
+    idle: 16,
+    listening: 20,
+    processing: 28,
+    speaking: 10,
+  };
+  const maxShards = Math.max(
+    shardCountByMode.idle,
+    shardCountByMode.listening,
+    shardCountByMode.processing,
+    shardCountByMode.speaking,
+  );
   return {
     planeCount,
     envelopeNdc: {
-      width: 0.18,
+      width: 0.29,
       height: 1.86,
       centerY: 0,
     },
@@ -285,7 +344,8 @@ export function buildSpineDescription(): GLSceneSpine {
       edgeBandWidth: 0.22,
       edgeOpacity: 0.34,
     },
-    shards: buildShards(42),
+    shards: buildShards(42, maxShards),
+    shardCountByMode,
     transitionMsIn: 220,
     transitionMsOut: 280,
     easing: 'inOutCubic',
