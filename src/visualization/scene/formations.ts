@@ -314,10 +314,15 @@ export type GLSceneLinks = {
   edges: GLSceneLinkEdge[];
   /** Must be >= 1. Zero means "no links" and is not a valid draw value. */
   segmentsPerEdge: number;
+  /** Optional single Z for link mesh (builder-supplied). */
+  z?: number;
 };
 
+/** Per-plane Z from builders; renderers use position.z = planes[i].z only. */
 export type GLSceneBackgroundPlanes = {
   count: number;
+  /** Builder-supplied final Z per plane. Length must match count. */
+  planes: Array<{ z: number }>;
   opacityBase: number;
   opacitySecond: number;
   driftPxNorm: number;
@@ -325,6 +330,24 @@ export type GLSceneBackgroundPlanes = {
   sat: number;
   lum: number;
 };
+
+/** Draw-order section: renderOrderBase only; Z comes from builders. */
+export type GLSceneLayerSection = { renderOrderBase: number };
+
+export const GL_SCENE_LAYER_KEYS = [
+  'background',
+  'spineBase',
+  'spineShards',
+  'spineRot',
+  'glyphsBack',
+  'links',
+  'glyphsFront',
+  'debugOverlay',
+] as const;
+export type GLSceneLayers = Record<
+  (typeof GL_SCENE_LAYER_KEYS)[number],
+  GLSceneLayerSection
+>;
 
 export type GLSceneContextGlyphs = {
   baseNodeSize: number;
@@ -393,6 +416,57 @@ export type GLScenePlaneField = {
 
 export type { GLSceneSpine } from './builders/spine';
 
+/** Canonical mode for presets (idle | listening | processing | speaking). */
+export type CanonicalSceneMode =
+  | 'idle'
+  | 'listening'
+  | 'processing'
+  | 'speaking';
+
+/** Optional overrides per mode; multiply/offset base art direction. Schema-only; renderers must not read yet. */
+export type GLSceneBackgroundPresetOverrides = {
+  driftSpeedScale?: number;
+  maskContrastScale?: number;
+  vignetteScale?: number;
+  halftoneDensityScale?: number;
+};
+export type GLSceneSpinePresetOverrides = {
+  opacityScale?: number;
+  breathAmplitudeScale?: number;
+  shardCountScale?: number;
+  emissiveScale?: number;
+};
+
+export type GLScenePresets = Record<
+  CanonicalSceneMode,
+  {
+    background?: GLSceneBackgroundPresetOverrides;
+    spine?: GLSceneSpinePresetOverrides;
+  }
+>;
+
+export type GLSceneTouchZone = {
+  attract: boolean;
+  strength: number;
+  record?: boolean;
+};
+export type GLSceneTouchZones = {
+  left: GLSceneTouchZone;
+  right: GLSceneTouchZone;
+  center: GLSceneTouchZone;
+};
+export type GLSceneTouchFeedback = {
+  maxShear: number;
+  maxRotateZ: number;
+  damping: number;
+  spring: number;
+};
+export type GLSceneTouchGlyphResponse = {
+  repelStrength: number;
+  nudgeRadius: number;
+  parallaxBoost: number;
+};
+
 export type GLSceneDescription = {
   zones: {
     layout: GLSceneZonesLayout;
@@ -411,6 +485,13 @@ export type GLSceneDescription = {
   contextLinks: GLSceneContextLinks;
   planeField: GLScenePlaneField;
   spine: GLSceneSpine;
+  layers: GLSceneLayers;
+  presets: GLScenePresets;
+  touch: {
+    zones: GLSceneTouchZones;
+    feedback: GLSceneTouchFeedback;
+    glyphResponse: GLSceneTouchGlyphResponse;
+  };
 };
 
 export type GetSceneDescriptionOptions = {
@@ -489,6 +570,26 @@ import { buildContextGlyphsDescription } from './builders/contextGlyphs';
 import { buildContextLinksDescription } from './builders/contextLinks';
 import { buildPlaneLayerFieldDescription } from './builders/planeLayerField';
 
+/** Schema-only; renderers must not read scene.presets yet. Overrides bias base art direction per mode. */
+function buildScenePresets(): GLScenePresets {
+  const modes: CanonicalSceneMode[] = ['idle', 'listening', 'processing', 'speaking'];
+  const presets: GLScenePresets = {} as GLScenePresets;
+  for (const mode of modes) {
+    presets[mode] = {};
+    if (mode === 'listening') {
+      presets[mode].spine = { breathAmplitudeScale: 1.2 };
+    }
+    if (mode === 'processing') {
+      presets[mode].background = { driftSpeedScale: 1.15, vignetteScale: 1.1 };
+      presets[mode].spine = { opacityScale: 1.05, emissiveScale: 1.1 };
+    }
+    if (mode === 'speaking') {
+      presets[mode].spine = { breathAmplitudeScale: 0.9 };
+    }
+  }
+  return presets;
+}
+
 /**
  * Single source of truth for GL scene: zones, clusters (nodes + colors), links, pulse anchors, background planes, spine.
  * Computed on each call; store the result on visualizationRef.current.scene. _options is reserved for future use (e.g. paletteId, vizIntensityProfile).
@@ -544,6 +645,22 @@ export function getSceneDescription(
     sum(cards, 2),
   ];
 
+  const planeField = buildPlaneLayerFieldDescription();
+  const spine = buildSpineDescription();
+  const backgroundPlanesWithZ = {
+    count: 2,
+    planes: [
+      { z: planeField.basePlaneDepth },
+      { z: planeField.detailPlaneDepth },
+    ],
+    opacityBase: 0.26,
+    opacitySecond: 0.18,
+    driftPxNorm: 1.2 / 500,
+    hue: 0.6,
+    sat: 0.45,
+    lum: 0.55,
+  };
+
   return {
     zones: {
       layout: {
@@ -570,22 +687,44 @@ export function getSceneDescription(
     links: {
       edges: buildLinkEdges(),
       segmentsPerEdge: 12,
+      z: 0,
     },
-    backgroundPlanes: {
-      count: 2,
-      opacityBase: 0.26,
-      opacitySecond: 0.18,
-      driftPxNorm: 1.2 / 500,
-      hue: 0.6,
-      sat: 0.45,
-      lum: 0.55,
+    backgroundPlanes: backgroundPlanesWithZ,
+    layers: {
+      background: { renderOrderBase: 1000 },
+      spineBase: { renderOrderBase: 2000 },
+      spineShards: { renderOrderBase: 2100 },
+      spineRot: { renderOrderBase: 2500 },
+      glyphsBack: { renderOrderBase: 3000 },
+      links: { renderOrderBase: 3200 },
+      glyphsFront: { renderOrderBase: 3500 },
+      debugOverlay: { renderOrderBase: 4000 },
+    },
+    presets: buildScenePresets(),
+    touch: {
+      zones: {
+        left: { attract: true, strength: 0.9 },
+        right: { attract: true, strength: 0.9 },
+        center: { record: true, attract: false, strength: 0 },
+      },
+      feedback: {
+        maxShear: 0.22,
+        maxRotateZ: 0.12,
+        damping: 10,
+        spring: 120,
+      },
+      glyphResponse: {
+        repelStrength: 0.8,
+        nudgeRadius: 0.35,
+        parallaxBoost: 0.15,
+      },
     },
     contextGlyphs: {
       ...contextGlyphsBase,
       zHierarchy,
     },
     contextLinks: buildContextLinksDescription(),
-    planeField: buildPlaneLayerFieldDescription(),
-    spine: buildSpineDescription(),
+    planeField,
+    spine,
   };
 }

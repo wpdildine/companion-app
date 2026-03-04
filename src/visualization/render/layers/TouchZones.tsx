@@ -128,10 +128,14 @@ export function TouchZones({
   if (!scene) return null;
 
   const { style } = scene.zones;
+  const debugOverlayBase = scene.layers?.debugOverlay?.renderOrderBase ?? 4000;
+  const zoneIndexRules = 0;
+  const zoneIndexCenter = 1;
+  const zoneIndexCards = 2;
 
   return (
-    <group ref={areaGroupRef} visible={false} renderOrder={980}>
-      <mesh ref={rulesAreaRef} renderOrder={981}>
+    <group ref={areaGroupRef} visible={false} renderOrder={debugOverlayBase}>
+      <mesh ref={rulesAreaRef} renderOrder={debugOverlayBase + zoneIndexRules}>
         <planeGeometry args={[1, 1]} />
         <meshBasicMaterial
           color={style.rulesColor}
@@ -147,11 +151,11 @@ export function TouchZones({
       <lineSegments
         ref={rulesAreaEdgesRef}
         geometry={planeEdgesGeometry}
-        renderOrder={986}
+        renderOrder={debugOverlayBase + zoneIndexRules}
       >
         <lineBasicMaterial color={style.edgeColor} depthTest={false} />
       </lineSegments>
-      <mesh ref={centerAreaRef} renderOrder={982}>
+      <mesh ref={centerAreaRef} renderOrder={debugOverlayBase + zoneIndexCenter}>
         <planeGeometry args={[1, 1]} />
         <meshBasicMaterial
           color={style.centerColor}
@@ -167,11 +171,11 @@ export function TouchZones({
       <lineSegments
         ref={centerAreaEdgesRef}
         geometry={planeEdgesGeometry}
-        renderOrder={986}
+        renderOrder={debugOverlayBase + zoneIndexCenter}
       >
         <lineBasicMaterial color={style.edgeColor} depthTest={false} />
       </lineSegments>
-      <mesh ref={cardsAreaRef} renderOrder={983}>
+      <mesh ref={cardsAreaRef} renderOrder={debugOverlayBase + zoneIndexCards}>
         <planeGeometry args={[1, 1]} />
         <meshBasicMaterial
           color={style.cardsColor}
@@ -187,7 +191,7 @@ export function TouchZones({
       <lineSegments
         ref={cardsAreaEdgesRef}
         geometry={planeEdgesGeometry}
-        renderOrder={986}
+        renderOrder={debugOverlayBase + zoneIndexCards}
       >
         <lineBasicMaterial color={style.edgeColor} depthTest={false} />
       </lineSegments>

@@ -6,7 +6,10 @@
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
-import { connectionVertex, connectionFragment } from '../../materials/links/connections';
+import {
+  connectionVertex,
+  connectionFragment,
+} from '../../materials/links/connections';
 import type { VisualizationEngineRef } from '../../engine/types';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
 
@@ -36,65 +39,70 @@ function sampleBezier(
   return [b, c, d];
 }
 
-const EMPTY_NODES: { position: [number, number, number]; color: [number, number, number]; clusterId: number }[] = [];
-const EMPTY_EDGES: { a: number; b: number; strength: number; pathIndex: number }[] = [];
-
-const EMPTY_BUFFERS = {
-  positions: new Float32Array(0),
-  tArr: new Float32Array(0),
-  startPoints: new Float32Array(0),
-  endPoints: new Float32Array(0),
-  strengths: new Float32Array(0),
-  pathIndices: new Float32Array(0),
-  colors: new Float32Array(0),
-  vertexCount: 0,
-  edgesLength: 0,
-  segmentsPerEdge: 0,
+type SceneNode = {
+  position: [number, number, number];
+  color: [number, number, number];
 };
 
-export function ContextLinks({ visualizationRef }: { visualizationRef: React.RefObject<VisualizationEngineRef | null> }) {
-  const meshRef = useRef<THREE.LineSegments>(null);
+type SceneEdge = {
+  a: number;
+  b: number;
+  strength: number;
+  pathIndex: number;
+};
+
+const EMPTY_NODES: SceneNode[] = [];
+const EMPTY_EDGES: SceneEdge[] = [];
+
+export function ContextLinks({
+  visualizationRef,
+}: {
+  visualizationRef: React.RefObject<VisualizationEngineRef | null>;
+}) {
+  const materialRefs = useRef<Array<THREE.ShaderMaterial | null>>([]);
   const linksScene = visualizationRef.current?.scene?.contextLinks;
 
   const gate = useMemo(() => {
     const scene = visualizationRef.current?.scene;
     const links = scene?.links;
-    const valid =
-      !!(
-        scene &&
-        links &&
-        typeof links.segmentsPerEdge === 'number' &&
-        links.segmentsPerEdge >= 1
-      );
+    const valid = !!(
+      scene &&
+      links &&
+      typeof links.segmentsPerEdge === 'number' &&
+      links.segmentsPerEdge >= 1
+    );
     const nodes = valid ? (scene!.clusters?.nodes ?? EMPTY_NODES) : EMPTY_NODES;
     const edges = valid ? (links!.edges ?? EMPTY_EDGES) : EMPTY_EDGES;
     const segmentsPerEdge = valid ? links!.segmentsPerEdge : 0;
     return { valid, nodes, edges, segmentsPerEdge };
-  }, [visualizationRef.current?.scene]); // eslint-disable-line react-hooks/exhaustive-deps -- gate reads ref at run time; scene set by parent then re-render
+  }, [visualizationRef.current?.scene]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { positions, tArr, startPoints, endPoints, strengths, pathIndices, colors, vertexCount, edgesLength, segmentsPerEdge } = useMemo(() => {
+  const edgeGeometries = useMemo(() => {
     if (!gate.valid || !gate.nodes.length || !gate.edges.length) {
-      return EMPTY_BUFFERS;
+      return [] as THREE.BufferGeometry[];
     }
-    const { nodes, edges, segmentsPerEdge: seg } = gate;
+    const { nodes, edges, segmentsPerEdge } = gate;
     const controlXAmp = linksScene?.bezierControlXAmp ?? 0.2;
     const controlYAmp = linksScene?.bezierControlYAmp ?? 0.1;
     const controlZAmp = linksScene?.bezierControlZAmp ?? 0.03;
-    const vCount = edges.length * (seg + 1);
-    const positions = new Float32Array(vCount * 3);
-    const tArr = new Float32Array(vCount);
-    const startPoints = new Float32Array(vCount * 3);
-    const endPoints = new Float32Array(vCount * 3);
-    const strengths = new Float32Array(vCount);
-    const pathIndices = new Float32Array(vCount);
-    const colors = new Float32Array(vCount * 3);
-    let idx = 0;
-    for (const edge of edges) {
-      const start = nodes[edge.a].position;
-      const end = nodes[edge.b].position;
-      const color = nodes[edge.a].color;
-      for (let i = 0; i <= seg; i++) {
-        const t = i / seg;
+
+    return edges.map(edge => {
+      const start = nodes[edge.a]!.position;
+      const end = nodes[edge.b]!.position;
+      const color = nodes[edge.a]!.color;
+      const vCount = segmentsPerEdge + 1;
+
+      const positions = new Float32Array(vCount * 3);
+      const tArr = new Float32Array(vCount);
+      const startPoints = new Float32Array(vCount * 3);
+      const endPoints = new Float32Array(vCount * 3);
+      const strengths = new Float32Array(vCount);
+      const pathIndices = new Float32Array(vCount);
+      const colors = new Float32Array(vCount * 3);
+      const indices: number[] = [];
+
+      for (let i = 0; i <= segmentsPerEdge; i++) {
+        const t = i / segmentsPerEdge;
         const p = sampleBezier(
           start,
           end,
@@ -104,36 +112,38 @@ export function ContextLinks({ visualizationRef }: { visualizationRef: React.Ref
           controlZAmp,
           t,
         );
-        positions[idx * 3] = p[0];
-        positions[idx * 3 + 1] = p[1];
-        positions[idx * 3 + 2] = p[2];
-        tArr[idx] = t;
-        startPoints[idx * 3] = start[0];
-        startPoints[idx * 3 + 1] = start[1];
-        startPoints[idx * 3 + 2] = start[2];
-        endPoints[idx * 3] = end[0];
-        endPoints[idx * 3 + 1] = end[1];
-        endPoints[idx * 3 + 2] = end[2];
-        strengths[idx] = edge.strength;
-        pathIndices[idx] = edge.pathIndex;
-        colors[idx * 3] = color[0];
-        colors[idx * 3 + 1] = color[1];
-        colors[idx * 3 + 2] = color[2];
-        idx++;
+        positions[i * 3] = p[0];
+        positions[i * 3 + 1] = p[1];
+        positions[i * 3 + 2] = p[2];
+        tArr[i] = t;
+        startPoints[i * 3] = start[0];
+        startPoints[i * 3 + 1] = start[1];
+        startPoints[i * 3 + 2] = start[2];
+        endPoints[i * 3] = end[0];
+        endPoints[i * 3 + 1] = end[1];
+        endPoints[i * 3 + 2] = end[2];
+        strengths[i] = edge.strength;
+        pathIndices[i] = edge.pathIndex;
+        colors[i * 3] = color[0];
+        colors[i * 3 + 1] = color[1];
+        colors[i * 3 + 2] = color[2];
+        if (i < segmentsPerEdge) indices.push(i, i + 1);
       }
-    }
-    return {
-      positions,
-      tArr,
-      startPoints,
-      endPoints,
-      strengths,
-      pathIndices,
-      colors,
-      vertexCount: vCount,
-      edgesLength: edges.length,
-      segmentsPerEdge: seg,
-    };
+
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      g.setAttribute('t', new THREE.BufferAttribute(tArr, 1));
+      g.setAttribute('startPoint', new THREE.BufferAttribute(startPoints, 3));
+      g.setAttribute('endPoint', new THREE.BufferAttribute(endPoints, 3));
+      g.setAttribute(
+        'connectionStrength',
+        new THREE.BufferAttribute(strengths, 1),
+      );
+      g.setAttribute('pathIndex', new THREE.BufferAttribute(pathIndices, 1));
+      g.setAttribute('connectionColor', new THREE.BufferAttribute(colors, 3));
+      g.setIndex(new THREE.Uint16BufferAttribute(indices, 1));
+      return g;
+    });
   }, [gate, linksScene]);
 
   const uniforms = useMemo(
@@ -162,55 +172,58 @@ export function ContextLinks({ visualizationRef }: { visualizationRef: React.Ref
   );
 
   useFrame((_, delta) => {
-    if (!meshRef.current?.material || !visualizationRef.current) return;
-    const lines = meshRef.current;
-    const mat = lines.material as THREE.ShaderMaterial;
     const v = visualizationRef.current;
-    // Keep links front-facing (2D cluster topology), no 3D orbit rotation.
-    lines.rotation.x = 0;
-    lines.rotation.y = 0;
-    lines.rotation.z = 0;
-    if (mat.uniforms) {
-      mat.uniforms.uTime.value += delta;
-      mat.uniforms.uActivity.value = v.activity;
-      mat.uniforms.uPulsePositions.value[0].set(v.pulsePositions[0][0], v.pulsePositions[0][1], v.pulsePositions[0][2]);
-      mat.uniforms.uPulsePositions.value[1].set(v.pulsePositions[1][0], v.pulsePositions[1][1], v.pulsePositions[1][2]);
-      mat.uniforms.uPulsePositions.value[2].set(v.pulsePositions[2][0], v.pulsePositions[2][1], v.pulsePositions[2][2]);
-      mat.uniforms.uPulseTimes.value[0] = v.pulseTimes[0];
-      mat.uniforms.uPulseTimes.value[1] = v.pulseTimes[1];
-      mat.uniforms.uPulseTimes.value[2] = v.pulseTimes[2];
-      mat.uniforms.uPulseColors.value[0].set(v.pulseColors[0][0], v.pulseColors[0][1], v.pulseColors[0][2]);
-      mat.uniforms.uPulseColors.value[1].set(v.pulseColors[1][0], v.pulseColors[1][1], v.pulseColors[1][2]);
-      mat.uniforms.uPulseColors.value[2].set(v.pulseColors[2][0], v.pulseColors[2][1], v.pulseColors[2][2]);
-      mat.uniforms.uTouchInfluence.value = v.touchInfluence;
+    if (!v) return;
+
+    uniforms.uTime.value += delta;
+    uniforms.uActivity.value = v.activity;
+    uniforms.uPulsePositions.value[0].set(
+      v.pulsePositions[0][0],
+      v.pulsePositions[0][1],
+      v.pulsePositions[0][2],
+    );
+    uniforms.uPulsePositions.value[1].set(
+      v.pulsePositions[1][0],
+      v.pulsePositions[1][1],
+      v.pulsePositions[1][2],
+    );
+    uniforms.uPulsePositions.value[2].set(
+      v.pulsePositions[2][0],
+      v.pulsePositions[2][1],
+      v.pulsePositions[2][2],
+    );
+    uniforms.uPulseTimes.value[0] = v.pulseTimes[0];
+    uniforms.uPulseTimes.value[1] = v.pulseTimes[1];
+    uniforms.uPulseTimes.value[2] = v.pulseTimes[2];
+    uniforms.uPulseColors.value[0].set(
+      v.pulseColors[0][0],
+      v.pulseColors[0][1],
+      v.pulseColors[0][2],
+    );
+    uniforms.uPulseColors.value[1].set(
+      v.pulseColors[1][0],
+      v.pulseColors[1][1],
+      v.pulseColors[1][2],
+    );
+    uniforms.uPulseColors.value[2].set(
+      v.pulseColors[2][0],
+      v.pulseColors[2][1],
+      v.pulseColors[2][2],
+    );
+    uniforms.uTouchInfluence.value = v.touchInfluence;
+
+    for (const mat of materialRefs.current) {
+      if (!mat?.uniforms) continue;
+      mat.uniforms.uTime.value = uniforms.uTime.value;
+      mat.uniforms.uActivity.value = uniforms.uActivity.value;
+      mat.uniforms.uTouchInfluence.value = uniforms.uTouchInfluence.value;
+      for (let i = 0; i < 3; i++) {
+        mat.uniforms.uPulsePositions.value[i].copy(uniforms.uPulsePositions.value[i]);
+        mat.uniforms.uPulseColors.value[i].copy(uniforms.uPulseColors.value[i]);
+        mat.uniforms.uPulseTimes.value[i] = uniforms.uPulseTimes.value[i];
+      }
     }
   });
-
-  const geom = useMemo(() => {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    g.setAttribute('t', new THREE.BufferAttribute(tArr, 1));
-    g.setAttribute('startPoint', new THREE.BufferAttribute(startPoints, 3));
-    g.setAttribute('endPoint', new THREE.BufferAttribute(endPoints, 3));
-    g.setAttribute('connectionStrength', new THREE.BufferAttribute(strengths, 1));
-    g.setAttribute('pathIndex', new THREE.BufferAttribute(pathIndices, 1));
-    g.setAttribute('connectionColor', new THREE.BufferAttribute(colors, 3));
-    g.setIndex(
-      (() => {
-        const indices: number[] = [];
-        let v = 0;
-        for (let e = 0; e < edgesLength; e++) {
-          for (let i = 0; i < segmentsPerEdge; i++) {
-            indices.push(v, v + 1);
-            v++;
-          }
-          v++;
-        }
-        return new THREE.Uint16BufferAttribute(indices, 1);
-      })(),
-    );
-    return g;
-  }, [positions, tArr, startPoints, endPoints, strengths, pathIndices, colors, edgesLength, segmentsPerEdge]);
 
   if (!gate.valid) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
@@ -229,21 +242,35 @@ export function ContextLinks({ visualizationRef }: { visualizationRef: React.Ref
     ? v?.vizIntensity === 'full'
     : v?.vizIntensity !== 'off';
   const showLinks = isCorrectIntensity && confidence < showConfidenceBelow;
-  if (!SHADER_DEBUG_FLAGS.contextLinks || !showLinks || vertexCount === 0) {
+  if (!SHADER_DEBUG_FLAGS.contextLinks || !showLinks || edgeGeometries.length === 0) {
     return null;
   }
 
+  const scene = visualizationRef.current?.scene;
+  const linksRenderOrderBase = scene?.layers?.links?.renderOrderBase ?? 3200;
+
   return (
-    <lineSegments ref={meshRef} geometry={geom}>
-      <shaderMaterial
-        attach="material"
-        vertexShader={connectionVertex}
-        fragmentShader={connectionFragment}
-        uniforms={uniforms}
-        transparent
-        depthWrite={false}
-        blending={THREE.NormalBlending}
-      />
-    </lineSegments>
+    <>
+      {edgeGeometries.map((geom, edgeIndex) => (
+        <lineSegments
+          key={`edge-${edgeIndex}`}
+          geometry={geom}
+          renderOrder={linksRenderOrderBase + edgeIndex}
+        >
+          <shaderMaterial
+            ref={mat => {
+              materialRefs.current[edgeIndex] = mat;
+            }}
+            attach="material"
+            vertexShader={connectionVertex}
+            fragmentShader={connectionFragment}
+            uniforms={uniforms}
+            transparent
+            depthWrite={false}
+            blending={THREE.NormalBlending}
+          />
+        </lineSegments>
+      ))}
+    </>
   );
 }

@@ -63,8 +63,6 @@ function applyEasing(
  * depthTest=false, transparent=true. renderOrder comes from scene.style.planeRenderOrder only.
  * Do not relax this—prevents z-fighting on mobile.
  */
-const BASE_PLANE_RENDER_ORDER = 901;
-
 export function Spine({
   visualizationRef,
 }: {
@@ -364,11 +362,16 @@ export function Spine({
         scale *
         Math.cos(v.clock * driftRate * 1.7 * 2 * Math.PI + perPlanePhase);
 
-      const planeZOffset = (spine.style.planeZOffset?.[i] ?? 0) * zStep;
+      const planeZ = spine.planes?.[i]?.z;
+      if (typeof planeZ !== 'number') {
+        // Contract: builder must provide final Z for every spine plane.
+        mesh.visible = false;
+        continue;
+      }
       mesh.position.set(
         envelopeWidthWorld * offsetX + perPlaneX,
         localY + perPlaneY,
-        (i - (planeCount - 1) / 2) * zStep + planeZOffset,
+        planeZ,
       );
       mesh.scale.set(
         envelopeWidthWorld * widthScale,
@@ -520,7 +523,7 @@ export function Spine({
       mesh.position.set(
         envelopeWidthWorld * shard.offsetX + shardDriftX,
         envelopeHeightWorld * shard.offsetY + shardDriftY,
-        shard.zOffset * zStep,
+        shard.z,
       );
       mesh.scale.set(
         envelopeWidthWorld * (shard.widthScale ?? shardBaseWidthScale),
@@ -600,6 +603,10 @@ export function Spine({
     return null;
   }
   const spine = scene!.spine;
+  const layers = scene!.layers;
+  const spineBaseRo = layers.spineBase.renderOrderBase;
+  const spineShardsRo = layers.spineShards.renderOrderBase;
+  const spineRotRo = layers.spineRot.renderOrderBase;
 
   const blending =
     spine.style.blend === 'additive'
@@ -612,7 +619,7 @@ export function Spine({
     <group
       ref={groupRef}
       visible={visualizationRef.current?.vizIntensity !== 'off'}
-      renderOrder={900}
+      renderOrder={spineBaseRo}
     >
       {shards.map((shard, i) => (
         <mesh
@@ -620,7 +627,7 @@ export function Spine({
           ref={el => {
             shardRefs.current[i] = el;
           }}
-          renderOrder={860 + i}
+          renderOrder={spineShardsRo + i}
         >
           <planeGeometry args={[1, 1]} />
           <meshBasicMaterial
@@ -643,8 +650,7 @@ export function Spine({
         const halftoneIndex = Math.floor((spine.planeCount - 1) / 2);
         const isHalftonePlane =
           i === halftoneIndex && (spine.style.halftoneEnabled ?? true);
-        const planeRenderOrder =
-          spine.style.planeRenderOrder?.[i] ?? BASE_PLANE_RENDER_ORDER + i;
+        const planeRenderOrder = spineBaseRo + i;
         return (
           <mesh
             key={`plane-${i}`}
@@ -678,7 +684,7 @@ export function Spine({
           </mesh>
         );
       })}
-      <mesh ref={leftEdgeRef} renderOrder={916} visible={false}>
+      <mesh ref={leftEdgeRef} renderOrder={spineRotRo + 0} visible={false}>
         <planeGeometry args={[1, 1]} />
         <shaderMaterial
           ref={leftEdgeMatRef}
@@ -693,7 +699,7 @@ export function Spine({
           side={THREE.DoubleSide}
         />
       </mesh>
-      <mesh ref={rightEdgeRef} renderOrder={917} visible={false}>
+      <mesh ref={rightEdgeRef} renderOrder={spineRotRo + 1} visible={false}>
         <planeGeometry args={[1, 1]} />
         <shaderMaterial
           ref={rightEdgeMatRef}

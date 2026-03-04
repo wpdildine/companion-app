@@ -387,8 +387,8 @@ export function PlaneLayerField({
       detailMatRef.current.uniforms.uHalftoneScale.value = halftoneScale;
     }
 
-    if (g1.current) {
-      const d1 = pf.basePlaneDepth;
+    if (g1.current && bp.planes[0]) {
+      const d1 = bp.planes[0].z;
       g1.current.position
         .copy(tmpCamPos.current)
         .addScaledVector(tmpDir.current, d1);
@@ -403,8 +403,8 @@ export function PlaneLayerField({
       );
       g1.current.quaternion.copy(camera.quaternion);
     }
-    if (g2.current) {
-      const d2 = pf.detailPlaneDepth;
+    if (g2.current && bp.planes[1]) {
+      const d2 = bp.planes[1].z;
       g2.current.position
         .copy(tmpCamPos.current)
         .addScaledVector(tmpDir.current, d2);
@@ -495,17 +495,20 @@ export function PlaneLayerField({
     );
   }, 10);
 
-  const bp = visualizationRef.current?.scene?.backgroundPlanes;
-  if (!bp) {
+  const scene = visualizationRef.current?.scene;
+  const bp = scene?.backgroundPlanes;
+  const layers = scene?.layers;
+  if (!bp || !layers?.background) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error(
-        '[PlaneLayerField] visualizationRef.current.scene.backgroundPlanes is missing. Set visualizationRef.current.scene = getSceneDescription() in the screen that mounts the viz (e.g. VoiceScreen ref initializer).',
+        '[PlaneLayerField] visualizationRef.current.scene.backgroundPlanes or scene.layers is missing. Set visualizationRef.current.scene = getSceneDescription() in the screen that mounts the viz (e.g. VoiceScreen ref initializer).',
       );
     }
     return null;
   }
 
   const color = new THREE.Color().setHSL(bp.hue, bp.sat, bp.lum);
+  const backgroundRenderOrderBase = layers.background.renderOrderBase;
 
   return (
     <>
@@ -516,7 +519,7 @@ export function PlaneLayerField({
         visible={false}
         layers={BACKGROUND_LAYER}
         frustumCulled={false}
-        renderOrder={-100}
+        renderOrder={backgroundRenderOrderBase + 0}
       >
         <planeGeometry args={[1, 1]} />
         <primitive object={baseMat} attach="material" />
@@ -528,7 +531,7 @@ export function PlaneLayerField({
         visible={false}
         layers={BACKGROUND_LAYER}
         frustumCulled={false}
-        renderOrder={-99}
+        renderOrder={backgroundRenderOrderBase + 1}
       >
         <planeGeometry args={[1, 1]} />
         <primitive object={detailMat} attach="material" />

@@ -4,6 +4,7 @@
  */
 
 import type { GLSceneDescription } from './formations';
+import { GL_SCENE_LAYER_KEYS } from './formations';
 
 const CANONICAL_KEYS = ['idle', 'listening', 'processing', 'speaking'] as const;
 
@@ -30,6 +31,23 @@ export function validateSceneDescription(
       );
     }
     return false;
+  }
+  const planes = spine.planes;
+  if (!Array.isArray(planes) || planes.length !== spine.planeCount) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error(
+        '[validateSceneDescription] scene.spine.planes must be array of length planeCount.',
+      );
+    }
+    return false;
+  }
+  for (let i = 0; i < planes.length; i++) {
+    if (planes[i] == null || typeof (planes[i] as { z?: number }).z !== 'number') {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[validateSceneDescription] scene.spine.planes[].z must be number.');
+      }
+      return false;
+    }
   }
   const env = spine.envelopeNdc;
   if (!env || typeof env.width !== 'number' || typeof env.height !== 'number' || typeof env.centerY !== 'number') {
@@ -132,6 +150,12 @@ export function validateSceneDescription(
   const shards = spine.shards ?? [];
   for (let s = 0; s < shards.length; s++) {
     const shard = shards[s];
+    if (shard && typeof shard.z !== 'number') {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[validateSceneDescription] scene.spine.shards[].z must be number.');
+      }
+      return false;
+    }
     if (
       shard &&
       typeof shard.zOffset === 'number' &&
@@ -147,6 +171,127 @@ export function validateSceneDescription(
       }
       return false;
     }
+  }
+  if (!scene.layers) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.layers is missing.');
+    }
+    return false;
+  }
+  for (const key of GL_SCENE_LAYER_KEYS) {
+    const section = scene.layers[key];
+    if (!section || typeof section.renderOrderBase !== 'number') {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error(
+          '[validateSceneDescription] scene.layers must have each key with renderOrderBase number. Missing or invalid:',
+          key,
+        );
+      }
+      return false;
+    }
+  }
+  const bp = scene.backgroundPlanes;
+  if (!bp || !Array.isArray(bp.planes) || bp.planes.length !== bp.count) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error(
+        '[validateSceneDescription] scene.backgroundPlanes.planes must be array of length backgroundPlanes.count.',
+      );
+    }
+    return false;
+  }
+  for (let i = 0; i < bp.planes.length; i++) {
+    const p = bp.planes[i];
+    if (p == null || typeof p.z !== 'number') {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[validateSceneDescription] scene.backgroundPlanes.planes[].z must be number.');
+      }
+      return false;
+    }
+  }
+  if (!scene.presets) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.presets is missing.');
+    }
+    return false;
+  }
+  for (const key of CANONICAL_KEYS) {
+    if (!(key in scene.presets)) {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[validateSceneDescription] scene.presets must have key:', key);
+      }
+      return false;
+    }
+    const entry = scene.presets[key as keyof typeof scene.presets];
+    if (entry?.background) {
+      const b = entry.background;
+      if (b.driftSpeedScale != null && typeof b.driftSpeedScale !== 'number') return false;
+      if (b.maskContrastScale != null && typeof b.maskContrastScale !== 'number') return false;
+      if (b.vignetteScale != null && typeof b.vignetteScale !== 'number') return false;
+      if (b.halftoneDensityScale != null && typeof b.halftoneDensityScale !== 'number') return false;
+    }
+    if (entry?.spine) {
+      const s = entry.spine;
+      if (s?.opacityScale != null && typeof s.opacityScale !== 'number') return false;
+      if (s?.breathAmplitudeScale != null && typeof s.breathAmplitudeScale !== 'number') return false;
+      if (s?.shardCountScale != null && typeof s.shardCountScale !== 'number') return false;
+      if (s?.emissiveScale != null && typeof s.emissiveScale !== 'number') return false;
+    }
+  }
+  if (!scene.touch) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.touch is missing.');
+    }
+    return false;
+  }
+  const t = scene.touch;
+  const zonesValid =
+    t.zones &&
+    typeof t.zones.left?.attract === 'boolean' &&
+    typeof t.zones.left?.strength === 'number' &&
+    (t.zones.left?.record == null || typeof t.zones.left?.record === 'boolean') &&
+    typeof t.zones.right?.attract === 'boolean' &&
+    typeof t.zones.right?.strength === 'number' &&
+    (t.zones.right?.record == null || typeof t.zones.right?.record === 'boolean') &&
+    typeof t.zones.center?.attract === 'boolean' &&
+    typeof t.zones.center?.strength === 'number';
+  const centerRecordValid =
+    t.zones &&
+    (t.zones.center?.record == null ||
+      typeof t.zones.center?.record === 'boolean');
+  if (!zonesValid) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.touch.zones (left/right/center.strength) invalid.');
+    }
+    return false;
+  }
+  if (!centerRecordValid) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error(
+        '[validateSceneDescription] scene.touch.zones.center.record must be boolean when present.',
+      );
+    }
+    return false;
+  }
+  const feedbackValid =
+    typeof t.feedback?.maxShear === 'number' &&
+    typeof t.feedback?.maxRotateZ === 'number' &&
+    typeof t.feedback?.damping === 'number' &&
+    typeof t.feedback?.spring === 'number';
+  if (!feedbackValid) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.touch.feedback invalid.');
+    }
+    return false;
+  }
+  const glyphRespValid =
+    typeof t.glyphResponse?.repelStrength === 'number' &&
+    typeof t.glyphResponse?.nudgeRadius === 'number' &&
+    typeof t.glyphResponse?.parallaxBoost === 'number';
+  if (!glyphRespValid) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.touch.glyphResponse invalid.');
+    }
+    return false;
   }
   return true;
 }

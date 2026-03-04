@@ -187,6 +187,8 @@ export type SpineShard = {
   widthScale: number;
   /** Z in zStep units; negative = behind main stack. */
   zOffset: number;
+  /** Builder-supplied final world Z (renderer uses this only). */
+  z: number;
   /** Opacity multiplier (e.g. 0.5–0.8). */
   opacityScale: number;
   /** Per-shard tonal color for depth hierarchy. */
@@ -205,7 +207,9 @@ export type GLSceneSpine = {
   planeCount: 5;
   envelopeNdc: SpineEnvelopeNdc;
   style: GLSceneSpineStyle;
-  /** Secondary thin sliver planes (2–4), seeded layout. */
+  /** Builder-supplied final Z per plane (renderer uses planes[i].z only). Length = planeCount. */
+  planes: Array<{ z: number }>;
+  /** Secondary thin sliver planes (2–4), seeded layout. Each shard has builder-supplied z. */
   shards: SpineShard[];
   /** Mode-specific visible shard counts for depth stack presence. */
   shardCountByMode: Record<CanonicalSpineMode, number>;
@@ -363,6 +367,7 @@ function buildSupportShards(seed: number, count: number): SpineShard[] {
       heightScale,
       widthScale,
       zOffset,
+      z: 0, // set by buildSpineDescription from baseZ + zOffset * zStep
       opacityScale: accent ? 0.7 + rng() * 0.24 : 0.46 + rng() * 0.44,
       color: accent ? accentColor : color,
       driftPhase: rng() * Math.PI * 2,
@@ -374,6 +379,9 @@ function buildSupportShards(seed: number, count: number): SpineShard[] {
   return shards;
 }
 
+/** Base world Z for spine planes and shards (all Z math in builder). */
+const SPINE_BASE_Z = -1.0;
+
 /**
  * Build spine description from preset (arrays + zStep, planeGap, idle drift) and fixed overrides.
  * Composed by getSceneDescription(). Arrays are source of truth; Spine.tsx consumes scene.spine only.
@@ -381,6 +389,7 @@ function buildSupportShards(seed: number, count: number): SpineShard[] {
 export function buildSpineDescription(): GLSceneSpine {
   const preset = SPINE_STYLE_PRESET;
   const planeCount = preset.planeCount;
+  const zStep = preset.zStep;
   const shardCountByMode = SPINE_ART_DIRECTION.shards.countsByMode;
   const maxShards = Math.max(
     shardCountByMode.idle,
@@ -388,8 +397,17 @@ export function buildSpineDescription(): GLSceneSpine {
     shardCountByMode.processing,
     shardCountByMode.speaking,
   );
+  const rawShards = buildSupportShards(42, maxShards);
+  const shards: SpineShard[] = rawShards.map(shard => ({
+    ...shard,
+    z: SPINE_BASE_Z + shard.zOffset * zStep,
+  }));
+  const planes: Array<{ z: number }> = Array.from({ length: planeCount }, (_, i) => ({
+    z: SPINE_BASE_Z + zStep * i + preset.planeZOffset[i]!,
+  }));
   return {
     planeCount,
+    planes,
     envelopeNdc: {
       width: SPINE_ART_DIRECTION.envelope.width,
       height: SPINE_ART_DIRECTION.envelope.height,
@@ -445,7 +463,7 @@ export function buildSpineDescription(): GLSceneSpine {
       edgeBandWidth: 0.22,
       edgeOpacity: 0.34,
     },
-    shards: buildSupportShards(42, maxShards),
+    shards,
     shardCountByMode,
     transitionMsIn: 220,
     transitionMsOut: 280,

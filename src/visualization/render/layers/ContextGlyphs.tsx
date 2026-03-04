@@ -10,6 +10,79 @@ import { nodeVertex, nodeFragment } from '../../materials/glyphs/nodes';
 import type { VisualizationEngineRef } from '../../engine/types';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
 
+type GlyphBuffers = {
+  positions: Float32Array;
+  nodeSizes: Float32Array;
+  nodeTypes: Float32Array;
+  nodeColors: Float32Array;
+  distanceFromRoot: Float32Array;
+  decayPhase: Float32Array;
+  decayRate: Float32Array;
+  decayDepth: Float32Array;
+  visible: Float32Array;
+  globalIndices: number[];
+};
+
+function buildGlyphBuffers(
+  nodes: NonNullable<VisualizationEngineRef['scene']>['clusters']['nodes'],
+  indices: number[],
+  seeds: {
+    phaseSeed: number;
+    rateSeed: number;
+    depthSeed: number;
+    rateMin: number;
+    rateMax: number;
+    depthMin: number;
+    depthMax: number;
+  },
+): GlyphBuffers {
+  const n = indices.length;
+  const positions = new Float32Array(n * 3);
+  const nodeSizes = new Float32Array(n);
+  const nodeTypes = new Float32Array(n);
+  const nodeColors = new Float32Array(n * 3);
+  const distanceFromRoot = new Float32Array(n);
+  const decayPhase = new Float32Array(n);
+  const decayRate = new Float32Array(n);
+  const decayDepth = new Float32Array(n);
+  const visible = new Float32Array(Math.max(1, n));
+
+  for (let local = 0; local < n; local++) {
+    const global = indices[local]!;
+    const node = nodes[global]!;
+    positions[local * 3] = node.position[0];
+    positions[local * 3 + 1] = node.position[1];
+    positions[local * 3 + 2] = node.position[2];
+    nodeSizes[local] = node.size;
+    nodeTypes[local] = node.type;
+    nodeColors[local * 3] = node.color[0];
+    nodeColors[local * 3 + 1] = node.color[1];
+    nodeColors[local * 3 + 2] = node.color[2];
+    distanceFromRoot[local] = node.distanceFromRoot;
+
+    const i = global + 1;
+    const r1 = Math.abs(Math.sin(i * seeds.phaseSeed));
+    const r2 = Math.abs(Math.sin(i * seeds.rateSeed));
+    const r3 = Math.abs(Math.sin(i * seeds.depthSeed));
+    decayPhase[local] = r1 * Math.PI * 2;
+    decayRate[local] = seeds.rateMin + r2 * (seeds.rateMax - seeds.rateMin);
+    decayDepth[local] = seeds.depthMin + r3 * (seeds.depthMax - seeds.depthMin);
+  }
+
+  return {
+    positions,
+    nodeSizes,
+    nodeTypes,
+    nodeColors,
+    distanceFromRoot,
+    decayPhase,
+    decayRate,
+    decayDepth,
+    visible,
+    globalIndices: indices,
+  };
+}
+
 export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.RefObject<VisualizationEngineRef | null> }) {
   const scene = visualizationRef.current?.scene;
   const glyphsScene = scene?.contextGlyphs;
@@ -19,54 +92,63 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
   );
   const N = nodes.length;
 
-  const meshRef = useRef<THREE.Points>(null);
-  const visibleRef = useRef<Float32Array>(new Float32Array(Math.max(N, 1)));
-  const { positions, nodeSizes, nodeTypes, nodeColors, distanceFromRoot } = useMemo(() => {
-    const pos = new Float32Array(N * 3);
-    const sizes = new Float32Array(N);
-    const types = new Float32Array(N);
-    const colors = new Float32Array(N * 3);
-    const distFromRoot = new Float32Array(N);
-    nodes.forEach((node, i) => {
-      pos[i * 3] = node.position[0];
-      pos[i * 3 + 1] = node.position[1];
-      pos[i * 3 + 2] = node.position[2];
-      sizes[i] = node.size;
-      types[i] = node.type;
-      colors[i * 3] = node.color[0];
-      colors[i * 3 + 1] = node.color[1];
-      colors[i * 3 + 2] = node.color[2];
-      distFromRoot[i] = node.distanceFromRoot;
-    });
-    return {
-      positions: pos,
-      nodeSizes: sizes,
-      nodeTypes: types,
-      nodeColors: colors,
-      distanceFromRoot: distFromRoot,
-    };
-  }, [nodes, N]);
-  const { decayPhase, decayRate, decayDepth } = useMemo(() => {
-    const phase = new Float32Array(N);
-    const rate = new Float32Array(N);
-    const depth = new Float32Array(N);
-    const phaseSeed = glyphsScene?.decayPhaseSeed ?? 12.9898;
-    const rateSeed = glyphsScene?.decayRateSeed ?? 78.233;
-    const depthSeed = glyphsScene?.decayDepthSeed ?? 37.719;
-    const rateMin = glyphsScene?.decayRateMin ?? 0.25;
-    const rateMax = glyphsScene?.decayRateMax ?? 1.4;
-    const depthMin = glyphsScene?.decayDepthMin ?? 0.12;
-    const depthMax = glyphsScene?.decayDepthMax ?? 0.47;
-    for (let i = 0; i < N; i++) {
-      const r1 = Math.abs(Math.sin((i + 1) * phaseSeed));
-      const r2 = Math.abs(Math.sin((i + 1) * rateSeed));
-      const r3 = Math.abs(Math.sin((i + 1) * depthSeed));
-      phase[i] = r1 * Math.PI * 2;
-      rate[i] = rateMin + r2 * (rateMax - rateMin);
-      depth[i] = depthMin + r3 * (depthMax - depthMin);
+  const backRef = useRef<THREE.Points>(null);
+  const frontRef = useRef<THREE.Points>(null);
+  const viewMatrixRef = useRef(new THREE.Matrix4());
+  const projectionMatrixRef = useRef(new THREE.Matrix4());
+
+  const seeds = useMemo(
+    () => ({
+      phaseSeed: glyphsScene?.decayPhaseSeed ?? 12.9898,
+      rateSeed: glyphsScene?.decayRateSeed ?? 78.233,
+      depthSeed: glyphsScene?.decayDepthSeed ?? 37.719,
+      rateMin: glyphsScene?.decayRateMin ?? 0.25,
+      rateMax: glyphsScene?.decayRateMax ?? 1.4,
+      depthMin: glyphsScene?.decayDepthMin ?? 0.12,
+      depthMax: glyphsScene?.decayDepthMax ?? 0.47,
+    }),
+    [glyphsScene],
+  );
+
+  const { backIndices, frontIndices } = useMemo(() => {
+    const back: number[] = [];
+    const front: number[] = [];
+    for (let i = 0; i < nodes.length; i++) {
+      if ((nodes[i]?.position?.[2] ?? 0) <= 0) back.push(i);
+      else front.push(i);
     }
-    return { decayPhase: phase, decayRate: rate, decayDepth: depth };
-  }, [N, glyphsScene]);
+    return { backIndices: back, frontIndices: front };
+  }, [nodes]);
+
+  const backBuffers = useMemo(
+    () => buildGlyphBuffers(nodes, backIndices, seeds),
+    [nodes, backIndices, seeds],
+  );
+  const frontBuffers = useMemo(
+    () => buildGlyphBuffers(nodes, frontIndices, seeds),
+    [nodes, frontIndices, seeds],
+  );
+
+  const createGeometry = (b: GlyphBuffers) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(b.positions, 3));
+    g.setAttribute('nodeSize', new THREE.BufferAttribute(b.nodeSizes, 1));
+    g.setAttribute('nodeType', new THREE.BufferAttribute(b.nodeTypes, 1));
+    g.setAttribute('nodeColor', new THREE.BufferAttribute(b.nodeColors, 3));
+    g.setAttribute(
+      'distanceFromRoot',
+      new THREE.BufferAttribute(b.distanceFromRoot, 1),
+    );
+    g.setAttribute('decayPhase', new THREE.BufferAttribute(b.decayPhase, 1));
+    g.setAttribute('decayRate', new THREE.BufferAttribute(b.decayRate, 1));
+    g.setAttribute('decayDepth', new THREE.BufferAttribute(b.decayDepth, 1));
+    g.setAttribute('visible', new THREE.BufferAttribute(b.visible, 1));
+    return g;
+  };
+
+  const backGeom = useMemo(() => createGeometry(backBuffers), [backBuffers]);
+  const frontGeom = useMemo(() => createGeometry(frontBuffers), [frontBuffers]);
+
   const MODE_TO_ID: Record<string, number> = {
     idle: 0,
     listening: 1,
@@ -75,6 +157,7 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
     touched: 4,
     released: 5,
   };
+
   const uniforms = useMemo(
     () => ({
       uTime: { value: 0 },
@@ -109,81 +192,55 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
     [glyphsScene],
   );
 
-  const viewMatrixRef = useRef(new THREE.Matrix4());
-  const projectionMatrixRef = useRef(new THREE.Matrix4());
-
   useFrame((state, delta) => {
-    if (!meshRef.current?.material || !visualizationRef.current) return;
-    const points = meshRef.current;
-    const geom = points.geometry;
     const v = visualizationRef.current;
+    if (!v) return;
     const rulesCount = v.rulesClusterCount ?? 0;
     const cardsCount = v.cardsClusterCount ?? 0;
     const maxPer = v.scene?.maxPerCluster ?? 8;
-    if (visibleRef.current.length < N) {
-      visibleRef.current = new Float32Array(N);
-    }
-    for (let i = 0; i < maxPer && i < N; i++) visibleRef.current[i] = i < rulesCount ? 1 : 0;
-    for (let i = maxPer; i < N; i++) visibleRef.current[i] = i - maxPer < cardsCount ? 1 : 0;
-    const visibleAttr = geom.getAttribute('visible');
-    if (visibleAttr) {
-      visibleAttr.needsUpdate = true;
-    }
-    const mat = points.material as THREE.ShaderMaterial;
-    // Keep glyph clusters front-facing and stable in 2D space.
-    points.rotation.x = 0;
-    points.rotation.y = 0;
-    points.rotation.z = 0;
-    if (mat.uniforms) {
-      mat.uniforms.uTime.value += delta;
-      mat.uniforms.uActivity.value = v.activity;
-      mat.uniforms.uMode.value = MODE_TO_ID[v.currentMode as keyof typeof MODE_TO_ID] ?? 0;
-      mat.uniforms.uPulsePositions.value[0].set(v.pulsePositions[0][0], v.pulsePositions[0][1], v.pulsePositions[0][2]);
-      mat.uniforms.uPulsePositions.value[1].set(v.pulsePositions[1][0], v.pulsePositions[1][1], v.pulsePositions[1][2]);
-      mat.uniforms.uPulsePositions.value[2].set(v.pulsePositions[2][0], v.pulsePositions[2][1], v.pulsePositions[2][2]);
-      mat.uniforms.uPulseTimes.value[0] = v.pulseTimes[0];
-      mat.uniforms.uPulseTimes.value[1] = v.pulseTimes[1];
-      mat.uniforms.uPulseTimes.value[2] = v.pulseTimes[2];
-      mat.uniforms.uPulseColors.value[0].set(v.pulseColors[0][0], v.pulseColors[0][1], v.pulseColors[0][2]);
-      mat.uniforms.uPulseColors.value[1].set(v.pulseColors[1][0], v.pulseColors[1][1], v.pulseColors[1][2]);
-      mat.uniforms.uPulseColors.value[2].set(v.pulseColors[2][0], v.pulseColors[2][1], v.pulseColors[2][2]);
-      const tw = v.touchWorld;
-      mat.uniforms.uTouchWorld.value.set(
-        tw ? tw[0] : 1e6,
-        tw ? tw[1] : 1e6,
-        tw ? tw[2] : 1e6,
-      );
-      mat.uniforms.uTouchInfluence.value = v.touchInfluence;
-      viewMatrixRef.current.copy(state.camera.matrixWorldInverse);
-      projectionMatrixRef.current.copy(state.camera.projectionMatrix);
-      mat.uniforms.uModelMatrix.value.copy(points.matrixWorld);
+
+    const applyVisibility = (geom: THREE.BufferGeometry, b: GlyphBuffers) => {
+      for (let i = 0; i < b.globalIndices.length; i++) {
+        const global = b.globalIndices[i]!;
+        if (global < maxPer) b.visible[i] = global < rulesCount ? 1 : 0;
+        else b.visible[i] = global - maxPer < cardsCount ? 1 : 0;
+      }
+      const visibleAttr = geom.getAttribute('visible');
+      if (visibleAttr) visibleAttr.needsUpdate = true;
+    };
+
+    applyVisibility(backGeom, backBuffers);
+    applyVisibility(frontGeom, frontBuffers);
+
+    uniforms.uTime.value += delta;
+    uniforms.uActivity.value = v.activity;
+    uniforms.uMode.value = MODE_TO_ID[v.currentMode as keyof typeof MODE_TO_ID] ?? 0;
+    uniforms.uPulsePositions.value[0].set(v.pulsePositions[0][0], v.pulsePositions[0][1], v.pulsePositions[0][2]);
+    uniforms.uPulsePositions.value[1].set(v.pulsePositions[1][0], v.pulsePositions[1][1], v.pulsePositions[1][2]);
+    uniforms.uPulsePositions.value[2].set(v.pulsePositions[2][0], v.pulsePositions[2][1], v.pulsePositions[2][2]);
+    uniforms.uPulseTimes.value[0] = v.pulseTimes[0];
+    uniforms.uPulseTimes.value[1] = v.pulseTimes[1];
+    uniforms.uPulseTimes.value[2] = v.pulseTimes[2];
+    uniforms.uPulseColors.value[0].set(v.pulseColors[0][0], v.pulseColors[0][1], v.pulseColors[0][2]);
+    uniforms.uPulseColors.value[1].set(v.pulseColors[1][0], v.pulseColors[1][1], v.pulseColors[1][2]);
+    uniforms.uPulseColors.value[2].set(v.pulseColors[2][0], v.pulseColors[2][1], v.pulseColors[2][2]);
+    const tw = v.touchWorld;
+    uniforms.uTouchWorld.value.set(tw ? tw[0] : 1e6, tw ? tw[1] : 1e6, tw ? tw[2] : 1e6);
+    uniforms.uTouchInfluence.value = v.touchInfluence;
+
+    viewMatrixRef.current.copy(state.camera.matrixWorldInverse);
+    projectionMatrixRef.current.copy(state.camera.projectionMatrix);
+
+    for (const mesh of [backRef.current, frontRef.current]) {
+      if (!mesh) continue;
+      mesh.rotation.set(0, 0, 0);
+      const mat = mesh.material as THREE.ShaderMaterial;
+      if (!mat.uniforms) continue;
       mat.uniforms.uViewMatrix.value.copy(viewMatrixRef.current);
       mat.uniforms.uProjectionMatrix.value.copy(projectionMatrixRef.current);
+      mat.uniforms.uModelMatrix.value.copy(mesh.matrixWorld);
     }
   });
-
-  const geom = useMemo(() => {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    g.setAttribute('nodeSize', new THREE.BufferAttribute(nodeSizes, 1));
-    g.setAttribute('nodeType', new THREE.BufferAttribute(nodeTypes, 1));
-    g.setAttribute('nodeColor', new THREE.BufferAttribute(nodeColors, 3));
-    g.setAttribute('distanceFromRoot', new THREE.BufferAttribute(distanceFromRoot, 1));
-    g.setAttribute('decayPhase', new THREE.BufferAttribute(decayPhase, 1));
-    g.setAttribute('decayRate', new THREE.BufferAttribute(decayRate, 1));
-    g.setAttribute('decayDepth', new THREE.BufferAttribute(decayDepth, 1));
-    g.setAttribute('visible', new THREE.BufferAttribute(visibleRef.current, 1));
-    return g;
-  }, [
-    positions,
-    nodeSizes,
-    nodeTypes,
-    nodeColors,
-    distanceFromRoot,
-    decayPhase,
-    decayRate,
-    decayDepth,
-  ]);
 
   if (visualizationRef.current?.vizIntensity === 'off') {
     return null;
@@ -200,17 +257,34 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
     return null;
   }
 
+  const layers = scene?.layers;
+  const glyphsBackRo = layers?.glyphsBack?.renderOrderBase ?? 3000;
+  const glyphsFrontRo = layers?.glyphsFront?.renderOrderBase ?? 3500;
+
   return (
-    <points ref={meshRef} geometry={geom}>
-      <shaderMaterial
-        attach="material"
-        vertexShader={nodeVertex}
-        fragmentShader={nodeFragment}
-        uniforms={uniforms}
-        transparent
-        depthWrite={false}
-        blending={THREE.NormalBlending}
-      />
-    </points>
+    <>
+      <points ref={backRef} geometry={backGeom} renderOrder={glyphsBackRo}>
+        <shaderMaterial
+          attach="material"
+          vertexShader={nodeVertex}
+          fragmentShader={nodeFragment}
+          uniforms={uniforms}
+          transparent
+          depthWrite={false}
+          blending={THREE.NormalBlending}
+        />
+      </points>
+      <points ref={frontRef} geometry={frontGeom} renderOrder={glyphsFrontRo}>
+        <shaderMaterial
+          attach="material"
+          vertexShader={nodeVertex}
+          fragmentShader={nodeFragment}
+          uniforms={uniforms}
+          transparent
+          depthWrite={false}
+          blending={THREE.NormalBlending}
+        />
+      </points>
+    </>
   );
 }
