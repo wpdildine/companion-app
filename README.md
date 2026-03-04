@@ -2,7 +2,7 @@
 
 MTG Rules Companion and Timer App — React Native (New Architecture), with [llama.rn](https://github.com/mybigday/llama.rn) for on-device LLM. Voice input, offline TTS (Piper), and a **deterministic context provider** for grounded MTG rules/cards answers — no vector retrieval in-app.
 
-**AI agents:** Follow [docs/AGENT_RULES.md](docs/AGENT_RULES.md). See the [Architecture Navigation Map](docs/ARCHITECTURE.md) for where code lives (app, rag, nodeMap, theme, ui, utils, shared).
+**AI agents:** Follow [docs/AGENT_RULES.md](docs/AGENT_RULES.md). See the [Architecture Navigation Map](docs/ARCHITECTURE.md) for where code lives (app, rag, visualization, theme, ui, utils, shared).
 
 This is a [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
 
@@ -12,7 +12,7 @@ This is a [**React Native**](https://reactnative.dev) project, bootstrapped usin
 
 ## How the app works
 
-- **Node map:** The voice screen uses a fullscreen Three.js/R3F visualization (starfield, node cloud, connections) as the background. Mode (idle, listening, processing, speaking, touched, released) drives activity and pulses; see [docs/APP_ARCHITECTURE.md](docs/APP_ARCHITECTURE.md) for high- and low-level architecture.
+- **Visualization:** The voice screen uses a fullscreen Three.js/R3F visualization (starfield, node cloud, connections) as the background. Mode (idle, listening, processing, speaking, touched, released) drives activity and pulses; see [docs/APP_ARCHITECTURE.md](docs/APP_ARCHITECTURE.md) for high- and low-level architecture.
 - **Voice:** Speech-to-text via `@react-native-voice/voice` (lazy-loaded). You speak; the app turns it into text and sends it to the RAG pipeline.
 - **TTS:** Piper (offline) as the main voice; fallback to `react-native-tts` when the Piper model isn’t installed.
 - **RAG / “Ask” path:** The app does **not** run embeddings or vector search on-device. It uses a **deterministic context provider** that:
@@ -30,15 +30,15 @@ Context provider logic is shared with **mtg_rules**: the app consumes **@mtg/run
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full Architecture Navigation Map.
 
-- **`src/app/`** — App entry + navigation. `App.tsx` composes `SafeAreaProvider` and `VoiceScreen`. VoiceScreen holds state, handlers, and composes NodeMapSurface + UI.
-- **`src/theme/`** — Pure theme values: `getTheme(isDark)` returns RN tokens and viz primitives (canvasBackground, paletteA, paletteB, nodePalette). Injected into RN and nodeMap; no theme import inside nodeMap.
+- **`src/app/`** — App entry + navigation. `App.tsx` composes `SafeAreaProvider` and `VoiceScreen`. VoiceScreen holds state, handlers, and composes VisualizationSurface + UI.
+- **`src/theme/`** — Pure theme values: `getTheme(isDark)` returns RN tokens and viz primitives (canvasBackground, paletteA, paletteB, nodePalette). Injected into RN and visualization; no theme import inside visualization.
 - **`src/ui/`** — Screen-level UI: VoiceLoadingView, UserVoiceView, DevScreen, DebugZoneOverlay. Panel state types for gestures.
-- **`src/nodeMap/`** — **Pure visualization layer**: NodeMapCanvas, NodeMapSurface, 2D fallback (dots), R3F scene, touch callbacks. Consumes only injected theme primitives and engine ref; no app state or voice. Touch API: short tap, double-tap, long-press, drag; see `nodeMap/interaction/touchHandlers.ts`.
-- **`src/utils/`** — Pure or side-effect isolated: `log` (logModeChange, logPulse), `validateVizState`. No React or theme imports.
+- **`src/visualization/`** — **Pure visualization layer**: engine, scene, render (VisualizationCanvas, VisualizationSurface, VisualizationCanvasR3F, 2D fallback), interaction (InteractionBand, touchHandlers), materials. Consumes only injected theme primitives and engine ref; no app state or voice. Touch API: short tap, double-tap, long-press, drag; see `visualization/interaction/touchHandlers.ts`.
+- **`src/utils/`** — Pure or side-effect isolated: `log` (logModeChange, logPulse). No React or theme imports.
 - **`src/shared/`** — Reusable building blocks: components, helpers, services, types.
 - **`src/rag/`** — RAG pipeline, context provider, pack DB.
 
-The app does **not** use Skia. Graphics are driven by Three.js/R3F and the theme’s viz primitives. To add features: theme → `src/theme`, UI → `src/ui`, node map → `src/nodeMap`.
+The app does **not** use Skia. Graphics are driven by Three.js/R3F and the theme’s viz primitives. To add features: theme → `src/theme`, UI → `src/ui`, visualization → `src/visualization`.
 
 ---
 
@@ -121,7 +121,7 @@ If everything is set up correctly, the app runs in the Android Emulator, iOS Sim
 
 ## Step 4: Modify your app
 
-Edit `App.tsx` (or any source); [Fast Refresh](https://reactnative.dev/docs/fast-refresh) will update the app. Root entry is `App.tsx`, which re-exports `src/app/App.tsx`; most screen orchestration lives in `src/app/VoiceScreen.tsx`. Add or change UI in `src/ui/`, theme tokens in `src/theme/`, and 3D/node-map behavior in `src/nodeMap/`. To force a full reload:
+Edit `App.tsx` (or any source); [Fast Refresh](https://reactnative.dev/docs/fast-refresh) will update the app. Root entry is `App.tsx`, which re-exports `src/app/App.tsx`; most screen orchestration lives in `src/app/VoiceScreen.tsx`. Add or change UI in `src/ui/`, theme tokens in `src/theme/`, and 3D visualization behavior in `src/visualization/`. To force a full reload:
 
 - **Android:** Double-tap <kbd>R</kbd> or Dev Menu (<kbd>Ctrl</kbd>+<kbd>M</kbd> / <kbd>Cmd</kbd>+<kbd>M</kbd>) → Reload.
 - **iOS:** <kbd>R</kbd> in the simulator.

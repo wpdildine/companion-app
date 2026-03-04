@@ -38,15 +38,15 @@ import { SelectedRulesBlock, type SelectedRule } from '../shared/components/Sele
 import { VoiceLoadingView, DebugZoneOverlay, UserVoiceView, DevScreen } from '../ui';
 import { getTheme } from '../theme';
 import {
-  createDefaultNodeMapRef,
+  createDefaultVisualizationRef,
   getSceneDescription,
   triggerPulseAtCenter,
-  type NodeMapMode,
+  type VisualizationMode,
   type AiUiSignals,
-  NodeMapSurface,
+  VisualizationSurface,
   InteractionBand,
 } from '../visualization';
-import type { NodeMapPanelRects } from '../visualization';
+import type { VisualizationPanelRects } from '../visualization';
 import { useAiVizBridge } from './hooks/useAiVizBridge';
 
 const BUNDLE_MODEL_PREFIXES = Array.from(
@@ -60,7 +60,7 @@ const BUNDLE_LLM_PATH_CANDIDATES = BUNDLE_MODEL_PREFIXES.map(
 );
 const EMBED_MODEL_FILENAME = 'nomic-embed-text.gguf';
 const CHAT_MODEL_FILENAME = 'model.gguf';
-const DEV_APP_STATES: NodeMapMode[] = [
+const DEV_APP_STATES: VisualizationMode[] = [
   'idle',
   'listening',
   'processing',
@@ -297,7 +297,7 @@ export default function VoiceScreen() {
   const isDarkMode = useColorScheme() === 'dark';
   const [transcribedText, setTranscribedText] = useState('What is a trigger?');
   const [_partialText, setPartialText] = useState('');
-  const [mode, setMode] = useState<NodeMapMode>('idle');
+  const [mode, setMode] = useState<VisualizationMode>('idle');
   const [error, setError] = useState<string | null>(null);
   const [voiceReady, setVoiceReady] = useState(false);
   const [_voiceAvailable, setVoiceAvailable] = useState(false);
@@ -315,7 +315,7 @@ export default function VoiceScreen() {
   const [_packError, setPackError] = useState<string | null>(null);
   const [debugEnabled, setDebugEnabled] = useState(DEBUG_ENABLED_DEFAULT);
   const [debugShowZones, _setDebugShowZones] = useState(false);
-  const [panelRectsForDebug, setPanelRectsForDebug] = useState<NodeMapPanelRects>({});
+  const [panelRectsForDebug, setPanelRectsForDebug] = useState<VisualizationPanelRects>({});
   const [stateCycleOn, _setStateCycleOn] = useState(false);
   const [revealedBlocks, setRevealedBlocks] = useState({
     answer: false,
@@ -323,8 +323,8 @@ export default function VoiceScreen() {
     rules: false,
     sources: false,
   });
-  const nodeMapRef = useRef((() => {
-    const r = createDefaultNodeMapRef();
+  const visualizationRef = useRef((() => {
+    const r = createDefaultVisualizationRef();
     r.scene = getSceneDescription();
     return r;
   })());
@@ -357,14 +357,14 @@ export default function VoiceScreen() {
 
   const isAsking = mode === 'processing';
 
-  const { setSignals, emitEvent } = useAiVizBridge(nodeMapRef);
+  const { setSignals, emitEvent } = useAiVizBridge(visualizationRef);
   const scrollYRef = useRef(0);
-  const panelRectsContentRef = useRef<NodeMapPanelRects>({});
+  const panelRectsContentRef = useRef<VisualizationPanelRects>({});
 
   const flushPanelRects = useCallback(() => {
-    const next: NodeMapPanelRects = {};
+    const next: VisualizationPanelRects = {};
     const source = panelRectsContentRef.current;
-    const keys: Array<keyof NodeMapPanelRects> = ['answer', 'cards', 'rules'];
+    const keys: Array<keyof VisualizationPanelRects> = ['answer', 'cards', 'rules'];
     for (const key of keys) {
       const rect = source[key];
       if (!rect) continue;
@@ -380,7 +380,7 @@ export default function VoiceScreen() {
   }, [setSignals]);
 
   const updatePanelRect = useCallback(
-    (key: keyof NodeMapPanelRects, rect: { x: number; y: number; w: number; h: number }) => {
+    (key: keyof VisualizationPanelRects, rect: { x: number; y: number; w: number; h: number }) => {
       panelRectsContentRef.current = {
         ...panelRectsContentRef.current,
         [key]: rect,
@@ -397,7 +397,7 @@ export default function VoiceScreen() {
   );
 
   const clearPanelRect = useCallback(
-    (key: keyof NodeMapPanelRects) => {
+    (key: keyof VisualizationPanelRects) => {
       const next = { ...panelRectsContentRef.current };
       delete next[key];
       panelRectsContentRef.current = next;
@@ -449,11 +449,11 @@ export default function VoiceScreen() {
       cardRefsCount,
     });
   }, [mode, validationSummary, setSignals]);
-  // Note: targetActivity/activity are set inside applySignalsToNodeMap from phase; no direct nodeMapRef write here.
+  // Note: targetActivity/activity are set inside applySignalsToVisualization from phase; no direct visualizationRef write here.
 
   useEffect(() => {
     const setReduceMotion = (enabled: boolean) => {
-      if (nodeMapRef.current) nodeMapRef.current.reduceMotion = enabled;
+      if (visualizationRef.current) visualizationRef.current.reduceMotion = enabled;
     };
     AccessibilityInfo.isReduceMotionEnabled?.()
       .then(setReduceMotion)
@@ -526,10 +526,10 @@ export default function VoiceScreen() {
   };
 
   const applyVizState = useCallback(
-    (state: NodeMapMode) => {
+    (state: VisualizationMode) => {
       setMode(state);
       if (state === 'released') {
-        triggerPulseAtCenter(nodeMapRef);
+        triggerPulseAtCenter(visualizationRef);
       }
     },
     [],
@@ -675,12 +675,12 @@ export default function VoiceScreen() {
       if (!next) return;
       const committed = committedTextRef.current.trim();
       setTranscribedText(committed ? `${committed} ${next}` : next);
-      triggerPulseAtCenter(nodeMapRef);
+      triggerPulseAtCenter(visualizationRef);
     };
     V.onSpeechPartialResults = e => {
       if (modeRef.current !== 'listening') return;
       setPartialText(e.value?.[0] ?? '');
-      triggerPulseAtCenter(nodeMapRef);
+      triggerPulseAtCenter(visualizationRef);
     };
     V.onSpeechError = e => {
       setError(e.error?.message ?? 'Speech recognition error');
@@ -1178,8 +1178,8 @@ export default function VoiceScreen() {
 
   return (
     <View style={styles.screenWrapper}>
-      <NodeMapSurface
-        nodeMapRef={nodeMapRef}
+      <VisualizationSurface
+        visualizationRef={visualizationRef}
         controlsEnabled={debugEnabled}
         inputEnabled
         clusterZoneHighlights={!debugEnabled && !anyPanelVisible}
@@ -1267,8 +1267,8 @@ export default function VoiceScreen() {
                     title="Answer"
                     subtitle="Grounded response"
                     variant="answer"
-                    intensity={nodeMapRef.current?.vizIntensity ?? 'subtle'}
-                    reduceMotion={nodeMapRef.current?.reduceMotion ?? false}
+                    intensity={visualizationRef.current?.vizIntensity ?? 'subtle'}
+                    reduceMotion={visualizationRef.current?.reduceMotion ?? false}
                     headerDecon={false}
                     ink={textColor}
                     mutedInk={mutedColor}
@@ -1290,8 +1290,8 @@ export default function VoiceScreen() {
                   {dummyCards.length > 0 && revealedBlocks.cards && (
                     <CardReferenceBlock
                       cards={dummyCards}
-                      intensity={nodeMapRef.current?.vizIntensity ?? 'subtle'}
-                      reduceMotion={nodeMapRef.current?.reduceMotion ?? false}
+                      intensity={visualizationRef.current?.vizIntensity ?? 'subtle'}
+                      reduceMotion={visualizationRef.current?.reduceMotion ?? false}
                       onCardPress={() => {
                         revealBlock('cards');
                         emitEvent('tapCard');
@@ -1312,8 +1312,8 @@ export default function VoiceScreen() {
                   {dummyRules.length > 0 && revealedBlocks.rules && (
                     <SelectedRulesBlock
                       rules={dummyRules}
-                      intensity={nodeMapRef.current?.vizIntensity ?? 'subtle'}
-                      reduceMotion={nodeMapRef.current?.reduceMotion ?? false}
+                      intensity={visualizationRef.current?.vizIntensity ?? 'subtle'}
+                      reduceMotion={visualizationRef.current?.reduceMotion ?? false}
                       onRulePress={() => {
                         revealBlock('rules');
                         emitEvent('tapCitation');
@@ -1336,8 +1336,8 @@ export default function VoiceScreen() {
                       title="Sources"
                       subtitle="Auditable context summary"
                       variant="neutral"
-                      intensity={nodeMapRef.current?.vizIntensity ?? 'subtle'}
-                      reduceMotion={nodeMapRef.current?.reduceMotion ?? false}
+                      intensity={visualizationRef.current?.vizIntensity ?? 'subtle'}
+                      reduceMotion={visualizationRef.current?.reduceMotion ?? false}
                       headerDecon
                       ink={textColor}
                       mutedInk={mutedColor}
@@ -1363,8 +1363,8 @@ export default function VoiceScreen() {
                       title="Input Error"
                       subtitle="Please retry"
                       variant="warning"
-                      intensity={nodeMapRef.current?.vizIntensity ?? 'subtle'}
-                      reduceMotion={nodeMapRef.current?.reduceMotion ?? false}
+                      intensity={visualizationRef.current?.vizIntensity ?? 'subtle'}
+                      reduceMotion={visualizationRef.current?.reduceMotion ?? false}
                       headerDecon={false}
                       ink={textColor}
                       mutedInk={mutedColor}
@@ -1388,8 +1388,8 @@ export default function VoiceScreen() {
                         ? 'warning'
                         : 'answer'
                     }
-                    intensity={nodeMapRef.current?.vizIntensity ?? 'subtle'}
-                    reduceMotion={nodeMapRef.current?.reduceMotion ?? false}
+                    intensity={visualizationRef.current?.vizIntensity ?? 'subtle'}
+                    reduceMotion={visualizationRef.current?.reduceMotion ?? false}
                     headerDecon={false}
                     ink={textColor}
                     mutedInk={mutedColor}
@@ -1441,8 +1441,8 @@ export default function VoiceScreen() {
                         imageUri: null,
                       })) ?? []
                     }
-                    intensity={nodeMapRef.current?.vizIntensity ?? 'subtle'}
-                    reduceMotion={nodeMapRef.current?.reduceMotion ?? false}
+                    intensity={visualizationRef.current?.vizIntensity ?? 'subtle'}
+                    reduceMotion={visualizationRef.current?.reduceMotion ?? false}
                     onCardPress={() => {
                       revealBlock('cards');
                       emitEvent('tapCard');
@@ -1470,8 +1470,8 @@ export default function VoiceScreen() {
                         used: r.status === 'valid',
                       })) ?? []
                     }
-                    intensity={nodeMapRef.current?.vizIntensity ?? 'subtle'}
-                    reduceMotion={nodeMapRef.current?.reduceMotion ?? false}
+                    intensity={visualizationRef.current?.vizIntensity ?? 'subtle'}
+                    reduceMotion={visualizationRef.current?.reduceMotion ?? false}
                     onRulePress={() => {
                       revealBlock('rules');
                       emitEvent('tapCitation');
@@ -1494,8 +1494,8 @@ export default function VoiceScreen() {
                       title="Sources"
                       subtitle="Auditable context summary"
                       variant="neutral"
-                      intensity={nodeMapRef.current?.vizIntensity ?? 'subtle'}
-                      reduceMotion={nodeMapRef.current?.reduceMotion ?? false}
+                      intensity={visualizationRef.current?.vizIntensity ?? 'subtle'}
+                      reduceMotion={visualizationRef.current?.reduceMotion ?? false}
                       headerDecon
                       ink={textColor}
                       mutedInk={mutedColor}
@@ -1520,16 +1520,16 @@ export default function VoiceScreen() {
             ) : null}
           </View>
         </UserVoiceView>
-      </NodeMapSurface>
+      </VisualizationSurface>
       <InteractionBand
-        nodeMapRef={nodeMapRef}
+        visualizationRef={visualizationRef}
         onClusterTap={handleClusterTap}
         enabled={!debugEnabled && !anyPanelVisible && mode !== 'processing'}
       />
       <DebugZoneOverlay panelRects={panelRectsForDebug} visible={debugShowZones} />
       {debugEnabled && (
         <DevScreen
-          nodeMapRef={nodeMapRef}
+          visualizationRef={visualizationRef}
           onClose={() => setDebugEnabled(false)}
           theme={{
             text: textColor,

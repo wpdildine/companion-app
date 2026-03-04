@@ -6,13 +6,13 @@
 import { useFrame, useThree } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { useRef } from 'react';
-import type { NodeMapEngineRef } from '../engine/types';
+import type { VisualizationEngineRef } from '../engine/types';
 import { getPulseColorWithHue } from '../engine/getPulseColor';
 
 export function TouchRaycaster({
-  nodeMapRef,
+  visualizationRef,
 }: {
-  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
+  visualizationRef: React.RefObject<VisualizationEngineRef | null>;
 }) {
   const { camera } = useThree();
   const raycaster = useRef(new THREE.Raycaster());
@@ -21,7 +21,7 @@ export function TouchRaycaster({
   const intersection = useRef(new THREE.Vector3());
 
   useFrame((state) => {
-    const v = nodeMapRef.current;
+    const v = visualizationRef.current;
     if (!v?.pendingTapNdc) return;
 
     const [ndcX, ndcY] = v.pendingTapNdc;

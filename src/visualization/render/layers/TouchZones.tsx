@@ -1,21 +1,21 @@
 /**
  * Touch zone affordances (rules / center / cards). Dumb renderer: viewport math and
- * camera-facing placement only; all layout and style from nodeMapRef.current.scene.
+ * camera-facing placement only; all layout and style from visualizationRef.current.scene.
  */
 
 import { useFrame } from '@react-three/fiber/native';
 import { useRef } from 'react';
 import * as THREE from 'three';
-import type { NodeMapEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../engine/types';
 
 const planeEdgesGeometry = new THREE.EdgesGeometry(
   new THREE.PlaneGeometry(1, 1),
 );
 
 export function TouchZones({
-  nodeMapRef,
+  visualizationRef,
 }: {
-  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
+  visualizationRef: React.RefObject<VisualizationEngineRef | null>;
 }) {
   const areaGroupRef = useRef<THREE.Group>(null);
   const rulesAreaRef = useRef<THREE.Mesh>(null);
@@ -28,13 +28,13 @@ export function TouchZones({
   const cameraDirRef = useRef(new THREE.Vector3());
 
   useFrame(state => {
-    const v = nodeMapRef.current;
+    const v = visualizationRef.current;
     if (!v) return;
     const scene = v.scene;
     if (!scene) {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
         console.error(
-          '[TouchZones] nodeMapRef.current.scene is missing. Set nodeMapRef.current.scene = getSceneDescription() in the screen that mounts the viz (e.g. VoiceScreen ref initializer).',
+          '[TouchZones] visualizationRef.current.scene is missing. Set visualizationRef.current.scene = getSceneDescription() in the screen that mounts the viz (e.g. VoiceScreen ref initializer).',
         );
       }
       return;
@@ -124,7 +124,7 @@ export function TouchZones({
     }
   });
 
-  const scene = nodeMapRef.current?.scene;
+  const scene = visualizationRef.current?.scene;
   if (!scene) return null;
 
   const { style } = scene.zones;

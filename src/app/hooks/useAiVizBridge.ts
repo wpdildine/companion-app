@@ -1,33 +1,33 @@
 /**
  * Hook: single place for App to push AiUiSignals and events to the node map ref.
- * Exposes setSignals and emitEvent; all writes go through applySignalsToNodeMap.
+ * Exposes setSignals and emitEvent; all writes go through applySignalsToVisualization.
  */
 
 import { useCallback, type RefObject } from 'react';
-import { applySignalsToNodeMap } from '../../visualization';
+import { applySignalsToVisualization } from '../../visualization';
 import type {
-  NodeMapEngineRef,
+  VisualizationEngineRef,
   AiUiSignals,
   AiUiSignalsEvent,
-  NodeMapPanelRects,
+  VisualizationPanelRects,
 } from '../../visualization';
 
-type AiVizInput = Partial<AiUiSignals> & { panelRects?: NodeMapPanelRects };
+type AiVizInput = Partial<AiUiSignals> & { panelRects?: VisualizationPanelRects };
 
-export function useAiVizBridge(nodeMapRef: RefObject<NodeMapEngineRef | null>) {
+export function useAiVizBridge(visualizationRef: RefObject<VisualizationEngineRef | null>) {
   const setSignals = useCallback(
     (signals: AiVizInput) => {
-      applySignalsToNodeMap(nodeMapRef, signals);
+      applySignalsToVisualization(visualizationRef, signals);
     },
-    [nodeMapRef],
+    [visualizationRef],
   );
 
   const emitEvent = useCallback(
     (eventType: AiUiSignalsEvent) => {
       if (eventType == null) return;
-      applySignalsToNodeMap(nodeMapRef, { event: eventType });
+      applySignalsToVisualization(visualizationRef, { event: eventType });
     },
-    [nodeMapRef],
+    [visualizationRef],
   );
 
   return { setSignals, emitEvent };

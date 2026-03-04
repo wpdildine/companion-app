@@ -1,7 +1,7 @@
 import { useFrame, useThree } from '@react-three/fiber/native';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import type { NodeMapEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../engine/types';
 import { SHADER_DEBUG_FLAGS } from './shaderDebugFlags';
 
 /** Set to false to re-enable vignette / grain / chromatic (cinematic). */
@@ -81,9 +81,9 @@ const postFragment = `
 `;
 
 export function PostFXPass({
-  nodeMapRef,
+  visualizationRef,
 }: {
-  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
+  visualizationRef: React.RefObject<VisualizationEngineRef | null>;
 }) {
   const { gl, scene, camera, size } = useThree();
   const postCamera = useMemo(
@@ -194,7 +194,7 @@ export function PostFXPass({
   const lastRtSizeRef = useRef({ w: 0, h: 0 });
 
   useFrame((_state, delta) => {
-    const v = nodeMapRef.current;
+    const v = visualizationRef.current;
     if (!v || POST_FX_DISABLED || !SHADER_DEBUG_FLAGS.postFx) {
       gl.setRenderTarget(null);
       gl.clear();

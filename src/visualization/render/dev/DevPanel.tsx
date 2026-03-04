@@ -12,8 +12,8 @@ import {
 } from 'react-native';
 import { useCallback, useState } from 'react';
 import {
-  type NodeMapEngineRef,
-  type NodeMapMode,
+  type VisualizationEngineRef,
+  type VisualizationMode,
 } from '../../engine/types';
 import { TARGET_ACTIVITY_BY_MODE } from '../../engine/createDefaultRef';
 import { triggerPulseAtCenter } from '../../engine/triggerPulse';
@@ -27,7 +27,7 @@ export type DevPanelTheme = {
 
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v));
-const APP_STATES: NodeMapMode[] = [
+const APP_STATES: VisualizationMode[] = [
   'idle',
   'listening',
   'processing',
@@ -37,15 +37,15 @@ const APP_STATES: NodeMapMode[] = [
 ];
 
 /** Canonical modes only — for spine validation (Cycle canonical). Temporary: remove when done. */
-const CANONICAL_MODES: NodeMapMode[] = ['idle', 'listening', 'processing', 'speaking'];
+const CANONICAL_MODES: VisualizationMode[] = ['idle', 'listening', 'processing', 'speaking'];
 const CANONICAL_CYCLE_MS = 2500;
 
 export function DevPanel({
-  nodeMapRef,
+  visualizationRef,
   onClose,
   theme,
 }: {
-  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
+  visualizationRef: React.RefObject<VisualizationEngineRef | null>;
   onClose: () => void;
   theme: DevPanelTheme;
 }) {
@@ -56,14 +56,14 @@ export function DevPanel({
   const bg = theme.background;
 
   const withViz = useCallback(
-    (fn: (viz: NodeMapEngineRef) => void) => {
-      const viz = nodeMapRef.current;
+    (fn: (viz: VisualizationEngineRef) => void) => {
+      const viz = visualizationRef.current;
       if (!viz) return;
       fn(viz);
       // Dev panel values are ref-backed; force repaint so controls reflect changes immediately.
       setUiVersion(v => v + 1);
     },
-    [nodeMapRef],
+    [visualizationRef],
   );
 
   const setPaletteId = (id: number) => {
@@ -127,7 +127,7 @@ export function DevPanel({
     });
   };
   const applyState = useCallback(
-    (state: NodeMapMode) => {
+    (state: VisualizationMode) => {
       withViz(viz => {
         viz.currentMode = state;
         viz.targetActivity = TARGET_ACTIVITY_BY_MODE[state];
@@ -141,20 +141,20 @@ export function DevPanel({
       });
       if (state === 'released') {
         // Released mode should show quick pulse then settle.
-        triggerPulseAtCenter(nodeMapRef);
+        triggerPulseAtCenter(visualizationRef);
       }
     },
-    [nodeMapRef, withViz],
+    [visualizationRef, withViz],
   );
   const toggleStateCycle = useCallback(() => {
-    const viz = nodeMapRef.current;
+    const viz = visualizationRef.current;
     if (!viz) return;
     viz.stateCycleOn = !viz.stateCycleOn;
     if (viz.stateCycleOn) {
       if (viz.stateCycleTimerId != null) clearInterval(viz.stateCycleTimerId);
       applyState(APP_STATES[viz.stateCycleIdx % APP_STATES.length]!);
       viz.stateCycleTimerId = setInterval(() => {
-        const v = nodeMapRef.current;
+        const v = visualizationRef.current;
         if (!v) return;
         v.stateCycleIdx = (v.stateCycleIdx + 1) % APP_STATES.length;
         applyState(APP_STATES[v.stateCycleIdx]!);
@@ -166,17 +166,17 @@ export function DevPanel({
       }
     }
     setUiVersion(u => u + 1);
-  }, [nodeMapRef, applyState]);
+  }, [visualizationRef, applyState]);
 
   const toggleCanonicalCycle = useCallback(() => {
-    const viz = nodeMapRef.current;
+    const viz = visualizationRef.current;
     if (!viz) return;
     viz.canonicalCycleOn = !viz.canonicalCycleOn;
     if (viz.canonicalCycleOn) {
       if (viz.canonicalCycleTimerId != null) clearInterval(viz.canonicalCycleTimerId);
       applyState(CANONICAL_MODES[viz.canonicalCycleIdx % CANONICAL_MODES.length]!);
       viz.canonicalCycleTimerId = setInterval(() => {
-        const v = nodeMapRef.current;
+        const v = visualizationRef.current;
         if (!v) return;
         v.canonicalCycleIdx = (v.canonicalCycleIdx + 1) % CANONICAL_MODES.length;
         applyState(CANONICAL_MODES[v.canonicalCycleIdx]!);
@@ -188,9 +188,9 @@ export function DevPanel({
       }
     }
     setUiVersion(u => u + 1);
-  }, [nodeMapRef, applyState]);
+  }, [visualizationRef, applyState]);
 
-  const v = nodeMapRef.current;
+  const v = visualizationRef.current;
   if (!v) return null;
 
   return (
@@ -241,7 +241,7 @@ export function DevPanel({
             </View>
           </View>
           <Pressable
-            onPress={() => triggerPulseAtCenter(nodeMapRef)}
+            onPress={() => triggerPulseAtCenter(visualizationRef)}
             style={[styles.row, styles.button]}
           >
             <Text style={{ color: textColor }}>Debug pulses</Text>

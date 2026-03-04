@@ -5,7 +5,7 @@
 
 import type { GLSceneDescription } from '../scene/formations';
 
-export type NodeMapMode =
+export type VisualizationMode =
   | 'idle'
   | 'listening'
   | 'processing'
@@ -35,15 +35,15 @@ export interface TouchNdc {
   y: number;
 }
 
-export type NodeMapIntensity = 'off' | 'subtle' | 'full';
+export type VisualizationIntensity = 'off' | 'subtle' | 'full';
 
-export type NodeMapPanelRects = {
+export type VisualizationPanelRects = {
   answer?: { x: number; y: number; w: number; h: number };
   cards?: { x: number; y: number; w: number; h: number };
   rules?: { x: number; y: number; w: number; h: number };
 };
 
-export interface NodeMapEngineRef {
+export interface VisualizationEngineRef {
   clock: number;
   activity: number;
   targetActivity: number;
@@ -84,14 +84,14 @@ export interface NodeMapEngineRef {
   autoRotSpeedY: number;
   autoRotSpeedZ: number;
   /** Current app mode so render layers can map state-specific effects. */
-  currentMode: NodeMapMode;
+  currentMode: VisualizationMode;
   /** Post FX controls. */
   postFxEnabled: boolean;
   postFxVignette: number;
   postFxChromatic: number;
   postFxGrain: number;
   /** Viz intensity: off | subtle | full. Default subtle until later. */
-  vizIntensity: NodeMapIntensity;
+  vizIntensity: VisualizationIntensity;
   /** Reduce motion (accessibility). */
   reduceMotion: boolean;
   /** Last semantic event (for pulse/ripple). */
@@ -100,9 +100,9 @@ export interface NodeMapEngineRef {
   lastEventTime: number;
   /** Optional snapshot for debug. */
   signalsSnapshot?: AiUiSignals;
-  /** Panel rects in viewport-relative screen px (account for scroll before writing). NodeMapSurface provides viewport size; GL converts to normalized. */
-  panelRects?: NodeMapPanelRects;
-  /** Derived in applySignalsToNodeMap from signals (not in signals API). */
+  /** Panel rects in viewport-relative screen px (account for scroll before writing). VisualizationSurface provides viewport size; GL converts to normalized. */
+  panelRects?: VisualizationPanelRects;
+  /** Derived in applySignalsToVisualization from signals (not in signals API). */
   rulesClusterCount: number;
   cardsClusterCount: number;
   layerCount: number;

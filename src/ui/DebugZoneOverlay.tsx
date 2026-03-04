@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import type { NodeMapPanelRects } from '../visualization';
+import type { VisualizationPanelRects } from '../visualization';
 
 const ZONE_COLORS: Record<string, string> = {
   answer: '#22c55e',
@@ -14,14 +14,14 @@ const ZONE_COLORS: Record<string, string> = {
 };
 
 export type DebugZoneOverlayProps = {
-  panelRects: NodeMapPanelRects;
+  panelRects: VisualizationPanelRects;
   visible: boolean;
 };
 
 export function DebugZoneOverlay({ panelRects, visible }: DebugZoneOverlayProps) {
   if (!visible) return null;
 
-  const keys = (Object.keys(panelRects) as Array<keyof NodeMapPanelRects>).filter(
+  const keys = (Object.keys(panelRects) as Array<keyof VisualizationPanelRects>).filter(
     (k) => panelRects[k] && panelRects[k]!.w > 0 && panelRects[k]!.h > 0,
   );
 

@@ -1,13 +1,13 @@
 /**
- * Node map state: createDefaultNodeMapRef and validateVizState.
+ * Node map state: createDefaultVisualizationRef and validateVizState.
  */
 
-import { createDefaultNodeMapRef } from '../src/nodeMap/types';
-import { validateVizState } from '../src/utils/validateVizState';
+import { createDefaultVisualizationRef } from '../src/visualization/engine/createDefaultRef';
+import { validateVizState } from '../src/visualization/engine/validateVizState';
 
-describe('createDefaultNodeMapRef', () => {
+describe('createDefaultVisualizationRef', () => {
   it('returns object with required fields', () => {
-    const ref = createDefaultNodeMapRef();
+    const ref = createDefaultVisualizationRef();
     expect(ref).toHaveProperty('clock', 0);
     expect(ref).toHaveProperty('activity', 0);
     expect(ref).toHaveProperty('targetActivity', 0.1);
@@ -21,7 +21,7 @@ describe('createDefaultNodeMapRef', () => {
 
 describe('validateVizState', () => {
   it('accepts valid default ref', () => {
-    const ref = createDefaultNodeMapRef();
+    const ref = createDefaultVisualizationRef();
     const result = validateVizState(ref);
     expect(result.valid).toBe(true);
     expect(result.errors).toHaveLength(0);
@@ -34,7 +34,7 @@ describe('validateVizState', () => {
   });
 
   it('rejects invalid currentMode', () => {
-    const ref = createDefaultNodeMapRef();
+    const ref = createDefaultVisualizationRef();
     (ref as { currentMode: string }).currentMode = 'invalid';
     const result = validateVizState(ref);
     expect(result.valid).toBe(false);
@@ -42,7 +42,7 @@ describe('validateVizState', () => {
   });
 
   it('rejects activity out of range', () => {
-    const ref = createDefaultNodeMapRef();
+    const ref = createDefaultVisualizationRef();
     ref.activity = 1.5;
     const result = validateVizState(ref);
     expect(result.valid).toBe(false);

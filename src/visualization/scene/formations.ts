@@ -3,7 +3,7 @@
  *
  * Contract:
  * - `getSceneDescription()` is the ONLY public entrypoint for GL aesthetics (zones/clusters/links/pulses/background/spine).
- * - GL components must consume `nodeMapRef.current.scene` and must not introduce independent palette/layout constants.
+ * - GL components must consume `visualizationRef.current.scene` and must not introduce independent palette/layout constants.
  *
  * Organization rule:
  * - Keep this file as the contract + assembly layer.
@@ -319,6 +319,61 @@ export type GLSceneBackgroundPlanes = {
   lum: number;
 };
 
+export type GLSceneContextGlyphs = {
+  baseNodeSize: number;
+  pulseSpeed: number;
+  touchRadius: number;
+  touchStrength: number;
+  touchMaxOffset: number;
+  decayPhaseSeed: number;
+  decayRateSeed: number;
+  decayDepthSeed: number;
+  decayRateMin: number;
+  decayRateMax: number;
+  decayDepthMin: number;
+  decayDepthMax: number;
+};
+
+export type GLSceneContextLinks = {
+  pulseSpeed: number;
+  showConfidenceBelow: number;
+  requireFullIntensity: boolean;
+  bezierControlXAmp: number;
+  bezierControlYAmp: number;
+  bezierControlZAmp: number;
+};
+
+export type GLScenePlaneField = {
+  opacityClampMin: number;
+  opacityClampMax: number;
+  noisePhaseSpeed: number;
+  smoothingSeconds: number;
+  intensityProcessingBase: number;
+  intensityProcessingActivityGain: number;
+  intensityIdleBase: number;
+  intensityIdleActivityGain: number;
+  thresholdBase: number;
+  thresholdAmp: number;
+  thresholdHz: number;
+  halftoneScaleBase: number;
+  halftoneScaleAmp: number;
+  halftoneScaleHz: number;
+  basePlaneDepth: number;
+  detailPlaneDepth: number;
+  basePlaneScale: number;
+  detailPlaneScale: number;
+  panelOpacityScale: number;
+  answerOpacityScale: number;
+  cardsOpacityScale: number;
+  rulesOpacityScale: number;
+  rulesHueShiftH: number;
+  rulesHueShiftS: number;
+  rulesHueShiftL: number;
+  answerPanelDepth: number;
+  cardsPanelDepth: number;
+  rulesPanelDepth: number;
+};
+
 export type { GLSceneSpine } from './builders/spine';
 
 export type GLSceneDescription = {
@@ -335,6 +390,9 @@ export type GLSceneDescription = {
   clusters: GLSceneClusters;
   links: GLSceneLinks;
   backgroundPlanes: GLSceneBackgroundPlanes;
+  contextGlyphs: GLSceneContextGlyphs;
+  contextLinks: GLSceneContextLinks;
+  planeField: GLScenePlaneField;
   spine: GLSceneSpine;
 };
 
@@ -379,10 +437,13 @@ function hexToRgb(hex: string): [number, number, number] {
 }
 
 import { buildSpineDescription, type GLSceneSpine } from './builders/spine';
+import { buildContextGlyphsDescription } from './builders/contextGlyphs';
+import { buildContextLinksDescription } from './builders/contextLinks';
+import { buildPlaneLayerFieldDescription } from './builders/planeLayerField';
 
 /**
  * Single source of truth for GL scene: zones, clusters (nodes + colors), links, pulse anchors, background planes, spine.
- * Computed on each call; store the result on nodeMapRef.current.scene. _options is reserved for future use (e.g. paletteId, vizIntensityProfile).
+ * Computed on each call; store the result on visualizationRef.current.scene. _options is reserved for future use (e.g. paletteId, vizIntensityProfile).
  */
 export function getSceneDescription(
   _options?: GetSceneDescriptionOptions,
@@ -466,6 +527,9 @@ export function getSceneDescription(
       sat: 0.45,
       lum: 0.55,
     },
+    contextGlyphs: buildContextGlyphsDescription(),
+    contextLinks: buildContextLinksDescription(),
+    planeField: buildPlaneLayerFieldDescription(),
     spine: buildSpineDescription(),
   };
 }

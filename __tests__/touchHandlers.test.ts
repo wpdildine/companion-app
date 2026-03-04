@@ -2,7 +2,7 @@
  * Touch handlers: withTouchStubs returns all callbacks, stubs when missing.
  */
 
-import { withTouchStubs } from '../src/nodeMap/interaction/touchHandlers';
+import { withTouchStubs } from '../src/visualization/interaction/touchHandlers';
 
 describe('withTouchStubs', () => {
   it('returns all callback keys', () => {

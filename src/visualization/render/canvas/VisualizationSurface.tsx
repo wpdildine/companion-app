@@ -7,11 +7,11 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { TouchCallbacks } from '../../interaction/touchHandlers';
-import type { NodeMapEngineRef } from '../../engine/types';
-import { NodeMapCanvas } from './NodeMapCanvas';
+import type { VisualizationEngineRef } from '../../engine/types';
+import { VisualizationCanvas } from './VisualizationCanvas';
 
-export type NodeMapSurfaceProps = {
-  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
+export type VisualizationSurfaceProps = {
+  visualizationRef: React.RefObject<VisualizationEngineRef | null>;
   controlsEnabled: boolean;
   inputEnabled: boolean;
   canvasBackground?: string;
@@ -19,8 +19,8 @@ export type NodeMapSurfaceProps = {
   children: React.ReactNode;
 } & TouchCallbacks;
 
-export function NodeMapSurface({
-  nodeMapRef,
+export function VisualizationSurface({
+  visualizationRef,
   controlsEnabled,
   inputEnabled,
   canvasBackground,
@@ -34,12 +34,12 @@ export function NodeMapSurface({
   onDragStart,
   onDragMove,
   onDragEnd,
-}: NodeMapSurfaceProps) {
+}: VisualizationSurfaceProps) {
   return (
     <View style={styles.root}>
       <View style={styles.canvas} pointerEvents="none">
-        <NodeMapCanvas
-          nodeMapRef={nodeMapRef}
+        <VisualizationCanvas
+          visualizationRef={visualizationRef}
           controlsEnabled={controlsEnabled}
           inputEnabled={inputEnabled}
           canvasBackground={canvasBackground}

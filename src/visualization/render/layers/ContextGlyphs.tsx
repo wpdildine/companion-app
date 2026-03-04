@@ -1,17 +1,18 @@
 /**
- * Context glyphs: two clusters (rules + cards), breathing + drift + glow. Counts from nodeMapRef; no glyphs when no evidence.
- * All positions and colors from nodeMapRef.current.scene.clusters.nodes (no fallback constants).
+ * Context glyphs: two clusters (rules + cards), breathing + drift + glow. Counts from visualizationRef; no glyphs when no evidence.
+ * All positions and colors from visualizationRef.current.scene.clusters.nodes (no fallback constants).
  */
 
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { nodeVertex, nodeFragment } from '../../materials/glyphs/nodes';
-import type { NodeMapEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../engine/types';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
 
-export function ContextGlyphs({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeMapEngineRef | null> }) {
-  const scene = nodeMapRef.current?.scene;
+export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.RefObject<VisualizationEngineRef | null> }) {
+  const scene = visualizationRef.current?.scene;
+  const glyphsScene = scene?.contextGlyphs;
   const nodes = useMemo(
     () => scene?.clusters?.nodes ?? [],
     [scene?.clusters?.nodes],
@@ -49,16 +50,23 @@ export function ContextGlyphs({ nodeMapRef }: { nodeMapRef: React.RefObject<Node
     const phase = new Float32Array(N);
     const rate = new Float32Array(N);
     const depth = new Float32Array(N);
+    const phaseSeed = glyphsScene?.decayPhaseSeed ?? 12.9898;
+    const rateSeed = glyphsScene?.decayRateSeed ?? 78.233;
+    const depthSeed = glyphsScene?.decayDepthSeed ?? 37.719;
+    const rateMin = glyphsScene?.decayRateMin ?? 0.25;
+    const rateMax = glyphsScene?.decayRateMax ?? 1.4;
+    const depthMin = glyphsScene?.decayDepthMin ?? 0.12;
+    const depthMax = glyphsScene?.decayDepthMax ?? 0.47;
     for (let i = 0; i < N; i++) {
-      const r1 = Math.abs(Math.sin((i + 1) * 12.9898));
-      const r2 = Math.abs(Math.sin((i + 1) * 78.233));
-      const r3 = Math.abs(Math.sin((i + 1) * 37.719));
+      const r1 = Math.abs(Math.sin((i + 1) * phaseSeed));
+      const r2 = Math.abs(Math.sin((i + 1) * rateSeed));
+      const r3 = Math.abs(Math.sin((i + 1) * depthSeed));
       phase[i] = r1 * Math.PI * 2;
-      rate[i] = 0.25 + r2 * 1.15;
-      depth[i] = 0.12 + r3 * 0.35;
+      rate[i] = rateMin + r2 * (rateMax - rateMin);
+      depth[i] = depthMin + r3 * (depthMax - depthMin);
     }
     return { decayPhase: phase, decayRate: rate, decayDepth: depth };
-  }, [N]);
+  }, [N, glyphsScene]);
   const MODE_TO_ID: Record<string, number> = {
     idle: 0,
     listening: 1,
@@ -72,8 +80,8 @@ export function ContextGlyphs({ nodeMapRef }: { nodeMapRef: React.RefObject<Node
       uTime: { value: 0 },
       uActivity: { value: 0.1 },
       uMode: { value: 0 },
-      uBaseNodeSize: { value: 5.25 },
-      uPulseSpeed: { value: 4 },
+      uBaseNodeSize: { value: glyphsScene?.baseNodeSize ?? 5.25 },
+      uPulseSpeed: { value: glyphsScene?.pulseSpeed ?? 4 },
       uPulsePositions: {
         value: [
           new THREE.Vector3(1e6, 1e6, 1e6),
@@ -94,21 +102,21 @@ export function ContextGlyphs({ nodeMapRef }: { nodeMapRef: React.RefObject<Node
       uModelMatrix: { value: new THREE.Matrix4() },
       uViewMatrix: { value: new THREE.Matrix4() },
       uProjectionMatrix: { value: new THREE.Matrix4() },
-      uTouchRadius: { value: 3.6 },
-      uTouchStrength: { value: 2.8 },
-      uTouchMaxOffset: { value: 1.35 },
+      uTouchRadius: { value: glyphsScene?.touchRadius ?? 3.6 },
+      uTouchStrength: { value: glyphsScene?.touchStrength ?? 2.8 },
+      uTouchMaxOffset: { value: glyphsScene?.touchMaxOffset ?? 1.35 },
     }),
-    [],
+    [glyphsScene],
   );
 
   const viewMatrixRef = useRef(new THREE.Matrix4());
   const projectionMatrixRef = useRef(new THREE.Matrix4());
 
   useFrame((state, delta) => {
-    if (!meshRef.current?.material || !nodeMapRef.current) return;
+    if (!meshRef.current?.material || !visualizationRef.current) return;
     const points = meshRef.current;
     const geom = points.geometry;
-    const v = nodeMapRef.current;
+    const v = visualizationRef.current;
     const rulesCount = v.rulesClusterCount ?? 0;
     const cardsCount = v.cardsClusterCount ?? 0;
     const maxPer = v.scene?.maxPerCluster ?? 8;
@@ -177,16 +185,16 @@ export function ContextGlyphs({ nodeMapRef }: { nodeMapRef: React.RefObject<Node
     decayDepth,
   ]);
 
-  if (nodeMapRef.current?.vizIntensity === 'off') {
+  if (visualizationRef.current?.vizIntensity === 'off') {
     return null;
   }
   if (!SHADER_DEBUG_FLAGS.contextGlyphs) {
     return null;
   }
   if (N === 0) {
-    if (typeof __DEV__ !== 'undefined' && __DEV__ && nodeMapRef.current && !scene?.clusters?.nodes?.length) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__ && visualizationRef.current && !scene?.clusters?.nodes?.length) {
       console.error(
-        '[ContextGlyphs] scene.clusters.nodes is missing or empty. Set nodeMapRef.current.scene = getSceneDescription() in the screen that mounts the viz.',
+        '[ContextGlyphs] scene.clusters.nodes is missing or empty. Set visualizationRef.current.scene = getSceneDescription() in the screen that mounts the viz.',
       );
     }
     return null;

@@ -2,11 +2,11 @@
  * Factory for the visualization engine ref. Single place for default values.
  */
 
-import type { NodeMapEngineRef, NodeMapMode } from './types';
+import type { VisualizationEngineRef, VisualizationMode } from './types';
 
 const SENTINEL_FAR = 1e6;
 
-export function createDefaultNodeMapRef(): NodeMapEngineRef {
+export function createDefaultVisualizationRef(): VisualizationEngineRef {
   return {
     clock: 0,
     activity: 0,
@@ -86,7 +86,7 @@ export function createDefaultNodeMapRef(): NodeMapEngineRef {
 }
 
 /** targetActivity by mode (plan §1) */
-export const TARGET_ACTIVITY_BY_MODE: Record<NodeMapMode, number> = {
+export const TARGET_ACTIVITY_BY_MODE: Record<VisualizationMode, number> = {
   idle: 0.1,
   listening: 0.6,
   processing: 1.0,

@@ -1,5 +1,5 @@
 /**
- * Background planes (decon-modern field). Layout and style from nodeMapRef.current.scene.backgroundPlanes;
+ * Background planes (decon-modern field). Layout and style from visualizationRef.current.scene.backgroundPlanes;
  * only dynamic signals (clock, reduceMotion, panelRects) from ref.
  * Plane 1 (base): broad gradient + vignette + low-freq noise. Plane 2 (detail): halftone + microgrid + speckle (screen feel).
  */
@@ -7,7 +7,7 @@
 import { useFrame } from '@react-three/fiber/native';
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import type { NodeMapEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../engine/types';
 import { BACKGROUND_LAYER } from '../canvas/PostFXPass';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
 
@@ -158,9 +158,9 @@ function getViewSizeAtPos(
 }
 
 export function PlaneLayerField({
-  nodeMapRef,
+  visualizationRef,
 }: {
-  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
+  visualizationRef: React.RefObject<VisualizationEngineRef | null>;
 }) {
   const g1 = useRef<THREE.Mesh>(null);
   const g2 = useRef<THREE.Mesh>(null);
@@ -280,9 +280,10 @@ export function PlaneLayerField({
   };
 
   useFrame((state, delta) => {
-    const v = nodeMapRef.current;
+    const v = visualizationRef.current;
     if (!v) return;
     const bp = v.scene?.backgroundPlanes;
+    const pf = v.scene?.planeField;
     const show = v.vizIntensity !== 'off';
     if (!show) {
       if (g1.current) g1.current.visible = false;
@@ -304,9 +305,17 @@ export function PlaneLayerField({
         detailMatRef.current.uniforms.uOpacity.value = 0;
       return;
     }
+    if (!pf) {
+      if (g1.current) g1.current.visible = false;
+      if (g2.current) g2.current.visible = false;
+      return;
+    }
     const hueShift = v.hueShift ?? 0;
     colorRef.current.setHSL((bp.hue + hueShift) % 1, bp.sat, bp.lum);
-    const opacity = Math.max(0.25, Math.min(0.65, bp.opacityBase));
+    const opacity = Math.max(
+      pf.opacityClampMin,
+      Math.min(pf.opacityClampMax, bp.opacityBase),
+    );
     const viewportWidth = state.viewport.width;
     const viewportHeight = state.viewport.height;
     const camera = state.camera;
@@ -327,16 +336,18 @@ export function PlaneLayerField({
     tmpUp.current.crossVectors(tmpRight.current, tmpDir.current).normalize();
     const n = Math.min(bp.count, 2);
 
-    const noisePhase = v.clock * 0.12;
+    const noisePhase = v.clock * pf.noisePhaseSpeed;
     const isProcessing = v.currentMode === 'processing';
     const targetIntensity = isProcessing
-      ? 0.85 + v.activity * 0.15
-      : 0.6 + v.activity * 0.25;
-    const targetThreshold = 0.38 + 0.08 * Math.sin(v.clock * 0.4);
-    const targetScale = 0.92 + 0.12 * Math.sin(v.clock * 0.28);
+      ? pf.intensityProcessingBase + v.activity * pf.intensityProcessingActivityGain
+      : pf.intensityIdleBase + v.activity * pf.intensityIdleActivityGain;
+    const targetThreshold =
+      pf.thresholdBase + pf.thresholdAmp * Math.sin(v.clock * pf.thresholdHz);
+    const targetScale =
+      pf.halftoneScaleBase + pf.halftoneScaleAmp * Math.sin(v.clock * pf.halftoneScaleHz);
 
     // ~200ms smoothing to prevent one-frame pops on mode change
-    const k = 1.0 - Math.exp(-Math.max(0, delta) / 0.2);
+    const k = 1.0 - Math.exp(-Math.max(0, delta) / pf.smoothingSeconds);
     smoothIntensityRef.current +=
       (targetIntensity - smoothIntensityRef.current) * k;
     smoothThresholdRef.current +=
@@ -377,7 +388,7 @@ export function PlaneLayerField({
     }
 
     if (g1.current) {
-      const d1 = 6.5;
+      const d1 = pf.basePlaneDepth;
       g1.current.position
         .copy(tmpCamPos.current)
         .addScaledVector(tmpDir.current, d1);
@@ -385,11 +396,15 @@ export function PlaneLayerField({
         width: viewportWidth,
         height: viewportHeight,
       });
-      g1.current.scale.set(view1.width * 1.22, view1.height * 1.22, 1);
+      g1.current.scale.set(
+        view1.width * pf.basePlaneScale,
+        view1.height * pf.basePlaneScale,
+        1,
+      );
       g1.current.quaternion.copy(camera.quaternion);
     }
     if (g2.current) {
-      const d2 = 6.7;
+      const d2 = pf.detailPlaneDepth;
       g2.current.position
         .copy(tmpCamPos.current)
         .addScaledVector(tmpDir.current, d2);
@@ -397,7 +412,11 @@ export function PlaneLayerField({
         width: viewportWidth,
         height: viewportHeight,
       });
-      g2.current.scale.set(view2.width * 1.6, view2.height * 1.6, 1);
+      g2.current.scale.set(
+        view2.width * pf.detailPlaneScale,
+        view2.height * pf.detailPlaneScale,
+        1,
+      );
       g2.current.quaternion.copy(camera.quaternion);
     }
 
@@ -416,7 +435,7 @@ export function PlaneLayerField({
       }
     }
 
-    const panelOpacity = opacity * 0.48;
+    const panelOpacity = opacity * pf.panelOpacityScale;
     const answerMat = answerPlane.current?.material as
       | THREE.MeshBasicMaterial
       | undefined;
@@ -428,18 +447,18 @@ export function PlaneLayerField({
       | undefined;
     if (answerMat) {
       answerMat.color.copy(colorRef.current);
-      answerMat.opacity = panelOpacity * 0.65;
+      answerMat.opacity = panelOpacity * pf.answerOpacityScale;
     }
     if (cardsMat) {
       cardsMat.color.copy(colorRef.current);
-      cardsMat.opacity = panelOpacity;
+      cardsMat.opacity = panelOpacity * pf.cardsOpacityScale;
     }
     if (rulesMat) {
       shiftedColorRef.current
         .copy(colorRef.current)
-        .offsetHSL(0.02, 0.02, 0.03);
+        .offsetHSL(pf.rulesHueShiftH, pf.rulesHueShiftS, pf.rulesHueShiftL);
       rulesMat.color.copy(shiftedColorRef.current);
-      rulesMat.opacity = panelOpacity * 0.95;
+      rulesMat.opacity = panelOpacity * pf.rulesOpacityScale;
     }
 
     const canvasWidth = Math.max(1, v.canvasWidth ?? state.size.width);
@@ -452,7 +471,7 @@ export function PlaneLayerField({
       viewportWidth,
       viewportHeight,
       camera,
-      6.2,
+      pf.answerPanelDepth,
     );
     placePanelPlane(
       cardsPlane.current,
@@ -462,7 +481,7 @@ export function PlaneLayerField({
       viewportWidth,
       viewportHeight,
       camera,
-      6.3,
+      pf.cardsPanelDepth,
     );
     placePanelPlane(
       rulesPlane.current,
@@ -472,15 +491,15 @@ export function PlaneLayerField({
       viewportWidth,
       viewportHeight,
       camera,
-      6.35,
+      pf.rulesPanelDepth,
     );
   }, 10);
 
-  const bp = nodeMapRef.current?.scene?.backgroundPlanes;
+  const bp = visualizationRef.current?.scene?.backgroundPlanes;
   if (!bp) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error(
-        '[PlaneLayerField] nodeMapRef.current.scene.backgroundPlanes is missing. Set nodeMapRef.current.scene = getSceneDescription() in the screen that mounts the viz (e.g. VoiceScreen ref initializer).',
+        '[PlaneLayerField] visualizationRef.current.scene.backgroundPlanes is missing. Set visualizationRef.current.scene = getSceneDescription() in the screen that mounts the viz (e.g. VoiceScreen ref initializer).',
       );
     }
     return null;

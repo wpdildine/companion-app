@@ -4,20 +4,20 @@
 
 import { useFrame, useThree } from '@react-three/fiber/native';
 import { useRef } from 'react';
-import type { NodeMapEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../engine/types';
 
 const RADIUS = 13.5;
 
 export function CameraOrbit({
-  nodeMapRef,
+  visualizationRef,
 }: {
-  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
+  visualizationRef: React.RefObject<VisualizationEngineRef | null>;
 }) {
   const { camera } = useThree();
   const prevPhi = useRef(0.4);
 
   useFrame(() => {
-    const v = nodeMapRef.current;
+    const v = visualizationRef.current;
     if (!v) return;
 
     const theta = v.orbitTheta;

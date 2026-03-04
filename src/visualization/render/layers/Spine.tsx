@@ -1,6 +1,6 @@
 /**
  * Spine planes: 5-plane AI channel. Dumb renderer: all layout and style from
- * nodeMapRef.current.scene.spine (visualization engine ref); spread interpolation uses scene transition/easing only.
+ * visualizationRef.current.scene.spine (visualization engine ref); spread interpolation uses scene transition/easing only.
  * Same envelope convention as TouchZones (active region NDC, centerY = 0 = center of active region).
  */
 
@@ -18,7 +18,7 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import type { CanonicalSpineMode } from '../../scene/builders/spine';
 import { validateSceneDescription } from '../../scene/validateSceneDescription';
-import type { NodeMapEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../engine/types';
 import { createBasicPlaneMaterial } from '../../materials/basicPlaneMaterial';
 import { createHalftoneMaterial } from '../../materials/halftone/halftonePlaneMaterial';
 import { HALFTONE_VERTEX } from '../../materials/halftone/halftone.vert';
@@ -66,9 +66,9 @@ function applyEasing(
 const BASE_PLANE_RENDER_ORDER = 901;
 
 export function Spine({
-  nodeMapRef,
+  visualizationRef,
 }: {
-  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
+  visualizationRef: React.RefObject<VisualizationEngineRef | null>;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const planeRefs = useRef<(THREE.Mesh | null)[]>([]);
@@ -166,7 +166,7 @@ export function Spine({
   const startupIdleLockRef = useRef(true);
 
   useFrame((state, delta) => {
-    const v = nodeMapRef.current;
+    const v = visualizationRef.current;
     if (!v) return;
     const scene = v.scene;
     const spine = scene?.spine;
@@ -590,11 +590,11 @@ export function Spine({
     }
   });
 
-  const scene = nodeMapRef.current?.scene;
+  const scene = visualizationRef.current?.scene;
   if (!validateSceneDescription(scene)) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.warn(
-        '[Spine] Not mounting: scene or scene.spine invalid. Ensure nodeMapRef.current.scene = getSceneDescription() at viz mount (e.g. VoiceScreen).',
+        '[Spine] Not mounting: scene or scene.spine invalid. Ensure visualizationRef.current.scene = getSceneDescription() at viz mount (e.g. VoiceScreen).',
       );
     }
     return null;
@@ -611,7 +611,7 @@ export function Spine({
   return (
     <group
       ref={groupRef}
-      visible={nodeMapRef.current?.vizIntensity !== 'off'}
+      visible={visualizationRef.current?.vizIntensity !== 'off'}
       renderOrder={900}
     >
       {shards.map((shard, i) => (

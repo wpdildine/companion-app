@@ -5,11 +5,11 @@
  * Usage: when validating state and scene is available, pass { maxPerCluster: scene.maxPerCluster } so validation matches the scene contract.
  */
 
-import type { NodeMapMode, NodeMapIntensity } from './types';
+import type { VisualizationMode, VisualizationIntensity } from './types';
 
 const DEFAULT_MAX_PER_CLUSTER = 8;
 
-const NODE_MAP_MODES: NodeMapMode[] = [
+const NODE_MAP_MODES: VisualizationMode[] = [
   'idle',
   'listening',
   'processing',
@@ -72,7 +72,7 @@ export function validateVizState(
   ) {
     errors.push('lastPulseIndex must be 0, 1, or 2');
   }
-  if (!NODE_MAP_MODES.includes(s.currentMode as NodeMapMode)) {
+  if (!NODE_MAP_MODES.includes(s.currentMode as VisualizationMode)) {
     errors.push(`currentMode must be one of ${NODE_MAP_MODES.join(', ')}`);
   }
   if (s.touchWorld !== null && !Array.isArray(s.touchWorld)) {
@@ -81,10 +81,10 @@ export function validateVizState(
   if (s.pendingTapNdc !== null && !Array.isArray(s.pendingTapNdc)) {
     errors.push('pendingTapNdc must be null or [number, number]');
   }
-  const NODE_MAP_INTENSITIES: NodeMapIntensity[] = ['off', 'subtle', 'full'];
+  const NODE_MAP_INTENSITIES: VisualizationIntensity[] = ['off', 'subtle', 'full'];
   if (
     s.vizIntensity != null &&
-    !NODE_MAP_INTENSITIES.includes(s.vizIntensity as NodeMapIntensity)
+    !NODE_MAP_INTENSITIES.includes(s.vizIntensity as VisualizationIntensity)
   ) {
     errors.push(
       `vizIntensity must be one of ${NODE_MAP_INTENSITIES.join(', ')}`,

@@ -14,7 +14,7 @@ import {
   type TouchCallbacks,
 } from '../../interaction/touchHandlers';
 import { TouchRaycaster } from '../../interaction/TouchRaycaster';
-import type { NodeMapEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../engine/types';
 import { CameraOrbit } from './CameraOrbit';
 import { ContextGlyphs } from '../layers/ContextGlyphs';
 import { ContextLinks } from '../layers/ContextLinks';
@@ -36,7 +36,7 @@ const DRAG_THRESHOLD = 8;
 const DEFAULT_CANVAS_BACKGROUND = '#0a0612';
 
 export type VisualizationCanvasR3FProps = {
-  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
+  visualizationRef: React.RefObject<VisualizationEngineRef | null>;
   controlsEnabled: boolean;
   inputEnabled: boolean;
   canvasBackground?: string;
@@ -44,7 +44,7 @@ export type VisualizationCanvasR3FProps = {
 } & TouchCallbacks;
 
 export function VisualizationCanvasR3F({
-  nodeMapRef,
+  visualizationRef,
   controlsEnabled,
   inputEnabled,
   canvasBackground = DEFAULT_CANVAS_BACKGROUND,
@@ -75,9 +75,9 @@ export function VisualizationCanvasR3F({
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
-    if (nodeMapRef.current) {
-      nodeMapRef.current.canvasWidth = width;
-      nodeMapRef.current.canvasHeight = height;
+    if (visualizationRef.current) {
+      visualizationRef.current.canvasWidth = width;
+      visualizationRef.current.canvasHeight = height;
     }
   };
 
@@ -89,8 +89,8 @@ export function VisualizationCanvasR3F({
     longPressTriggered.current = false;
     dragActive.current = false;
     // Touch field is written only by RN InteractionBand; canvas does not set touchField*.
-    if (nodeMapRef.current) {
-      const v = nodeMapRef.current;
+    if (visualizationRef.current) {
+      const v = visualizationRef.current;
       const w = v.canvasWidth ?? 1;
       const h = v.canvasHeight ?? 1;
       console.log('[Visualization] touchStart', { canvasSize: [w, h] });
@@ -117,7 +117,7 @@ export function VisualizationCanvasR3F({
       longPressTimer.current = null;
     }
     // Touch field is written only by RN InteractionBand.
-    const v = nodeMapRef.current;
+    const v = visualizationRef.current;
     const dx = (locationX - lastMove.current.x) * ORBIT_SENSITIVITY;
     const dy = (locationY - lastMove.current.y) * ORBIT_SENSITIVITY;
     if (v && controlsEnabled && moved > DRAG_THRESHOLD) {
@@ -138,7 +138,7 @@ export function VisualizationCanvasR3F({
   const onTouchEnd = (e: GestureResponderEvent) => {
     if (!inputEnabled) return;
     // Touch field is cleared only by RN InteractionBand.
-    if (nodeMapRef.current) {
+    if (visualizationRef.current) {
       console.log('[Visualization] touchEnd');
     }
     if (longPressTimer.current) {
@@ -149,7 +149,7 @@ export function VisualizationCanvasR3F({
       dragActive.current = false;
       touch.onDragEnd();
     }
-    const v = nodeMapRef.current;
+    const v = visualizationRef.current;
     const { locationX, locationY } = e.nativeEvent;
     const dt = Date.now() - touchStart.current.t;
     const dist = Math.hypot(
@@ -214,15 +214,15 @@ export function VisualizationCanvasR3F({
         }}
       >
         <color attach="background" args={[canvasBackground]} />
-        <PlaneLayerField nodeMapRef={nodeMapRef} />
-        <Spine nodeMapRef={nodeMapRef} />
-        <EngineLoop nodeMapRef={nodeMapRef} />
-        <TouchRaycaster nodeMapRef={nodeMapRef} />
-        <CameraOrbit nodeMapRef={nodeMapRef} />
-        <ContextLinks nodeMapRef={nodeMapRef} />
-        <ContextGlyphs nodeMapRef={nodeMapRef} />
-        <TouchZones nodeMapRef={nodeMapRef} />
-        <PostFXPass nodeMapRef={nodeMapRef} />
+        <PlaneLayerField visualizationRef={visualizationRef} />
+        <Spine visualizationRef={visualizationRef} />
+        <EngineLoop visualizationRef={visualizationRef} />
+        <TouchRaycaster visualizationRef={visualizationRef} />
+        <CameraOrbit visualizationRef={visualizationRef} />
+        <ContextLinks visualizationRef={visualizationRef} />
+        <ContextGlyphs visualizationRef={visualizationRef} />
+        <TouchZones visualizationRef={visualizationRef} />
+        <PostFXPass visualizationRef={visualizationRef} />
       </Canvas>
     </View>
   );

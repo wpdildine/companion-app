@@ -7,13 +7,13 @@
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
-import type { NodeMapEngineRef } from './types';
+import type { VisualizationEngineRef } from './types';
 import { getPulseColorWithHue } from './getPulseColor';
 
 const DT_CAP = 0.1;
 const PULSE_DECAY_MS = 900;
 
-export function EngineLoop({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeMapEngineRef | null> }) {
+export function EngineLoop({ visualizationRef }: { visualizationRef: React.RefObject<VisualizationEngineRef | null> }) {
   const didLog = useRef(false);
   const touchNdcVec = useRef(new THREE.Vector2());
   const raycaster = useRef(new THREE.Raycaster());
@@ -24,7 +24,7 @@ export function EngineLoop({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeMap
   const touchLogAt = useRef(0);
 
   useFrame((state, delta) => {
-    const v = nodeMapRef.current;
+    const v = visualizationRef.current;
     if (!v) return;
     didLog.current = true;
     v.clock = state.clock.getElapsedTime();

@@ -1,6 +1,6 @@
 /**
  * Theme: pure values only. Recomputed when isDark changes.
- * RN tokens for screens; viz primitives for injection into NodeMap (no theme import in nodeMap).
+ * RN tokens for screens; viz primitives for injection into Visualization (no theme import in visualization).
  */
 
 import {

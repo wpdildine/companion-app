@@ -1,21 +1,21 @@
 /**
  * Developer screen: wraps DevPanel from nodeMap for use in app debug overlay.
- * Plan: DevScreen in ui/; theme and nodeMapRef are passed by App.
+ * Plan: DevScreen in ui/; theme and visualizationRef are passed by App.
  */
 
 import React from 'react';
 import type { RefObject } from 'react';
 import { DevPanel, type DevPanelTheme } from '../visualization';
-import type { NodeMapEngineRef } from '../visualization';
+import type { VisualizationEngineRef } from '../visualization';
 
 export type DevScreenProps = {
-  nodeMapRef: RefObject<NodeMapEngineRef | null>;
+  visualizationRef: RefObject<VisualizationEngineRef | null>;
   onClose: () => void;
   theme: DevPanelTheme;
 };
 
-export function DevScreen({ nodeMapRef, onClose, theme }: DevScreenProps) {
+export function DevScreen({ visualizationRef, onClose, theme }: DevScreenProps) {
   return (
-    <DevPanel nodeMapRef={nodeMapRef} onClose={onClose} theme={theme} />
+    <DevPanel visualizationRef={visualizationRef} onClose={onClose} theme={theme} />
   );
 }

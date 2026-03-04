@@ -6,7 +6,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
-import type { NodeMapEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../engine/types';
 
 const LOG_FALLBACK = true;
 
@@ -53,11 +53,11 @@ const NODES = buildFallbackNodes();
 
 const POLL_MS = 120;
 
-export function NodeMapCanvasFallback({
-  nodeMapRef,
+export function VisualizationCanvasFallback({
+  visualizationRef,
   canvasBackground = DEFAULT_FALLBACK_BG,
 }: {
-  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
+  visualizationRef: React.RefObject<VisualizationEngineRef | null>;
   canvasBackground?: string;
 }) {
   const { width, height } = useWindowDimensions();
@@ -65,17 +65,17 @@ export function NodeMapCanvasFallback({
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    if (LOG_FALLBACK) console.log('[NodeMap] NodeMapCanvasFallback mounted (2D dots)', { width, height });
+    if (LOG_FALLBACK) console.log('[Visualization] VisualizationCanvasFallback mounted (2D dots)', { width, height });
   }, [width, height]);
 
   useEffect(() => {
     const id = setInterval(() => {
-      const target = nodeMapRef?.current?.targetActivity ?? 0.1;
+      const target = visualizationRef?.current?.targetActivity ?? 0.1;
       setActivity((a) => a * 0.85 + target * 0.15);
       setTick((n) => n + 1);
     }, POLL_MS);
     return () => clearInterval(id);
-  }, [nodeMapRef]);
+  }, [visualizationRef]);
 
   // Minimal field: render dots so fallback is never an empty View
   const opacity = 0.3 + activity * 0.5;

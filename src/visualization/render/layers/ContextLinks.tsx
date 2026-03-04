@@ -1,19 +1,22 @@
 /**
  * Context links: precomputed curved segments (bezier), flow + pulse in shader. uActivity.
- * Visibility gated by vizIntensity (Full mode only). Endpoints and topology from nodeMapRef.current.scene.
+ * Visibility gated by vizIntensity (Full mode only). Endpoints and topology from visualizationRef.current.scene.
  */
 
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { connectionVertex, connectionFragment } from '../../materials/links/connections';
-import type { NodeMapEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../engine/types';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
 
 function sampleBezier(
   start: [number, number, number],
   end: [number, number, number],
   pathIndex: number,
+  controlXAmp: number,
+  controlYAmp: number,
+  controlZAmp: number,
   t: number,
 ): [number, number, number] {
   const mid: [number, number, number] = [
@@ -22,9 +25,9 @@ function sampleBezier(
     (start[2] + end[2]) / 2,
   ];
   const control: [number, number, number] = [
-    mid[0] + 0.2 * Math.sin(pathIndex),
-    mid[1] + 0.1 * Math.cos(pathIndex * 0.7),
-    (mid[2] + 0.03 * Math.sin(pathIndex * 0.5)),
+    mid[0] + controlXAmp * Math.sin(pathIndex),
+    mid[1] + controlYAmp * Math.cos(pathIndex * 0.7),
+    mid[2] + controlZAmp * Math.sin(pathIndex * 0.5),
   ];
   const u = 1 - t;
   const b = u * u * start[0] + 2 * u * t * control[0] + t * t * end[0];
@@ -49,11 +52,12 @@ const EMPTY_BUFFERS = {
   segmentsPerEdge: 0,
 };
 
-export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeMapEngineRef | null> }) {
+export function ContextLinks({ visualizationRef }: { visualizationRef: React.RefObject<VisualizationEngineRef | null> }) {
   const meshRef = useRef<THREE.LineSegments>(null);
+  const linksScene = visualizationRef.current?.scene?.contextLinks;
 
   const gate = useMemo(() => {
-    const scene = nodeMapRef.current?.scene;
+    const scene = visualizationRef.current?.scene;
     const links = scene?.links;
     const valid =
       !!(
@@ -66,13 +70,16 @@ export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeM
     const edges = valid ? (links!.edges ?? EMPTY_EDGES) : EMPTY_EDGES;
     const segmentsPerEdge = valid ? links!.segmentsPerEdge : 0;
     return { valid, nodes, edges, segmentsPerEdge };
-  }, [nodeMapRef.current?.scene]); // eslint-disable-line react-hooks/exhaustive-deps -- gate reads ref at run time; scene set by parent then re-render
+  }, [visualizationRef.current?.scene]); // eslint-disable-line react-hooks/exhaustive-deps -- gate reads ref at run time; scene set by parent then re-render
 
   const { positions, tArr, startPoints, endPoints, strengths, pathIndices, colors, vertexCount, edgesLength, segmentsPerEdge } = useMemo(() => {
     if (!gate.valid || !gate.nodes.length || !gate.edges.length) {
       return EMPTY_BUFFERS;
     }
     const { nodes, edges, segmentsPerEdge: seg } = gate;
+    const controlXAmp = linksScene?.bezierControlXAmp ?? 0.2;
+    const controlYAmp = linksScene?.bezierControlYAmp ?? 0.1;
+    const controlZAmp = linksScene?.bezierControlZAmp ?? 0.03;
     const vCount = edges.length * (seg + 1);
     const positions = new Float32Array(vCount * 3);
     const tArr = new Float32Array(vCount);
@@ -88,7 +95,15 @@ export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeM
       const color = nodes[edge.a].color;
       for (let i = 0; i <= seg; i++) {
         const t = i / seg;
-        const p = sampleBezier(start, end, edge.pathIndex, t);
+        const p = sampleBezier(
+          start,
+          end,
+          edge.pathIndex,
+          controlXAmp,
+          controlYAmp,
+          controlZAmp,
+          t,
+        );
         positions[idx * 3] = p[0];
         positions[idx * 3 + 1] = p[1];
         positions[idx * 3 + 2] = p[2];
@@ -119,13 +134,13 @@ export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeM
       edgesLength: edges.length,
       segmentsPerEdge: seg,
     };
-  }, [gate]);
+  }, [gate, linksScene]);
 
   const uniforms = useMemo(
     () => ({
       uTime: { value: 0 },
       uActivity: { value: 0.1 },
-      uPulseSpeed: { value: 4 },
+      uPulseSpeed: { value: linksScene?.pulseSpeed ?? 4 },
       uPulsePositions: {
         value: [
           new THREE.Vector3(1e6, 1e6, 1e6),
@@ -143,14 +158,14 @@ export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeM
       },
       uTouchInfluence: { value: 0 },
     }),
-    [],
+    [linksScene],
   );
 
   useFrame((_, delta) => {
-    if (!meshRef.current?.material || !nodeMapRef.current) return;
+    if (!meshRef.current?.material || !visualizationRef.current) return;
     const lines = meshRef.current;
     const mat = lines.material as THREE.ShaderMaterial;
-    const v = nodeMapRef.current;
+    const v = visualizationRef.current;
     // Keep links front-facing (2D cluster topology), no 3D orbit rotation.
     lines.rotation.x = 0;
     lines.rotation.y = 0;
@@ -200,15 +215,20 @@ export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeM
   if (!gate.valid) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error(
-        '[ContextLinks] nodeMapRef.current.scene or scene.links is missing, or scene.links.segmentsPerEdge < 1. Set nodeMapRef.current.scene = getSceneDescription() in the screen that mounts the viz.',
+        '[ContextLinks] visualizationRef.current.scene or scene.links is missing, or scene.links.segmentsPerEdge < 1. Set visualizationRef.current.scene = getSceneDescription() in the screen that mounts the viz.',
       );
     }
     return null;
   }
 
-  const v = nodeMapRef.current;
+  const v = visualizationRef.current;
   const confidence = v?.signalsSnapshot?.confidence ?? 1;
-  const showLinks = v?.vizIntensity === 'full' && confidence < 0.7;
+  const requireFullIntensity = linksScene?.requireFullIntensity ?? true;
+  const showConfidenceBelow = linksScene?.showConfidenceBelow ?? 0.7;
+  const isCorrectIntensity = requireFullIntensity
+    ? v?.vizIntensity === 'full'
+    : v?.vizIntensity !== 'off';
+  const showLinks = isCorrectIntensity && confidence < showConfidenceBelow;
   if (!SHADER_DEBUG_FLAGS.contextLinks || !showLinks || vertexCount === 0) {
     return null;
   }

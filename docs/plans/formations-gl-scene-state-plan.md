@@ -1,6 +1,6 @@
 # Formations as GL Scene State (revised)
 
-Evolve [formations.ts](../src/nodeMap/helpers/formations.ts) into the single source of truth for GL aesthetics and scene description. RN owns semantics and touch; GL owns physics and draw list. TouchZones (née ClusterTouchZones) is a dumb renderer; all style and zone policy live in formations / getSceneDescription().
+Evolve [formations.ts](../src/visualization/scene/formations.ts) into the single source of truth for GL aesthetics and scene description. RN owns semantics and touch; GL owns physics and draw list. TouchZones (née ClusterTouchZones) is a dumb renderer; all style and zone policy live in formations / getSceneDescription().
 
 ---
 
@@ -58,7 +58,7 @@ Implementations can keep calling `buildTwoClusters()` / `getTwoClusterCenters()`
 
 **Scene at runtime**
 
-- `getSceneDescription()` is computed once at mount (or when palette changes) and stored on `nodeMapRef.current.scene` (or provided via React context); all GL components read from that single instance. Do not introduce a second global or duplicate scene source.
+- `getSceneDescription()` is computed once at mount (or when palette changes) and stored on `visualizationRef.current.scene` (or provided via React context); all GL components read from that single instance. Do not introduce a second global or duplicate scene source.
 - Scene recomputes only when `paletteId` or `vizIntensityProfile` changes; otherwise it is stable to keep anchors/pulses deterministic.
 
 ---
@@ -90,13 +90,13 @@ No constants; all numbers come from the scene object passed in (from getSceneDes
 
 ## Touch: RN only writes touchField*
 
-Only the RN gesture layer (NodeMapInteractionBand) writes `touchFieldActive`, `touchFieldNdc`, `touchFieldStrength`. NodeMapCanvasR3F must not write these when the band is the intended source (or remove canvas touch-field writes entirely). GL uses touchWorld/touchInfluence for distortion and emits onClusterTap; RN owns panel visibility.
+Only the RN gesture layer (InteractionBand) writes `touchFieldActive`, `touchFieldNdc`, `touchFieldStrength`. VisualizationCanvasR3F must not write these when the band is the intended source (or remove canvas touch-field writes entirely). GL uses touchWorld/touchInfluence for distortion and emits onClusterTap; RN owns panel visibility.
 
 ---
 
 ## Zone state (inactive / armed / active)
 
-- **Engine ref:** Add `zoneArmed: 'rules' | 'cards' | null` (and optionally `zoneReleasedThisFrame`). NodeMapInteractionBand sets zoneArmed from NDC (e.g. x &lt; -0.12 → rules, x &gt; 0.12 → cards); clears on touch end; on release in zone calls onClusterTap.
+- **Engine ref:** Add `zoneArmed: 'rules' | 'cards' | null` (and optionally `zoneReleasedThisFrame`). InteractionBand sets zoneArmed from NDC (e.g. x &lt; -0.12 → rules, x &gt; 0.12 → cards); clears on touch end; on release in zone calls onClusterTap.
 - **TouchZones:** Reads zoneArmed and existing “highlighted” to drive visuals (inactive / armed / active) using **scene.style** only.
 - **Deterministic / testable:** Zone bounds and state derivable from scene + ref; DebugZoneOverlay can show same bounds and state.
 
@@ -118,10 +118,10 @@ Even if link visibility stays ref-driven (vizIntensity, confidence), **topology 
 | 1 | Define getSceneDescription() and types: zones.layout, zones.style, clusterAnchors, pulseAnchors, backgroundPlanes.style, (optional) clusters.style, links.style. Implement by delegating to existing buildTwoClusters/getTwoClusterCenters internally. |
 | 2 | ClusterTouchZones: Remove all hardcoded constants; accept scene (or ref to scene snapshot); read layout + style from scene; keep only viewport math, camera-facing placement, armed/active mapping from ref. |
 | 3 | EngineLoop: Stop calling getTwoClusterCenters(); read pulse origins from scene.pulseAnchors (rules, cards, center). Ensure scene is available in the R3F tree (e.g. from ref or context). |
-| 4 | Add zoneArmed (and optionally zoneReleasedThisFrame) to NodeMapEngineRef; NodeMapInteractionBand sets/clears zoneArmed; TouchZones reads it for armed state. |
-| 5 | NodeMapCanvasR3F: Stop writing touchField* so only RN band drives touch field. |
+| 4 | Add zoneArmed (and optionally zoneReleasedThisFrame) to VisualizationEngineRef; InteractionBand sets/clears zoneArmed; TouchZones reads it for armed state. |
+| 5 | VisualizationCanvasR3F: Stop writing touchField* so only RN band drives touch field. |
 | 6 | Mount PlaneLayerField (or background planes component) driven by scene.backgroundPlanes.style + ref. |
 | 7 | (Optional) ContextGlyphs / ContextLinks: Switch to cluster anchors and style from getSceneDescription(); document any remaining topology/style as “next consolidation.” |
 | 8 | Document mode-driven GL state and Single Aesthetic Source of Truth in ARCHITECTURE or viz doc. |
 
-No dependency version changes. All changes stay within nodeMap/, app/, ui/, utils/.
+No dependency version changes. All changes stay within visualization/, app/, ui/, utils/.

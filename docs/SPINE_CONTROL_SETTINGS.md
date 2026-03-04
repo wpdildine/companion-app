@@ -1,8 +1,8 @@
 # Spine Control Settings
 
 Single source of truth for spine art-direction knobs:
-- Code: `src/nodeMap/helpers/formations/spineArtDirection.ts`
-- Consumer: `src/nodeMap/helpers/formations/spine.ts` -> `buildSpineDescription()`
+- Code: `src/visualization/scene/artDirection/spineArtDirection.ts`
+- Consumer: `src/visualization/scene/builders/spine.ts` -> `buildSpineDescription()`
 
 This file documents what each control block does, how to tune it, and which controls are safest to touch first.
 

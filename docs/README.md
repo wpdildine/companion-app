@@ -6,7 +6,7 @@ Primary documentation map for this repository.
 
 - [Architecture Navigation Map](./ARCHITECTURE.md)
 - [App Architecture](./APP_ARCHITECTURE.md)
-- [NodeMap Component Reference](./NODEMAP_COMPONENT_REFERENCE.md)
+- [Visualization Component Reference](./VISUALIZATION_COMPONENT_REFERENCE.md)
 - [Spine Control Settings](./SPINE_CONTROL_SETTINGS.md)
 
 ## Setup / Operations

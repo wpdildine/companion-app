@@ -1,29 +1,29 @@
 /**
- * Single bridge: App writes to nodeMapRef only via this function (and intensity/reduceMotion).
+ * Single bridge: App writes to visualizationRef only via this function (and intensity/reduceMotion).
  * Derives currentMode from phase; stores lastEvent/lastEventTime; optional signalsSnapshot for debug.
  * Render params (layerCount, deconWeight, etc.) are derived here when needed; do not add them to the signals API.
  */
 
 import type { RefObject } from 'react';
-import type { NodeMapEngineRef, NodeMapMode, AiUiSignals, NodeMapPanelRects } from './types';
+import type { VisualizationEngineRef, VisualizationMode, AiUiSignals, VisualizationPanelRects } from './types';
 import { TARGET_ACTIVITY_BY_MODE } from './createDefaultRef';
 
-const PHASE_TO_MODE: Record<AiUiSignals['phase'], NodeMapMode> = {
+const PHASE_TO_MODE: Record<AiUiSignals['phase'], VisualizationMode> = {
   idle: 'idle',
   processing: 'processing',
   resolved: 'speaking',
 };
 
 /**
- * Writes signals to nodeMapRef. Derives currentMode from phase.
+ * Writes signals to visualizationRef. Derives currentMode from phase.
  * When signals.event is set, stores lastEvent and lastEventTime (using ref.clock).
  * Does not expose or accept render knobs (layerCount, driftPx, etc.) in the API.
  */
-export function applySignalsToNodeMap(
-  nodeMapRef: RefObject<NodeMapEngineRef | null>,
-  signals: Partial<AiUiSignals> & { panelRects?: NodeMapPanelRects },
+export function applySignalsToVisualization(
+  visualizationRef: RefObject<VisualizationEngineRef | null>,
+  signals: Partial<AiUiSignals> & { panelRects?: VisualizationPanelRects },
 ): void {
-  const v = nodeMapRef.current;
+  const v = visualizationRef.current;
   if (!v) return;
   const { panelRects, ...uiSignals } = signals;
   const mergedSignals = {

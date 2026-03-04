@@ -1,6 +1,6 @@
 /**
  * Main voice UI: hold-to-speak trigger and scrollable content (answer, cards, rules).
- * App composes NodeMapSurface + UserVoiceView (or DevScreen when debug).
+ * App composes VisualizationSurface + UserVoiceView (or DevScreen when debug).
  * Theme and layout props are injected; no theme import.
  */
 

@@ -5,28 +5,28 @@
 
 import React, { Component, useEffect, useState } from 'react';
 import { NativeModules, Platform } from 'react-native';
-import type { NodeMapEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../engine/types';
 import type { TouchCallbacks } from '../../interaction/touchHandlers';
-import { NodeMapCanvasFallback } from './NodeMapCanvasFallback';
+import { VisualizationCanvasFallback } from './VisualizationCanvasFallback';
 
 /** Skip loading R3F on Android; set false to try R3F + expo-gl on Android. */
 const SKIP_R3F_ON_ANDROID = false;
 const R3F_EXPO_WAIT_TIMEOUT_MS = 6000;
 const R3F_EXPO_WAIT_POLL_MS = 150;
 
-type NodeMapCanvasProps = {
-  nodeMapRef: React.RefObject<NodeMapEngineRef | null>;
+type VisualizationCanvasProps = {
+  visualizationRef: React.RefObject<VisualizationEngineRef | null>;
   controlsEnabled: boolean;
   inputEnabled: boolean;
   canvasBackground?: string;
   clusterZoneHighlights?: boolean;
 } & TouchCallbacks;
 
-type R3FComponentType = React.ComponentType<NodeMapCanvasProps>;
+type R3FComponentType = React.ComponentType<VisualizationCanvasProps>;
 
 type ErrorBoundaryState = { hasError: boolean };
 
-class NodeMapErrorBoundary extends Component<
+class VisualizationErrorBoundary extends Component<
   {
     children: React.ReactNode;
     fallback: React.ReactNode;
@@ -42,7 +42,7 @@ class NodeMapErrorBoundary extends Component<
 
   componentDidCatch(error: Error) {
     console.warn(
-      '[NodeMap] R3F canvas failed at render, using fallback:',
+      '[Visualization] R3F canvas failed at render, using fallback:',
       error?.message ?? error,
     );
     this.props.onCaught?.();
@@ -56,8 +56,8 @@ class NodeMapErrorBoundary extends Component<
   }
 }
 
-export function NodeMapCanvas({
-  nodeMapRef,
+export function VisualizationCanvas({
+  visualizationRef,
   controlsEnabled,
   inputEnabled,
   canvasBackground,
@@ -70,18 +70,18 @@ export function NodeMapCanvas({
   onDragStart,
   onDragMove,
   onDragEnd,
-}: NodeMapCanvasProps) {
+}: VisualizationCanvasProps) {
   const [R3FComponent, setR3FComponent] = useState<R3FComponentType | null>(null);
   const [r3fFailed, setR3FFailed] = useState(false);
 
   useEffect(() => {
-    console.log('[NodeMap] init: platform=', Platform.OS, 'r3fFailed=', r3fFailed);
+    console.log('[Visualization] init: platform=', Platform.OS, 'r3fFailed=', r3fFailed);
     if (r3fFailed) {
-      console.log('[NodeMap] skipping R3F load (already failed)');
+      console.log('[Visualization] skipping R3F load (already failed)');
       return;
     }
     if (SKIP_R3F_ON_ANDROID && Platform.OS === 'android') {
-      console.log('[NodeMap] using fallback (SKIP_R3F_ON_ANDROID=true)');
+      console.log('[Visualization] using fallback (SKIP_R3F_ON_ANDROID=true)');
       return;
     }
     let cancelled = false;
@@ -154,7 +154,7 @@ export function NodeMapCanvas({
   }, [r3fFailed]);
 
   const dotsOnlyFallback = (
-    <NodeMapCanvasFallback nodeMapRef={nodeMapRef} canvasBackground={canvasBackground} />
+    <VisualizationCanvasFallback visualizationRef={visualizationRef} canvasBackground={canvasBackground} />
   );
   const fallback = dotsOnlyFallback;
 
@@ -166,12 +166,12 @@ export function NodeMapCanvas({
   console.log('[Visualization] render: R3F Canvas path');
 
   return (
-    <NodeMapErrorBoundary
+    <VisualizationErrorBoundary
       fallback={fallback}
       onCaught={() => setR3FFailed(true)}
     >
       <R3FComponent
-        nodeMapRef={nodeMapRef}
+        visualizationRef={visualizationRef}
         controlsEnabled={controlsEnabled}
         inputEnabled={inputEnabled}
         canvasBackground={canvasBackground}
@@ -185,6 +185,6 @@ export function NodeMapCanvas({
         onDragMove={onDragMove}
         onDragEnd={onDragEnd}
       />
-    </NodeMapErrorBoundary>
+    </VisualizationErrorBoundary>
   );
 }
