@@ -72,13 +72,7 @@ export function Spine({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const planeRefs = useRef<(THREE.Mesh | null)[]>([]);
-  const PLANE_COLORS = [
-    '#8a9fc9',
-    '#9eb3e0',
-    '#c5dcff',
-    '#a2b8e8',
-    '#889bc4',
-  ];
+  const PLANE_COLORS = ['#8a9fc9', '#9eb3e0', '#c5dcff', '#a2b8e8', '#889bc4'];
   const planeMaterialsRef = useRef<THREE.MeshBasicMaterial[] | null>(null);
   if (!planeMaterialsRef.current) {
     planeMaterialsRef.current = PLANE_COLORS.map(color =>
@@ -144,6 +138,10 @@ export function Spine({
   const smoothPlaneOpacityRef = useRef<number[]>(Array(5).fill(0));
   const smoothPlaneIntensityRef = useRef<number[]>(Array(5).fill(0));
   const smoothShardOpacityRef = useRef<number[]>([]);
+  const halftonePrimedRef = useRef(false);
+  const bootStableFramesRef = useRef(0);
+  const lastBootResRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const startupIdleLockRef = useRef(true);
 
   useFrame((state, delta) => {
     const v = nodeMapRef.current;
@@ -154,7 +152,7 @@ export function Spine({
 
     const show = v.vizIntensity !== 'off';
     if (!groupRef.current) return;
-    groupRef.current.visible = show;
+    groupRef.current.visible = false;
     if (!show) return;
 
     const w = v.canvasWidth > 0 ? v.canvasWidth : state.size.width;
@@ -179,7 +177,15 @@ export function Spine({
     const viewWidth = viewHeight * aspect;
     const activeHeight = viewHeight * activeHeightRatio;
 
-    const canonicalMode = toCanonicalMode(v.currentMode);
+    // Deterministic startup rule: begin in idle and unlock once we observe
+    // a non-speaking mode from the engine (no timeout-based flip).
+    const observedMode = v.currentMode;
+    if (startupIdleLockRef.current && observedMode !== 'speaking') {
+      startupIdleLockRef.current = false;
+    }
+    const canonicalMode = toCanonicalMode(
+      startupIdleLockRef.current ? 'idle' : observedMode,
+    );
     if (canonicalMode !== lastCanonicalModeRef.current) {
       prevSpreadRef.current = { ...currentSpreadRef.current };
       lastCanonicalModeRef.current = canonicalMode;
@@ -247,7 +253,10 @@ export function Spine({
       .normalize();
 
     let driftFactor = 0;
-    if (!v.reduceMotion && (canonicalMode === 'idle' || canonicalMode === 'listening')) {
+    if (
+      !v.reduceMotion &&
+      (canonicalMode === 'idle' || canonicalMode === 'listening')
+    ) {
       driftFactor = canonicalMode === 'idle' ? 1 : 1.25;
     }
     const driftRate =
@@ -290,6 +299,19 @@ export function Spine({
     const pixelRatio = Math.max(1, state.gl.getPixelRatio?.() ?? 1);
     const resX = w * pixelRatio;
     const resY = h * pixelRatio;
+    const dx = Math.abs(resX - lastBootResRef.current.x);
+    const dy = Math.abs(resY - lastBootResRef.current.y);
+    if (dx < 1 && dy < 1) {
+      bootStableFramesRef.current += 1;
+    } else {
+      bootStableFramesRef.current = 0;
+      lastBootResRef.current = { x: resX, y: resY };
+    }
+    if (bootStableFramesRef.current < 2) return;
+    groupRef.current.visible = true;
+    if (!halftonePrimedRef.current && resX > 8 && resY > 8) {
+      halftonePrimedRef.current = true;
+    }
     const edgeIntensity = Math.max(0, Math.min(1, halftoneProfile.intensity));
 
     for (let i = 0; i < planeCount; i++) {
@@ -354,7 +376,11 @@ export function Spine({
 
       if (planeUsesHalftone) {
         if (!halftoneMat) continue;
+        mesh.visible = halftonePrimedRef.current;
+        if (!halftonePrimedRef.current) continue;
         halftoneMat.uniforms.uColor.value.set(planeColor);
+        // Opacity is the membrane visibility; intensity should NOT zero the membrane.
+        // Keep opacity scene-driven and use uIntensity only to shape the dots.
         halftoneMat.uniforms.uOpacity.value = Math.min(
           1,
           nextOpacity * spine.style.halftoneOpacityScale,
@@ -389,8 +415,8 @@ export function Spine({
           spine.style.halftoneFadeMode === 'none'
             ? 0
             : spine.style.halftoneFadeMode === 'radial'
-              ? 1
-              : 2;
+            ? 1
+            : 2;
         halftoneMat.uniforms.uFadeMode.value = fadeMode;
         halftoneMat.uniforms.uFadeInner.value =
           spine.style.halftoneFadeInner ?? 0.35;
@@ -399,6 +425,7 @@ export function Spine({
         halftoneMat.uniforms.uFadePower.value =
           spine.style.halftoneFadePower ?? 1.5;
       } else {
+        mesh.visible = true;
         const mat = planeMats[i];
         mat.color.set(planeColor);
         mat.opacity = nextOpacity;
@@ -466,8 +493,8 @@ export function Spine({
           shard.accent === true
             ? THREE.AdditiveBlending
             : spine.style.blend === 'additive'
-              ? THREE.AdditiveBlending
-              : THREE.NormalBlending;
+            ? THREE.AdditiveBlending
+            : THREE.NormalBlending;
         mat.color.set(shard.color ?? spine.style.color);
         const targetShardOpacity =
           spine.style.opacity *
@@ -565,6 +592,7 @@ export function Spine({
         return (
           <mesh
             key={`plane-${i}`}
+            visible={!isHalftonePlane}
             ref={el => {
               planeRefs.current[i] = el;
               if (el) {
@@ -573,11 +601,17 @@ export function Spine({
                   : planeMats[i];
                 if (mat) {
                   el.material = mat;
-                  if (!isHalftonePlane) {
-                    mat.blending =
-                      spine.style.planeAccent?.[i] === true
-                        ? THREE.AdditiveBlending
-                        : THREE.NormalBlending;
+
+                  const accent = spine.style.planeAccent?.[i] === true;
+                  const desiredBlending = accent
+                    ? THREE.AdditiveBlending
+                    : THREE.NormalBlending;
+
+                  // Allow the scene to choose blending for BOTH basic and halftone planes.
+                  // (Halftone visibility relies on additive for the hero plane.)
+                  if (mat.blending !== desiredBlending) {
+                    mat.blending = desiredBlending;
+                    mat.needsUpdate = true;
                   }
                 }
               }

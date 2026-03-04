@@ -26,20 +26,23 @@ void main() {
     return;
   }
 
-  // World-unit grid: stable isotropic spacing regardless of plane aspect/scale.
-  float densityScale = mix(0.95, 2.0, clamp(uDensity / 2.8, 0.0, 1.0));
-  float cellSize = 0.06 / densityScale;
-  vec2 phase = vec2(uPlanePhase * 0.013, uPlanePhase * 0.021);
-  vec2 p = vUv * uPlaneSize + phase;
-  vec2 cell = fract(p / cellSize) - 0.5;
-  float d = length(cell) * cellSize;
-  float dotRadius = cellSize * 0.26;
-  float dotFeather = cellSize * 0.08;
-  float dotMask = 1.0 - smoothstep(dotRadius, dotRadius + dotFeather, d);
+  // Pixel-space grid: dot size is invariant under mesh transforms.
+  vec2 res = max(uResolution, vec2(1.0));
+  float density01 = clamp(uDensity / 2.8, 0.0, 1.0);
+  float spacingPx = mix(22.0, 11.0, density01); // denser => tighter spacing
+  vec2 phasePx = vec2(uPlanePhase * 7.0, uPlanePhase * 11.0);
+  vec2 p = gl_FragCoord.xy + phasePx;
+  vec2 cell = mod(p, spacingPx) - 0.5 * spacingPx;
+  float d = length(cell);
+
+  // Fixed-radius circles in pixels (intensity no longer changes dot size).
+  float dotRadiusPx = 3.2;
+  float aaPx = 1.0;
+  float dotMask = 1.0 - smoothstep(dotRadiusPx - aaPx, dotRadiusPx + aaPx, d);
 
   // Keep pattern strictly inside each plane bounds.
-  float edgeX = smoothstep(0.03, 0.06, vUv.x) * smoothstep(0.03, 0.06, 1.0 - vUv.x);
-  float edgeY = smoothstep(0.03, 0.06, vUv.y) * smoothstep(0.03, 0.06, 1.0 - vUv.y);
+  float edgeX = smoothstep(0.01, 0.03, vUv.x) * smoothstep(0.01, 0.03, 1.0 - vUv.x);
+  float edgeY = smoothstep(0.01, 0.03, vUv.y) * smoothstep(0.01, 0.03, 1.0 - vUv.y);
   float interiorMask = edgeX * edgeY;
 
   // Coverage from fade: 0=none (full), 1=radial, 2=linear. Stable; no time/UV animation.
@@ -58,9 +61,14 @@ void main() {
     }
   }
 
-  // Known-good path: true cutout dots (no baseline fill between dots).
-  float a = uOpacity * clamp(uIntensity, 0.0, 1.0) * dotMask * interiorMask * coverage;
-  if (a < 0.008) discard;
+  // Membrane fill + dots: keep a faint slab so the center plane reads on mobile,
+  // then modulate up where dots are present (decon halftone grammar).
+  // IMPORTANT: Do not multiply alpha by intensity; intensity shapes the dots above.
+  float baseFill = 0.18; // 0..1 baseline alpha between dots
+  float a = uOpacity * mix(baseFill, 1.0, dotMask) * interiorMask * coverage;
+
+  // Less aggressive discard: mobile precision + multiple multipliers can push values low.
+  if (a < 0.001) discard;
   gl_FragColor = vec4(uColor, a);
 }
 `;

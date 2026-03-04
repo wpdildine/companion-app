@@ -5,7 +5,7 @@ import { HALFTONE_FRAGMENT } from './halftone.frag';
 /**
  * Creates the single halftone ShaderMaterial for the center spine plane.
  * Render-state (blending, depthWrite, depthTest, side) is set once here.
- * Blending is owned by this material factory, not mutated in Spine.tsx.
+ * Default blending is set here; Spine.tsx may switch blending for the single center plane based on scene.style.planeAccent.
  */
 export function createHalftoneMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({

@@ -269,10 +269,11 @@ const SPINE_ART_DIRECTION = {
     processingEdgeBoost: 1.15,
   },
   halftoneProfiles: {
-    idle: { intensity: 0.48, density: 1.35 },
-    listening: { intensity: 0.66, density: 1.85 },
-    processing: { intensity: 0.9, density: 2.25 },
-    speaking: { intensity: 0.36, density: 1.2 },
+    // Keep density constant across states so dot spacing never "pops" on mode changes.
+    idle: { intensity: 0.48, density: 1.6 },
+    listening: { intensity: 0.66, density: 1.6 },
+    processing: { intensity: 0.9, density: 1.6 },
+    speaking: { intensity: 0.36, density: 1.6 },
   } as CanonicalHalftoneProfiles,
   shards: {
     countsByMode: {
