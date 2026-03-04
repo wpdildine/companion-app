@@ -50,6 +50,9 @@ export type SpineEnvelopeNdc = {
   centerY: number;
 };
 
+/** Halftone fade mode: none = full coverage, radial/linear = parameterized falloff. */
+export type HalftoneFadeMode = 'none' | 'radial' | 'linear';
+
 /**
  * Spine style preset: single source of truth for plane count, per-plane arrays,
  * zStep, planeGap, and idle drift. Spine.tsx consumes scene.spine only; arrays come from here.
@@ -60,8 +63,12 @@ export type SpineStylePreset = {
   planeHeightScale: number[];
   planeOffsetX: number[];
   planeOffsetY: number[];
+  planeZOffset: number[];
   planeOpacityScale: number[];
   planeColors: string[];
+  /** Deterministic front-to-back render order (length = planeCount). */
+  planeRenderOrder: number[];
+  planeAccent: boolean[];
   zStep: number;
   planeGap: number;
   driftAmpX: number;
@@ -73,11 +80,21 @@ export type SpineStylePreset = {
   perPlaneDriftPhaseStep: number;
   /** Halftone on central plane: scene-driven; default true so release is not gated by debug flag. */
   halftoneEnabled: boolean;
+  halftoneFadeMode: HalftoneFadeMode;
+  halftoneFadeInner: number;
+  halftoneFadeOuter: number;
+  halftoneFadePower: number;
 };
 
 export type GLSceneSpineStyle = {
   color: string;
   opacity: number;
+  /** Global opacity response to halftone intensity: final = 1 + intensity * factor. */
+  opacityBoostFromHalftone: number;
+  /** Extra alpha multiplier for center halftone membrane. */
+  halftoneOpacityScale: number;
+  /** Global shard opacity multiplier. */
+  shardOpacityScale: number;
   blend?: 'additive' | 'normal';
   /** Camera-facing overlay distance from camera in world units. */
   overlayDistance: number;
@@ -97,10 +114,20 @@ export type GLSceneSpineStyle = {
   planeOffsetY: number[];
   /** Per-plane height scale (unitHeight * scale). Length = planeCount. Middle taller, ends shorter = composed stack. */
   planeHeightScale: number[];
+  /** Per-plane z offset in zStep units (de-stacking). Length = planeCount. */
+  planeZOffset: number[];
   /** Per-plane hex color (tonal hierarchy). Length = planeCount. Center strongest luminance, outer dimmer. */
   planeColors: string[];
+  /** Deterministic front-to-back render order. Spine consumes only; do not compute in renderer. Length = planeCount. */
+  planeRenderOrder: number[];
+  /** Per-plane emissive accent (additive blend). Length = planeCount. */
+  planeAccent: boolean[];
   /** When true, central plane uses halftone shader (scene-driven; debug flag may override). */
   halftoneEnabled: boolean;
+  halftoneFadeMode: HalftoneFadeMode;
+  halftoneFadeInner: number;
+  halftoneFadeOuter: number;
+  halftoneFadePower: number;
   /** Per-mode micro drift amplitudes in world-space envelope fractions. */
   driftAmpX: number;
   driftAmpY: number;
@@ -153,6 +180,8 @@ export type SpineShard = {
   driftScale: number;
   /** Relative drift rate scale. */
   driftRateScale: number;
+  /** When true, shard uses additive blending (emissive accent). */
+  accent?: boolean;
 };
 
 export type GLSceneSpine = {
@@ -175,24 +204,116 @@ export type GLSceneSpine = {
  * Constraints: widthScale (≥2 ≤0.55, ≥1 ≥0.85), offsetX (≥2 opposite signs), offsetY (≥1 non-zero),
  * opacityScale (≥1 ≤0.55, ≥1 ≥0.9), planeColors (≥1 accent, 3–5 tones).
  */
+/** Base render order for spine planes; formations provides per-plane offsets so order is deterministic. */
+const BASE_PLANE_RENDER_ORDER = 901;
+
+/**
+ * Single tuning hierarchy for art direction.
+ * Adjust values here first; downstream builders consume this object.
+ */
+const SPINE_ART_DIRECTION = {
+  envelope: {
+    width: 0.34, // was 0.265 (too skinny)
+    height: 1.92,
+    centerY: 0,
+  },
+  visibility: {
+    baseOpacity: 0.88, // was 0.82
+    opacityBoostFromHalftone: 0.7,
+    halftoneOpacityScale: 1.9,
+    shardOpacityScale: 0.6,
+    blend: 'normal' as const,
+  },
+
+  composition: {
+    planeCount: 5 as const,
+    planeWidthScale: [0.32, 0.48, 1.18, 0.58, 0.34],
+    planeHeightScale: [0.64, 0.92, 1.36, 0.78, 0.7],
+
+    planeOffsetX: [-0.22, 0.16, -0.07, 0.11, 0.24], // hero plane off-center
+    planeOffsetY: [0.11, -0.06, 0.0, 0.07, -0.1],
+    planeZOffset: [-0.1, 0.18, 0.0, -0.14, 0.08],
+    // Opacity ladder: ghost -> support -> hero -> support -> ghost
+    planeOpacityScale: [0.42, 0.72, 1.0, 0.62, 0.36],
+    planeColors: ['#4f6a90', '#6f92c8', '#8feaff', '#5f86c2', '#3d5578'],
+    planeAccent: [false, false, true, false, false],
+    planeRenderOrder: [
+      BASE_PLANE_RENDER_ORDER,
+      BASE_PLANE_RENDER_ORDER + 1,
+      BASE_PLANE_RENDER_ORDER + 5,
+      BASE_PLANE_RENDER_ORDER + 2,
+      BASE_PLANE_RENDER_ORDER + 3,
+    ],
+    planeGap: -0.34, // was -0.24
+    zStep: 0.045, // was 0.035 (more separation reads as depth)
+    halftoneEnabled: true,
+    halftoneFadeMode: 'radial' as HalftoneFadeMode,
+    halftoneFadeInner: 0.16, // was 0.25
+    halftoneFadeOuter: 0.7, // was 0.85
+    halftoneFadePower: 3.2, // was 2.4
+  },
+  motion: {
+    driftAmpX: 0.038,
+    driftAmpY: 0.025,
+    driftHz: 0.14,
+    idleBreathAmp: 0.04,
+    idleBreathHz: 0.1,
+    perPlaneDriftScale: 0.62,
+    perPlaneDriftPhaseStep: 1.2,
+    processingOverflowBoost: 1.12,
+    processingExtraOverlap: -0.06,
+    processingHeightBoost: 1.08,
+    processingMotionBoost: 1.25,
+    processingEdgeBoost: 1.15,
+  },
+  halftoneProfiles: {
+    idle: { intensity: 0.28, density: 1.45 },
+    listening: { intensity: 0.74, density: 2.0 },
+    processing: { intensity: 1.0, density: 2.8 },
+    speaking: { intensity: 0.24, density: 1.35 },
+  } as CanonicalHalftoneProfiles,
+  shards: {
+    countsByMode: {
+      idle: 6,
+      listening: 8,
+      processing: 10,
+      speaking: 5,
+    } as Record<CanonicalSpineMode, number>,
+    zOffsetMin: -2.5,
+    zOffsetMax: 2.5,
+    membraneBandOffsetY: 0.22,
+    coolPalette: ['#4a76b8', '#3e669f', '#5f95d6', '#2f4f7a'],
+    ghostPalette: ['#141b2a', '#101726', '#1a2336'],
+    accentPalette: ['#79d6ff', '#b6f0ff'], // ditch the gold for now
+    accentColor: '#b6f0ff',
+  },
+} as const;
+
 export const SPINE_STYLE_PRESET: SpineStylePreset = {
-  planeCount: 5,
-  planeWidthScale: [0.4, 0.56, 1.08, 0.52, 0.38],
-  planeHeightScale: [0.8, 0.9, 1.26, 0.88, 0.82],
-  planeOffsetX: [-0.14, 0.11, 0, -0.07, 0.13],
-  planeOffsetY: [0.05, -0.038, 0, 0.03, -0.046],
-  planeOpacityScale: [0.26, 0.5, 1.0, 0.48, 0.24],
-  planeColors: ['#4f6285', '#6e84ac', '#f0c784', '#697ea6', '#445777'],
-  zStep: 0.035,
-  planeGap: -0.22,
-  driftAmpX: 0.038,
-  driftAmpY: 0.025,
-  driftHz: 0.14,
-  idleBreathAmp: 0.04,
-  idleBreathHz: 0.1,
-  perPlaneDriftScale: 0.62,
-  perPlaneDriftPhaseStep: 1.2,
-  halftoneEnabled: true,
+  planeCount: SPINE_ART_DIRECTION.composition.planeCount,
+  planeWidthScale: [...SPINE_ART_DIRECTION.composition.planeWidthScale],
+  planeHeightScale: [...SPINE_ART_DIRECTION.composition.planeHeightScale],
+  planeOffsetX: [...SPINE_ART_DIRECTION.composition.planeOffsetX],
+  planeOffsetY: [...SPINE_ART_DIRECTION.composition.planeOffsetY],
+  planeZOffset: [...SPINE_ART_DIRECTION.composition.planeZOffset],
+  planeOpacityScale: [...SPINE_ART_DIRECTION.composition.planeOpacityScale],
+  planeColors: [...SPINE_ART_DIRECTION.composition.planeColors],
+  planeRenderOrder: [...SPINE_ART_DIRECTION.composition.planeRenderOrder],
+  planeAccent: [...SPINE_ART_DIRECTION.composition.planeAccent],
+  zStep: SPINE_ART_DIRECTION.composition.zStep,
+  planeGap: SPINE_ART_DIRECTION.composition.planeGap,
+  driftAmpX: SPINE_ART_DIRECTION.motion.driftAmpX,
+  driftAmpY: SPINE_ART_DIRECTION.motion.driftAmpY,
+  driftHz: SPINE_ART_DIRECTION.motion.driftHz,
+  idleBreathAmp: SPINE_ART_DIRECTION.motion.idleBreathAmp,
+  idleBreathHz: SPINE_ART_DIRECTION.motion.idleBreathHz,
+  perPlaneDriftScale: SPINE_ART_DIRECTION.motion.perPlaneDriftScale,
+  perPlaneDriftPhaseStep: SPINE_ART_DIRECTION.motion.perPlaneDriftPhaseStep,
+  halftoneEnabled: SPINE_ART_DIRECTION.composition.halftoneEnabled,
+  halftoneFadeMode: SPINE_ART_DIRECTION.composition.halftoneFadeMode,
+  halftoneFadeInner: SPINE_ART_DIRECTION.composition.halftoneFadeInner,
+  halftoneFadeOuter: SPINE_ART_DIRECTION.composition.halftoneFadeOuter,
+  halftoneFadePower: SPINE_ART_DIRECTION.composition.halftoneFadePower,
 };
 
 const SPREAD_IDLE: SpineSpreadProfile = {
@@ -216,19 +337,10 @@ const SPREAD_SPEAKING: SpineSpreadProfile = {
   depthSpread: 1.0,
 };
 
-const HALFTONE_IDLE: SpineHalftoneProfile = { intensity: 0.2, density: 1.0 };
-const HALFTONE_LISTENING: SpineHalftoneProfile = {
-  intensity: 0.68,
-  density: 1.55,
-};
-const HALFTONE_PROCESSING: SpineHalftoneProfile = {
-  intensity: 1.0,
-  density: 2.6,
-};
-const HALFTONE_SPEAKING: SpineHalftoneProfile = {
-  intensity: 0.12,
-  density: 1.0,
-};
+const HALFTONE_IDLE = SPINE_ART_DIRECTION.halftoneProfiles.idle;
+const HALFTONE_LISTENING = SPINE_ART_DIRECTION.halftoneProfiles.listening;
+const HALFTONE_PROCESSING = SPINE_ART_DIRECTION.halftoneProfiles.processing;
+const HALFTONE_SPEAKING = SPINE_ART_DIRECTION.halftoneProfiles.speaking;
 
 /** Seeded RNG for deterministic shard layout (minimal standard LCG). */
 function createSeededRng(seed: number): () => number {
@@ -239,13 +351,25 @@ function createSeededRng(seed: number): () => number {
   };
 }
 
-/** Build shard field with deterministic depth/palette distribution. */
-function buildShards(seed: number, count: number): SpineShard[] {
+/**
+ * Build support shards: small set (4–8), biased around halftone membrane, one crosses silhouette (≥25% plane width), zOffset ∈ [-0.5, 0.5].
+ */
+function buildSupportShards(seed: number, count: number): SpineShard[] {
   const rng = createSeededRng(seed);
-  const coolPalette = ['#6e85ad', '#5f789f', '#738db6', '#6783b0'];
-  const ghostPalette = ['#2a3144', '#232b3d', '#303a50'];
-  const accentPalette = ['#c8a56f', '#d6b67f'];
+  const {
+    coolPalette,
+    ghostPalette,
+    accentPalette,
+    zOffsetMin,
+    zOffsetMax,
+    membraneBandOffsetY,
+    accentColor,
+  } = SPINE_ART_DIRECTION.shards;
   const shards: SpineShard[] = [];
+  const inBandCount = Math.ceil(count * 0.55);
+  let silhouetteCrossingPlaced = false;
+  let accentPlaced = 0;
+
   for (let i = 0; i < count; i++) {
     const p = rng();
     let color: string;
@@ -256,33 +380,56 @@ function buildShards(seed: number, count: number): SpineShard[] {
     } else {
       color = accentPalette[Math.floor(rng() * accentPalette.length)]!;
     }
-    // Bias depth slightly behind spine while still spanning in front.
-    const zBehindBias = (rng() - 0.62) * 5.0; // roughly [-3.1, 1.9]
+
+    const inBand = i < inBandCount;
+    const offsetY = inBand
+      ? (rng() - 0.5) * 2 * membraneBandOffsetY
+      : (rng() - 0.5) * 0.5;
+
     const kind = rng();
-    let widthScale = 0.1 + rng() * 0.34;
-    let heightScale = 0.16 + rng() * 0.58;
-    // Morphology mix: tall-thin, short-wide, and tiny chips.
+    let widthScale = 0.06 + rng() * 0.12;
+    let heightScale = 0.2 + rng() * 0.55;
     if (kind < 0.34) {
-      widthScale = 0.08 + rng() * 0.12;
-      heightScale = 0.42 + rng() * 0.42;
+      // Tall-thin sliver
+      widthScale = 0.045 + rng() * 0.07;
+      heightScale = 0.44 + rng() * 0.52;
     } else if (kind < 0.68) {
-      widthScale = 0.22 + rng() * 0.24;
-      heightScale = 0.12 + rng() * 0.24;
-    } else {
-      widthScale = 0.06 + rng() * 0.1;
-      heightScale = 0.08 + rng() * 0.18;
+      // Short-wide counterpoint
+      widthScale = 0.14 + rng() * 0.14;
+      heightScale = 0.12 + rng() * 0.2;
+    } else if (kind < 0.86) {
+      // Tiny chip
+      widthScale = 0.035 + rng() * 0.05;
+      heightScale = 0.08 + rng() * 0.14;
     }
+
+    let offsetX: number;
+    if (!silhouetteCrossingPlaced && inBand) {
+      offsetX = (rng() - 0.5) * 0.3;
+      widthScale = Math.max(widthScale, 0.22);
+      heightScale = Math.max(heightScale, 0.36);
+      silhouetteCrossingPlaced = true;
+    } else {
+      offsetX = (rng() - 0.5) * 1.18;
+    }
+
+    const zOffsetRaw = (rng() - 0.62) * 5.0;
+    const zOffset = Math.max(zOffsetMin, Math.min(zOffsetMax, zOffsetRaw));
+
+    const accent = accentPlaced < 2 && p >= 0.9;
+    if (accent) accentPlaced += 1;
     shards.push({
-      offsetX: (rng() - 0.5) * 1.34,
-      offsetY: (rng() - 0.5) * 0.42,
+      offsetX,
+      offsetY,
       heightScale,
       widthScale,
-      zOffset: Math.max(-2.5, Math.min(2.5, zBehindBias)),
-      opacityScale: 0.2 + rng() * 0.55,
-      color,
+      zOffset,
+      opacityScale: accent ? 0.62 + rng() * 0.28 : 0.3 + rng() * 0.46,
+      color: accent ? accentColor : color,
       driftPhase: rng() * Math.PI * 2,
-      driftScale: 0.35 + rng() * 0.8,
+      driftScale: 0.4 + rng() * 0.75,
       driftRateScale: 0.72 + rng() * 0.5,
+      accent,
     });
   }
   return shards;
@@ -295,12 +442,7 @@ function buildShards(seed: number, count: number): SpineShard[] {
 export function buildSpineDescription(): GLSceneSpine {
   const preset = SPINE_STYLE_PRESET;
   const planeCount = preset.planeCount;
-  const shardCountByMode: Record<CanonicalSpineMode, number> = {
-    idle: 16,
-    listening: 20,
-    processing: 28,
-    speaking: 10,
-  };
+  const shardCountByMode = SPINE_ART_DIRECTION.shards.countsByMode;
   const maxShards = Math.max(
     shardCountByMode.idle,
     shardCountByMode.listening,
@@ -310,14 +452,19 @@ export function buildSpineDescription(): GLSceneSpine {
   return {
     planeCount,
     envelopeNdc: {
-      width: 0.29,
-      height: 1.86,
-      centerY: 0,
+      width: SPINE_ART_DIRECTION.envelope.width,
+      height: SPINE_ART_DIRECTION.envelope.height,
+      centerY: SPINE_ART_DIRECTION.envelope.centerY,
     },
     style: {
       color: '#b7d2ff',
-      opacity: 0.78,
-      blend: 'normal',
+      opacity: SPINE_ART_DIRECTION.visibility.baseOpacity,
+      opacityBoostFromHalftone:
+        SPINE_ART_DIRECTION.visibility.opacityBoostFromHalftone,
+      halftoneOpacityScale:
+        SPINE_ART_DIRECTION.visibility.halftoneOpacityScale,
+      shardOpacityScale: SPINE_ART_DIRECTION.visibility.shardOpacityScale,
+      blend: SPINE_ART_DIRECTION.visibility.blend,
       overlayDistance: 10,
       zStep: preset.zStep,
       planeOffsetX: [...preset.planeOffsetX],
@@ -326,8 +473,15 @@ export function buildSpineDescription(): GLSceneSpine {
       planeGap: preset.planeGap,
       planeOffsetY: [...preset.planeOffsetY],
       planeHeightScale: [...preset.planeHeightScale],
+      planeZOffset: [...preset.planeZOffset],
       planeColors: [...preset.planeColors],
+      planeRenderOrder: [...preset.planeRenderOrder],
+      planeAccent: [...preset.planeAccent],
       halftoneEnabled: preset.halftoneEnabled,
+      halftoneFadeMode: preset.halftoneFadeMode,
+      halftoneFadeInner: preset.halftoneFadeInner,
+      halftoneFadeOuter: preset.halftoneFadeOuter,
+      halftoneFadePower: preset.halftoneFadePower,
       driftAmpX: preset.driftAmpX,
       driftAmpY: preset.driftAmpY,
       perPlaneDriftScale: preset.perPlaneDriftScale,
@@ -335,16 +489,17 @@ export function buildSpineDescription(): GLSceneSpine {
       driftHz: preset.driftHz,
       idleBreathAmp: preset.idleBreathAmp,
       idleBreathHz: preset.idleBreathHz,
-      processingOverflowBoost: 1.12,
-      processingExtraOverlap: -0.06,
-      processingHeightBoost: 1.08,
-      processingMotionBoost: 1.25,
-      processingEdgeBoost: 1.15,
+      processingOverflowBoost:
+        SPINE_ART_DIRECTION.motion.processingOverflowBoost,
+      processingExtraOverlap: SPINE_ART_DIRECTION.motion.processingExtraOverlap,
+      processingHeightBoost: SPINE_ART_DIRECTION.motion.processingHeightBoost,
+      processingMotionBoost: SPINE_ART_DIRECTION.motion.processingMotionBoost,
+      processingEdgeBoost: SPINE_ART_DIRECTION.motion.processingEdgeBoost,
       shardWidthScale: 0.28,
       edgeBandWidth: 0.22,
       edgeOpacity: 0.34,
     },
-    shards: buildShards(42, maxShards),
+    shards: buildSupportShards(42, maxShards),
     shardCountByMode,
     transitionMsIn: 220,
     transitionMsOut: 280,

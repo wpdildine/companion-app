@@ -58,7 +58,11 @@ function applyEasing(
   return easeCubic(t);
 }
 
-/** Render order: back plane first, front last; matches z order for deterministic overlap with depthWrite=false. */
+/**
+ * Depth rule (layered glass): All spine planes and shards use depthWrite=false,
+ * depthTest=false, transparent=true. renderOrder comes from scene.style.planeRenderOrder only.
+ * Do not relax this—prevents z-fighting on mobile.
+ */
 const BASE_PLANE_RENDER_ORDER = 901;
 
 export function Spine({
@@ -243,15 +247,8 @@ export function Spine({
       .normalize();
 
     let driftFactor = 0;
-    if (!v.reduceMotion) {
-      driftFactor =
-        canonicalMode === 'idle'
-          ? 1
-          : canonicalMode === 'listening'
-          ? 1.25
-          : canonicalMode === 'processing'
-          ? 1.45
-          : 0.6;
+    if (!v.reduceMotion && (canonicalMode === 'idle' || canonicalMode === 'listening')) {
+      driftFactor = canonicalMode === 'idle' ? 1 : 1.25;
     }
     const driftRate =
       spine.style.driftHz *
@@ -283,7 +280,8 @@ export function Spine({
       envelopeHeightWorld / (planeCount + gap * (planeCount - 1));
     const totalHeight = unitHeight * (planeCount + gap * (planeCount - 1));
     const halfHeight = totalHeight / 2;
-    const dynamicOpacityBoost = 1 + halftoneProfile.intensity * 0.7;
+    const dynamicOpacityBoost =
+      1 + halftoneProfile.intensity * spine.style.opacityBoostFromHalftone;
     const kOpacity = 1.0 - Math.exp(-Math.max(0, delta) / 0.18);
     const maxOpacityStep = Math.max(0.008, delta * 2.4);
     const maxIntensityStep = Math.max(0.01, delta * 2.8);
@@ -323,10 +321,11 @@ export function Spine({
         scale *
         Math.cos(v.clock * driftRate * 1.7 * 2 * Math.PI + perPlanePhase);
 
+      const planeZOffset = (spine.style.planeZOffset?.[i] ?? 0) * zStep;
       mesh.position.set(
         envelopeWidthWorld * offsetX + perPlaneX,
         localY + perPlaneY,
-        (i - (planeCount - 1) / 2) * zStep,
+        (i - (planeCount - 1) / 2) * zStep + planeZOffset,
       );
       mesh.scale.set(
         envelopeWidthWorld * widthScale,
@@ -356,11 +355,11 @@ export function Spine({
 
       if (planeUsesHalftone) {
         if (!halftoneMat) continue;
-        if (mesh.material !== halftoneMat) {
-          mesh.material = halftoneMat;
-        }
         halftoneMat.uniforms.uColor.value.set(planeColor);
-        halftoneMat.uniforms.uOpacity.value = Math.min(1, nextOpacity * 1.7);
+        halftoneMat.uniforms.uOpacity.value = Math.min(
+          1,
+          nextOpacity * spine.style.halftoneOpacityScale,
+        );
         const targetIntensity = edgeIntensity;
         if (smoothPlaneIntensityRef.current[i] == null) {
           smoothPlaneIntensityRef.current[i] = targetIntensity;
@@ -384,10 +383,20 @@ export function Spine({
         const planeW = envelopeWidthWorld * widthScale;
         const planeH = unitHeight * heightScale;
         halftoneMat.uniforms.uPlaneSize.value.set(planeW, planeH);
+        const fadeMode =
+          spine.style.halftoneFadeMode === 'none'
+            ? 0
+            : spine.style.halftoneFadeMode === 'radial'
+              ? 1
+              : 2;
+        halftoneMat.uniforms.uFadeMode.value = fadeMode;
+        halftoneMat.uniforms.uFadeInner.value =
+          spine.style.halftoneFadeInner ?? 0.35;
+        halftoneMat.uniforms.uFadeOuter.value =
+          spine.style.halftoneFadeOuter ?? 0.65;
+        halftoneMat.uniforms.uFadePower.value =
+          spine.style.halftoneFadePower ?? 1.5;
       } else {
-        if (mesh.material !== planeMats[i]) {
-          mesh.material = planeMats[i];
-        }
         const mat = planeMats[i];
         mat.color.set(planeColor);
         mat.opacity = nextOpacity;
@@ -451,9 +460,18 @@ export function Spine({
       );
       if (mesh.material) {
         const mat = mesh.material as THREE.MeshBasicMaterial;
+        mat.blending =
+          shard.accent === true
+            ? THREE.AdditiveBlending
+            : spine.style.blend === 'additive'
+              ? THREE.AdditiveBlending
+              : THREE.NormalBlending;
         mat.color.set(shard.color ?? spine.style.color);
         const targetShardOpacity =
-          spine.style.opacity * shard.opacityScale * dynamicOpacityBoost;
+          spine.style.opacity *
+          shard.opacityScale *
+          dynamicOpacityBoost *
+          spine.style.shardOpacityScale;
         if (smoothShardOpacityRef.current[s] == null) {
           smoothShardOpacityRef.current[s] = targetShardOpacity;
         }
@@ -517,13 +535,17 @@ export function Spine({
           ref={el => {
             shardRefs.current[i] = el;
           }}
-          renderOrder={895 + i}
+          renderOrder={860 + i}
         >
           <planeGeometry args={[1, 1]} />
           <meshBasicMaterial
             color={shard.color ?? spine.style.color}
             transparent
-            opacity={spine.style.opacity * (shard.opacityScale ?? 0.7)}
+            opacity={
+              spine.style.opacity *
+              (shard.opacityScale ?? 0.7) *
+              spine.style.shardOpacityScale
+            }
             toneMapped={false}
             blending={blending}
             side={THREE.DoubleSide}
@@ -537,9 +559,7 @@ export function Spine({
         const isHalftonePlane =
           i === halftoneIndex && (spine.style.halftoneEnabled ?? true);
         const planeRenderOrder =
-          i === halftoneIndex
-            ? BASE_PLANE_RENDER_ORDER + spine.planeCount + 1
-            : BASE_PLANE_RENDER_ORDER + i;
+          spine.style.planeRenderOrder?.[i] ?? BASE_PLANE_RENDER_ORDER + i;
         return (
           <mesh
             key={`plane-${i}`}
@@ -551,6 +571,12 @@ export function Spine({
                   : planeMats[i];
                 if (mat) {
                   el.material = mat;
+                  if (!isHalftonePlane) {
+                    mat.blending =
+                      spine.style.planeAccent?.[i] === true
+                        ? THREE.AdditiveBlending
+                        : THREE.NormalBlending;
+                  }
                 }
               }
             }}

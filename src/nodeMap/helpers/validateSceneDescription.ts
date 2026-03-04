@@ -46,6 +46,9 @@ export function validateSceneDescription(
     Array.isArray(style?.planeOffsetY) &&
     Array.isArray(style?.planeHeightScale) &&
     Array.isArray(style?.planeColors) &&
+    (!style.planeZOffset || (Array.isArray(style.planeZOffset) && style.planeZOffset.length === spine.planeCount)) &&
+    (!style.planeRenderOrder || (Array.isArray(style.planeRenderOrder) && style.planeRenderOrder.length === spine.planeCount)) &&
+    (!style.planeAccent || (Array.isArray(style.planeAccent) && style.planeAccent.length === spine.planeCount)) &&
     style.planeOffsetX.length === spine.planeCount &&
     style.planeWidthScale.length === spine.planeCount &&
     style.planeOpacityScale.length === spine.planeCount &&
@@ -61,6 +64,12 @@ export function validateSceneDescription(
     return false;
   }
   const numericStyleValid =
+    typeof style.opacityBoostFromHalftone === 'number' &&
+    style.opacityBoostFromHalftone >= 0 &&
+    typeof style.halftoneOpacityScale === 'number' &&
+    style.halftoneOpacityScale > 0 &&
+    typeof style.shardOpacityScale === 'number' &&
+    style.shardOpacityScale > 0 &&
     typeof style.overlayDistance === 'number' &&
     style.overlayDistance > 0 &&
     typeof style.zStep === 'number' &&
@@ -88,7 +97,11 @@ export function validateSceneDescription(
     style.edgeBandWidth > 0 &&
     style.edgeBandWidth < 0.5 &&
     typeof style.edgeOpacity === 'number' &&
-    typeof style.halftoneEnabled === 'boolean';
+    typeof style.halftoneEnabled === 'boolean' &&
+    (style.halftoneFadeMode == null || (typeof style.halftoneFadeMode === 'string' && ['none', 'radial', 'linear'].includes(style.halftoneFadeMode))) &&
+    (style.halftoneFadeInner == null || typeof style.halftoneFadeInner === 'number') &&
+    (style.halftoneFadeOuter == null || typeof style.halftoneFadeOuter === 'number') &&
+    (style.halftoneFadePower == null || typeof style.halftoneFadePower === 'number');
   if (!numericStyleValid) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error(
@@ -103,6 +116,25 @@ export function validateSceneDescription(
         console.error(
           '[validateSceneDescription] scene.spine.spreadProfiles and halftoneProfiles must have keys: idle, listening, processing, speaking. Missing:',
           key,
+        );
+      }
+      return false;
+    }
+  }
+  const shards = spine.shards ?? [];
+  for (let s = 0; s < shards.length; s++) {
+    const shard = shards[s];
+    if (
+      shard &&
+      typeof shard.zOffset === 'number' &&
+      (shard.zOffset < -2.5 || shard.zOffset > 2.5)
+    ) {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error(
+          '[validateSceneDescription] scene.spine.shards[].zOffset must be in [-2.5, 2.5], got',
+          shard.zOffset,
+          'at index',
+          s,
         );
       }
       return false;
