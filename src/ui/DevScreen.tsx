@@ -5,8 +5,8 @@
 
 import React from 'react';
 import type { RefObject } from 'react';
-import { DevPanel, type DevPanelTheme } from '../nodeMap/components/DevPanel';
-import type { NodeMapEngineRef } from '../nodeMap/types';
+import { DevPanel, type DevPanelTheme } from '../visualization';
+import type { NodeMapEngineRef } from '../visualization';
 
 export type DevScreenProps = {
   nodeMapRef: RefObject<NodeMapEngineRef | null>;

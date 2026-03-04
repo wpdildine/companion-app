@@ -4,13 +4,13 @@
  */
 
 import { useCallback, type RefObject } from 'react';
-import { applySignalsToNodeMap } from '../../nodeMap/helpers/applySignalsToNodeMap';
+import { applySignalsToNodeMap } from '../../visualization';
 import type {
   NodeMapEngineRef,
   AiUiSignals,
   AiUiSignalsEvent,
   NodeMapPanelRects,
-} from '../../nodeMap/types';
+} from '../../visualization';
 
 type AiVizInput = Partial<AiUiSignals> & { panelRects?: NodeMapPanelRects };
 

@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import type { NodeMapPanelRects } from '../nodeMap/types';
+import type { NodeMapPanelRects } from '../visualization';
 
 const ZONE_COLORS: Record<string, string> = {
   answer: '#22c55e',

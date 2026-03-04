@@ -44,9 +44,9 @@ import {
   type NodeMapMode,
   type AiUiSignals,
   NodeMapSurface,
-  NodeMapInteractionBand,
-} from '../nodeMap';
-import type { NodeMapPanelRects } from '../nodeMap/types';
+  InteractionBand,
+} from '../visualization';
+import type { NodeMapPanelRects } from '../visualization';
 import { useAiVizBridge } from './hooks/useAiVizBridge';
 
 const BUNDLE_MODEL_PREFIXES = Array.from(
@@ -1521,7 +1521,7 @@ export default function VoiceScreen() {
           </View>
         </UserVoiceView>
       </NodeMapSurface>
-      <NodeMapInteractionBand
+      <InteractionBand
         nodeMapRef={nodeMapRef}
         onClusterTap={handleClusterTap}
         enabled={!debugEnabled && !anyPanelVisible && mode !== 'processing'}

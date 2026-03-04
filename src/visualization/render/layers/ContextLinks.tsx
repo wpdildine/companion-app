@@ -3,12 +3,12 @@
  * Visibility gated by vizIntensity (Full mode only). Endpoints and topology from nodeMapRef.current.scene.
  */
 
-import React, { useMemo, useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
-import { connectionVertex, connectionFragment } from '../../visualization/materials/links/connections';
-import type { NodeMapEngineRef } from '../../visualization/engine/types';
-import { SHADER_DEBUG_FLAGS } from '../../visualization/render/canvas/shaderDebugFlags';
+import { connectionVertex, connectionFragment } from '../../materials/links/connections';
+import type { NodeMapEngineRef } from '../../engine/types';
+import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
 
 function sampleBezier(
   start: [number, number, number],

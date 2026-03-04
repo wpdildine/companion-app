@@ -1,28 +1,28 @@
 /**
  * Spine planes: 5-plane AI channel. Dumb renderer: all layout and style from
- * nodeMapRef.current.scene.spine; spread interpolation uses scene transition/easing only.
+ * nodeMapRef.current.scene.spine (visualization engine ref); spread interpolation uses scene transition/easing only.
  * Same envelope convention as TouchZones (active region NDC, centerY = 0 = center of active region).
  */
 
 /**
  * Spine.tsx MUST NOT define shader code or create materials.
- * All GPU materials live in nodeMap/materials/.
+ * All GPU materials live in visualization/materials/.
  * Spine.tsx only assigns materials and updates uniforms.
- * Edge shader materials may use R3F <shaderMaterial> but must import shader strings from nodeMap/materials/halftone/ and must not embed shader code inline.
+ * Edge shader materials may use R3F <shaderMaterial> but must import shader strings from visualization/materials/halftone/ and must not embed shader code inline.
  *
  * That single rule will prevent 90% of the rendering regressions you've been fighting.
  */
 
 import { useFrame } from '@react-three/fiber/native';
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import type { CanonicalSpineMode } from '../../visualization/scene/builders/spine';
-import { validateSceneDescription } from '../../visualization/scene/validateSceneDescription';
-import type { NodeMapEngineRef } from '../../visualization/engine/types';
-import { createBasicPlaneMaterial } from '../../visualization/materials/basicPlaneMaterial';
-import { createHalftoneMaterial } from '../../visualization/materials/halftone/halftonePlaneMaterial';
-import { HALFTONE_VERTEX } from '../../visualization/materials/halftone/halftone.vert';
-import { HALFTONE_FRAGMENT } from '../../visualization/materials/halftone/halftone.frag';
+import type { CanonicalSpineMode } from '../../scene/builders/spine';
+import { validateSceneDescription } from '../../scene/validateSceneDescription';
+import type { NodeMapEngineRef } from '../../engine/types';
+import { createBasicPlaneMaterial } from '../../materials/basicPlaneMaterial';
+import { createHalftoneMaterial } from '../../materials/halftone/halftonePlaneMaterial';
+import { HALFTONE_VERTEX } from '../../materials/halftone/halftone.vert';
+import { HALFTONE_FRAGMENT } from '../../materials/halftone/halftone.frag';
 
 /**
  * Map engine currentMode to canonical spine mode. Non-canonical modes (touched, released)

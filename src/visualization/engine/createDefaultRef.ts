@@ -1,0 +1,96 @@
+/**
+ * Factory for the visualization engine ref. Single place for default values.
+ */
+
+import type { NodeMapEngineRef, NodeMapMode } from './types';
+
+const SENTINEL_FAR = 1e6;
+
+export function createDefaultNodeMapRef(): NodeMapEngineRef {
+  return {
+    clock: 0,
+    activity: 0,
+    targetActivity: 0.1,
+    voiceEnergy: 0,
+    bands: new Float32Array(32),
+    pulsePositions: [
+      [SENTINEL_FAR, SENTINEL_FAR, SENTINEL_FAR],
+      [SENTINEL_FAR, SENTINEL_FAR, SENTINEL_FAR],
+      [SENTINEL_FAR, SENTINEL_FAR, SENTINEL_FAR],
+    ],
+    pulseTimes: [-1e3, -1e3, -1e3],
+    pulseColors: [
+      [1, 1, 1],
+      [1, 1, 1],
+      [1, 1, 1],
+    ],
+    lastPulseIndex: 0,
+    activityLambda: 6,
+    lambdaUp: 8,
+    lambdaDown: 4,
+    paletteId: 0,
+    hueShift: 0,
+    satBoost: 1,
+    lumBoost: 1,
+    starCountMultiplier: 1,
+    touchActive: false,
+    touchNdc: { x: 0, y: 0 },
+    touchWorld: null,
+    touchView: null,
+    touchInfluence: 0,
+    pendingTapNdc: null,
+    canvasWidth: 1,
+    canvasHeight: 1,
+    orbitTheta: 0,
+    orbitPhi: 0.4,
+    autoRotX: 0,
+    autoRotY: 0,
+    autoRotZ: 0,
+    autoRotSpeedX:
+      (Math.random() * 0.08 + 0.04) * (Math.random() > 0.5 ? 1 : -1),
+    autoRotSpeedY:
+      (Math.random() * 0.08 + 0.04) * (Math.random() > 0.5 ? 1 : -1),
+    autoRotSpeedZ:
+      (Math.random() * 0.04 + 0.02) * (Math.random() > 0.5 ? 1 : -1),
+    currentMode: 'idle',
+    postFxEnabled: true,
+    postFxVignette: 0.22,
+    postFxChromatic: 0.0002,
+    postFxGrain: 0.04,
+    vizIntensity: 'subtle',
+    reduceMotion: false,
+    lastEvent: null,
+    lastEventTime: 0,
+    signalsSnapshot: undefined,
+    panelRects: undefined,
+    rulesClusterCount: 0,
+    cardsClusterCount: 0,
+    layerCount: 2,
+    deconWeight: 0.2,
+    planeOpacity: 0.28,
+    driftPx: 2,
+    touchFieldActive: false,
+    touchFieldNdc: null,
+    touchFieldStrength: 0,
+    scene: undefined,
+    zoneArmed: null,
+    showTouchZones: false,
+    spineUseHalftonePlanes: false,
+    stateCycleOn: false,
+    stateCycleTimerId: null,
+    stateCycleIdx: 0,
+    canonicalCycleOn: false,
+    canonicalCycleTimerId: null,
+    canonicalCycleIdx: 0,
+  };
+}
+
+/** targetActivity by mode (plan §1) */
+export const TARGET_ACTIVITY_BY_MODE: Record<NodeMapMode, number> = {
+  idle: 0.1,
+  listening: 0.6,
+  processing: 1.0,
+  speaking: 0.7,
+  touched: 0.5,
+  released: 0.6, // brief then listening
+};
