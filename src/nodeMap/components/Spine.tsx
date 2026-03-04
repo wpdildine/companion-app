@@ -301,8 +301,7 @@ export function Spine({
         baseHeightScale * (isProcessing ? processingHeightBoost : 1);
       const offsetX = spine.style.planeOffsetX[i] ?? 0;
       const opacityScale = spine.style.planeOpacityScale[i] ?? 1;
-      const offsetY =
-        (spine.style.planeOffsetY?.[i] ?? 0) * envelopeHeightWorld;
+      const offsetY = (spine.style.planeOffsetY?.[i] ?? 0) * unitHeight;
       const localY =
         -halfHeight + unitHeight * (i + 0.5) + unitHeight * gap * i + offsetY;
 
@@ -383,6 +382,9 @@ export function Spine({
         const planeW = envelopeWidthWorld * widthScale;
         const planeH = unitHeight * heightScale;
         halftoneMat.uniforms.uPlaneSize.value.set(planeW, planeH);
+        halftoneMat.uniforms.uDebugFlat.value = spine.style.halftoneDebugFlat
+          ? 1
+          : 0;
         const fadeMode =
           spine.style.halftoneFadeMode === 'none'
             ? 0

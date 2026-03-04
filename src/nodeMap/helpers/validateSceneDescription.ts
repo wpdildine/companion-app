@@ -70,6 +70,7 @@ export function validateSceneDescription(
     style.halftoneOpacityScale > 0 &&
     typeof style.shardOpacityScale === 'number' &&
     style.shardOpacityScale > 0 &&
+    typeof style.halftoneDebugFlat === 'boolean' &&
     typeof style.overlayDistance === 'number' &&
     style.overlayDistance > 0 &&
     typeof style.zStep === 'number' &&

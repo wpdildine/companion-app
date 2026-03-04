@@ -95,6 +95,8 @@ export type GLSceneSpineStyle = {
   halftoneOpacityScale: number;
   /** Global shard opacity multiplier. */
   shardOpacityScale: number;
+  /** Debug art lock: render halftone as flat slab (no dots/fade) for visibility checks. */
+  halftoneDebugFlat: boolean;
   blend?: 'additive' | 'normal';
   /** Camera-facing overlay distance from camera in world units. */
   overlayDistance: number;
@@ -213,29 +215,29 @@ const BASE_PLANE_RENDER_ORDER = 901;
  */
 const SPINE_ART_DIRECTION = {
   envelope: {
-    width: 0.34, // was 0.265 (too skinny)
-    height: 1.92,
+    width: 0.25,
+    height: 1.86,
     centerY: 0,
   },
   visibility: {
-    baseOpacity: 0.88, // was 0.82
-    opacityBoostFromHalftone: 0.7,
-    halftoneOpacityScale: 1.9,
-    shardOpacityScale: 0.6,
+    baseOpacity: 0.62,
+    opacityBoostFromHalftone: 0.25,
+    halftoneOpacityScale: 1.1,
+    shardOpacityScale: 0.46,
+    halftoneDebugFlat: false,
     blend: 'normal' as const,
   },
 
   composition: {
     planeCount: 5 as const,
-    planeWidthScale: [0.32, 0.48, 1.18, 0.58, 0.34],
-    planeHeightScale: [0.64, 0.92, 1.36, 0.78, 0.7],
-
-    planeOffsetX: [-0.22, 0.16, -0.07, 0.11, 0.24], // hero plane off-center
-    planeOffsetY: [0.11, -0.06, 0.0, 0.07, -0.1],
-    planeZOffset: [-0.1, 0.18, 0.0, -0.14, 0.08],
+    planeWidthScale: [0.5, 0.62, 0.86, 0.6, 0.48],
+    planeHeightScale: [0.82, 0.98, 1.08, 0.92, 0.8],
+    planeOffsetX: [-0.12, 0.09, 0.0, -0.07, 0.11],
+    planeOffsetY: [0.06, -0.045, 0.0, 0.04, -0.06],
+    planeZOffset: [-0.04, 0.07, 0.0, -0.05, 0.03],
     // Opacity ladder: ghost -> support -> hero -> support -> ghost
-    planeOpacityScale: [0.42, 0.72, 1.0, 0.62, 0.36],
-    planeColors: ['#4f6a90', '#6f92c8', '#8feaff', '#5f86c2', '#3d5578'],
+    planeOpacityScale: [0.34, 0.56, 0.86, 0.5, 0.3],
+    planeColors: ['#425a7d', '#6084b5', '#b8f1ff', '#587bae', '#3a5070'],
     planeAccent: [false, false, true, false, false],
     planeRenderOrder: [
       BASE_PLANE_RENDER_ORDER,
@@ -244,13 +246,13 @@ const SPINE_ART_DIRECTION = {
       BASE_PLANE_RENDER_ORDER + 2,
       BASE_PLANE_RENDER_ORDER + 3,
     ],
-    planeGap: -0.34, // was -0.24
-    zStep: 0.045, // was 0.035 (more separation reads as depth)
+    planeGap: -0.14,
+    zStep: 0.036,
     halftoneEnabled: true,
-    halftoneFadeMode: 'radial' as HalftoneFadeMode,
-    halftoneFadeInner: 0.16, // was 0.25
-    halftoneFadeOuter: 0.7, // was 0.85
-    halftoneFadePower: 3.2, // was 2.4
+    halftoneFadeMode: 'none' as HalftoneFadeMode,
+    halftoneFadeInner: 0.05,
+    halftoneFadeOuter: 0.92,
+    halftoneFadePower: 1.2,
   },
   motion: {
     driftAmpX: 0.038,
@@ -267,24 +269,24 @@ const SPINE_ART_DIRECTION = {
     processingEdgeBoost: 1.15,
   },
   halftoneProfiles: {
-    idle: { intensity: 0.28, density: 1.45 },
-    listening: { intensity: 0.74, density: 2.0 },
-    processing: { intensity: 1.0, density: 2.8 },
-    speaking: { intensity: 0.24, density: 1.35 },
+    idle: { intensity: 0.48, density: 1.35 },
+    listening: { intensity: 0.66, density: 1.85 },
+    processing: { intensity: 0.9, density: 2.25 },
+    speaking: { intensity: 0.36, density: 1.2 },
   } as CanonicalHalftoneProfiles,
   shards: {
     countsByMode: {
-      idle: 6,
-      listening: 8,
-      processing: 10,
-      speaking: 5,
+      idle: 12,
+      listening: 16,
+      processing: 20,
+      speaking: 10,
     } as Record<CanonicalSpineMode, number>,
-    zOffsetMin: -2.5,
-    zOffsetMax: 2.5,
+    zOffsetMin: -0.8,
+    zOffsetMax: 0.8,
     membraneBandOffsetY: 0.22,
-    coolPalette: ['#4a76b8', '#3e669f', '#5f95d6', '#2f4f7a'],
-    ghostPalette: ['#141b2a', '#101726', '#1a2336'],
-    accentPalette: ['#79d6ff', '#b6f0ff'], // ditch the gold for now
+    coolPalette: ['#4d78b8', '#41699f', '#5b8dcc', '#36577f'],
+    ghostPalette: ['#1f2c43', '#1b263a', '#24334d'],
+    accentPalette: ['#8ce7ff', '#c5f6ff'],
     accentColor: '#b6f0ff',
   },
 } as const;
@@ -464,6 +466,7 @@ export function buildSpineDescription(): GLSceneSpine {
       halftoneOpacityScale:
         SPINE_ART_DIRECTION.visibility.halftoneOpacityScale,
       shardOpacityScale: SPINE_ART_DIRECTION.visibility.shardOpacityScale,
+      halftoneDebugFlat: SPINE_ART_DIRECTION.visibility.halftoneDebugFlat,
       blend: SPINE_ART_DIRECTION.visibility.blend,
       overlayDistance: 10,
       zStep: preset.zStep,

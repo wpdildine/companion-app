@@ -14,12 +14,18 @@ uniform float uTime;
 uniform vec2 uResolution;
 uniform float uPlanePhase;
 uniform vec2 uPlaneSize;
+uniform float uDebugFlat;
 uniform float uFadeMode;
 uniform float uFadeInner;
 uniform float uFadeOuter;
 uniform float uFadePower;
 
 void main() {
+  if (uDebugFlat > 0.5) {
+    gl_FragColor = vec4(uColor.rgb, clamp(uOpacity, 0.0, 1.0));
+    return;
+  }
+
   // World-unit grid: stable isotropic spacing regardless of plane aspect/scale.
   float densityScale = mix(0.95, 2.0, clamp(uDensity / 2.8, 0.0, 1.0));
   float cellSize = 0.06 / densityScale;

@@ -18,6 +18,7 @@ export function createHalftoneMaterial(): THREE.ShaderMaterial {
       uResolution: { value: new THREE.Vector2(1, 1) },
       uPlanePhase: { value: 0 },
       uPlaneSize: { value: new THREE.Vector2(1, 1) },
+      uDebugFlat: { value: 0 },
       uFadeMode: { value: 0 },
       uFadeInner: { value: 0.35 },
       uFadeOuter: { value: 0.65 },
