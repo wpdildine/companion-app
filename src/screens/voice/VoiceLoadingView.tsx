@@ -4,7 +4,7 @@
 
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import type { Theme } from '../theme';
+import type { Theme } from '../../theme';
 
 export function VoiceLoadingView({
   theme,

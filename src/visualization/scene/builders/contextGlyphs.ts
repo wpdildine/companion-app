@@ -4,7 +4,10 @@ import type { GLSceneContextGlyphs } from '../formations';
 /**
  * Build scene descriptor for ContextGlyphs from art direction.
  */
-export function buildContextGlyphsDescription(): GLSceneContextGlyphs {
+export function buildContextGlyphsDescription(): Omit<
+  GLSceneContextGlyphs,
+  'zHierarchy'
+> {
   const a = CONTEXT_GLYPHS_ART_DIRECTION;
   return {
     baseNodeSize: a.baseNodeSize,
@@ -12,6 +15,10 @@ export function buildContextGlyphsDescription(): GLSceneContextGlyphs {
     touchRadius: a.touchRadius,
     touchStrength: a.touchStrength,
     touchMaxOffset: a.touchMaxOffset,
+    zLayerOffsets: [...a.zLayers.offsets],
+    zLayerJitter: a.zLayers.jitter,
+    rulesClusterZBias: a.zLayers.rulesClusterBias,
+    cardsClusterZBias: a.zLayers.cardsClusterBias,
     decayPhaseSeed: a.decay.phaseSeed,
     decayRateSeed: a.decay.rateSeed,
     decayDepthSeed: a.decay.depthSeed,

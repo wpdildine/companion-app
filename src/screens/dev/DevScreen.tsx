@@ -1,12 +1,12 @@
 /**
- * Developer screen: wraps DevPanel from nodeMap for use in app debug overlay.
- * Plan: DevScreen in ui/; theme and visualizationRef are passed by App.
+ * Developer screen: wraps DevPanel from visualization for use in app debug overlay.
+ * Theme and visualizationRef are passed by VoiceScreen.
  */
 
 import React from 'react';
 import type { RefObject } from 'react';
-import { DevPanel, type DevPanelTheme } from '../visualization';
-import type { VisualizationEngineRef } from '../visualization';
+import { DevPanel, type DevPanelTheme } from '../../visualization';
+import type { VisualizationEngineRef } from '../../visualization';
 
 export type DevScreenProps = {
   visualizationRef: RefObject<VisualizationEngineRef | null>;

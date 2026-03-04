@@ -1,11 +1,11 @@
 /**
- * Debug zone overlay: when debugShowZones is on, draws outlines for Cards/Rules (and answer) header rects.
- * Plan Phase 4.3: labels and state (inactive/armed/active). Default off.
+ * Visualization debug tooling: draws outlines for answer/cards/rules panel rects.
+ * Kept in visualization/render/dev because it reflects visualization zone mapping.
  */
 
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import type { VisualizationPanelRects } from '../visualization';
+import type { VisualizationPanelRects } from '../../engine/types';
 
 const ZONE_COLORS: Record<string, string> = {
   answer: '#22c55e',
@@ -21,13 +21,13 @@ export type DebugZoneOverlayProps = {
 export function DebugZoneOverlay({ panelRects, visible }: DebugZoneOverlayProps) {
   if (!visible) return null;
 
-  const keys = (Object.keys(panelRects) as Array<keyof VisualizationPanelRects>).filter(
-    (k) => panelRects[k] && panelRects[k]!.w > 0 && panelRects[k]!.h > 0,
-  );
+  const keys = (
+    Object.keys(panelRects) as Array<keyof VisualizationPanelRects>
+  ).filter(k => panelRects[k] && panelRects[k]!.w > 0 && panelRects[k]!.h > 0);
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {keys.map((key) => {
+      {keys.map(key => {
         const rect = panelRects[key]!;
         const color = ZONE_COLORS[key] ?? '#888';
         return (

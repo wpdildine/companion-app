@@ -140,7 +140,12 @@ export function buildCrystallineSphere(
 const MAX_PER_CLUSTER = 8;
 
 /** Cluster node: used by ContextGlyphs and ContextLinks; single source in scene.clusters.nodes */
-export type ClusterNode = Node & { clusterId: number; indexInCluster: number };
+export type ClusterNode = Node & {
+  clusterId: number;
+  indexInCluster: number;
+  /** Z-layer index for context glyph depth stacking (0..N-1). */
+  zLayer: number;
+};
 
 /** Seeded pseudo-random in [0,1] */
 function seeded(i: number, seed: number): number {
@@ -207,6 +212,7 @@ export function buildClusterNodesFromParams(
       color: [...rulesRgb],
       clusterId: 0,
       indexInCluster: i,
+      zLayer: 0,
     });
   }
   for (let i = 0; i < MAX_PER_CLUSTER; i++) {
@@ -227,6 +233,7 @@ export function buildClusterNodesFromParams(
       color: [...cardsRgb],
       clusterId: 1,
       indexInCluster: i,
+      zLayer: 0,
     });
   }
   return nodes;
@@ -325,6 +332,10 @@ export type GLSceneContextGlyphs = {
   touchRadius: number;
   touchStrength: number;
   touchMaxOffset: number;
+  zLayerOffsets: number[];
+  zLayerJitter: number;
+  rulesClusterZBias: number;
+  cardsClusterZBias: number;
   decayPhaseSeed: number;
   decayRateSeed: number;
   decayDepthSeed: number;
@@ -332,6 +343,12 @@ export type GLSceneContextGlyphs = {
   decayRateMax: number;
   decayDepthMin: number;
   decayDepthMax: number;
+  zHierarchy: Array<{
+    clusterId: number;
+    layerIndex: number;
+    zCenter: number;
+    nodeIds: number[];
+  }>;
 };
 
 export type GLSceneContextLinks = {
@@ -419,6 +436,37 @@ function buildLinkEdges(): GLSceneLinkEdge[] {
   return edges;
 }
 
+function applyContextGlyphZLayers(
+  sourceNodes: ClusterNode[],
+  glyphs: Omit<GLSceneContextGlyphs, 'zHierarchy'>,
+): { nodes: ClusterNode[]; zHierarchy: GLSceneContextGlyphs['zHierarchy'] } {
+  const offsets = glyphs.zLayerOffsets.length > 0 ? glyphs.zLayerOffsets : [0];
+  const layerCount = offsets.length;
+  const byKey = new Map<string, { clusterId: number; layerIndex: number; zCenter: number; nodeIds: number[] }>();
+  const nodes = sourceNodes.map(node => {
+    const layerIndex = ((node.indexInCluster % layerCount) + layerCount) % layerCount;
+    const clusterBias = node.clusterId === 0 ? glyphs.rulesClusterZBias : glyphs.cardsClusterZBias;
+    const jitterN = seeded(node.id + layerIndex * 17, 97.113) * 2 - 1;
+    const z = offsets[layerIndex] + clusterBias + jitterN * glyphs.zLayerJitter;
+    const next: ClusterNode = {
+      ...node,
+      position: [node.position[0], node.position[1], z],
+      zLayer: layerIndex,
+    };
+    const key = `${node.clusterId}:${layerIndex}`;
+    const entry = byKey.get(key) ?? {
+      clusterId: node.clusterId,
+      layerIndex,
+      zCenter: offsets[layerIndex] + clusterBias,
+      nodeIds: [],
+    };
+    entry.nodeIds.push(node.id);
+    byKey.set(key, entry);
+    return next;
+  });
+  return { nodes, zHierarchy: Array.from(byKey.values()) };
+}
+
 /** Hex to RGB 0–1. Expects #RRGGBB (7 chars); validates in dev to avoid silent garbage. */
 function hexToRgb(hex: string): [number, number, number] {
   if (typeof __DEV__ !== 'undefined' && __DEV__) {
@@ -475,9 +523,14 @@ export function getSceneDescription(
     ...clustersStyle,
     ...clustersLayout,
   });
+  const contextGlyphsBase = buildContextGlyphsDescription();
+  const { nodes: layeredNodes, zHierarchy } = applyContextGlyphZLayers(
+    nodes,
+    contextGlyphsBase,
+  );
 
-  const rules = nodes.filter(n => n.clusterId === 0);
-  const cards = nodes.filter(n => n.clusterId === 1);
+  const rules = layeredNodes.filter(n => n.clusterId === 0);
+  const cards = layeredNodes.filter(n => n.clusterId === 1);
   const sum = (arr: ClusterNode[], i: 0 | 1 | 2) =>
     arr.reduce((a, n) => a + n.position[i], 0) / arr.length;
   const rulesCenter: [number, number, number] = [
@@ -512,7 +565,7 @@ export function getSceneDescription(
     clusters: {
       style: clustersStyle,
       layout: clustersLayout,
-      nodes,
+      nodes: layeredNodes,
     },
     links: {
       edges: buildLinkEdges(),
@@ -527,7 +580,10 @@ export function getSceneDescription(
       sat: 0.45,
       lum: 0.55,
     },
-    contextGlyphs: buildContextGlyphsDescription(),
+    contextGlyphs: {
+      ...contextGlyphsBase,
+      zHierarchy,
+    },
     contextLinks: buildContextLinksDescription(),
     planeField: buildPlaneLayerFieldDescription(),
     spine: buildSpineDescription(),

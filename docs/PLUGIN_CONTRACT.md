@@ -51,7 +51,7 @@ The app’s **PluginDiagnostics** layer subscribes to all plugins, normalizes th
 - **PluginEventPayload**: `{ type: string; message?: string; data?: Record<string, unknown> }`
 - **NormalizedDiagnosticEvent**: `{ timestamp: number; source: string; type: string; message?: string; data?: Record<string, unknown> }`
 
-Defined in `src/types/plugin-contract.ts`; plugins and the app import from there.
+Defined in `src/shared/types/plugin-contract.ts`; plugins and the app import from there.
 
 ## Plugin checklist (for new or updated plugins)
 
@@ -63,7 +63,7 @@ Defined in `src/types/plugin-contract.ts`; plugins and the app import from there
 
 ## JS unification layer (PluginDiagnostics)
 
-The app provides a single JS module (`src/native/PluginDiagnostics.ts`) that:
+The app provides a single JS module (`src/shared/native/PluginDiagnostics.ts`) that:
 
 - Subscribes to events from all plugins.
 - Normalizes them to a common shape (timestamp, source, type, message, data).

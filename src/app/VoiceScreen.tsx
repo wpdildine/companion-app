@@ -32,12 +32,17 @@ import {
   init as ragInit,
   type ValidationSummary,
 } from '../rag';
-import { CardReferenceBlock, type CardRef } from '../shared/components/CardReferenceBlock';
-import { DeconPanel } from '../shared/components/DeconPanel';
-import { SelectedRulesBlock, type SelectedRule } from '../shared/components/SelectedRulesBlock';
-import { VoiceLoadingView, DebugZoneOverlay, UserVoiceView, DevScreen } from '../ui';
+import {
+  CardReferenceBlock,
+  DeconPanel,
+  SelectedRulesBlock,
+  type CardRef,
+  type SelectedRule,
+} from '../components';
+import { DevScreen, UserVoiceView, VoiceLoadingView } from '../screens';
 import { getTheme } from '../theme';
 import {
+  DebugZoneOverlay,
   createDefaultVisualizationRef,
   getSceneDescription,
   triggerPulseAtCenter,

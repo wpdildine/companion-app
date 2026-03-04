@@ -2,7 +2,7 @@
 
 MTG Rules Companion and Timer App — React Native (New Architecture), with [llama.rn](https://github.com/mybigday/llama.rn) for on-device LLM. Voice input, offline TTS (Piper), and a **deterministic context provider** for grounded MTG rules/cards answers — no vector retrieval in-app.
 
-**AI agents:** Follow [docs/AGENT_RULES.md](docs/AGENT_RULES.md). See the [Architecture Navigation Map](docs/ARCHITECTURE.md) for where code lives (app, rag, visualization, theme, ui, utils, shared).
+**AI agents:** Follow [docs/AGENT_RULES.md](docs/AGENT_RULES.md). See the [Architecture Navigation Map](docs/ARCHITECTURE.md) for where code lives (app, screens, components, rag, visualization, theme, utils).
 
 This is a [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
 
@@ -31,14 +31,16 @@ Context provider logic is shared with **mtg_rules**: the app consumes **@mtg/run
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full Architecture Navigation Map.
 
 - **`src/app/`** — App entry + navigation. `App.tsx` composes `SafeAreaProvider` and `VoiceScreen`. VoiceScreen holds state, handlers, and composes VisualizationSurface + UI.
-- **`src/theme/`** — Pure theme values: `getTheme(isDark)` returns RN tokens and viz primitives (canvasBackground, paletteA, paletteB, nodePalette). Injected into RN and visualization; no theme import inside visualization.
-- **`src/ui/`** — Screen-level UI: VoiceLoadingView, UserVoiceView, DevScreen, DebugZoneOverlay. Panel state types for gestures.
+- **`src/shared/`** — Platform-agnostic core: shared plugin contracts and native diagnostics service.
+- **`src/theme/`** — Canonical theme home (`getTheme`, tokens).
+- **`src/screens/`** — Screen-level composition and views (`voice/`, `dev/`).
+- **`src/components/`** — Reusable UI blocks (`decon/` panel + content blocks).
+- **`src/ui/`** — Compatibility exports only (legacy imports).
 - **`src/visualization/`** — **Pure visualization layer**: engine, scene, render (VisualizationCanvas, VisualizationSurface, VisualizationCanvasR3F, 2D fallback), interaction (InteractionBand, touchHandlers), materials. Consumes only injected theme primitives and engine ref; no app state or voice. Touch API: short tap, double-tap, long-press, drag; see `visualization/interaction/touchHandlers.ts`.
 - **`src/utils/`** — Pure or side-effect isolated: `log` (logModeChange, logPulse). No React or theme imports.
-- **`src/shared/`** — Reusable building blocks: components, helpers, services, types.
 - **`src/rag/`** — RAG pipeline, context provider, pack DB.
 
-The app does **not** use Skia. Graphics are driven by Three.js/R3F and the theme’s viz primitives. To add features: theme → `src/theme`, UI → `src/ui`, visualization → `src/visualization`.
+The app does **not** use Skia. Graphics are driven by Three.js/R3F and the theme’s viz primitives. To add features: shared core contracts/services → `src/shared`, theme → `src/theme`, screens → `src/screens`, reusable UI → `src/components`, visualization → `src/visualization`.
 
 ---
 
@@ -121,7 +123,7 @@ If everything is set up correctly, the app runs in the Android Emulator, iOS Sim
 
 ## Step 4: Modify your app
 
-Edit `App.tsx` (or any source); [Fast Refresh](https://reactnative.dev/docs/fast-refresh) will update the app. Root entry is `App.tsx`, which re-exports `src/app/App.tsx`; most screen orchestration lives in `src/app/VoiceScreen.tsx`. Add or change UI in `src/ui/`, theme tokens in `src/theme/`, and 3D visualization behavior in `src/visualization/`. To force a full reload:
+Edit `App.tsx` (or any source); [Fast Refresh](https://reactnative.dev/docs/fast-refresh) will update the app. Root entry is `App.tsx`, which re-exports `src/app/App.tsx`; most screen orchestration lives in `src/app/VoiceScreen.tsx`. Add or change screen UI in `src/screens/`, reusable UI in `src/components/`, theme tokens in `src/theme/`, and 3D visualization behavior in `src/visualization/`. To force a full reload:
 
 - **Android:** Double-tap <kbd>R</kbd> or Dev Menu (<kbd>Ctrl</kbd>+<kbd>M</kbd> / <kbd>Cmd</kbd>+<kbd>M</kbd>) → Reload.
 - **iOS:** <kbd>R</kbd> in the simulator.

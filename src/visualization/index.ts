@@ -24,5 +24,9 @@ export type {
 export { VisualizationCanvas } from './render/canvas/VisualizationCanvas';
 export { VisualizationSurface } from './render/canvas/VisualizationSurface';
 export { VisualizationCanvasR3F, type VisualizationCanvasR3FProps } from './render/canvas/VisualizationCanvasR3F';
+export {
+  DebugZoneOverlay,
+  type DebugZoneOverlayProps,
+} from './render/dev/DebugZoneOverlay';
 export { InteractionBand, type InteractionBandProps } from './interaction/InteractionBand';
 export { DevPanel, type DevPanelTheme } from './render/dev/DevPanel';

@@ -73,7 +73,8 @@ Writer split:
 
 - App shell: `src/app/App.tsx`
 - Screen composition + app state: `src/app/VoiceScreen.tsx`
-- UI wrappers: `src/ui/UserVoiceView.tsx`, `src/ui/DevScreen.tsx`, `src/ui/VoiceLoadingView.tsx`, `src/ui/DebugZoneOverlay.tsx`
+- UI wrappers: `src/screens/voice/UserVoiceView.tsx`, `src/screens/dev/DevScreen.tsx`, `src/screens/voice/VoiceLoadingView.tsx`
+- Viz dev overlay: `src/visualization/render/dev/DebugZoneOverlay.tsx`
 - Visualization surface/canvas: `src/visualization/render/canvas/VisualizationSurface.tsx`, `VisualizationCanvas.tsx`, `VisualizationCanvasR3F.tsx`, `VisualizationCanvasFallback.tsx`
 - Visualization interaction: `src/visualization/interaction/InteractionBand.tsx`, `TouchRaycaster.tsx`, `touchHandlers.ts`
 - Scene/layers: `src/visualization/engine/EngineLoop.tsx`, `render/layers/ContextGlyphs.tsx`, `ContextLinks.tsx`, `TouchZones.tsx`, `CameraOrbit.tsx`, `PostFXPass.tsx`
@@ -83,6 +84,5 @@ Writer split:
 
 ## Known In-Progress Areas
 
-- Panel gesture system from the refactor plan (header drag/snap/dismiss/restore + arbitration) is not fully implemented as a dedicated `src/ui` gesture layer.
+- Panel gesture system from the refactor plan (header drag/snap/dismiss/restore + arbitration) is not fully implemented as a dedicated `src/screens/voice` gesture layer.
 - `VoiceScreen` remains large and still carries substantial orchestration logic.
-

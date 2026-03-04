@@ -18,13 +18,14 @@
 
 ## Execution Status (2026-03-01)
 
-- Done: folder/theme/utils migration to `src/nodeMap`, `src/theme`, `src/ui`, `src/utils`
+- Done: folder/theme/utils migration to `src/visualization`, `src/theme`, `src/utils`
 - Done: fallback dots path (`VisualizationCanvasFallback`) is non-empty
 - Done: `App.tsx` slimmed; screen composition centered in `VoiceScreen`
 - Done: `UserVoiceView` and `DevScreen` are wired into `VoiceScreen`
 - Done: `InteractionBand` is enabled in user mode when no panels are visible
 - Done: GL interaction affordance now reflects tap mapping (left active / center neutral / right active) in `ClusterTouchZones`
-- Partial: panel gesture/arbitration system in `src/ui` (header drag/snap/dismiss/restore + ownership arbitration) is not fully implemented
+- Done: screen and reusable UI structure normalized to `src/screens/*` and `src/components/decon/*`
+- Partial: panel gesture/arbitration system in `src/screens/voice` (header drag/snap/dismiss/restore + ownership arbitration) is not fully implemented
 
 ---
 

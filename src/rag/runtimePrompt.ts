@@ -3,7 +3,6 @@
  * Uses Llama-3 chat template (matches mtg_rules runtime when available).
  */
 
-import type { RetrievalHit } from './types';
 import { RAG_CONFIG } from './config';
 
 /** Llama-3 chat template tokens. */

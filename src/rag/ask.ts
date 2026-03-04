@@ -9,7 +9,7 @@ import type { PackState, PackFileReader, RagInitParams } from './types';
 const LLAMA3_STOP_SEQUENCES = ['<|eot_id|>', '<|end_of_text|>'];
 import { RAG_USE_DETERMINISTIC_CONTEXT_ONLY } from './types';
 import { loadVectors, searchL2, loadChunksForRows } from './retrieval';
-import { trimChunksToFitPrompt, buildPrompt } from './prompt';
+import { trimChunksToFitPrompt, buildPrompt } from './runtimePrompt';
 import { ragError } from './errors';
 import { RAG_CONFIG } from './config';
 
