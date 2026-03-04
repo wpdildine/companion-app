@@ -99,10 +99,17 @@ export function validateSceneDescription(
     style.edgeBandWidth < 0.5 &&
     typeof style.edgeOpacity === 'number' &&
     typeof style.halftoneEnabled === 'boolean' &&
-    (style.halftoneFadeMode == null || (typeof style.halftoneFadeMode === 'string' && ['none', 'radial', 'linear'].includes(style.halftoneFadeMode))) &&
+    (style.halftoneFadeMode == null || (typeof style.halftoneFadeMode === 'string' && ['none', 'radial', 'linear', 'angled'].includes(style.halftoneFadeMode))) &&
     (style.halftoneFadeInner == null || typeof style.halftoneFadeInner === 'number') &&
     (style.halftoneFadeOuter == null || typeof style.halftoneFadeOuter === 'number') &&
-    (style.halftoneFadePower == null || typeof style.halftoneFadePower === 'number');
+    (style.halftoneFadePower == null || typeof style.halftoneFadePower === 'number') &&
+    (style.halftoneFadeAngle == null || typeof style.halftoneFadeAngle === 'number') &&
+    (style.halftoneFadeOffset == null || typeof style.halftoneFadeOffset === 'number') &&
+    (style.halftoneFadeCenterX == null || typeof style.halftoneFadeCenterX === 'number') &&
+    (style.halftoneFadeCenterY == null || typeof style.halftoneFadeCenterY === 'number') &&
+    (style.halftoneFadeLevels == null || typeof style.halftoneFadeLevels === 'number') &&
+    (style.halftoneFadeStepMix == null || typeof style.halftoneFadeStepMix === 'number') &&
+    (style.halftoneFadeOneSided == null || typeof style.halftoneFadeOneSided === 'boolean');
   if (!numericStyleValid) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error(

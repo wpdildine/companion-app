@@ -1,6 +1,8 @@
 /**
  * Halftone fragment: dot pattern with uPlanePhase for per-mesh variation.
- * Fade: coverage factor from uFadeMode (0=none, 1=radial, 2=linear). No uTime in logic; no UV animation.
+ * Fade: coverage factor from uFadeMode (0=none, 1=radial, 2=linear, 3=angled).
+ * Supports directional angle + stepped posterization for graphic masks.
+ * No uTime in fade logic; no UV animation.
  * Guardrail: coverage never below 0.15 inside inner region.
  */
 export const HALFTONE_FRAGMENT = `
@@ -19,6 +21,12 @@ uniform float uFadeMode;
 uniform float uFadeInner;
 uniform float uFadeOuter;
 uniform float uFadePower;
+uniform float uFadeAngle;
+uniform float uFadeOffset;
+uniform vec2 uFadeCenter;
+uniform float uFadeLevels;
+uniform float uFadeStepMix;
+uniform float uFadeOneSided;
 
 void main() {
   if (uDebugFlat > 0.5) {
@@ -45,19 +53,31 @@ void main() {
   float edgeY = smoothstep(0.01, 0.03, vUv.y) * smoothstep(0.01, 0.03, 1.0 - vUv.y);
   float interiorMask = edgeX * edgeY;
 
-  // Coverage from fade: 0=none (full), 1=radial, 2=linear. Stable; no time/UV animation.
+  // Coverage from fade: 0=none (full), 1=radial, 2=linear, 3=angled.
   float coverage = 1.0;
   if (uFadeMode > 0.5) {
+    float distMetric = 0.0;
     if (uFadeMode < 1.5) {
-      float dist = length(vUv - 0.5);
-      coverage = 1.0 - smoothstep(uFadeInner, uFadeOuter, dist);
-      coverage = pow(max(coverage, 0.0), uFadePower);
-      if (dist <= uFadeInner) coverage = max(coverage, 0.15);
+      distMetric = length(vUv - 0.5);
+    } else if (uFadeMode < 2.5) {
+      distMetric = abs(vUv.y - 0.5) * 2.0;
     } else {
-      float distLinear = abs(vUv.y - 0.5) * 2.0;
-      coverage = 1.0 - smoothstep(uFadeInner, uFadeOuter, distLinear);
-      coverage = pow(max(coverage, 0.0), uFadePower);
-      if (distLinear <= uFadeInner) coverage = max(coverage, 0.15);
+      vec2 dir = vec2(cos(uFadeAngle), sin(uFadeAngle));
+      float signedCoord = dot(vUv - uFadeCenter, dir) + uFadeOffset;
+      distMetric = (uFadeOneSided > 0.5)
+        ? max(0.0, signedCoord) * 2.0
+        : abs(signedCoord) * 2.0;
+    }
+    coverage = 1.0 - smoothstep(uFadeInner, uFadeOuter, distMetric);
+    coverage = pow(max(coverage, 0.0), uFadePower);
+    if (distMetric <= uFadeInner) coverage = max(coverage, 0.15);
+
+    // Posterized fade levels for sharper decon-modern banding.
+    float levels = max(1.0, floor(uFadeLevels + 0.5));
+    if (levels > 1.0) {
+      float denom = max(1.0, levels - 1.0);
+      float stepped = floor(clamp(coverage, 0.0, 1.0) * denom + 0.5) / denom;
+      coverage = mix(coverage, stepped, clamp(uFadeStepMix, 0.0, 1.0));
     }
   }
 

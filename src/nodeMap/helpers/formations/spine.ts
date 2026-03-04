@@ -52,7 +52,7 @@ export type SpineEnvelopeNdc = {
 };
 
 /** Halftone fade mode: none = full coverage, radial/linear = parameterized falloff. */
-export type HalftoneFadeMode = 'none' | 'radial' | 'linear';
+export type HalftoneFadeMode = 'none' | 'radial' | 'linear' | 'angled';
 
 /**
  * Spine style preset: single source of truth for plane count, per-plane arrays,
@@ -85,6 +85,13 @@ export type SpineStylePreset = {
   halftoneFadeInner: number;
   halftoneFadeOuter: number;
   halftoneFadePower: number;
+  halftoneFadeAngle: number;
+  halftoneFadeOffset: number;
+  halftoneFadeCenterX: number;
+  halftoneFadeCenterY: number;
+  halftoneFadeLevels: number;
+  halftoneFadeStepMix: number;
+  halftoneFadeOneSided: boolean;
 };
 
 export type GLSceneSpineStyle = {
@@ -131,6 +138,13 @@ export type GLSceneSpineStyle = {
   halftoneFadeInner: number;
   halftoneFadeOuter: number;
   halftoneFadePower: number;
+  halftoneFadeAngle: number;
+  halftoneFadeOffset: number;
+  halftoneFadeCenterX: number;
+  halftoneFadeCenterY: number;
+  halftoneFadeLevels: number;
+  halftoneFadeStepMix: number;
+  halftoneFadeOneSided: boolean;
   /** Per-mode micro drift amplitudes in world-space envelope fractions. */
   driftAmpX: number;
   driftAmpY: number;
@@ -227,6 +241,13 @@ export const SPINE_STYLE_PRESET: SpineStylePreset = {
   halftoneFadeInner: SPINE_ART_DIRECTION.composition.halftoneFadeInner,
   halftoneFadeOuter: SPINE_ART_DIRECTION.composition.halftoneFadeOuter,
   halftoneFadePower: SPINE_ART_DIRECTION.composition.halftoneFadePower,
+  halftoneFadeAngle: SPINE_ART_DIRECTION.composition.halftoneFadeAngle,
+  halftoneFadeOffset: SPINE_ART_DIRECTION.composition.halftoneFadeOffset,
+  halftoneFadeCenterX: SPINE_ART_DIRECTION.composition.halftoneFadeCenterX,
+  halftoneFadeCenterY: SPINE_ART_DIRECTION.composition.halftoneFadeCenterY,
+halftoneFadeLevels: SPINE_ART_DIRECTION.composition.halftoneFadeLevels,
+    halftoneFadeStepMix: SPINE_ART_DIRECTION.composition.halftoneFadeStepMix,
+    halftoneFadeOneSided: SPINE_ART_DIRECTION.composition.halftoneFadeOneSided,
 };
 
 const SPREAD_IDLE: SpineSpreadProfile = {
@@ -400,6 +421,13 @@ export function buildSpineDescription(): GLSceneSpine {
       halftoneFadeInner: preset.halftoneFadeInner,
       halftoneFadeOuter: preset.halftoneFadeOuter,
       halftoneFadePower: preset.halftoneFadePower,
+      halftoneFadeAngle: preset.halftoneFadeAngle,
+      halftoneFadeOffset: preset.halftoneFadeOffset,
+      halftoneFadeCenterX: preset.halftoneFadeCenterX,
+      halftoneFadeCenterY: preset.halftoneFadeCenterY,
+      halftoneFadeLevels: preset.halftoneFadeLevels,
+      halftoneFadeStepMix: preset.halftoneFadeStepMix,
+      halftoneFadeOneSided: preset.halftoneFadeOneSided,
       driftAmpX: preset.driftAmpX,
       driftAmpY: preset.driftAmpY,
       perPlaneDriftScale: preset.perPlaneDriftScale,

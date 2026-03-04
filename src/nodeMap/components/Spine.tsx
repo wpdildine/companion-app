@@ -108,6 +108,17 @@ export function Spine({
     uResolution: { value: new THREE.Vector2(1, 1) },
     uPlanePhase: { value: 0 },
     uPlaneSize: { value: new THREE.Vector2(1, 1) },
+    uDebugFlat: { value: 0 },
+    uFadeMode: { value: 0 },
+    uFadeInner: { value: 0.35 },
+    uFadeOuter: { value: 0.65 },
+    uFadePower: { value: 1.5 },
+    uFadeAngle: { value: 0.0 },
+    uFadeOffset: { value: 0.0 },
+    uFadeCenter: { value: new THREE.Vector2(0.5, 0.5) },
+    uFadeLevels: { value: 1.0 },
+    uFadeStepMix: { value: 0.0 },
+    uFadeOneSided: { value: 0 },
   });
   const rightEdgeUniformsRef = useRef({
     uColor: { value: new THREE.Color() },
@@ -118,6 +129,17 @@ export function Spine({
     uResolution: { value: new THREE.Vector2(1, 1) },
     uPlanePhase: { value: 0 },
     uPlaneSize: { value: new THREE.Vector2(1, 1) },
+    uDebugFlat: { value: 0 },
+    uFadeMode: { value: 0 },
+    uFadeInner: { value: 0.35 },
+    uFadeOuter: { value: 0.65 },
+    uFadePower: { value: 1.5 },
+    uFadeAngle: { value: 0.0 },
+    uFadeOffset: { value: 0.0 },
+    uFadeCenter: { value: new THREE.Vector2(0.5, 0.5) },
+    uFadeLevels: { value: 1.0 },
+    uFadeStepMix: { value: 0.0 },
+    uFadeOneSided: { value: 0 },
   });
   const cameraPosRef = useRef(new THREE.Vector3());
   const cameraDirRef = useRef(new THREE.Vector3());
@@ -416,7 +438,9 @@ export function Spine({
             ? 0
             : spine.style.halftoneFadeMode === 'radial'
             ? 1
-            : 2;
+            : spine.style.halftoneFadeMode === 'linear'
+            ? 2
+            : 3;
         halftoneMat.uniforms.uFadeMode.value = fadeMode;
         halftoneMat.uniforms.uFadeInner.value =
           spine.style.halftoneFadeInner ?? 0.35;
@@ -424,6 +448,22 @@ export function Spine({
           spine.style.halftoneFadeOuter ?? 0.65;
         halftoneMat.uniforms.uFadePower.value =
           spine.style.halftoneFadePower ?? 1.5;
+        halftoneMat.uniforms.uFadeAngle.value =
+          spine.style.halftoneFadeAngle ?? 0.0;
+        halftoneMat.uniforms.uFadeOffset.value =
+          spine.style.halftoneFadeOffset ?? 0.0;
+        halftoneMat.uniforms.uFadeCenter.value.set(
+          spine.style.halftoneFadeCenterX ?? 0.5,
+          spine.style.halftoneFadeCenterY ?? 0.5,
+        );
+        halftoneMat.uniforms.uFadeLevels.value =
+          spine.style.halftoneFadeLevels ?? 1.0;
+        halftoneMat.uniforms.uFadeStepMix.value =
+          spine.style.halftoneFadeStepMix ?? 0.0;
+        halftoneMat.uniforms.uFadeOneSided.value = spine.style
+          .halftoneFadeOneSided
+          ? 1
+          : 0;
       } else {
         mesh.visible = true;
         const mat = planeMats[i];
@@ -531,6 +571,22 @@ export function Spine({
       mat.uniforms.uResolution.value.set(resX, resY);
       mat.uniforms.uPlanePhase.value = 0;
       mat.uniforms.uPlaneSize.value.set(edgeWidth, edgeHeight);
+      mat.uniforms.uDebugFlat.value = spine.style.halftoneDebugFlat ? 1 : 0;
+      mat.uniforms.uFadeMode.value = 0;
+      mat.uniforms.uFadeInner.value = spine.style.halftoneFadeInner ?? 0.35;
+      mat.uniforms.uFadeOuter.value = spine.style.halftoneFadeOuter ?? 0.65;
+      mat.uniforms.uFadePower.value = spine.style.halftoneFadePower ?? 1.5;
+      mat.uniforms.uFadeAngle.value = spine.style.halftoneFadeAngle ?? 0.0;
+      mat.uniforms.uFadeOffset.value = spine.style.halftoneFadeOffset ?? 0.0;
+      mat.uniforms.uFadeCenter.value.set(
+        spine.style.halftoneFadeCenterX ?? 0.5,
+        spine.style.halftoneFadeCenterY ?? 0.5,
+      );
+      mat.uniforms.uFadeLevels.value = spine.style.halftoneFadeLevels ?? 1.0;
+      mat.uniforms.uFadeStepMix.value = spine.style.halftoneFadeStepMix ?? 0.0;
+      mat.uniforms.uFadeOneSided.value = spine.style.halftoneFadeOneSided
+        ? 1
+        : 0;
     }
   });
 
@@ -592,7 +648,7 @@ export function Spine({
         return (
           <mesh
             key={`plane-${i}`}
-            visible={!isHalftonePlane}
+            visible={true}
             ref={el => {
               planeRefs.current[i] = el;
               if (el) {

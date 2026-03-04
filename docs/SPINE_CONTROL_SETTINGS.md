@@ -53,7 +53,13 @@ If support planes vanish, increase `baseOpacity` and/or `planeOpacityScale` befo
 - `planeGap`: negative values increase overlap/occlusion.
 - `zStep`: depth separation baseline.
 - `halftoneEnabled`: center membrane shader on/off.
-- `halftoneFadeMode`, `halftoneFadeInner`, `halftoneFadeOuter`, `halftoneFadePower`: membrane fade grammar.
+- `halftoneFadeMode`: `none | radial | linear | angled`.
+- `halftoneFadeInner`, `halftoneFadeOuter`, `halftoneFadePower`: fade envelope/curve.
+- `halftoneFadeAngle`: angled fade direction in radians.
+- `halftoneFadeOffset`: shifts angled fade along its direction.
+- `halftoneFadeCenterX`, `halftoneFadeCenterY`: UV center for directional/radial calculations.
+- `halftoneFadeLevels`: number of posterization bands (1 disables stepping).
+- `halftoneFadeStepMix`: blend between smooth and stepped fade.
 
 Most “it looks flat” issues are resolved in this block.
 
