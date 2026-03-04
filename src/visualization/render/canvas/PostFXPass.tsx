@@ -92,9 +92,9 @@ export function PostFXPass({
   );
   const postScene = useMemo(() => new THREE.Scene(), []);
   const grainTex = useMemo(() => {
-    const size = 64;
-    const data = new Uint8Array(size * size * 4);
-    for (let i = 0; i < size * size; i++) {
+    const dim = 64;
+    const data = new Uint8Array(dim * dim * 4);
+    for (let i = 0; i < dim * dim; i++) {
       // Uniform grayscale noise packed in RGB; alpha opaque.
       const v = Math.floor(Math.random() * 256);
       const o = i * 4;
@@ -103,7 +103,7 @@ export function PostFXPass({
       data[o + 2] = v;
       data[o + 3] = 255;
     }
-    const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+    const tex = new THREE.DataTexture(data, dim, dim, THREE.RGBAFormat);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.minFilter = THREE.NearestFilter;

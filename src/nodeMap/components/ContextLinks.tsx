@@ -74,13 +74,13 @@ export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeM
     }
     const { nodes, edges, segmentsPerEdge: seg } = gate;
     const vCount = edges.length * (seg + 1);
-    const positions = new Float32Array(vCount * 3);
-    const tArr = new Float32Array(vCount);
-    const startPoints = new Float32Array(vCount * 3);
-    const endPoints = new Float32Array(vCount * 3);
-    const strengths = new Float32Array(vCount);
-    const pathIndices = new Float32Array(vCount);
-    const colors = new Float32Array(vCount * 3);
+    const pos = new Float32Array(vCount * 3);
+    const tData = new Float32Array(vCount);
+    const startPts = new Float32Array(vCount * 3);
+    const endPts = new Float32Array(vCount * 3);
+    const str = new Float32Array(vCount);
+    const pathIdx = new Float32Array(vCount);
+    const cols = new Float32Array(vCount * 3);
     let idx = 0;
     for (const edge of edges) {
       const start = nodes[edge.a].position;
@@ -89,32 +89,32 @@ export function ContextLinks({ nodeMapRef }: { nodeMapRef: React.RefObject<NodeM
       for (let i = 0; i <= seg; i++) {
         const t = i / seg;
         const p = sampleBezier(start, end, edge.pathIndex, t);
-        positions[idx * 3] = p[0];
-        positions[idx * 3 + 1] = p[1];
-        positions[idx * 3 + 2] = p[2];
-        tArr[idx] = t;
-        startPoints[idx * 3] = start[0];
-        startPoints[idx * 3 + 1] = start[1];
-        startPoints[idx * 3 + 2] = start[2];
-        endPoints[idx * 3] = end[0];
-        endPoints[idx * 3 + 1] = end[1];
-        endPoints[idx * 3 + 2] = end[2];
-        strengths[idx] = edge.strength;
-        pathIndices[idx] = edge.pathIndex;
-        colors[idx * 3] = color[0];
-        colors[idx * 3 + 1] = color[1];
-        colors[idx * 3 + 2] = color[2];
+        pos[idx * 3] = p[0];
+        pos[idx * 3 + 1] = p[1];
+        pos[idx * 3 + 2] = p[2];
+        tData[idx] = t;
+        startPts[idx * 3] = start[0];
+        startPts[idx * 3 + 1] = start[1];
+        startPts[idx * 3 + 2] = start[2];
+        endPts[idx * 3] = end[0];
+        endPts[idx * 3 + 1] = end[1];
+        endPts[idx * 3 + 2] = end[2];
+        str[idx] = edge.strength;
+        pathIdx[idx] = edge.pathIndex;
+        cols[idx * 3] = color[0];
+        cols[idx * 3 + 1] = color[1];
+        cols[idx * 3 + 2] = color[2];
         idx++;
       }
     }
     return {
-      positions,
-      tArr,
-      startPoints,
-      endPoints,
-      strengths,
-      pathIndices,
-      colors,
+      positions: pos,
+      tArr: tData,
+      startPoints: startPts,
+      endPoints: endPts,
+      strengths: str,
+      pathIndices: pathIdx,
+      colors: cols,
       vertexCount: vCount,
       edgesLength: edges.length,
       segmentsPerEdge: seg,
