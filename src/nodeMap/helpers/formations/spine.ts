@@ -2,6 +2,7 @@
  * Spine scene description: 5-plane AI channel, envelope, spread/halftone profiles.
  * Built here; composed by formations.ts getSceneDescription(). Canonical modes only.
  */
+import { SPINE_ART_DIRECTION } from './spineArtDirection';
 
 /** Canonical states for spine spread/halftone profiles. Non-canonical modes (e.g. touched, released) are mapped to one of these in the renderer. */
 export type CanonicalSpineMode =
@@ -201,97 +202,6 @@ export type GLSceneSpine = {
   halftoneProfiles: CanonicalHalftoneProfiles;
 };
 
-/**
- * Single spine style preset. Arrays are source of truth; Spine.tsx consumes via scene.spine.
- * Constraints: widthScale (≥2 ≤0.55, ≥1 ≥0.85), offsetX (≥2 opposite signs), offsetY (≥1 non-zero),
- * opacityScale (≥1 ≤0.55, ≥1 ≥0.9), planeColors (≥1 accent, 3–5 tones).
- */
-/** Base render order for spine planes; formations provides per-plane offsets so order is deterministic. */
-const BASE_PLANE_RENDER_ORDER = 901;
-
-/**
- * Single tuning hierarchy for art direction.
- * Adjust values here first; downstream builders consume this object.
- */
-const SPINE_ART_DIRECTION = {
-  envelope: {
-    width: 0.25,
-    height: 1.86,
-    centerY: 0,
-  },
-  visibility: {
-    baseOpacity: 0.62,
-    opacityBoostFromHalftone: 0.25,
-    halftoneOpacityScale: 1.1,
-    shardOpacityScale: 0.46,
-    halftoneDebugFlat: false,
-    blend: 'normal' as const,
-  },
-
-  composition: {
-    planeCount: 5 as const,
-    planeWidthScale: [0.5, 0.62, 0.86, 0.6, 0.48],
-    planeHeightScale: [0.82, 0.98, 1.08, 0.92, 0.8],
-    planeOffsetX: [-0.12, 0.09, 0.0, -0.07, 0.11],
-    planeOffsetY: [0.06, -0.045, 0.0, 0.04, -0.06],
-    planeZOffset: [-0.04, 0.07, 0.0, -0.05, 0.03],
-    // Opacity ladder: ghost -> support -> hero -> support -> ghost
-    planeOpacityScale: [0.34, 0.56, 0.86, 0.5, 0.3],
-    planeColors: ['#425a7d', '#6084b5', '#b8f1ff', '#587bae', '#3a5070'],
-    planeAccent: [false, false, true, false, false],
-    planeRenderOrder: [
-      BASE_PLANE_RENDER_ORDER,
-      BASE_PLANE_RENDER_ORDER + 1,
-      BASE_PLANE_RENDER_ORDER + 5,
-      BASE_PLANE_RENDER_ORDER + 2,
-      BASE_PLANE_RENDER_ORDER + 3,
-    ],
-    planeGap: -0.14,
-    zStep: 0.036,
-    halftoneEnabled: true,
-    halftoneFadeMode: 'none' as HalftoneFadeMode,
-    halftoneFadeInner: 0.05,
-    halftoneFadeOuter: 0.92,
-    halftoneFadePower: 1.2,
-  },
-  motion: {
-    driftAmpX: 0.038,
-    driftAmpY: 0.025,
-    driftHz: 0.14,
-    idleBreathAmp: 0.04,
-    idleBreathHz: 0.1,
-    perPlaneDriftScale: 0.62,
-    perPlaneDriftPhaseStep: 1.2,
-    processingOverflowBoost: 1.12,
-    processingExtraOverlap: -0.06,
-    processingHeightBoost: 1.08,
-    processingMotionBoost: 1.25,
-    processingEdgeBoost: 1.15,
-  },
-  halftoneProfiles: {
-    // Keep density constant across states so dot spacing never "pops" on mode changes.
-    idle: { intensity: 0.48, density: 1.6 },
-    listening: { intensity: 0.66, density: 1.6 },
-    processing: { intensity: 0.9, density: 1.6 },
-    speaking: { intensity: 0.36, density: 1.6 },
-  } as CanonicalHalftoneProfiles,
-  shards: {
-    countsByMode: {
-      idle: 12,
-      listening: 16,
-      processing: 20,
-      speaking: 10,
-    } as Record<CanonicalSpineMode, number>,
-    zOffsetMin: -0.8,
-    zOffsetMax: 0.8,
-    membraneBandOffsetY: 0.22,
-    coolPalette: ['#4d78b8', '#41699f', '#5b8dcc', '#36577f'],
-    ghostPalette: ['#1f2c43', '#1b263a', '#24334d'],
-    accentPalette: ['#8ce7ff', '#c5f6ff'],
-    accentColor: '#b6f0ff',
-  },
-} as const;
-
 export const SPINE_STYLE_PRESET: SpineStylePreset = {
   planeCount: SPINE_ART_DIRECTION.composition.planeCount,
   planeWidthScale: [...SPINE_ART_DIRECTION.composition.planeWidthScale],
@@ -340,10 +250,14 @@ const SPREAD_SPEAKING: SpineSpreadProfile = {
   depthSpread: 1.0,
 };
 
-const HALFTONE_IDLE = SPINE_ART_DIRECTION.halftoneProfiles.idle;
-const HALFTONE_LISTENING = SPINE_ART_DIRECTION.halftoneProfiles.listening;
-const HALFTONE_PROCESSING = SPINE_ART_DIRECTION.halftoneProfiles.processing;
-const HALFTONE_SPEAKING = SPINE_ART_DIRECTION.halftoneProfiles.speaking;
+const HALFTONE_IDLE: SpineHalftoneProfile =
+  SPINE_ART_DIRECTION.halftoneProfiles.idle;
+const HALFTONE_LISTENING: SpineHalftoneProfile =
+  SPINE_ART_DIRECTION.halftoneProfiles.listening;
+const HALFTONE_PROCESSING: SpineHalftoneProfile =
+  SPINE_ART_DIRECTION.halftoneProfiles.processing;
+const HALFTONE_SPEAKING: SpineHalftoneProfile =
+  SPINE_ART_DIRECTION.halftoneProfiles.speaking;
 
 /** Seeded RNG for deterministic shard layout (minimal standard LCG). */
 function createSeededRng(seed: number): () => number {
@@ -355,7 +269,7 @@ function createSeededRng(seed: number): () => number {
 }
 
 /**
- * Build support shards: small set (4–8), biased around halftone membrane, one crosses silhouette (≥25% plane width), zOffset ∈ [-0.5, 0.5].
+ * Build support shards: deterministic secondary planes around the membrane with 2 silhouette-cutters and bounded zOffset.
  */
 function buildSupportShards(seed: number, count: number): SpineShard[] {
   const rng = createSeededRng(seed);
@@ -370,7 +284,7 @@ function buildSupportShards(seed: number, count: number): SpineShard[] {
   } = SPINE_ART_DIRECTION.shards;
   const shards: SpineShard[] = [];
   const inBandCount = Math.ceil(count * 0.55);
-  let silhouetteCrossingPlaced = false;
+  let silhouetteCrossersPlaced = 0;
   let accentPlaced = 0;
 
   for (let i = 0; i < count; i++) {
@@ -390,11 +304,11 @@ function buildSupportShards(seed: number, count: number): SpineShard[] {
       : (rng() - 0.5) * 0.5;
 
     const kind = rng();
-    let widthScale = 0.06 + rng() * 0.12;
+    let widthScale = 0.08 + rng() * 0.14;
     let heightScale = 0.2 + rng() * 0.55;
     if (kind < 0.34) {
       // Tall-thin sliver
-      widthScale = 0.045 + rng() * 0.07;
+      widthScale = 0.075 + rng() * 0.085;
       heightScale = 0.44 + rng() * 0.52;
     } else if (kind < 0.68) {
       // Short-wide counterpoint
@@ -402,16 +316,17 @@ function buildSupportShards(seed: number, count: number): SpineShard[] {
       heightScale = 0.12 + rng() * 0.2;
     } else if (kind < 0.86) {
       // Tiny chip
-      widthScale = 0.035 + rng() * 0.05;
+      widthScale = 0.05 + rng() * 0.06;
       heightScale = 0.08 + rng() * 0.14;
     }
 
     let offsetX: number;
-    if (!silhouetteCrossingPlaced && inBand) {
-      offsetX = (rng() - 0.5) * 0.3;
-      widthScale = Math.max(widthScale, 0.22);
+    if (inBand && silhouetteCrossersPlaced < 2) {
+      const side = silhouetteCrossersPlaced % 2 === 0 ? -1 : 1;
+      offsetX = side * (0.22 + rng() * 0.12);
+      widthScale = Math.max(widthScale, 0.24);
       heightScale = Math.max(heightScale, 0.36);
-      silhouetteCrossingPlaced = true;
+      silhouetteCrossersPlaced += 1;
     } else {
       offsetX = (rng() - 0.5) * 1.18;
     }
@@ -427,7 +342,7 @@ function buildSupportShards(seed: number, count: number): SpineShard[] {
       heightScale,
       widthScale,
       zOffset,
-      opacityScale: accent ? 0.62 + rng() * 0.28 : 0.3 + rng() * 0.46,
+      opacityScale: accent ? 0.7 + rng() * 0.24 : 0.46 + rng() * 0.44,
       color: accent ? accentColor : color,
       driftPhase: rng() * Math.PI * 2,
       driftScale: 0.4 + rng() * 0.75,
@@ -464,8 +379,7 @@ export function buildSpineDescription(): GLSceneSpine {
       opacity: SPINE_ART_DIRECTION.visibility.baseOpacity,
       opacityBoostFromHalftone:
         SPINE_ART_DIRECTION.visibility.opacityBoostFromHalftone,
-      halftoneOpacityScale:
-        SPINE_ART_DIRECTION.visibility.halftoneOpacityScale,
+      halftoneOpacityScale: SPINE_ART_DIRECTION.visibility.halftoneOpacityScale,
       shardOpacityScale: SPINE_ART_DIRECTION.visibility.shardOpacityScale,
       halftoneDebugFlat: SPINE_ART_DIRECTION.visibility.halftoneDebugFlat,
       blend: SPINE_ART_DIRECTION.visibility.blend,
