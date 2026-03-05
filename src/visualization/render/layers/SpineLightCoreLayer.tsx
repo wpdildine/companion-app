@@ -187,24 +187,42 @@ export function SpineLightCoreLayer({
     const mode = toCanonicalMode(v.currentMode);
     mat.uniforms.uColor.value.set(lightCore.color);
     mat.uniforms.uOrbColor.value.set(lightCore.orbColor);
+    const motion = scene.motion;
+    const motionEnergy = motion?.energy ?? 0;
+    const motionTension = motion?.tension ?? 0;
+    const motionSettle = motion?.settle ?? 0;
+    const motionAttention = motion?.attention ?? 0;
+    const motionMicro = motion?.microMotion ?? 0;
+    const motionBreath = motion?.breath ?? 0.5;
     const baseOpacity = lightCore.opacityBase * (lightCore.opacityByMode[mode] ?? 1);
     const organism = scene.organism;
     const presenceOpacityBoost = organism && !v.reduceMotion ? 1 + organism.presence * 0.08 : 1;
+    const motionOpacityBoost =
+      1 +
+      motionEnergy * 0.2 +
+      Math.max(0, motionBreath - 0.5) * 0.18 -
+      motionSettle * 0.16;
     mat.uniforms.uOpacity.value = Math.min(
       1,
-      Math.max(0, baseOpacity * presenceOpacityBoost),
+      Math.max(0, baseOpacity * presenceOpacityBoost * motionOpacityBoost),
     );
     const warpScale = lightCore.warpScaleByMode[mode] ?? 1;
     const motionScale = v.reduceMotion ? 0 : warpScale;
     const activityBoost = 1 + (mode === 'processing' ? v.activity * 0.35 : 0);
+    const motionWarpBoost =
+      1 +
+      motionEnergy * 0.65 +
+      motionMicro * 0.3 +
+      Math.abs(motionBreath - 0.5) * 0.25;
+    const settleDamp = 1 - motionSettle * 0.6;
     mat.uniforms.uTime.value = v.clock;
     mat.uniforms.uWarpFreq.value = lightCore.warpFreq;
     mat.uniforms.uWarpAmpX.value =
       mode === 'processing'
         ? 0
-        : lightCore.warpAmpX * motionScale * activityBoost;
+        : lightCore.warpAmpX * motionScale * activityBoost * motionWarpBoost * settleDamp;
     mat.uniforms.uWarpAmpY.value =
-      lightCore.warpAmpY * motionScale * activityBoost;
+      lightCore.warpAmpY * motionScale * activityBoost * motionWarpBoost * settleDamp;
     const orbStrength = lightCore.orbDebugObvious
       ? lightCore.orbStrength * lightCore.orbDebugMultiplier
       : lightCore.orbStrength;
@@ -216,9 +234,11 @@ export function SpineLightCoreLayer({
     const beamLeanPct = 0.05;
     const bendAmpScale = 0.09;
     mat.uniforms.uBeamCenterXOffset.value =
-      v.reduceMotion || !organism ? 0 : organism.focusBias * beamLeanPct;
+      v.reduceMotion || !organism ? 0 : organism.focusBias * beamLeanPct * (1 + motionAttention * 0.18);
     mat.uniforms.uBendAmount.value =
-      v.reduceMotion || !organism ? 0 : organism.presence * bendAmpScale;
+      v.reduceMotion || !organism
+        ? 0
+        : organism.presence * bendAmpScale * (1 + motionTension * 0.55) * settleDamp;
     mat.uniforms.uBendBias.value = organism ? organism.focusBias : 0;
 
     mat.blending =

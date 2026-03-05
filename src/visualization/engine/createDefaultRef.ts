@@ -86,6 +86,8 @@ export function createDefaultVisualizationRef(): VisualizationEngineRef {
     canonicalCycleOn: false,
     canonicalCycleTimerId: null,
     canonicalCycleIdx: 0,
+    modePinActive: false,
+    modePin: null,
   };
 }
 

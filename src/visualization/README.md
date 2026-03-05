@@ -41,6 +41,17 @@ Visualization is a pure render subsystem. It exposes one public API:
   - canonical modes: `idle`, `listening`, `processing`, `speaking`
 - `scene.touch`: validated touch art-direction stub
   - `zones`, `feedback`, `glyphResponse`
+- `scene.motion`: motion-grammar output (runtime-mutated scalar signals)
+  - `energy`, `tension`, `openness`, `settle`, `breath`, `attention`, `microMotion`, `phase`, `phaseT`
+
+## Motion grammar
+
+- Runtime engine: `engine/MotionGrammarEngine.ts`
+- Active template: `scene/artDirection/motionGrammar/organismGrammar.ts` (barrel in `motionGrammar/index.ts`)
+- Tick owner: `engine/EngineLoop.tsx` (runs after organism derivation; mutates existing `scene.motion` object only)
+- Validation: `scene/validateSceneDescription.ts` enforces finite ranges and valid phase.
+
+Tuning rule: adjust behavior in `scene/artDirection/motionGrammar/*` first; render layers should consume `scene.motion` and avoid hardcoded choreography constants.
 
 ## Directory map
 

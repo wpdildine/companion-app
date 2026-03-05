@@ -448,18 +448,35 @@ export function Spine({
           );
         smoothPlaneIntensityRef.current[i] = nextIntensity;
         const organism = scene.organism;
+        const motion = scene.motion;
         const organismIntensityK = organism && !v.reduceMotion ? organism.presence * 0.1 : 0;
         const organismSkewK = organism && !v.reduceMotion ? organism.presence * organism.focusBias * 0.02 : 0;
         const organismDensityK =
           organism && !v.reduceMotion
             ? organism.presence * 0.12 + Math.abs(organism.focusBias) * organism.presence * 0.06
             : 0;
+        const motionIntensityK = motion && !v.reduceMotion
+          ? motion.tension * 0.24 + motion.energy * 0.1 + Math.max(0, motion.breath - 0.5) * 0.08
+          : 0;
+        const motionSkewK = motion && organism && !v.reduceMotion
+          ? motion.attention * organism.focusBias * 0.03
+          : 0;
+        const motionDensityK = motion && !v.reduceMotion
+          ? motion.energy * 0.24 + motion.openness * 0.16 + motion.microMotion * 0.12
+          : 0;
         halftoneMat.uniforms.uIntensity.value = Math.max(
           0,
-          Math.min(1, nextIntensity + organismIntensityK + organismSkewK),
+          Math.min(
+            1,
+            nextIntensity +
+              organismIntensityK +
+              organismSkewK +
+              motionIntensityK +
+              motionSkewK,
+          ),
         );
         halftoneMat.uniforms.uDensity.value =
-          halftoneProfile.density * (1 + organismDensityK);
+          halftoneProfile.density * (1 + organismDensityK + motionDensityK);
         halftoneMat.uniforms.uTime.value = v.clock;
         halftoneMat.uniforms.uResolution.value.set(resX, resY);
         halftoneMat.uniforms.uPlanePhase.value = i * 1.7;
@@ -563,6 +580,11 @@ export function Spine({
       rightEdgeRef.current.scale.set(edgeWidth, edgeHeight, 1);
     }
     const shards = spine.shards ?? [];
+    const motion = scene.motion;
+    const motionEnergy = motion?.energy ?? 0;
+    const motionOpenness = motion?.openness ?? 0;
+    const motionSettle = motion?.settle ?? 0;
+    const motionMicro = motion?.microMotion ?? 0;
     const shardBaseWidthScale = spine.style.shardWidthScale ?? 0.28;
     const visibleShardCount =
       spine.shardCountByMode?.[canonicalMode] ?? shards.length;
@@ -573,7 +595,11 @@ export function Spine({
       mesh.visible = s < visibleShardCount;
       if (!mesh.visible) continue;
       const shardRate = driftRate * (shard.driftRateScale ?? 1);
-      const shardDriftScale = (shard.driftScale ?? 1) * 0.32;
+      const shardDriftScale =
+        (shard.driftScale ?? 1) *
+        0.32 *
+        (1 + motionEnergy * 0.55 + motionMicro * 0.28) *
+        (1 - motionSettle * 0.35);
       const shardDriftX = !v.reduceMotion
         ? isProcessing
           ? 0
@@ -609,7 +635,8 @@ export function Spine({
           shard.opacityScale *
           dynamicOpacityBoost *
           spine.style.shardOpacityScale *
-          0.92;
+          0.92 *
+          (1 + motionOpenness * 0.14 + motionEnergy * 0.12 - motionSettle * 0.12);
         if (smoothShardOpacityRef.current[s] == null) {
           smoothShardOpacityRef.current[s] = targetShardOpacity;
         }

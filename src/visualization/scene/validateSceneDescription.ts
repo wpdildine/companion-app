@@ -446,5 +446,34 @@ export function validateSceneDescription(
     }
     return false;
   }
+  const motion = scene.motion;
+  if (motion) {
+    const scalars: (keyof typeof motion)[] = [
+      'energy', 'tension', 'openness', 'settle', 'breath', 'attention', 'microMotion',
+    ];
+    for (const key of scalars) {
+      const v = motion[key];
+      if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 1) {
+        if (typeof __DEV__ !== 'undefined' && __DEV__) {
+          console.error('[validateSceneDescription] scene.motion.' + key + ' must be finite number in [0,1].');
+        }
+        return false;
+      }
+    }
+    const validPhase = ['enter', 'hold', 'exit'];
+    if (!validPhase.includes(motion.phase)) {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[validateSceneDescription] scene.motion.phase must be enter, hold, or exit.');
+      }
+      return false;
+    }
+    const pt = motion.phaseT;
+    if (typeof pt !== 'number' || !Number.isFinite(pt) || pt < 0 || pt > 1) {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[validateSceneDescription] scene.motion.phaseT must be finite number in [0,1].');
+      }
+      return false;
+    }
+  }
   return true;
 }

@@ -65,14 +65,6 @@ const BUNDLE_LLM_PATH_CANDIDATES = BUNDLE_MODEL_PREFIXES.map(
 );
 const EMBED_MODEL_FILENAME = 'nomic-embed-text.gguf';
 const CHAT_MODEL_FILENAME = 'model.gguf';
-const DEV_APP_STATES: VisualizationMode[] = [
-  'idle',
-  'listening',
-  'processing',
-  'speaking',
-  'touched',
-  'released',
-];
 const DOUBLE_TAP_MS = 280;
 
 /** Single gate for debug layer; when false, DevPanel is not in the tree. */
@@ -321,7 +313,6 @@ export default function VoiceScreen() {
   const [debugEnabled, setDebugEnabled] = useState(DEBUG_ENABLED_DEFAULT);
   const [debugShowZones, _setDebugShowZones] = useState(false);
   const [panelRectsForDebug, setPanelRectsForDebug] = useState<VisualizationPanelRects>({});
-  const [stateCycleOn, _setStateCycleOn] = useState(false);
   const [revealedBlocks, setRevealedBlocks] = useState({
     answer: false,
     cards: false,
@@ -343,10 +334,6 @@ export default function VoiceScreen() {
   const recordingSessionIdRef = useRef(0);
   const requestIdRef = useRef(0);
   const modeRef = useRef(mode);
-  const stateCycleTimerRef = useRef<ReturnType<typeof setInterval> | null>(
-    null,
-  );
-  const stateCycleIdxRef = useRef(0);
   const userModeLongPressActiveRef = useRef(false);
   const lastTapAtRef = useRef(0);
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -427,14 +414,24 @@ export default function VoiceScreen() {
   );
 
   useEffect(() => {
-    if (DEBUG_SCENARIO) {
-      setSignals(dummySignals);
-    }
-  }, [setSignals]);
+    const withOptionalModeAndPhase = <T extends Partial<AiUiSignals>>(payload: T): T => {
+      if (debugEnabled) {
+        const { mode: _mode, phase: _phase, ...rest } = payload as T & {
+          mode?: VisualizationMode;
+          phase?: AiUiSignals['phase'];
+        };
+        return rest as T;
+      }
+      return {
+        ...payload,
+        mode,
+      } as T;
+    };
 
-  useEffect(() => {
     if (DEBUG_SCENARIO) {
-      setSignals(dummySignals);
+      // Keep dummy payload data, but never write mode/phase while dev mode is enabled.
+      // DevPanel/EngineLoop own mode during debug cycling.
+      setSignals(withOptionalModeAndPhase(dummySignals));
       return;
     }
     const phase =
@@ -453,15 +450,14 @@ export default function VoiceScreen() {
       phase === 'processing' ? 0 : (validationSummary?.rules?.length ?? 0);
     const cardRefsCount =
       phase === 'processing' ? 0 : (validationSummary?.cards?.length ?? 0);
-    setSignals({
-      mode,
+    setSignals(withOptionalModeAndPhase({
       phase,
       grounded,
       confidence,
       retrievalDepth,
       cardRefsCount,
-    });
-  }, [mode, validationSummary, setSignals]);
+    }));
+  }, [mode, validationSummary, setSignals, debugEnabled]);
   // Note: targetActivity/activity are set inside applySignalsToVisualization from phase; no direct visualizationRef write here.
 
   useEffect(() => {
@@ -537,39 +533,6 @@ export default function VoiceScreen() {
     if (rct?.startSpeech || rct?.stopSpeech) return rct;
     return direct ?? rct ?? null;
   };
-
-  const applyVizState = useCallback(
-    (state: VisualizationMode) => {
-      setMode(state);
-      if (state === 'released') {
-        triggerPulseAtCenter(visualizationRef);
-      }
-    },
-    [],
-  );
-
-  useEffect(() => {
-    if (!stateCycleOn) {
-      if (stateCycleTimerRef.current) {
-        clearInterval(stateCycleTimerRef.current);
-        stateCycleTimerRef.current = null;
-      }
-      return;
-    }
-    stateCycleTimerRef.current = setInterval(() => {
-      const state =
-        DEV_APP_STATES[stateCycleIdxRef.current % DEV_APP_STATES.length]!;
-      applyVizState(state);
-      stateCycleIdxRef.current =
-        (stateCycleIdxRef.current + 1) % DEV_APP_STATES.length;
-    }, 1300);
-    return () => {
-      if (stateCycleTimerRef.current) {
-        clearInterval(stateCycleTimerRef.current);
-        stateCycleTimerRef.current = null;
-      }
-    };
-  }, [stateCycleOn, applyVizState]);
 
   useEffect(() => {
     return () => {
@@ -811,7 +774,12 @@ export default function VoiceScreen() {
 
   const handleSubmit = useCallback(async (): Promise<string | null> => {
     if (DEBUG_SCENARIO) {
-      setSignals(dummySignals);
+      if (debugEnabled) {
+        const { phase: _phase, ...rest } = dummySignals;
+        setSignals(rest);
+      } else {
+        setSignals(dummySignals);
+      }
       setMode('idle');
       return null;
     }
@@ -906,7 +874,7 @@ export default function VoiceScreen() {
       setMode('idle');
       return null;
     }
-  }, [transcribedText, setSignals, emitEvent]);
+  }, [transcribedText, setSignals, emitEvent, debugEnabled]);
 
   const playText = useCallback(
     async (text: string) => {

@@ -10,7 +10,7 @@ import {
   Pressable,
   ScrollView,
 } from 'react-native';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   type VisualizationEngineRef,
   type VisualizationMode,
@@ -38,7 +38,12 @@ const APP_STATES: VisualizationMode[] = [
 
 /** Canonical modes only — for spine validation (Cycle canonical). Temporary: remove when done. */
 const CANONICAL_MODES: VisualizationMode[] = ['idle', 'listening', 'processing', 'speaking'];
-const CANONICAL_CYCLE_MS = 2500;
+const DEFAULT_POST_FX = {
+  enabled: true,
+  vignette: 0.22,
+  chromatic: 0.0002,
+  grain: 0.04,
+} as const;
 
 export function DevPanel({
   visualizationRef,
@@ -127,8 +132,23 @@ export function DevPanel({
     });
   };
   const applyState = useCallback(
-    (state: VisualizationMode) => {
+    (
+      state: VisualizationMode,
+      options?: { pin?: boolean; preserveCycle?: boolean },
+    ) => {
+      const shouldPin = options?.pin ?? true;
+      const preserveCycle = options?.preserveCycle ?? false;
       withViz(viz => {
+        // Manual state apply should pin mode until user re-enables a cycle.
+        // Cycle-owned applies must not disable cycle flags.
+        if (!preserveCycle) {
+          viz.stateCycleOn = false;
+          viz.canonicalCycleOn = false;
+          viz.stateCycleTimerId = null;
+          viz.canonicalCycleTimerId = null;
+        }
+        viz.modePinActive = shouldPin;
+        viz.modePin = shouldPin ? state : null;
         viz.currentMode = state;
         viz.targetActivity = TARGET_ACTIVITY_BY_MODE[state];
         if (state === 'touched') {
@@ -151,20 +171,17 @@ export function DevPanel({
     if (!viz) return;
     viz.stateCycleOn = !viz.stateCycleOn;
     if (viz.stateCycleOn) {
-      if (viz.stateCycleTimerId != null) clearInterval(viz.stateCycleTimerId);
-      applyState(APP_STATES[viz.stateCycleIdx % APP_STATES.length]!);
-      viz.stateCycleTimerId = setInterval(() => {
-        const v = visualizationRef.current;
-        if (!v) return;
-        v.stateCycleIdx = (v.stateCycleIdx + 1) % APP_STATES.length;
-        applyState(APP_STATES[v.stateCycleIdx]!);
-      }, 1300);
-    } else {
-      if (viz.stateCycleTimerId != null) {
-        clearInterval(viz.stateCycleTimerId);
-        viz.stateCycleTimerId = null;
-      }
+      // EngineLoop owns cycle stepping; DevPanel only toggles flags.
+      viz.canonicalCycleOn = false;
+      viz.modePinActive = false;
+      viz.modePin = null;
+      applyState(APP_STATES[viz.stateCycleIdx % APP_STATES.length]!, {
+        pin: false,
+        preserveCycle: true,
+      });
     }
+    viz.stateCycleTimerId = null;
+    viz.canonicalCycleTimerId = null;
     setUiVersion(u => u + 1);
   }, [visualizationRef, applyState]);
 
@@ -173,25 +190,28 @@ export function DevPanel({
     if (!viz) return;
     viz.canonicalCycleOn = !viz.canonicalCycleOn;
     if (viz.canonicalCycleOn) {
-      if (viz.canonicalCycleTimerId != null) clearInterval(viz.canonicalCycleTimerId);
-      applyState(CANONICAL_MODES[viz.canonicalCycleIdx % CANONICAL_MODES.length]!);
-      viz.canonicalCycleTimerId = setInterval(() => {
-        const v = visualizationRef.current;
-        if (!v) return;
-        v.canonicalCycleIdx = (v.canonicalCycleIdx + 1) % CANONICAL_MODES.length;
-        applyState(CANONICAL_MODES[v.canonicalCycleIdx]!);
-      }, CANONICAL_CYCLE_MS);
-    } else {
-      if (viz.canonicalCycleTimerId != null) {
-        clearInterval(viz.canonicalCycleTimerId);
-        viz.canonicalCycleTimerId = null;
-      }
+      // EngineLoop owns cycle stepping; DevPanel only toggles flags.
+      viz.stateCycleOn = false;
+      viz.modePinActive = false;
+      viz.modePin = null;
+      applyState(CANONICAL_MODES[viz.canonicalCycleIdx % CANONICAL_MODES.length]!, {
+        pin: false,
+        preserveCycle: true,
+      });
     }
+    viz.stateCycleTimerId = null;
+    viz.canonicalCycleTimerId = null;
     setUiVersion(u => u + 1);
   }, [visualizationRef, applyState]);
 
   const v = visualizationRef.current;
   if (!v) return null;
+
+  useEffect(() => {
+    if (!v.stateCycleOn && !v.canonicalCycleOn) return;
+    const id = setInterval(() => setUiVersion(u => u + 1), 200);
+    return () => clearInterval(id);
+  }, [v.stateCycleOn, v.canonicalCycleOn]);
 
   return (
     <View style={[StyleSheet.absoluteFill, styles.overlay]} pointerEvents="auto">
@@ -278,6 +298,26 @@ export function DevPanel({
             <Text style={{ color: muted }}>Current state</Text>
             <Text style={{ color: textColor, fontWeight: '600' }}>{v.currentMode}</Text>
           </View>
+          <Pressable
+            onPress={() => {
+              withViz(viz => {
+                // Restore default app-driven mode behavior.
+                viz.stateCycleOn = false;
+                viz.canonicalCycleOn = false;
+                viz.stateCycleTimerId = null;
+                viz.canonicalCycleTimerId = null;
+                viz.modePinActive = false;
+                viz.modePin = null;
+                viz.currentMode = 'idle';
+                viz.targetActivity = TARGET_ACTIVITY_BY_MODE.idle;
+                viz.touchActive = false;
+                viz.touchWorld = null;
+              });
+            }}
+            style={[styles.row, styles.button]}
+          >
+            <Text style={{ color: textColor }}>Reset to default mode behavior</Text>
+          </Pressable>
           <View style={styles.row}>
             <Text style={{ color: textColor }}>Cycle all states</Text>
             <Pressable onPress={toggleStateCycle}>
@@ -309,6 +349,19 @@ export function DevPanel({
               </Text>
             </Pressable>
           </View>
+          <Pressable
+            onPress={() => {
+              withViz(viz => {
+                viz.postFxEnabled = DEFAULT_POST_FX.enabled;
+                viz.postFxVignette = DEFAULT_POST_FX.vignette;
+                viz.postFxChromatic = DEFAULT_POST_FX.chromatic;
+                viz.postFxGrain = DEFAULT_POST_FX.grain;
+              });
+            }}
+            style={[styles.row, styles.button]}
+          >
+            <Text style={{ color: textColor }}>Reset Post FX Defaults</Text>
+          </Pressable>
           <View style={styles.row}>
             <Text style={{ color: textColor }}>Vignette</Text>
             <View style={styles.row}>

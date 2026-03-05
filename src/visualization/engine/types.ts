@@ -136,4 +136,7 @@ export interface VisualizationEngineRef {
   canonicalCycleOn: boolean;
   canonicalCycleTimerId: ReturnType<typeof setInterval> | null;
   canonicalCycleIdx: number;
+  /** Dev: when true, app signal mode/phase writes are ignored and mode stays pinned. */
+  modePinActive: boolean;
+  modePin: VisualizationMode | null;
 }

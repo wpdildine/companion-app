@@ -30,6 +30,10 @@ export const nodeVertex = `
   uniform float uTouchStrength;
   uniform float uTouchMaxOffset;
   uniform float uFocusBias;
+  uniform float uMotionOpenness;
+  uniform float uMotionAttention;
+  uniform float uMotionSettle;
+  uniform float uMotionMicro;
   varying vec3 vColor;
   varying float vAlpha;
   varying float vPulse;
@@ -53,9 +57,11 @@ export const nodeVertex = `
     float swirl = sin(uTime * (0.32 + decayRate * 0.18) + position.x * 2.1) + cos(uTime * (0.27 + decayRate * 0.15) + position.z * 1.9);
     // Keep spherical core, but loosen edge falloff so the outer shell extends further.
     float edgeRelax = smoothstep(0.25, 1.0, distanceFromRoot);
+    float motionFuzzBoost = 1.0 + uMotionMicro * 0.2;
     float radialFuzz =
       (0.07 + decayDepth * 0.36) * (0.75 + edgeRelax * 1.45) * localNoise +
       (0.05 + edgeRelax * 0.12) * swirl;
+    radialFuzz *= motionFuzzBoost;
     float tangentFuzzA = sin(uTime * 0.38 + decayPhase + position.y * 4.0);
     float tangentFuzzB = cos(uTime * 0.31 + decayPhase + position.x * 4.0);
     vec3 tangent = normalize(vec3(-position.z + 1e-3, 0.0, position.x + 1e-3));
@@ -115,7 +121,10 @@ export const nodeVertex = `
     float randomDecay = 1.0 - decayDepth * (0.12 + 0.95 * randomDecayMix);
     vec3 brightBase = baseColor * (1.25 + 0.2 * uActivity);
     vColor = mix(brightBase, brightBase + vec3(0.18), glowGate * 0.55);
-    float baseAlpha = (0.42 + 0.34 * uActivity) * breath * randomDecay;
+    float alphaMotionScale =
+      (0.9 + uMotionOpenness * 0.22 + uMotionAttention * 0.1) *
+      (1.0 - uMotionSettle * 0.2);
+    float baseAlpha = (0.42 + 0.34 * uActivity) * breath * randomDecay * alphaMotionScale;
     vAlpha = baseAlpha + glowGate * (0.10 + 0.16 * uActivity);
     float attentionBias = 0.0;
     if (clusterId < 0.5 && uFocusBias < -0.01) {
@@ -127,7 +136,10 @@ export const nodeVertex = `
     vec4 mv = uViewMatrix * world;
     gl_Position = uProjectionMatrix * mv;
     float sizeDecay = 1.0 - decayDepth * 0.22 * (0.35 + 0.65 * randomDecayMix);
-    float sizeMult = 1.0 + attentionBias * 0.5;
+    float sizeMotionScale =
+      (0.96 + uMotionOpenness * 0.16 + uMotionAttention * 0.08) *
+      (1.0 - uMotionSettle * 0.12);
+    float sizeMult = (1.0 + attentionBias * 0.5) * sizeMotionScale;
     float s = (uBaseNodeSize + nodeSize) * sizeDecay * (220.0 / -mv.z) * (1.0 + pulse * 0.35 + touchBoost * 0.2) * sizeMult;
     gl_PointSize = max(s, 2.4) * max(0.0, visible);
     vAlpha *= max(0.0, visible);

@@ -481,6 +481,21 @@ export type GLSceneOrganism = {
   shardBias?: number;
 };
 
+/** Motion grammar output: MotionGrammarEngine mutates this each frame; getSceneDescription creates the stub once. */
+export type GLSceneMotionPhase = 'enter' | 'hold' | 'exit';
+
+export type GLSceneMotion = {
+  energy: number;
+  tension: number;
+  openness: number;
+  settle: number;
+  breath: number;
+  attention: number;
+  microMotion: number;
+  phase: GLSceneMotionPhase;
+  phaseT: number;
+};
+
 export type GLSceneDescription = {
   zones: {
     layout: GLSceneZonesLayout;
@@ -510,6 +525,8 @@ export type GLSceneDescription = {
   };
   /** Organism signals; stub created here, EngineLoop mutates each frame. */
   organism: GLSceneOrganism;
+  /** Motion grammar signals; stub created here, MotionGrammarEngine mutates each frame. */
+  motion: GLSceneMotion;
 };
 
 export type GetSceneDescriptionOptions = {
@@ -759,6 +776,17 @@ export function getSceneDescription(
       ndc: { x: 0, y: 0 },
       zone: null,
       relax: 1,
+    },
+    motion: {
+      energy: 0,
+      tension: 0,
+      openness: 0,
+      settle: 0,
+      breath: 0,
+      attention: 0,
+      microMotion: 0,
+      phase: 'hold',
+      phaseT: 0,
     },
   };
 }

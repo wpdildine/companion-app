@@ -195,6 +195,10 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
       uTouchStrength: { value: glyphsScene?.touchStrength ?? 2.8 },
       uTouchMaxOffset: { value: glyphsScene?.touchMaxOffset ?? 1.35 },
       uFocusBias: { value: 0 },
+      uMotionOpenness: { value: 0 },
+      uMotionAttention: { value: 0 },
+      uMotionSettle: { value: 0 },
+      uMotionMicro: { value: 0 },
     }),
     [glyphsScene],
   );
@@ -215,9 +219,23 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
       const visibleAttr = geom.getAttribute('visible');
       if (visibleAttr) visibleAttr.needsUpdate = true;
     };
+    const applyPositions = (geom: THREE.BufferGeometry, b: GlyphBuffers) => {
+      for (let i = 0; i < b.globalIndices.length; i++) {
+        const global = b.globalIndices[i]!;
+        const node = nodes[global];
+        if (!node) continue;
+        b.positions[i * 3] = node.position[0];
+        b.positions[i * 3 + 1] = node.position[1];
+        b.positions[i * 3 + 2] = node.position[2];
+      }
+      const posAttr = geom.getAttribute('position');
+      if (posAttr) posAttr.needsUpdate = true;
+    };
 
     applyVisibility(backGeom, backBuffers);
     applyVisibility(frontGeom, frontBuffers);
+    applyPositions(backGeom, backBuffers);
+    applyPositions(frontGeom, frontBuffers);
 
     uniforms.uTime.value += delta;
     uniforms.uActivity.value = v.activity;
@@ -236,6 +254,11 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
     uniforms.uTouchInfluence.value = v.touchInfluence;
     const organism = v.scene?.organism;
     uniforms.uFocusBias.value = organism ? organism.focusBias : 0;
+    const motion = v.scene?.motion;
+    uniforms.uMotionOpenness.value = motion ? motion.openness : 0;
+    uniforms.uMotionAttention.value = motion ? motion.attention : 0;
+    uniforms.uMotionSettle.value = motion ? motion.settle : 0;
+    uniforms.uMotionMicro.value = motion ? motion.microMotion : 0;
 
     viewMatrixRef.current.copy(state.camera.matrixWorldInverse);
     projectionMatrixRef.current.copy(state.camera.projectionMatrix);
