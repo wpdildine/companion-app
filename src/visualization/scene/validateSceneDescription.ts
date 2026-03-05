@@ -119,8 +119,8 @@ export function validateSceneDescription(
     typeof style.edgeGlowStrength === 'number' &&
     typeof style.edgeGlowWidth === 'number' &&
     typeof style.edgeGlowColor === 'string' &&
-    typeof style.glowRespondsToCore === 'number' &&
-    typeof style.coreInfluenceFalloff === 'number' &&
+    typeof style.beamHalfWidthFrac === 'number' &&
+    typeof style.edgeYWeight === 'number' &&
     typeof style.halftoneEnabled === 'boolean' &&
     (style.halftoneFadeMode == null || (typeof style.halftoneFadeMode === 'string' && ['none', 'radial', 'linear', 'angled'].includes(style.halftoneFadeMode))) &&
     (style.halftoneFadeInner == null || typeof style.halftoneFadeInner === 'number') &&
@@ -313,6 +313,12 @@ export function validateSceneDescription(
     typeof spineLightCore.widthScale !== 'number' ||
     typeof spineLightCore.heightScale !== 'number' ||
     typeof spineLightCore.zOffset !== 'number' ||
+    typeof spineLightCore.orbStrength !== 'number' ||
+    typeof spineLightCore.orbRadius !== 'number' ||
+    typeof spineLightCore.orbFalloff !== 'number' ||
+    typeof spineLightCore.orbCenterY !== 'number' ||
+    typeof spineLightCore.orbDebugObvious !== 'boolean' ||
+    typeof spineLightCore.orbDebugMultiplier !== 'number' ||
     typeof spineLightCore.warpAmpX !== 'number' ||
     typeof spineLightCore.warpAmpY !== 'number' ||
     typeof spineLightCore.warpFreq !== 'number' ||

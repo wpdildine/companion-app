@@ -95,8 +95,8 @@ export type SpineStylePreset = {
   edgeGlowStrength: number;
   edgeGlowWidth: number;
   edgeGlowColor: string;
-  glowRespondsToCore: number;
-  coreInfluenceFalloff: number;
+  beamHalfWidthFrac: number;
+  edgeYWeight: number;
 };
 
 export type GLSceneSpineStyle = {
@@ -153,8 +153,8 @@ export type GLSceneSpineStyle = {
   edgeGlowStrength: number;
   edgeGlowWidth: number;
   edgeGlowColor: string;
-  glowRespondsToCore: number;
-  coreInfluenceFalloff: number;
+  beamHalfWidthFrac: number;
+  edgeYWeight: number;
   /** Per-mode micro drift amplitudes in world-space envelope fractions. */
   driftAmpX: number;
   driftAmpY: number;
@@ -265,8 +265,8 @@ halftoneFadeLevels: SPINE_ART_DIRECTION.composition.halftoneFadeLevels,
   edgeGlowStrength: SPINE_ART_DIRECTION.composition.edgeGlowStrength,
   edgeGlowWidth: SPINE_ART_DIRECTION.composition.edgeGlowWidth,
   edgeGlowColor: SPINE_ART_DIRECTION.composition.edgeGlowColor,
-  glowRespondsToCore: SPINE_ART_DIRECTION.composition.glowRespondsToCore,
-  coreInfluenceFalloff: SPINE_ART_DIRECTION.composition.coreInfluenceFalloff,
+  beamHalfWidthFrac: SPINE_ART_DIRECTION.composition.beamHalfWidthFrac,
+  edgeYWeight: SPINE_ART_DIRECTION.composition.edgeYWeight,
 };
 
 const SPREAD_IDLE: SpineSpreadProfile = {
@@ -464,8 +464,8 @@ export function buildSpineDescription(): GLSceneSpine {
       edgeGlowStrength: preset.edgeGlowStrength,
       edgeGlowWidth: preset.edgeGlowWidth,
       edgeGlowColor: preset.edgeGlowColor,
-      glowRespondsToCore: preset.glowRespondsToCore,
-      coreInfluenceFalloff: preset.coreInfluenceFalloff,
+      beamHalfWidthFrac: preset.beamHalfWidthFrac,
+      edgeYWeight: preset.edgeYWeight,
       driftAmpX: preset.driftAmpX,
       driftAmpY: preset.driftAmpY,
       perPlaneDriftScale: preset.perPlaneDriftScale,

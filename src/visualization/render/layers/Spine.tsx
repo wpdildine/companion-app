@@ -471,6 +471,27 @@ export function Spine({
       } else {
         mesh.visible = true;
         const mat = planeMats[i];
+        const planeX =
+          envelopeWidthWorld * offsetX + perPlaneX;
+        const beamHalfWidth = Math.max(
+          0.0001,
+          envelopeWidthWorld * (spine.style.beamHalfWidthFrac ?? 0.12),
+        );
+        const beamVisBase = Math.exp(
+          -((planeX * planeX) / (beamHalfWidth * beamHalfWidth)),
+        );
+        const lightCore = scene?.spineLightCore;
+        const lightCoreOpacity = lightCore?.enabled
+          ? lightCore.opacityBase *
+            (lightCore.opacityByMode?.[canonicalMode] ?? 1)
+          : 1;
+        const beamVis = THREE.MathUtils.clamp(
+          beamVisBase * lightCoreOpacity,
+          0,
+          1,
+        );
+        const glowSide =
+          Math.abs(planeX) < beamHalfWidth * 0.12 ? 0 : planeX > 0 ? -1 : 1;
         mat.uniforms.uColor.value.set(planeColor);
         mat.uniforms.uOpacity.value = nextOpacity;
         mat.uniforms.uEdgeGlowStrength.value =
@@ -480,10 +501,9 @@ export function Spine({
         mat.uniforms.uEdgeGlowColor.value.set(
           spine.style.edgeGlowColor ?? planeColor,
         );
-        mat.uniforms.uGlowRespondsToCore.value =
-          spine.style.glowRespondsToCore ?? 0.0;
-        mat.uniforms.uCoreInfluenceFalloff.value =
-          spine.style.coreInfluenceFalloff ?? 2.0;
+        mat.uniforms.uBeamVis.value = beamVis;
+        mat.uniforms.uGlowSide.value = glowSide;
+        mat.uniforms.uEdgeYWeight.value = spine.style.edgeYWeight ?? 0.12;
       }
     }
 

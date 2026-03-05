@@ -40,6 +40,10 @@ export function SpineLightCoreLayer({
           uWarpAmpX: { value: 0 },
           uWarpAmpY: { value: 0 },
           uWarpFreq: { value: 0.12 },
+          uOrbStrength: { value: 0.8 },
+          uOrbRadius: { value: 0.2 },
+          uOrbFalloff: { value: 2.0 },
+          uOrbCenterY: { value: 0.5 },
         },
         vertexShader: `
           varying vec2 vUv;
@@ -57,6 +61,10 @@ export function SpineLightCoreLayer({
           uniform float uWarpAmpX;
           uniform float uWarpAmpY;
           uniform float uWarpFreq;
+          uniform float uOrbStrength;
+          uniform float uOrbRadius;
+          uniform float uOrbFalloff;
+          uniform float uOrbCenterY;
           void main() {
             vec2 uv = vUv;
             uv.x += sin((vUv.y + uTime * uWarpFreq) * 6.2831853) * uWarpAmpX;
@@ -66,9 +74,14 @@ export function SpineLightCoreLayer({
             float radialCore = exp(-pow(r / 0.29, 2.0));
             float radialFalloff = 1.0 - smoothstep(0.24, 0.62, r);
             float centerBoost = 0.84 + 0.9 * radialCore;
+            vec2 orbCenter = vec2(0.5, uOrbCenterY);
+            float orbDist = length(uv - orbCenter);
+            float orb = exp(-pow(orbDist / max(0.0001, uOrbRadius), max(0.1, uOrbFalloff)));
             float alpha = uOpacity * radialCore * radialFalloff * centerBoost;
+            alpha *= (1.0 + orb * uOrbStrength);
             if (alpha < 0.001) discard;
-            gl_FragColor = vec4(uColor, alpha);
+            vec3 rgb = uColor * (1.0 + orb * (uOrbStrength * 0.35));
+            gl_FragColor = vec4(rgb, alpha);
           }
         `,
         transparent: true,
@@ -90,7 +103,8 @@ export function SpineLightCoreLayer({
     const layers = scene?.layers;
     const mesh = meshRef.current;
     const mat = shaderMat;
-    if (!v || !scene || !spine || !lightCore || !layers || !mesh || !mat) return;
+    if (!v || !scene || !spine || !lightCore || !layers || !mesh || !mat)
+      return;
 
     const visible = v.vizIntensity !== 'off' && lightCore.enabled;
     mesh.visible = visible;
@@ -102,7 +116,10 @@ export function SpineLightCoreLayer({
 
     const { layout } = scene.zones;
     const bandTopInsetPx = layout.bandTopInsetPx;
-    const activeHeightRatio = Math.max(0, Math.min(1, (h - bandTopInsetPx) / h));
+    const activeHeightRatio = Math.max(
+      0,
+      Math.min(1, (h - bandTopInsetPx) / h),
+    );
     const centerNdcY = -(bandTopInsetPx / h);
 
     const cam = state.camera as THREE.PerspectiveCamera;
@@ -128,7 +145,10 @@ export function SpineLightCoreLayer({
       .copy(cameraPosRef.current)
       .add(cameraDirRef.current.multiplyScalar(overlayDistance))
       .addScaledVector(cameraUpRef.current, spineCenterWorldY)
-      .addScaledVector(cameraDirRef.current, spine.style.zStep * lightCore.zOffset);
+      .addScaledVector(
+        cameraDirRef.current,
+        spine.style.zStep * lightCore.zOffset,
+      );
     mesh.quaternion.copy(cam.quaternion);
     mesh.scale.set(
       envelopeWidthWorld * lightCore.widthScale,
@@ -148,8 +168,17 @@ export function SpineLightCoreLayer({
     const activityBoost = 1 + (mode === 'processing' ? v.activity * 0.35 : 0);
     mat.uniforms.uTime.value = v.clock;
     mat.uniforms.uWarpFreq.value = lightCore.warpFreq;
-    mat.uniforms.uWarpAmpX.value = lightCore.warpAmpX * motionScale * activityBoost;
-    mat.uniforms.uWarpAmpY.value = lightCore.warpAmpY * motionScale * activityBoost;
+    mat.uniforms.uWarpAmpX.value =
+      lightCore.warpAmpX * motionScale * activityBoost;
+    mat.uniforms.uWarpAmpY.value =
+      lightCore.warpAmpY * motionScale * activityBoost;
+    const orbStrength = lightCore.orbDebugObvious
+      ? lightCore.orbStrength * lightCore.orbDebugMultiplier
+      : lightCore.orbStrength;
+    mat.uniforms.uOrbStrength.value = orbStrength;
+    mat.uniforms.uOrbRadius.value = lightCore.orbRadius;
+    mat.uniforms.uOrbFalloff.value = lightCore.orbFalloff;
+    mat.uniforms.uOrbCenterY.value = lightCore.orbCenterY;
     mat.blending =
       lightCore.blend === 'additive'
         ? THREE.AdditiveBlending
@@ -163,4 +192,3 @@ export function SpineLightCoreLayer({
     </mesh>
   );
 }
-

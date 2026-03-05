@@ -10,14 +10,15 @@ export function createOpacityPlaneMaterial(): THREE.ShaderMaterial {
       uColor: { value: new THREE.Color('#8aa7d6') },
       uOpacity: { value: 0.25 },
       uEdgeSoftness: { value: 0.028 },
-      uRimStrength: { value: 0.18 },
+      uRimStrength: { value: 0.1 },
       uRimWidth: { value: 0.08 },
-      uRimColor: { value: new THREE.Color('#e8f6ff') },
-      uEdgeGlowStrength: { value: 0.35 },
+      uRimColor: { value: new THREE.Color('#cfefff') },
+      uEdgeGlowStrength: { value: 0.22 },
       uEdgeGlowWidth: { value: 0.07 },
-      uEdgeGlowColor: { value: new THREE.Color('#d7ecff') },
-      uGlowRespondsToCore: { value: 0.85 },
-      uCoreInfluenceFalloff: { value: 2.0 },
+      uEdgeGlowColor: { value: new THREE.Color('#a8ddff') },
+      uBeamVis: { value: 1.0 },
+      uGlowSide: { value: 0.0 },
+      uEdgeYWeight: { value: 0.22 },
     },
     vertexShader: `
       varying vec2 vUv;
@@ -40,8 +41,9 @@ export function createOpacityPlaneMaterial(): THREE.ShaderMaterial {
       uniform float uEdgeGlowStrength;
       uniform float uEdgeGlowWidth;
       uniform vec3 uEdgeGlowColor;
-      uniform float uGlowRespondsToCore;
-      uniform float uCoreInfluenceFalloff;
+      uniform float uBeamVis;
+      uniform float uGlowSide;
+      uniform float uEdgeYWeight;
 
       void main() {
         // Distance to the nearest edge per-axis.
@@ -63,28 +65,35 @@ export function createOpacityPlaneMaterial(): THREE.ShaderMaterial {
         float rimMask = max(rimX, rimY);
         vec3 rim = uRimColor * (uRimStrength * rimMask);
 
-        // Edge glow: stronger along vertical edges than horizontal, like "lit glass".
+        // Edge glow: primarily vertical edges; optionally choose only one side.
         float glowW = max(0.0001, uEdgeGlowWidth);
-        float edgeX = 1.0 - smoothstep(0.0, glowW, dx);
-        float edgeY = 1.0 - smoothstep(0.0, glowW, dy);
-        float edgeMask = max(edgeX * 1.25, edgeY * 0.85);
 
-        // Approximate a "core beam" influence centered on the spine axis (u = 0.5).
-        float coreInfluence = 1.0 - clamp(
-          pow(abs(vUv.x - 0.5) * 2.0, max(0.1, uCoreInfluenceFalloff)),
-          0.0,
-          1.0
-        );
-        float respond = clamp(uGlowRespondsToCore, 0.0, 1.0);
-        float glowFactor = edgeMask * mix(1.0, coreInfluence, respond);
+        // Vertical edges as separate masks
+        float edgeLeft  = 1.0 - smoothstep(0.0, glowW, vUv.x);
+        float edgeRight = 1.0 - smoothstep(0.0, glowW, 1.0 - vUv.x);
 
-        // Slightly bias glow up the center column so overlaps feel more luminous.
-        float centerBoost = 0.78 + 0.42 * coreInfluence;
+        // Horizontal edges (top/bottom) are much weaker in the reference.
+        float edgeTop    = 1.0 - smoothstep(0.0, glowW, 1.0 - vUv.y);
+        float edgeBottom = 1.0 - smoothstep(0.0, glowW, vUv.y);
+        float edgeY = max(edgeTop, edgeBottom) * clamp(uEdgeYWeight, 0.0, 1.0);
 
-        vec3 glow = uEdgeGlowColor * (uEdgeGlowStrength * glowFactor * centerBoost);
+        // If uGlowSide is ~0, glow both vertical edges.
+        // If uGlowSide < 0, glow left edge only. If > 0, glow right edge only.
+        float useSingleSide = step(0.05, abs(uGlowSide));
+        float pickRight = step(0.0, uGlowSide); // 0 when negative, 1 when positive
+        float edgeXBoth = max(edgeLeft, edgeRight);
+        float edgeXOne = mix(edgeLeft, edgeRight, pickRight);
+        float edgeX = mix(edgeXBoth, edgeXOne, useSingleSide);
+
+        // Final edge mask (mostly vertical edges, tiny top/bottom)
+        float edgeMask = max(edgeX, edgeY);
+
+        float beam = clamp(uBeamVis, 0.0, 1.0);
+        float glowFactor = edgeMask * beam;
+        vec3 glow = uEdgeGlowColor * (uEdgeGlowStrength * glowFactor);
 
         // Compose: keep alpha from body mask (stable), but push brightness via rim/glow.
-        vec3 rgb = uColor + rim + glow;
+        vec3 rgb = uColor + rim * (0.25 + 0.75 * beam) + glow;
         gl_FragColor = vec4(rgb, alpha);
       }
     `,

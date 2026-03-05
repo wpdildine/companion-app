@@ -60,8 +60,8 @@ export const SPINE_BASE_PRESET = {
     edgeGlowStrength: 0.46,
     edgeGlowWidth: 0.05,
     edgeGlowColor: '#d7ecff',
-    glowRespondsToCore: 0.85,
-    coreInfluenceFalloff: 2.2,
+    beamHalfWidthFrac: 0.12,
+    edgeYWeight: 0.12,
   },
   motion: {
     driftAmpX: 0.038,

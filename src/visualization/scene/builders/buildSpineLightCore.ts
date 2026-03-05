@@ -14,6 +14,12 @@ export type GLSceneSpineLightCore = {
   heightScale: number;
   zOffset: number;
   blend: 'additive' | 'normal';
+  orbStrength: number;
+  orbRadius: number;
+  orbFalloff: number;
+  orbCenterY: number;
+  orbDebugObvious: boolean;
+  orbDebugMultiplier: number;
   warpAmpX: number;
   warpAmpY: number;
   warpFreq: number;
@@ -31,6 +37,12 @@ export function buildSpineLightCore(): GLSceneSpineLightCore {
     heightScale: lightCore.heightScale,
     zOffset: lightCore.zOffset,
     blend: lightCore.blend,
+    orbStrength: lightCore.orbStrength,
+    orbRadius: lightCore.orbRadius,
+    orbFalloff: lightCore.orbFalloff,
+    orbCenterY: lightCore.orbCenterY,
+    orbDebugObvious: lightCore.orbDebugObvious,
+    orbDebugMultiplier: lightCore.orbDebugMultiplier,
     warpAmpX: lightCore.warpAmpX,
     warpAmpY: lightCore.warpAmpY,
     warpFreq: lightCore.warpFreq,
