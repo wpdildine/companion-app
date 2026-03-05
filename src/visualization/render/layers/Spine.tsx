@@ -60,7 +60,7 @@ function applyEasing(
 
 /**
  * Depth rule (layered glass): All spine planes and shards use depthWrite=false,
- * depthTest=false, transparent=true. renderOrder comes from scene.style.planeRenderOrder only.
+ * depthTest=false, transparent=true. renderOrder comes from scene.layers.*.renderOrderBase + local index.
  * Do not relax this—prevents z-fighting on mobile.
  */
 export function Spine({
@@ -72,13 +72,7 @@ export function Spine({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const planeRefs = useRef<(THREE.Mesh | null)[]>([]);
-  const planeMaterialsRef = useRef<THREE.ShaderMaterial[] | null>(null);
-  if (!planeMaterialsRef.current) {
-    planeMaterialsRef.current = Array.from({ length: 5 }, () =>
-      createOpacityPlaneMaterial(),
-    );
-  }
-  const planeMats = planeMaterialsRef.current;
+  const planeMaterialsRef = useRef<THREE.ShaderMaterial[]>([]);
 
   const halftoneMatRef = useRef<THREE.ShaderMaterial | null>(null);
   if (!halftoneMatRef.current) {
@@ -88,10 +82,10 @@ export function Spine({
 
   useEffect(
     () => () => {
-      planeMats.forEach(m => m.dispose());
+      planeMaterialsRef.current.forEach(m => m.dispose());
       if (halftoneMatRef.current) halftoneMatRef.current.dispose();
     },
-    [planeMats],
+    [],
   );
   const shardRefs = useRef<(THREE.Mesh | null)[]>([]);
   const leftEdgeRef = useRef<THREE.Mesh>(null);
@@ -162,8 +156,6 @@ export function Spine({
   const halftonePrimedRef = useRef(false);
   const bootStableFramesRef = useRef(0);
   const lastBootResRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const startupIdleLockRef = useRef(true);
-
   useFrame((state, delta) => {
     const v = visualizationRef.current;
     if (!v) return;
@@ -198,15 +190,7 @@ export function Spine({
     const viewWidth = viewHeight * aspect;
     const activeHeight = viewHeight * activeHeightRatio;
 
-    // Deterministic startup rule: begin in idle and unlock once we observe
-    // a non-speaking mode from the engine (no timeout-based flip).
-    const observedMode = v.currentMode;
-    if (startupIdleLockRef.current && observedMode !== 'speaking') {
-      startupIdleLockRef.current = false;
-    }
-    const canonicalMode = toCanonicalMode(
-      startupIdleLockRef.current ? 'idle' : observedMode,
-    );
+    const canonicalMode = toCanonicalMode(v.currentMode);
     if (canonicalMode !== lastCanonicalModeRef.current) {
       prevSpreadRef.current = { ...currentSpreadRef.current };
       lastCanonicalModeRef.current = canonicalMode;
@@ -304,6 +288,16 @@ export function Spine({
     groupRef.current.quaternion.copy(cam.quaternion);
 
     const planeCount = spine.planeCount;
+    while (planeMaterialsRef.current.length < planeCount) {
+      planeMaterialsRef.current.push(createOpacityPlaneMaterial());
+    }
+    const planeMats = planeMaterialsRef.current;
+    if (smoothPlaneOpacityRef.current.length < planeCount) {
+      smoothPlaneOpacityRef.current.length = planeCount;
+    }
+    if (smoothPlaneIntensityRef.current.length < planeCount) {
+      smoothPlaneIntensityRef.current.length = planeCount;
+    }
     const gap =
       spine.style.planeGap + (isProcessing ? processingExtraOverlap : 0);
     const unitHeight =
@@ -636,6 +630,9 @@ export function Spine({
   }
   const spine = scene!.spine;
   const layers = scene!.layers;
+  while (planeMaterialsRef.current.length < spine.planeCount) {
+    planeMaterialsRef.current.push(createOpacityPlaneMaterial());
+  }
   const spineBaseRo = layers.spineBase.renderOrderBase;
   const spineShardsRo = layers.spineShards.renderOrderBase;
   const edgeMeshRoOffset = spineBaseRo + spine.planeCount;
@@ -692,9 +689,18 @@ export function Spine({
               if (el) {
                 const mat = isHalftonePlane
                   ? halftoneMatRef.current
-                  : planeMats[i];
+                  : planeMaterialsRef.current[i];
                 if (mat) {
                   el.material = mat;
+                  if (!isHalftonePlane && 'uniforms' in mat) {
+                    const supportMat = mat as THREE.ShaderMaterial;
+                    supportMat.uniforms.uColor.value.set(
+                      spine.style.planeColors?.[i] ?? spine.style.color,
+                    );
+                    supportMat.uniforms.uOpacity.value =
+                      spine.style.opacity *
+                      (spine.style.planeOpacityScale?.[i] ?? 1);
+                  }
 
                   const accent = spine.style.planeAccent?.[i] === true;
                   const desiredBlending = accent
