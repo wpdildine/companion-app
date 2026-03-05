@@ -117,6 +117,13 @@ export interface VisualizationEngineRef {
   scene?: GLSceneDescription;
   /** Zone currently under touch (for armed state). Set by interaction band. */
   zoneArmed: 'rules' | 'cards' | null;
+  /** Organism signals (derived in EngineLoop). focusBias in [-1,1], touchPresence in [0,1]. */
+  focusBias: number;
+  touchPresence: number;
+  /** Smoothed NDC; single object mutated each frame (no alloc). */
+  touchPresenceNdc: { x: number; y: number };
+  /** 'rules' | 'neutral' | 'cards' when touch active; null otherwise. */
+  focusZone: 'rules' | 'neutral' | 'cards' | null;
   /** Show touch zone debug meshes (rules/center/cards). Default off; toggle in Dev panel. */
   showTouchZones: boolean;
   /** Spine planes: true = per-plane halftone shader, false = solid MeshBasicMaterial. Toggle in Dev panel. */

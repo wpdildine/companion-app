@@ -1,6 +1,15 @@
 /**
  * R3F implementation of the visualization canvas (constructivist planes + context glyphs).
- * Touch: tap → raypick → pulse; double-tap / long-press / drag callbacks via stubs.
+ *
+ * Touch ownership model:
+ * - Canvas path handles discrete gestures (short tap, double tap, long press, drag).
+ * - InteractionBand handles continuous organism field + semantic cluster release commit.
+ *
+ * Important split:
+ * - Short tap here => pendingTapNdc -> TouchRaycaster pulse only.
+ * - Cluster semantics (rules/cards) are release-driven in InteractionBand, not here.
+ *
+ * This file must never write touchField* (owned by InteractionBand).
  * canvasBackground and callbacks are injected (no theme import).
  */
 
@@ -90,7 +99,7 @@ export function VisualizationCanvasR3F({
     lastMove.current = { x: locationX, y: locationY };
     longPressTriggered.current = false;
     dragActive.current = false;
-    // Touch field is written only by RN InteractionBand; canvas does not set touchField*.
+    // InteractionBand owns touchField*; canvas path is discrete gestures only.
     if (visualizationRef.current) {
       const v = visualizationRef.current;
       const w = v.canvasWidth ?? 1;
@@ -118,7 +127,8 @@ export function VisualizationCanvasR3F({
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
     }
-    // Touch field is written only by RN InteractionBand.
+    // Keep canvas move logic scoped to local drag/orbit behavior only.
+    // touchField* remains owned by InteractionBand.
     const v = visualizationRef.current;
     const dx = (locationX - lastMove.current.x) * ORBIT_SENSITIVITY;
     const dy = (locationY - lastMove.current.y) * ORBIT_SENSITIVITY;
@@ -139,7 +149,7 @@ export function VisualizationCanvasR3F({
 
   const onTouchEnd = (e: GestureResponderEvent) => {
     if (!inputEnabled) return;
-    // Touch field is cleared only by RN InteractionBand.
+    // InteractionBand clears touchField*; canvas end handles only local gesture completion.
     if (visualizationRef.current) {
       console.log('[Visualization] touchEnd');
     }
@@ -165,6 +175,12 @@ export function VisualizationCanvasR3F({
       return;
     }
     if (dt < TAP_MAX_MS && dist < TAP_MAX_MOVE) {
+      // Discrete tap path:
+      // 1) Convert to screen NDC
+      // 2) Write pendingTapNdc
+      // 3) TouchRaycaster consumes pendingTapNdc and emits pulse in world space
+      //
+      // This path intentionally does not decide rules/cards semantics.
       const ndcX = (locationX / v.canvasWidth) * 2 - 1;
       const ndcY = 1 - (locationY / v.canvasHeight) * 2;
       const now = Date.now();

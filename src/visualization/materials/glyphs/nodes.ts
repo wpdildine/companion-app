@@ -12,6 +12,7 @@ export const nodeVertex = `
   attribute float decayRate;
   attribute float decayDepth;
   attribute float visible;
+  attribute float clusterId;
   uniform float uTime;
   uniform float uActivity;
   uniform float uMode;
@@ -28,6 +29,7 @@ export const nodeVertex = `
   uniform float uTouchRadius;
   uniform float uTouchStrength;
   uniform float uTouchMaxOffset;
+  uniform float uFocusBias;
   varying vec3 vColor;
   varying float vAlpha;
   varying float vPulse;
@@ -115,10 +117,18 @@ export const nodeVertex = `
     vColor = mix(brightBase, brightBase + vec3(0.18), glowGate * 0.55);
     float baseAlpha = (0.42 + 0.34 * uActivity) * breath * randomDecay;
     vAlpha = baseAlpha + glowGate * (0.10 + 0.16 * uActivity);
+    float attentionBias = 0.0;
+    if (clusterId < 0.5 && uFocusBias < -0.01) {
+      attentionBias = min(0.12, -uFocusBias * 0.10);
+    } else if (clusterId > 0.5 && uFocusBias > 0.01) {
+      attentionBias = min(0.12, uFocusBias * 0.10);
+    }
+    vAlpha += attentionBias;
     vec4 mv = uViewMatrix * world;
     gl_Position = uProjectionMatrix * mv;
     float sizeDecay = 1.0 - decayDepth * 0.22 * (0.35 + 0.65 * randomDecayMix);
-    float s = (uBaseNodeSize + nodeSize) * sizeDecay * (220.0 / -mv.z) * (1.0 + pulse * 0.35 + touchBoost * 0.2);
+    float sizeMult = 1.0 + attentionBias * 0.5;
+    float s = (uBaseNodeSize + nodeSize) * sizeDecay * (220.0 / -mv.z) * (1.0 + pulse * 0.35 + touchBoost * 0.2) * sizeMult;
     gl_PointSize = max(s, 2.4) * max(0.0, visible);
     vAlpha *= max(0.0, visible);
   }

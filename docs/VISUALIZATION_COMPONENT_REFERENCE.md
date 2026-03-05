@@ -75,11 +75,17 @@ src/visualization/
 
 ### Interaction
 
-- `InteractionBand` (interaction/): top-layer touch capture; **only** writer of `touchFieldActive`, `touchFieldNdc`, `touchFieldStrength`. Sets `zoneArmed` from NDC vs scene zone bounds; on release in zone calls `onClusterTap`. RN owns panel visibility; GL emits events only.
+- `InteractionBand` (interaction/): top-layer touch capture; **only** writer of `touchFieldActive`, `touchFieldNdc`, `touchFieldStrength`. Sets `zoneArmed` from NDC vs scene zone bounds; on release in left/right zone calls `onClusterRelease` (center commits nothing). RN owns panel visibility; GL emits events only.
+- Legacy callback note: `onClusterTap` may still appear in wiring as a compatibility alias, but release is the semantic commit phase.
 - Tap mapping (in band):
   - `ndcX < -0.12` => `rules`
   - `ndcX > 0.12` => `cards`
-- Band active region: below top inset (`BAND_TOP_INSET = 112`).
+- Band active region: below scene-configured top inset (`scene.zones.layout.bandTopInsetPx`; fallback `112`).
+- Continuous vs discrete split:
+  - touch start/move => continuous organism field updates only
+  - touch end => semantic commit (`rules/cards`) based on final release position
+  - touch cancel => clear only; no semantic callback
+  - short tap in canvas => pulse-only path (`pendingTapNdc` -> `TouchRaycaster`)
 
 ## Engine Ref (`engine/types.ts`)
 
@@ -91,7 +97,26 @@ src/visualization/
 Ownership model:
 
 - App writes targets/events (`targetActivity`, semantic events, toggles, etc.).
-- EngineLoop writes derived/continuous values (`clock`, eased activity, touch influence, derived touch positions).
+- EngineLoop writes derived/continuous values (`clock`, eased activity, touch influence, derived touch positions, organism signals).
+
+## Phase 3: Organism signals
+
+Touch produces a continuous “alive” response (beam lean, bend, halftone tension, glyph attention) without affecting the discrete tap-to-pulse path.
+
+**Where they live**
+
+- **Ref (engine):** `focusBias`, `touchPresence`, `touchPresenceNdc`, `focusZone`. Written only in EngineLoop.
+- **Scene:** `scene.organism` — stub created once in `getSceneDescription()`; EngineLoop mutates its properties each frame (`presence`, `focusBias`, `ndc`, `zone`, `relax`, optional `shardBias`).
+- **Constants:** `FOCUS_RANGE_NDC`, `TOUCH_PRESENCE_LAMBDA`, `TOUCH_NDC_LAMBDA`, and `computeFocusBias()` live in `interaction/zoneLayout.ts`.
+
+**Tuning knobs**
+
+- **zoneLayout.ts:** `FOCUS_RANGE_NDC` (focusBias scale), `TOUCH_PRESENCE_LAMBDA` (presence decay when released), `TOUCH_NDC_LAMBDA` (NDC jitter smoothing).
+- **SpineLightCoreLayer:** beam lean amplitude (~5%), bend amplitude scale, presence opacity boost.
+- **Spine (halftone):** organism intensity/skew plus density bias (e.g. 0.1, 0.02, 0.12).
+- **Glyph shader (materials/glyphs/nodes):** attention opacity cap (0.12), size multiplier from attention.
+
+No deep animation tuning in this phase; tap pulse path is unchanged.
 
 ## Helpers
 

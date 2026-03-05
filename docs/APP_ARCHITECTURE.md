@@ -36,7 +36,14 @@ When in user mode and no content panels are visible:
 
 - `InteractionBand` is enabled.
 - It captures touch and writes `touchFieldActive/touchFieldNdc/touchFieldStrength`.
-- On tap end, it maps NDC X to cluster side and calls `onClusterTap`.
+- On touch release, it maps final NDC X to cluster side and calls `onClusterRelease` (center strip commits nothing).
+- No semantic action is emitted on touch start/move; those phases are continuous organism response only.
+- Legacy `onClusterTap` still exists as a compatibility alias in some wiring, but semantics are release-commit (not touch-down tap).
+
+Short tap behavior still exists separately:
+- Canvas short taps write `pendingTapNdc`.
+- `TouchRaycaster` consumes `pendingTapNdc` and emits pulse visuals.
+- This pulse path does not commit rules/cards semantics.
 
 When debug mode is enabled or panels are visible:
 

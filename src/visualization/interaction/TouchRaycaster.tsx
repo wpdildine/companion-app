@@ -1,6 +1,10 @@
 /**
  * Processes pending tap from canvas: raycast to plane at scene center,
  * triggers pulse at 3D intersection (reference: triggerPulse(clientX, clientY)).
+ *
+ * Note:
+ * - This is a discrete tap pulse path (canvas/raycast), not the InteractionBand release-commit path.
+ * - InteractionBand writes continuous touchField* and cluster release semantics separately.
  */
 
 import { useFrame, useThree } from '@react-three/fiber/native';
@@ -25,6 +29,7 @@ export function TouchRaycaster({
     if (!v?.pendingTapNdc) return;
 
     const [ndcX, ndcY] = v.pendingTapNdc;
+    // Consume-once contract: pendingTapNdc is single-fire and cleared immediately.
     v.pendingTapNdc = null;
     pointer.current.set(ndcX, ndcY);
     raycaster.current.setFromCamera(pointer.current, camera);

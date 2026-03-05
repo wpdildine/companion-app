@@ -20,6 +20,7 @@ type GlyphBuffers = {
   decayRate: Float32Array;
   decayDepth: Float32Array;
   visible: Float32Array;
+  clusterId: Float32Array;
   globalIndices: number[];
 };
 
@@ -46,10 +47,12 @@ function buildGlyphBuffers(
   const decayRate = new Float32Array(n);
   const decayDepth = new Float32Array(n);
   const visible = new Float32Array(Math.max(1, n));
+  const clusterId = new Float32Array(n);
 
   for (let local = 0; local < n; local++) {
     const global = indices[local]!;
     const node = nodes[global]!;
+    const clusterNode = node as { clusterId?: number };
     positions[local * 3] = node.position[0];
     positions[local * 3 + 1] = node.position[1];
     positions[local * 3 + 2] = node.position[2];
@@ -59,6 +62,7 @@ function buildGlyphBuffers(
     nodeColors[local * 3 + 1] = node.color[1];
     nodeColors[local * 3 + 2] = node.color[2];
     distanceFromRoot[local] = node.distanceFromRoot;
+    clusterId[local] = clusterNode.clusterId ?? (global < (nodes.length / 2) ? 0 : 1);
 
     const i = global + 1;
     const r1 = Math.abs(Math.sin(i * seeds.phaseSeed));
@@ -79,6 +83,7 @@ function buildGlyphBuffers(
     decayRate,
     decayDepth,
     visible,
+    clusterId,
     globalIndices: indices,
   };
 }
@@ -143,6 +148,7 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
     g.setAttribute('decayRate', new THREE.BufferAttribute(b.decayRate, 1));
     g.setAttribute('decayDepth', new THREE.BufferAttribute(b.decayDepth, 1));
     g.setAttribute('visible', new THREE.BufferAttribute(b.visible, 1));
+    g.setAttribute('clusterId', new THREE.BufferAttribute(b.clusterId, 1));
     return g;
   };
 
@@ -188,6 +194,7 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
       uTouchRadius: { value: glyphsScene?.touchRadius ?? 3.6 },
       uTouchStrength: { value: glyphsScene?.touchStrength ?? 2.8 },
       uTouchMaxOffset: { value: glyphsScene?.touchMaxOffset ?? 1.35 },
+      uFocusBias: { value: 0 },
     }),
     [glyphsScene],
   );
@@ -227,6 +234,8 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
     const tw = v.touchWorld;
     uniforms.uTouchWorld.value.set(tw ? tw[0] : 1e6, tw ? tw[1] : 1e6, tw ? tw[2] : 1e6);
     uniforms.uTouchInfluence.value = v.touchInfluence;
+    const organism = v.scene?.organism;
+    uniforms.uFocusBias.value = organism ? organism.focusBias : 0;
 
     viewMatrixRef.current.copy(state.camera.matrixWorldInverse);
     projectionMatrixRef.current.copy(state.camera.projectionMatrix);

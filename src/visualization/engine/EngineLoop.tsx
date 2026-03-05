@@ -1,6 +1,7 @@
 /**
  * Render-loop only: smooth activity and touchInfluence from engine ref. No React state.
  * Touch field (viz band) drives touchWorld + touchInfluence when touchFieldActive and !reduceMotion.
+ * Organism signals (focusBias, touchPresence, focusZone) derived here; scene.organism mutated each frame.
  * Event-driven pulses: lastEvent tapCitation → pulse at rules cluster center; tapCard → cards cluster center.
  */
 
@@ -9,6 +10,13 @@ import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import type { VisualizationEngineRef } from './types';
 import { getPulseColorWithHue } from './getPulseColor';
+import {
+  TOUCH_PRESENCE_LAMBDA,
+  TOUCH_NDC_LAMBDA,
+  BEAM_LEAN_MAX_NDC,
+  computeFocusBias,
+  getZoneFromNdcX,
+} from '../interaction/zoneLayout';
 
 const DT_CAP = 0.1;
 const PULSE_DECAY_MS = 900;
@@ -22,6 +30,7 @@ export function EngineLoop({ visualizationRef }: { visualizationRef: React.RefOb
   const touchViewVec = useRef(new THREE.Vector3());
   const lastProcessedEventTime = useRef(0);
   const touchLogAt = useRef(0);
+  const touchNdcSmoothed = useRef(new THREE.Vector2(0, 0));
 
   useFrame((state, delta) => {
     const v = visualizationRef.current;
@@ -94,6 +103,39 @@ export function EngineLoop({ visualizationRef }: { visualizationRef: React.RefOb
     }
     const tk = 1 - Math.exp(-6 * dt);
     v.touchInfluence = v.touchInfluence + (touchTarget - v.touchInfluence) * tk;
+
+    // Organism signals: smooth presence and NDC, then compute focusBias and focusZone.
+    const presenceTarget = v.reduceMotion ? 0 : touchTarget;
+    const kPresence = 1 - Math.exp(-TOUCH_PRESENCE_LAMBDA * dt);
+    v.touchPresence = v.touchPresence + (presenceTarget - v.touchPresence) * kPresence;
+    if (v.touchFieldActive && v.touchFieldNdc && !v.reduceMotion) {
+      const kNdc = 1 - Math.exp(-TOUCH_NDC_LAMBDA * dt);
+      touchNdcSmoothed.current.x += (v.touchFieldNdc[0] - touchNdcSmoothed.current.x) * kNdc;
+      touchNdcSmoothed.current.y += (v.touchFieldNdc[1] - touchNdcSmoothed.current.y) * kNdc;
+    }
+    v.touchPresenceNdc.x = touchNdcSmoothed.current.x;
+    v.touchPresenceNdc.y = touchNdcSmoothed.current.y;
+    const beamCenterNdcX = v.focusBias * BEAM_LEAN_MAX_NDC;
+    v.focusBias = computeFocusBias(
+      touchNdcSmoothed.current.x,
+      v.touchPresence,
+      beamCenterNdcX,
+    );
+    const zoneFromNdc =
+      v.touchPresence > 0 ? getZoneFromNdcX(touchNdcSmoothed.current.x) : null;
+    v.focusZone = v.touchPresence > 0 ? (zoneFromNdc ?? 'neutral') : null;
+
+    if (v.scene?.organism) {
+      const o = v.scene.organism;
+      o.presence = v.touchPresence;
+      o.focusBias = v.focusBias;
+      o.ndc.x = v.touchPresenceNdc.x;
+      o.ndc.y = v.touchPresenceNdc.y;
+      o.zone = v.focusZone;
+      o.relax = 1 - v.touchPresence;
+      o.shardBias = v.focusBias * v.touchPresence;
+    }
+
     const rotScale = 0.25 + v.activity * 0.45;
     v.autoRotX += dt * v.autoRotSpeedX * rotScale;
     v.autoRotY += dt * v.autoRotSpeedY * rotScale;

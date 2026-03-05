@@ -397,5 +397,54 @@ export function validateSceneDescription(
     }
     return false;
   }
+  const organism = scene.organism;
+  if (!organism || typeof organism !== 'object') {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.organism is missing.');
+    }
+    return false;
+  }
+  if (
+    typeof organism.presence !== 'number' ||
+    organism.presence < 0 ||
+    organism.presence > 1 ||
+    !Number.isFinite(organism.presence)
+  ) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.organism.presence must be in [0,1] and finite.');
+    }
+    return false;
+  }
+  if (
+    typeof organism.focusBias !== 'number' ||
+    organism.focusBias < -1 ||
+    organism.focusBias > 1 ||
+    !Number.isFinite(organism.focusBias)
+  ) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.organism.focusBias must be in [-1,1] and finite.');
+    }
+    return false;
+  }
+  const ond = organism.ndc;
+  if (
+    !ond ||
+    typeof ond.x !== 'number' ||
+    typeof ond.y !== 'number' ||
+    !Number.isFinite(ond.x) ||
+    !Number.isFinite(ond.y)
+  ) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.organism.ndc must be { x, y } with finite numbers.');
+    }
+    return false;
+  }
+  const validZone: (string | null)[] = [null, 'rules', 'neutral', 'cards'];
+  if (organism.zone != null && !validZone.includes(organism.zone)) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.organism.zone must be null, "rules", "neutral", or "cards".');
+    }
+    return false;
+  }
   return true;
 }

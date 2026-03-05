@@ -447,8 +447,19 @@ export function Spine({
             maxIntensityStep,
           );
         smoothPlaneIntensityRef.current[i] = nextIntensity;
-        halftoneMat.uniforms.uIntensity.value = nextIntensity;
-        halftoneMat.uniforms.uDensity.value = halftoneProfile.density;
+        const organism = scene.organism;
+        const organismIntensityK = organism && !v.reduceMotion ? organism.presence * 0.1 : 0;
+        const organismSkewK = organism && !v.reduceMotion ? organism.presence * organism.focusBias * 0.02 : 0;
+        const organismDensityK =
+          organism && !v.reduceMotion
+            ? organism.presence * 0.12 + Math.abs(organism.focusBias) * organism.presence * 0.06
+            : 0;
+        halftoneMat.uniforms.uIntensity.value = Math.max(
+          0,
+          Math.min(1, nextIntensity + organismIntensityK + organismSkewK),
+        );
+        halftoneMat.uniforms.uDensity.value =
+          halftoneProfile.density * (1 + organismDensityK);
         halftoneMat.uniforms.uTime.value = v.clock;
         halftoneMat.uniforms.uResolution.value.set(resX, resY);
         halftoneMat.uniforms.uPlanePhase.value = i * 1.7;

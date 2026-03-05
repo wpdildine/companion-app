@@ -154,6 +154,32 @@ export function validateVizState(
   ) {
     errors.push('zoneArmed must be null, "rules", or "cards"');
   }
+  if (s.focusBias != null && !inRange(s.focusBias as number, -1, 1)) {
+    errors.push('focusBias must be in [-1,1]');
+  }
+  if (s.touchPresence != null && !inRange(s.touchPresence as number, 0, 1)) {
+    errors.push('touchPresence must be in [0,1]');
+  }
+  const ndc = s.touchPresenceNdc;
+  if (
+    ndc != null &&
+    (typeof ndc !== 'object' ||
+      typeof (ndc as { x?: number }).x !== 'number' ||
+      typeof (ndc as { y?: number }).y !== 'number' ||
+      !Number.isFinite((ndc as { x: number }).x) ||
+      !Number.isFinite((ndc as { y: number }).y))
+  ) {
+    errors.push('touchPresenceNdc must be { x: number, y: number } with finite values');
+  }
+  const validFocusZone = [null, 'rules', 'neutral', 'cards'];
+  if (
+    s.focusZone != null &&
+    !validFocusZone.includes(
+      s.focusZone as 'rules' | 'neutral' | 'cards' | null,
+    )
+  ) {
+    errors.push('focusZone must be null, "rules", "neutral", or "cards"');
+  }
 
   if (!inRange(s.postFxVignette as number, 0, 1)) {
     warnings.push('postFxVignette should be in [0,1]');

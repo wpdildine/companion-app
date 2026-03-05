@@ -49,12 +49,23 @@ export function SpineLightCoreLayer({
           uOrbRadius: { value: 0.2 },
           uOrbFalloff: { value: 2.0 },
           uOrbCenterY: { value: 0.5 },
+          uBeamCenterXOffset: { value: 0 },
+          uBendAmount: { value: 0 },
+          uBendBias: { value: 0 },
         },
         vertexShader: `
           varying vec2 vUv;
+          uniform float uBendAmount;
+          uniform float uBendBias;
           void main() {
             vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            vec3 pos = position;
+            // Anchor at bottom, flex most at top in local overlay space.
+            // Use geometry Y directly (not UV assumptions) and displace only local X.
+            float h = clamp(position.y + 0.5, 0.0, 1.0);
+            float bendProfile = h * h;
+            pos.x += uBendAmount * uBendBias * bendProfile;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
           }
         `,
         fragmentShader: `
@@ -71,11 +82,13 @@ export function SpineLightCoreLayer({
           uniform float uOrbRadius;
           uniform float uOrbFalloff;
           uniform float uOrbCenterY;
+          uniform float uBeamCenterXOffset;
           void main() {
             vec2 uv = vUv;
             uv.x += sin((vUv.y + uTime * uWarpFreq) * 6.2831853) * uWarpAmpX;
             uv.y += sin((vUv.x - uTime * uWarpFreq * 0.73) * 6.2831853) * uWarpAmpY;
-            vec2 c = uv - vec2(0.5);
+            vec2 beamCenter = vec2(0.5 + uBeamCenterXOffset, 0.5);
+            vec2 c = uv - beamCenter;
             float r = length(c);
             float radialCore = exp(-pow(r / 0.29, 2.0));
             float radialFalloff = 1.0 - smoothstep(0.24, 0.62, r);
@@ -174,9 +187,12 @@ export function SpineLightCoreLayer({
     const mode = toCanonicalMode(v.currentMode);
     mat.uniforms.uColor.value.set(lightCore.color);
     mat.uniforms.uOrbColor.value.set(lightCore.orbColor);
+    const baseOpacity = lightCore.opacityBase * (lightCore.opacityByMode[mode] ?? 1);
+    const organism = scene.organism;
+    const presenceOpacityBoost = organism && !v.reduceMotion ? 1 + organism.presence * 0.08 : 1;
     mat.uniforms.uOpacity.value = Math.min(
       1,
-      Math.max(0, lightCore.opacityBase * (lightCore.opacityByMode[mode] ?? 1)),
+      Math.max(0, baseOpacity * presenceOpacityBoost),
     );
     const warpScale = lightCore.warpScaleByMode[mode] ?? 1;
     const motionScale = v.reduceMotion ? 0 : warpScale;
@@ -196,6 +212,15 @@ export function SpineLightCoreLayer({
     mat.uniforms.uOrbRadius.value = lightCore.orbRadius;
     mat.uniforms.uOrbFalloff.value = lightCore.orbFalloff;
     mat.uniforms.uOrbCenterY.value = lightCore.orbCenterY;
+
+    const beamLeanPct = 0.05;
+    const bendAmpScale = 0.09;
+    mat.uniforms.uBeamCenterXOffset.value =
+      v.reduceMotion || !organism ? 0 : organism.focusBias * beamLeanPct;
+    mat.uniforms.uBendAmount.value =
+      v.reduceMotion || !organism ? 0 : organism.presence * bendAmpScale;
+    mat.uniforms.uBendBias.value = organism ? organism.focusBias : 0;
+
     mat.blending =
       lightCore.blend === 'additive'
         ? THREE.AdditiveBlending

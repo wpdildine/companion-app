@@ -29,6 +29,9 @@ Visualization is a pure render subsystem. It exposes one public API:
 6. **Interaction owns input mapping**
 - `interaction/*` captures gestures/taps and writes engine ref fields.
 - Interaction does not own visual styling.
+- Semantic split:
+  - `InteractionBand` owns continuous touch field + release-based rules/cards commit.
+  - Canvas short taps remain pulse-only (`pendingTapNdc` consumed by `TouchRaycaster`).
 
 ## Scene contract (current)
 

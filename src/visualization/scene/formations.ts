@@ -470,6 +470,17 @@ export type GLSceneTouchGlyphResponse = {
   parallaxBoost: number;
 };
 
+/** Organism signals: EngineLoop mutates this object each frame; getSceneDescription creates the stub once. */
+export type GLSceneOrganism = {
+  presence: number;
+  focusBias: number;
+  ndc: { x: number; y: number };
+  zone: 'rules' | 'neutral' | 'cards' | null;
+  relax: number;
+  /** Optional: for Phase 4 flock/shard bias; not used in Phase 3. */
+  shardBias?: number;
+};
+
 export type GLSceneDescription = {
   zones: {
     layout: GLSceneZonesLayout;
@@ -497,6 +508,8 @@ export type GLSceneDescription = {
     feedback: GLSceneTouchFeedback;
     glyphResponse: GLSceneTouchGlyphResponse;
   };
+  /** Organism signals; stub created here, EngineLoop mutates each frame. */
+  organism: GLSceneOrganism;
 };
 
 export type GetSceneDescriptionOptions = {
@@ -740,5 +753,12 @@ export function getSceneDescription(
     spine,
     spineLightCore,
     spineRot,
+    organism: {
+      presence: 0,
+      focusBias: 0,
+      ndc: { x: 0, y: 0 },
+      zone: null,
+      relax: 1,
+    },
   };
 }

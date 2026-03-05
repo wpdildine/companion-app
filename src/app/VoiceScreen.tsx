@@ -1202,7 +1202,7 @@ export default function VoiceScreen() {
           !debugEnabled ? handleUserModeLongPressStart : undefined
         }
         onLongPressEnd={!debugEnabled ? handleUserModeLongPressEnd : undefined}
-        onClusterTap={!debugEnabled ? handleClusterTap : undefined}
+        onClusterRelease={!debugEnabled ? handleClusterTap : undefined}
       >
         <UserVoiceView
           contentPaddingTop={insets.top}
@@ -1536,7 +1536,7 @@ export default function VoiceScreen() {
       </VisualizationSurface>
       <InteractionBand
         visualizationRef={visualizationRef}
-        onClusterTap={handleClusterTap}
+        onClusterRelease={handleClusterTap}
         enabled={!debugEnabled && !anyPanelVisible && mode !== 'processing'}
       />
       <DebugZoneOverlay panelRects={panelRectsForDebug} visible={debugShowZones} />
