@@ -2,7 +2,7 @@
  * Spine scene description: 5-plane AI channel, envelope, spread/halftone profiles.
  * Built here; composed by formations.ts getSceneDescription(). Canonical modes only.
  */
-import { SPINE_ART_DIRECTION } from '../artDirection/spineArtDirection';
+import { SPINE_ART_DIRECTION } from '../artDirection/spine';
 
 /** Canonical states for spine spread/halftone profiles. Non-canonical modes (e.g. touched, released) are mapped to one of these in the renderer. */
 export type CanonicalSpineMode =

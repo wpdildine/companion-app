@@ -1,9 +1,9 @@
 # Spine Control Settings
 
 Single source of truth for spine art-direction knobs:
-- Code: `src/visualization/scene/artDirection/spineArtDirection.ts`
-- Consumer: `src/visualization/scene/builders/spine.ts` -> `buildSpineDescription()`
-- Renderer: `src/visualization/render/layers/Spine.tsx` (consumes scene; does not define art-direction defaults)
+- Code: `src/visualization/scene/artDirection/spine` (barrel; spineArtDirection composes base + rot + shards + halftone + power presets).
+- Consumer: `src/visualization/scene/builders/spine.ts` -> `buildSpineDescription()`; `buildSpineRotPlanes.ts` -> rot layer.
+- Renderer: `src/visualization/render/layers/Spine.tsx`, `SpineRotLayer.tsx` (consume scene; do not define art-direction defaults).
 
 Render-order contract (current):
 - Draw order comes from `scene.layers` in `src/visualization/scene/formations.ts`
@@ -105,6 +105,14 @@ Modes:
 - `coolPalette`, `ghostPalette`, `accentPalette`, `accentColor`: shard palette families.
 
 If scene looks noisy, reduce count first. If it looks empty, increase shard opacity before count.
+
+### Rotational layer (spineRot)
+
+- **Art direction:** `scene/artDirection/spine/spineRotPreset.ts`; all knobs merged via `SPINE_ART_DIRECTION.rot`.
+- **Composition by mode:** idle 2–4, listening 3–5, processing 4–6, speaking 2–3 planes; ±6°–±14° rotation; slight scale variance; coordinate convention = overlay space (local `z`, local `rotationZ`); Z from builder.
+- **Motion:** Static from builder; no drift in renderer.
+- **Materials:** Ghost (basicPlaneMaterial, `depthWrite=false`, `depthTest=false`, `transparent`, opacity = `plane.opacityScale * spineRot.opacityBase`); at most one plane uses halftone accent.
+- **Visibility:** `planeCountByMode`; renderer returns null when count for current mode is 0. Render order and Z from builder; spineRot uses `scene.layers.spineRot.renderOrderBase` exclusively.
 
 ## 3) Practical Guardrails
 

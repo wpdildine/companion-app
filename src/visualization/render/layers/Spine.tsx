@@ -65,8 +65,10 @@ function applyEasing(
  */
 export function Spine({
   visualizationRef,
+  children,
 }: {
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
+  children?: React.ReactNode;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const planeRefs = useRef<(THREE.Mesh | null)[]>([]);
@@ -606,7 +608,7 @@ export function Spine({
   const layers = scene!.layers;
   const spineBaseRo = layers.spineBase.renderOrderBase;
   const spineShardsRo = layers.spineShards.renderOrderBase;
-  const spineRotRo = layers.spineRot.renderOrderBase;
+  const edgeMeshRoOffset = spineBaseRo + spine.planeCount;
 
   const blending =
     spine.style.blend === 'additive'
@@ -684,7 +686,7 @@ export function Spine({
           </mesh>
         );
       })}
-      <mesh ref={leftEdgeRef} renderOrder={spineRotRo + 0} visible={false}>
+      <mesh ref={leftEdgeRef} renderOrder={edgeMeshRoOffset + 0} visible={false}>
         <planeGeometry args={[1, 1]} />
         <shaderMaterial
           ref={leftEdgeMatRef}
@@ -699,7 +701,7 @@ export function Spine({
           side={THREE.DoubleSide}
         />
       </mesh>
-      <mesh ref={rightEdgeRef} renderOrder={spineRotRo + 1} visible={false}>
+      <mesh ref={rightEdgeRef} renderOrder={edgeMeshRoOffset + 1} visible={false}>
         <planeGeometry args={[1, 1]} />
         <shaderMaterial
           ref={rightEdgeMatRef}
@@ -714,6 +716,7 @@ export function Spine({
           side={THREE.DoubleSide}
         />
       </mesh>
+      {children ?? null}
     </group>
   );
 }

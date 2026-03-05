@@ -68,7 +68,8 @@ src/visualization/
 - `ContextGlyphs` (render/layers/): point clusters (rules/cards).
 - `ContextLinks` (render/layers/): links between cluster nodes.
 - `TouchZones` (render/layers/): dumb renderer; reads layout/style from `visualizationRef.current.scene` only. Ring outlines at cluster anchors; camera-facing zone planes (rules / center / cards) when `showTouchZones` is enabled in the ref. No hardcoded colors, ratios, or opacities.
-- `Spine` (render/layers/): 5-plane spine + shard field + center halftone membrane; consumes builder-supplied `scene.spine`.
+- `Spine` (render/layers/): 5-plane spine + shard field + center halftone membrane; consumes builder-supplied `scene.spine`. Renders `SpineRotLayer` as child (same overlay group).
+- `SpineRotLayer` (render/layers/): rotational planes in overlay space; consumes `scene.spineRot` and `scene.layers.spineRot`; rendered under the same group as Spine (no duplicate camera-facing transform). Returns null when `planeCountByMode` for current mode is 0.
 - `PlaneLayerField` (render/layers/): background drift planes + panel projection planes; consumes `scene.backgroundPlanes`, `scene.layers`, and `scene.planeField`.
 - `PostFXPass` (render/canvas/): optional post effects.
 

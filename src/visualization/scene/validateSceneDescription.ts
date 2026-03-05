@@ -293,5 +293,54 @@ export function validateSceneDescription(
     }
     return false;
   }
+  const spineRot = scene.spineRot;
+  if (!spineRot) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.spineRot is missing.');
+    }
+    return false;
+  }
+  const rotPlanes = spineRot.planes;
+  if (!Array.isArray(rotPlanes)) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.spineRot.planes must be an array.');
+    }
+    return false;
+  }
+  const maxPlanes = rotPlanes.length;
+  for (let i = 0; i < rotPlanes.length; i++) {
+    const p = rotPlanes[i];
+    if (p == null || typeof p.z !== 'number' || typeof p.rotationZ !== 'number' ||
+        typeof p.scaleX !== 'number' || typeof p.scaleY !== 'number') {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[validateSceneDescription] scene.spineRot.planes[] must have z, rotationZ, scaleX, scaleY.');
+      }
+      return false;
+    }
+  }
+  const planeCountByMode = spineRot.planeCountByMode;
+  if (!planeCountByMode || typeof planeCountByMode !== 'object') {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.spineRot.planeCountByMode is missing.');
+    }
+    return false;
+  }
+  for (const key of CANONICAL_KEYS) {
+    const count = planeCountByMode[key as keyof typeof planeCountByMode];
+    if (typeof count !== 'number' || count < 0 || count > maxPlanes) {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error(
+          '[validateSceneDescription] scene.spineRot.planeCountByMode must have 0 <= count <= planes.length for each mode.',
+        );
+      }
+      return false;
+    }
+  }
+  if (typeof spineRot.opacityBase !== 'number') {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.spineRot.opacityBase must be a number.');
+    }
+    return false;
+  }
   return true;
 }

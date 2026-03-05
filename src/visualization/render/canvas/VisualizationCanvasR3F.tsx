@@ -20,6 +20,7 @@ import { ContextGlyphs } from '../layers/ContextGlyphs';
 import { ContextLinks } from '../layers/ContextLinks';
 import { PlaneLayerField } from '../layers/PlaneLayerField';
 import { Spine } from '../layers/Spine';
+import { SpineRotLayer } from '../layers/SpineRotLayer';
 import { TouchZones } from '../layers/TouchZones';
 import { EngineLoop } from '../../engine/EngineLoop';
 import { PostFXPass } from './PostFXPass';
@@ -215,7 +216,9 @@ export function VisualizationCanvasR3F({
       >
         <color attach="background" args={[canvasBackground]} />
         <PlaneLayerField visualizationRef={visualizationRef} />
-        <Spine visualizationRef={visualizationRef} />
+        <Spine visualizationRef={visualizationRef}>
+          <SpineRotLayer visualizationRef={visualizationRef} />
+        </Spine>
         <EngineLoop visualizationRef={visualizationRef} />
         <TouchRaycaster visualizationRef={visualizationRef} />
         <CameraOrbit visualizationRef={visualizationRef} />

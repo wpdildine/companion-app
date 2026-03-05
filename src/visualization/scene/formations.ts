@@ -11,6 +11,9 @@
  *   (e.g. builders/spine, artDirection) and have this file compose them.
  */
 
+import type { CanonicalSceneMode } from './canonicalMode';
+import type { GLSceneSpineRot } from './builders/buildSpineRotPlanes';
+
 export interface Node {
   id: number;
   position: [number, number, number];
@@ -415,13 +418,9 @@ export type GLScenePlaneField = {
 };
 
 export type { GLSceneSpine } from './builders/spine';
+export type { GLSceneSpineRot } from './builders/buildSpineRotPlanes';
 
-/** Canonical mode for presets (idle | listening | processing | speaking). */
-export type CanonicalSceneMode =
-  | 'idle'
-  | 'listening'
-  | 'processing'
-  | 'speaking';
+export type { CanonicalSceneMode } from './canonicalMode';
 
 /** Optional overrides per mode; multiply/offset base art direction. Schema-only; renderers must not read yet. */
 export type GLSceneBackgroundPresetOverrides = {
@@ -485,6 +484,7 @@ export type GLSceneDescription = {
   contextLinks: GLSceneContextLinks;
   planeField: GLScenePlaneField;
   spine: GLSceneSpine;
+  spineRot: GLSceneSpineRot;
   layers: GLSceneLayers;
   presets: GLScenePresets;
   touch: {
@@ -566,6 +566,7 @@ function hexToRgb(hex: string): [number, number, number] {
 }
 
 import { buildSpineDescription, type GLSceneSpine } from './builders/spine';
+import { buildSpineRotPlanes } from './builders/buildSpineRotPlanes';
 import { buildContextGlyphsDescription } from './builders/contextGlyphs';
 import { buildContextLinksDescription } from './builders/contextLinks';
 import { buildPlaneLayerFieldDescription } from './builders/planeLayerField';
@@ -647,6 +648,7 @@ export function getSceneDescription(
 
   const planeField = buildPlaneLayerFieldDescription();
   const spine = buildSpineDescription();
+  const spineRot = buildSpineRotPlanes();
   const backgroundPlanesWithZ = {
     count: 2,
     planes: [
@@ -726,5 +728,6 @@ export function getSceneDescription(
     contextLinks: buildContextLinksDescription(),
     planeField,
     spine,
+    spineRot,
   };
 }
