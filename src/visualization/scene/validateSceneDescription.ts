@@ -309,6 +309,7 @@ export function validateSceneDescription(
   if (
     typeof spineLightCore.enabled !== 'boolean' ||
     typeof spineLightCore.color !== 'string' ||
+    typeof spineLightCore.orbColor !== 'string' ||
     typeof spineLightCore.opacityBase !== 'number' ||
     typeof spineLightCore.widthScale !== 'number' ||
     typeof spineLightCore.heightScale !== 'number' ||
@@ -326,7 +327,7 @@ export function validateSceneDescription(
   ) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error(
-        '[validateSceneDescription] scene.spineLightCore fields (enabled/color/opacityBase/widthScale/heightScale/zOffset/blend) are invalid.',
+        '[validateSceneDescription] scene.spineLightCore fields (enabled/color/orbColor/opacityBase/widthScale/heightScale/zOffset/blend) are invalid.',
       );
     }
     return false;

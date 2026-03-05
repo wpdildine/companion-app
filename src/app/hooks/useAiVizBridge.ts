@@ -7,12 +7,16 @@ import { useCallback, type RefObject } from 'react';
 import { applySignalsToVisualization } from '../../visualization';
 import type {
   VisualizationEngineRef,
+  VisualizationMode,
   AiUiSignals,
   AiUiSignalsEvent,
   VisualizationPanelRects,
 } from '../../visualization';
 
-type AiVizInput = Partial<AiUiSignals> & { panelRects?: VisualizationPanelRects };
+type AiVizInput = Partial<AiUiSignals> & {
+  mode?: VisualizationMode;
+  panelRects?: VisualizationPanelRects;
+};
 
 export function useAiVizBridge(visualizationRef: RefObject<VisualizationEngineRef | null>) {
   const setSignals = useCallback(

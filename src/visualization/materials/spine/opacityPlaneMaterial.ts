@@ -9,8 +9,8 @@ export function createOpacityPlaneMaterial(): THREE.ShaderMaterial {
     uniforms: {
       uColor: { value: new THREE.Color('#8aa7d6') },
       uOpacity: { value: 0.25 },
-      uEdgeSoftness: { value: 0.028 },
-      uRimStrength: { value: 0.1 },
+      uEdgeSoftness: { value: 0.024 },
+      uRimStrength: { value: 0.05 },
       uRimWidth: { value: 0.08 },
       uRimColor: { value: new THREE.Color('#cfefff') },
       uEdgeGlowStrength: { value: 0.22 },

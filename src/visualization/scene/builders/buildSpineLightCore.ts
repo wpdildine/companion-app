@@ -9,6 +9,7 @@ import { SPINE_ART_DIRECTION } from '../artDirection/spine';
 export type GLSceneSpineLightCore = {
   enabled: boolean;
   color: string;
+  orbColor: string;
   opacityBase: number;
   widthScale: number;
   heightScale: number;
@@ -32,6 +33,7 @@ export function buildSpineLightCore(): GLSceneSpineLightCore {
   return {
     enabled: lightCore.enabled,
     color: lightCore.color,
+    orbColor: lightCore.orbColor,
     opacityBase: lightCore.opacityBase,
     widthScale: lightCore.widthScale,
     heightScale: lightCore.heightScale,

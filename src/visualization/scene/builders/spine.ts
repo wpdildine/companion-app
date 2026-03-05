@@ -344,28 +344,28 @@ function buildSupportShards(seed: number, count: number): SpineShard[] {
       : (rng() - 0.5) * 0.5;
 
     const kind = rng();
-    let widthScale = 0.08 + rng() * 0.14;
-    let heightScale = 0.2 + rng() * 0.55;
+    let widthScale = 0.06 + rng() * 0.1;
+    let heightScale = 0.16 + rng() * 0.36;
     if (kind < 0.34) {
       // Tall-thin sliver
-      widthScale = 0.075 + rng() * 0.085;
-      heightScale = 0.44 + rng() * 0.52;
+      widthScale = 0.052 + rng() * 0.055;
+      heightScale = 0.34 + rng() * 0.38;
     } else if (kind < 0.68) {
       // Short-wide counterpoint
-      widthScale = 0.14 + rng() * 0.14;
-      heightScale = 0.12 + rng() * 0.2;
+      widthScale = 0.09 + rng() * 0.09;
+      heightScale = 0.1 + rng() * 0.12;
     } else if (kind < 0.86) {
       // Tiny chip
-      widthScale = 0.05 + rng() * 0.06;
-      heightScale = 0.08 + rng() * 0.14;
+      widthScale = 0.03 + rng() * 0.045;
+      heightScale = 0.06 + rng() * 0.1;
     }
 
     let offsetX: number;
     if (inBand && silhouetteCrossersPlaced < 2) {
       const side = silhouetteCrossersPlaced % 2 === 0 ? -1 : 1;
       offsetX = side * (0.22 + rng() * 0.12);
-      widthScale = Math.max(widthScale, 0.24);
-      heightScale = Math.max(heightScale, 0.36);
+      widthScale = Math.max(widthScale, 0.16);
+      heightScale = Math.max(heightScale, 0.28);
       silhouetteCrossersPlaced += 1;
     } else {
       offsetX = (rng() - 0.5) * 1.18;

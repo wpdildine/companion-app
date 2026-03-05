@@ -16,6 +16,10 @@ function toCanonicalMode(mode: string): CanonicalSceneMode {
     case 'processing':
     case 'speaking':
       return mode;
+    case 'touched':
+      return 'listening';
+    case 'released':
+      return 'speaking';
     default:
       return 'idle';
   }
@@ -35,6 +39,7 @@ export function SpineLightCoreLayer({
       new THREE.ShaderMaterial({
         uniforms: {
           uColor: { value: new THREE.Color('#8fd6ff') },
+          uOrbColor: { value: new THREE.Color('#9b7dff') },
           uOpacity: { value: 0 },
           uTime: { value: 0 },
           uWarpAmpX: { value: 0 },
@@ -56,6 +61,7 @@ export function SpineLightCoreLayer({
           precision mediump float;
           varying vec2 vUv;
           uniform vec3 uColor;
+          uniform vec3 uOrbColor;
           uniform float uOpacity;
           uniform float uTime;
           uniform float uWarpAmpX;
@@ -75,12 +81,20 @@ export function SpineLightCoreLayer({
             float radialFalloff = 1.0 - smoothstep(0.24, 0.62, r);
             float centerBoost = 0.84 + 0.9 * radialCore;
             vec2 orbCenter = vec2(0.5, uOrbCenterY);
-            float orbDist = length(uv - orbCenter);
-            float orb = exp(-pow(orbDist / max(0.0001, uOrbRadius), max(0.1, uOrbFalloff)));
+            vec2 od = abs(uv - orbCenter);
+            // Square distance (Chebyshev): rectilinear field.
+            float orbDist = max(od.x, od.y);
+            float orbNorm = clamp(1.0 - (orbDist / max(0.0001, uOrbRadius)), 0.0, 1.0);
+            // Hard quantization (no smoothing): visible stepped square bands.
+            float orbLevels = 6.0;
+            float orbStep = floor(orbNorm * orbLevels) / orbLevels;
+            float orb = pow(orbStep, max(0.1, uOrbFalloff * 0.55));
             float alpha = uOpacity * radialCore * radialFalloff * centerBoost;
             alpha *= (1.0 + orb * uOrbStrength);
             if (alpha < 0.001) discard;
-            vec3 rgb = uColor * (1.0 + orb * (uOrbStrength * 0.35));
+            float beamTerm = (0.88 + radialCore * 0.42);
+            float orbTerm = orb * (uOrbStrength * 0.95);
+            vec3 rgb = uColor * beamTerm + uOrbColor * orbTerm;
             gl_FragColor = vec4(rgb, alpha);
           }
         `,
@@ -159,6 +173,7 @@ export function SpineLightCoreLayer({
 
     const mode = toCanonicalMode(v.currentMode);
     mat.uniforms.uColor.value.set(lightCore.color);
+    mat.uniforms.uOrbColor.value.set(lightCore.orbColor);
     mat.uniforms.uOpacity.value = Math.min(
       1,
       Math.max(0, lightCore.opacityBase * (lightCore.opacityByMode[mode] ?? 1)),
@@ -169,7 +184,9 @@ export function SpineLightCoreLayer({
     mat.uniforms.uTime.value = v.clock;
     mat.uniforms.uWarpFreq.value = lightCore.warpFreq;
     mat.uniforms.uWarpAmpX.value =
-      lightCore.warpAmpX * motionScale * activityBoost;
+      mode === 'processing'
+        ? 0
+        : lightCore.warpAmpX * motionScale * activityBoost;
     mat.uniforms.uWarpAmpY.value =
       lightCore.warpAmpY * motionScale * activityBoost;
     const orbStrength = lightCore.orbDebugObvious

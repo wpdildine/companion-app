@@ -454,6 +454,7 @@ export default function VoiceScreen() {
     const cardRefsCount =
       phase === 'processing' ? 0 : (validationSummary?.cards?.length ?? 0);
     setSignals({
+      mode,
       phase,
       grounded,
       confidence,

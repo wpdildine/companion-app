@@ -19,6 +19,10 @@ function toCanonicalMode(mode: string): CanonicalSceneMode {
     case 'processing':
     case 'speaking':
       return mode;
+    case 'touched':
+      return 'listening';
+    case 'released':
+      return 'speaking';
     default:
       return 'idle';
   }

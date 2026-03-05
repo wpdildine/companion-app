@@ -6,17 +6,17 @@
 export const SPINE_SHARD_PRESET = {
   shards: {
     countsByMode: {
-      idle: 8,
-      listening: 16,
-      processing: 20,
+      idle: 10,
+      listening: 14,
+      processing: 18,
       speaking: 10,
     },
     zOffsetMin: -0.8,
     zOffsetMax: 0.8,
-    membraneBandOffsetY: 0.22,
-    coolPalette: ['#4d78b8', '#41699f', '#5b8dcc', '#36577f'],
-    ghostPalette: ['#1f2c43', '#1b263a', '#24334d'],
-    accentPalette: ['#8ce7ff', '#c5f6ff'],
-    accentColor: '#b6f0ff',
+    membraneBandOffsetY: 0.28,
+    coolPalette: ['#3e6da8', '#447fc2', '#56a2e7', '#355e93'],
+    ghostPalette: ['#1a2a42', '#18263c', '#21324d'],
+    accentPalette: ['#68e6ff', '#9df4ff'],
+    accentColor: '#8defff',
   },
 } as const;

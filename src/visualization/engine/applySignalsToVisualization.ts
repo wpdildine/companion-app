@@ -21,7 +21,10 @@ const PHASE_TO_MODE: Record<AiUiSignals['phase'], VisualizationMode> = {
  */
 export function applySignalsToVisualization(
   visualizationRef: RefObject<VisualizationEngineRef | null>,
-  signals: Partial<AiUiSignals> & { panelRects?: VisualizationPanelRects },
+  signals: Partial<AiUiSignals> & {
+    mode?: VisualizationMode;
+    panelRects?: VisualizationPanelRects;
+  },
 ): void {
   const v = visualizationRef.current;
   if (!v) return;
@@ -32,7 +35,13 @@ export function applySignalsToVisualization(
   } as AiUiSignals;
   v.signalsSnapshot = mergedSignals;
 
-  if (signals.phase != null) {
+  if (signals.mode != null) {
+    const mode = signals.mode;
+    v.currentMode = mode;
+    const target = TARGET_ACTIVITY_BY_MODE[mode];
+    v.targetActivity = target;
+    v.activity = target;
+  } else if (signals.phase != null) {
     const mode = PHASE_TO_MODE[signals.phase];
     v.currentMode = mode;
     const target = TARGET_ACTIVITY_BY_MODE[mode];

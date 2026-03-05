@@ -25,8 +25,8 @@ import { HALFTONE_VERTEX } from '../../materials/halftone/halftone.vert';
 import { HALFTONE_FRAGMENT } from '../../materials/halftone/halftone.frag';
 
 /**
- * Map engine currentMode to canonical spine mode. Non-canonical modes (touched, released)
- * map to idle so spread/halftone profiles always have a valid key.
+ * Map engine currentMode to canonical spine mode. Transient touch modes are
+ * mapped to nearby semantic modes so motion does not appear frozen.
  */
 function toCanonicalMode(mode: string): CanonicalSpineMode {
   switch (mode) {
@@ -36,7 +36,9 @@ function toCanonicalMode(mode: string): CanonicalSpineMode {
     case 'speaking':
       return mode;
     case 'touched':
+      return 'listening';
     case 'released':
+      return 'speaking';
     default:
       return 'idle';
   }
@@ -56,6 +58,21 @@ function applyEasing(
 ): number {
   if (easing === 'inOutCubic') return easeInOutCubic(t);
   return easeCubic(t);
+}
+
+function getApertureSlideByMode(mode: CanonicalSpineMode): number {
+  switch (mode) {
+    case 'idle':
+      return 0.0;
+    case 'listening':
+      return -0.12; // close inward toward center
+    case 'processing':
+      return 0.34; // open outward from center
+    case 'speaking':
+      return -0.06; // settle inward
+    default:
+      return 0.0;
+  }
 }
 
 /**
@@ -138,6 +155,8 @@ export function Spine({
   const cameraDirRef = useRef(new THREE.Vector3());
   const cameraUpRef = useRef(new THREE.Vector3());
   const cameraRightRef = useRef(new THREE.Vector3());
+  const whiteColorRef = useRef(new THREE.Color('#ffffff'));
+  const edgeGlowTargetColorRef = useRef(new THREE.Color());
   const rampRef = useRef(0);
   const currentSpreadRef = useRef({
     verticalSpread: 1,
@@ -149,6 +168,8 @@ export function Spine({
     bandWidth: 1,
     depthSpread: 1,
   });
+  const prevApertureRef = useRef(0);
+  const currentApertureRef = useRef(0);
   const lastCanonicalModeRef = useRef<CanonicalSpineMode>('idle');
   const smoothPlaneOpacityRef = useRef<number[]>(Array(5).fill(0));
   const smoothPlaneIntensityRef = useRef<number[]>(Array(5).fill(0));
@@ -193,6 +214,7 @@ export function Spine({
     const canonicalMode = toCanonicalMode(v.currentMode);
     if (canonicalMode !== lastCanonicalModeRef.current) {
       prevSpreadRef.current = { ...currentSpreadRef.current };
+      prevApertureRef.current = currentApertureRef.current;
       lastCanonicalModeRef.current = canonicalMode;
       // Always restart ramp on mode change (prevents one-frame pops/flicker).
       rampRef.current = 0;
@@ -218,27 +240,23 @@ export function Spine({
         prev.depthSpread +
         (targetProfile.depthSpread - prev.depthSpread) * eased,
     };
+    const targetApertureSlide = getApertureSlideByMode(canonicalMode);
+    currentApertureRef.current =
+      prevApertureRef.current +
+      (targetApertureSlide - prevApertureRef.current) * eased;
 
     const spread = currentSpreadRef.current;
-    const idleBreathHz = spine.style.idleBreathHz ?? 0;
-    const idleBreathAmp = spine.style.idleBreathAmp ?? 0;
     const processingMotionBoost = spine.style.processingMotionBoost ?? 1;
     const processingExtraOverlap = spine.style.processingExtraOverlap ?? 0;
-    const processingHeightBoost = spine.style.processingHeightBoost ?? 1;
     const processingEdgeBoost = spine.style.processingEdgeBoost ?? 1;
     const perPlaneDriftScale = spine.style.perPlaneDriftScale ?? 0;
     const perPlaneDriftPhaseStep = spine.style.perPlaneDriftPhaseStep ?? 0;
 
-    const idleBreath =
-      canonicalMode === 'idle' || canonicalMode === 'listening'
-        ? 1 + Math.sin(v.clock * 2 * Math.PI * idleBreathHz) * idleBreathAmp
-        : 1;
-    const effectiveVerticalSpread = spread.verticalSpread * idleBreath;
-    const effectiveBandWidth = spread.bandWidth * idleBreath;
+    // Keep envelope size stable across states; state expression comes from aperture slide, not zoom.
+    const effectiveVerticalSpread = 1;
+    const effectiveBandWidth = 1;
     const isProcessing = canonicalMode === 'processing';
-    const processingOverflow = isProcessing
-      ? spine.style.processingOverflowBoost
-      : 1;
+    const processingOverflow = 1;
     const viewW = viewWidth;
     const actH = activeHeight;
     const envelopeWidthWorld =
@@ -258,11 +276,11 @@ export function Spine({
       .normalize();
 
     let driftFactor = 0;
-    if (
-      !v.reduceMotion &&
-      (canonicalMode === 'idle' || canonicalMode === 'listening')
-    ) {
-      driftFactor = canonicalMode === 'idle' ? 1 : 1.25;
+    if (!v.reduceMotion) {
+      if (canonicalMode === 'idle') driftFactor = 1;
+      else if (canonicalMode === 'listening') driftFactor = 1.25;
+      else if (canonicalMode === 'processing') driftFactor = 1.35;
+      else if (canonicalMode === 'speaking') driftFactor = 0.8;
     }
     const driftRate =
       spine.style.driftHz *
@@ -279,11 +297,12 @@ export function Spine({
       spine.style.driftAmpY *
       driftFactor *
       Math.cos(v.clock * driftRate * 1.7 * 2 * Math.PI);
+    const lockedDriftX = isProcessing ? 0 : driftX;
 
     groupRef.current.position
       .copy(cameraPosRef.current)
       .add(cameraDirRef.current.multiplyScalar(overlayDistance))
-      .addScaledVector(cameraRightRef.current, driftX)
+      .addScaledVector(cameraRightRef.current, lockedDriftX)
       .addScaledVector(cameraUpRef.current, spineCenterWorldY + driftY);
     groupRef.current.quaternion.copy(cam.quaternion);
 
@@ -334,22 +353,30 @@ export function Spine({
       if (!mesh) continue;
       const widthScale = spine.style.planeWidthScale[i] ?? 1;
       const baseHeightScale = spine.style.planeHeightScale?.[i] ?? 1;
-      const heightScale =
-        baseHeightScale * (isProcessing ? processingHeightBoost : 1);
+      const heightScale = baseHeightScale;
       const offsetX = spine.style.planeOffsetX[i] ?? 0;
       const opacityScale = spine.style.planeOpacityScale[i] ?? 1;
       const offsetY = (spine.style.planeOffsetY?.[i] ?? 0) * unitHeight;
       const localY =
         -halfHeight + unitHeight * (i + 0.5) + unitHeight * gap * i + offsetY;
+      const relativeToCenter = i - halftonePlaneIndex;
+      const apertureStride = unitHeight * 0.92;
+      const apertureShift =
+        Math.sign(relativeToCenter) *
+        Math.abs(relativeToCenter) *
+        apertureStride *
+        currentApertureRef.current;
 
       const perPlanePhase = i * perPlaneDriftPhaseStep;
       const scale = perPlaneDriftScale;
       const perPlaneX =
-        envelopeWidthWorld *
-        spine.style.driftAmpX *
-        driftFactor *
-        scale *
-        Math.sin(v.clock * driftRate * 2 * Math.PI + perPlanePhase);
+        isProcessing
+          ? 0
+          : envelopeWidthWorld *
+            spine.style.driftAmpX *
+            driftFactor *
+            scale *
+            Math.sin(v.clock * driftRate * 2 * Math.PI + perPlanePhase);
       const perPlaneY =
         envelopeHeightWorld *
         spine.style.driftAmpY *
@@ -365,7 +392,7 @@ export function Spine({
       }
       mesh.position.set(
         envelopeWidthWorld * offsetX + perPlaneX,
-        localY + perPlaneY,
+        localY + apertureShift + perPlaneY,
         planeZ,
       );
       mesh.scale.set(
@@ -492,9 +519,13 @@ export function Spine({
           spine.style.edgeGlowStrength ?? 0.0;
         mat.uniforms.uEdgeGlowWidth.value =
           spine.style.edgeGlowWidth ?? 0.05;
-        mat.uniforms.uEdgeGlowColor.value.set(
-          spine.style.edgeGlowColor ?? planeColor,
-        );
+        mat.uniforms.uRimColor.value
+          .set(planeColor)
+          .lerp(whiteColorRef.current, 0.14);
+        edgeGlowTargetColorRef.current.set(spine.style.edgeGlowColor ?? planeColor);
+        mat.uniforms.uEdgeGlowColor.value
+          .set(planeColor)
+          .lerp(edgeGlowTargetColorRef.current, 0.2);
         mat.uniforms.uBeamVis.value = beamVis;
         mat.uniforms.uGlowSide.value = glowSide;
         mat.uniforms.uEdgeYWeight.value = spine.style.edgeYWeight ?? 0.12;
@@ -533,11 +564,13 @@ export function Spine({
       const shardRate = driftRate * (shard.driftRateScale ?? 1);
       const shardDriftScale = (shard.driftScale ?? 1) * 0.32;
       const shardDriftX = !v.reduceMotion
-        ? envelopeWidthWorld *
-          spine.style.driftAmpX *
-          driftFactor *
-          shardDriftScale *
-          Math.sin(v.clock * shardRate * 2 * Math.PI + shard.driftPhase)
+        ? isProcessing
+          ? 0
+          : envelopeWidthWorld *
+            spine.style.driftAmpX *
+            driftFactor *
+            shardDriftScale *
+            Math.sin(v.clock * shardRate * 2 * Math.PI + shard.driftPhase)
         : 0;
       const shardDriftY = !v.reduceMotion
         ? envelopeHeightWorld *
@@ -558,18 +591,14 @@ export function Spine({
       );
       if (mesh.material) {
         const mat = mesh.material as THREE.MeshBasicMaterial;
-        mat.blending =
-          shard.accent === true
-            ? THREE.AdditiveBlending
-            : spine.style.blend === 'additive'
-            ? THREE.AdditiveBlending
-            : THREE.NormalBlending;
-        mat.color.set(shard.color ?? spine.style.color);
+        mat.blending = THREE.NormalBlending;
+        mat.color.set('#050913');
         const targetShardOpacity =
           spine.style.opacity *
           shard.opacityScale *
           dynamicOpacityBoost *
-          spine.style.shardOpacityScale;
+          spine.style.shardOpacityScale *
+          0.92;
         if (smoothShardOpacityRef.current[s] == null) {
           smoothShardOpacityRef.current[s] = targetShardOpacity;
         }
@@ -585,7 +614,7 @@ export function Spine({
             maxOpacityStep,
           );
         smoothShardOpacityRef.current[s] = nextShardOpacity;
-        mat.opacity = nextShardOpacity;
+        mat.opacity = THREE.MathUtils.clamp(nextShardOpacity, 0, 0.9);
       }
     }
 
@@ -637,10 +666,7 @@ export function Spine({
   const spineShardsRo = layers.spineShards.renderOrderBase;
   const edgeMeshRoOffset = spineBaseRo + spine.planeCount;
 
-  const blending =
-    spine.style.blend === 'additive'
-      ? THREE.AdditiveBlending
-      : THREE.NormalBlending;
+  const blending = THREE.NormalBlending;
 
   const shards = spine.shards ?? [];
 
@@ -660,12 +686,13 @@ export function Spine({
         >
           <planeGeometry args={[1, 1]} />
           <meshBasicMaterial
-            color={shard.color ?? spine.style.color}
+            color="#050913"
             transparent
             opacity={
               spine.style.opacity *
               (shard.opacityScale ?? 0.7) *
-              spine.style.shardOpacityScale
+              spine.style.shardOpacityScale *
+              0.92
             }
             toneMapped={false}
             blending={blending}
@@ -679,7 +706,9 @@ export function Spine({
         const halftoneIndex = Math.floor((spine.planeCount - 1) / 2);
         const isHalftonePlane =
           i === halftoneIndex && (spine.style.halftoneEnabled ?? true);
-        const planeRenderOrder = spineBaseRo + i;
+        const configuredOrder = spine.style.planeRenderOrder?.[i];
+        const planeRenderOrder =
+          spineBaseRo + (typeof configuredOrder === 'number' ? configuredOrder : i);
         return (
           <mesh
             key={`plane-${i}`}
