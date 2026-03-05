@@ -1,13 +1,14 @@
 # Spine Control Settings
 
 Single source of truth for spine art-direction knobs:
-- Code: `src/visualization/scene/artDirection/spine` (barrel; spineArtDirection composes base + rot + shards + halftone + power presets).
-- Consumer: `src/visualization/scene/builders/spine.ts` -> `buildSpineDescription()`; `buildSpineRotPlanes.ts` -> rot layer.
-- Renderer: `src/visualization/render/layers/Spine.tsx`, `SpineRotLayer.tsx` (consume scene; do not define art-direction defaults).
+- Code: `src/visualization/scene/artDirection/spine` (barrel; `spineArtDirection` composes base + shards + halftone + light-core + rot presets).
+- Consumer: `src/visualization/scene/builders/spine.ts` -> `buildSpineDescription()`; `buildSpineLightCore.ts` -> light-core layer; `buildSpineRotPlanes.ts` -> rot layer.
+- Renderer: `src/visualization/render/layers/Spine.tsx`, `SpineLightCoreLayer.tsx`, `SpineRotLayer.tsx` (consume scene; do not define art-direction defaults).
 
 Render-order contract (current):
 - Draw order comes from `scene.layers` in `src/visualization/scene/formations.ts`
 - Spine sections:
+  - `layers.spineLightCore.renderOrderBase`
   - `layers.spineBase.renderOrderBase`
   - `layers.spineShards.renderOrderBase`
   - `layers.spineRot.renderOrderBase`
@@ -23,6 +24,7 @@ This file documents what each control block does, how to tune it, and which cont
 4. `halftoneProfiles`
 5. `motion`
 6. `envelope`
+7. `lightCore`
 
 If the spine is hard to read, do not start with motion. Fix value/opacity hierarchy first.
 
@@ -109,15 +111,33 @@ If scene looks noisy, reduce count first. If it looks empty, increase shard opac
 ### Rotational layer (spineRot)
 
 - **Art direction:** `scene/artDirection/spine/spineRotPreset.ts`; all knobs merged via `SPINE_ART_DIRECTION.rot`.
-- **Composition by mode:** idle 2–4, listening 3–5, processing 4–6, speaking 2–3 planes; ±6°–±14° rotation; slight scale variance; coordinate convention = overlay space (local `z`, local `rotationZ`); Z from builder.
+- **Composition by mode (current defaults):** idle 3, listening 4, processing 5, speaking 2 planes; rotation range ±12°; coordinate convention = overlay space (local `z`, local `rotationZ`); Z from builder.
 - **Motion:** Static from builder; no drift in renderer.
 - **Materials:** Ghost (basicPlaneMaterial, `depthWrite=false`, `depthTest=false`, `transparent`, opacity = `plane.opacityScale * spineRot.opacityBase`); at most one plane uses halftone accent.
 - **Visibility:** `planeCountByMode`; renderer returns null when count for current mode is 0. Render order and Z from builder; spineRot uses `scene.layers.spineRot.renderOrderBase` exclusively.
+
+### Backlight layer (spineLightCore)
+
+- **Art direction:** `scene/artDirection/spine/spineLightCorePreset.ts`; merged via `SPINE_ART_DIRECTION.lightCore`.
+- **Scene contract:** `scene.spineLightCore` from `buildSpineLightCore.ts`.
+- **Renderer:** `SpineLightCoreLayer.tsx` draws one camera-facing beam between background and spine.
+- **Controls:**
+  - `enabled`: on/off for backlight mesh.
+  - `color`: light tint.
+  - `opacityBase`: global backlight opacity baseline.
+  - `opacityByMode`: per-mode opacity scaling.
+  - `widthScale`, `heightScale`: beam footprint around spine envelope.
+  - `zOffset`: local depth offset in `zStep` units.
+  - `blend`: `additive | normal` (defaults additive).
+  - `warpAmpX`, `warpAmpY`, `warpFreq`: UV deformation oscillator.
+  - `warpScaleByMode`: per-mode deformation strength (idle/listening subtle to medium, processing strongest).
+- **Current intent:** soft radial glow with center emphasis and animated warp for visible movement grammar.
 
 ## 3) Practical Guardrails
 
 - Keep `planeCount` at 5 unless renderer contract changes.
 - Keep background render order below foreground; spine ordering is controlled by `scene.layers` (not hardcoded 900-range values).
+- Keep `spineLightCore` below `spineBase` in `scene.layers` so it reads as backlight, not a foreground slab.
 - Prefer changing one block at a time and verifying on both iOS + Android.
 - Avoid simultaneous large changes to `baseOpacity`, `planeOpacityScale`, and post-FX vignette.
 
@@ -131,3 +151,5 @@ If scene looks noisy, reduce count first. If it looks empty, increase shard opac
   - Increase `planeOffsetX/Y` range and/or make `planeGap` more negative.
 - Symptom: composition feels muddy
   - Lower `countsByMode`, then retune `shardOpacityScale`.
+- Symptom: bright center slab appears (not soft glow)
+  - Lower `spineLightCore.opacityBase`, reduce `widthScale`/`heightScale`, or lower `warpAmpX/Y`.

@@ -19,7 +19,7 @@ import * as THREE from 'three';
 import type { CanonicalSpineMode } from '../../scene/builders/spine';
 import { validateSceneDescription } from '../../scene/validateSceneDescription';
 import type { VisualizationEngineRef } from '../../engine/types';
-import { createBasicPlaneMaterial } from '../../materials/basicPlaneMaterial';
+import { createOpacityPlaneMaterial } from '../../materials/spine/opacityPlaneMaterial';
 import { createHalftoneMaterial } from '../../materials/halftone/halftonePlaneMaterial';
 import { HALFTONE_VERTEX } from '../../materials/halftone/halftone.vert';
 import { HALFTONE_FRAGMENT } from '../../materials/halftone/halftone.frag';
@@ -72,11 +72,10 @@ export function Spine({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const planeRefs = useRef<(THREE.Mesh | null)[]>([]);
-  const PLANE_COLORS = ['#8a9fc9', '#9eb3e0', '#c5dcff', '#a2b8e8', '#889bc4'];
-  const planeMaterialsRef = useRef<THREE.MeshBasicMaterial[] | null>(null);
+  const planeMaterialsRef = useRef<THREE.ShaderMaterial[] | null>(null);
   if (!planeMaterialsRef.current) {
-    planeMaterialsRef.current = PLANE_COLORS.map(color =>
-      createBasicPlaneMaterial(color),
+    planeMaterialsRef.current = Array.from({ length: 5 }, () =>
+      createOpacityPlaneMaterial(),
     );
   }
   const planeMats = planeMaterialsRef.current;
@@ -472,8 +471,19 @@ export function Spine({
       } else {
         mesh.visible = true;
         const mat = planeMats[i];
-        mat.color.set(planeColor);
-        mat.opacity = nextOpacity;
+        mat.uniforms.uColor.value.set(planeColor);
+        mat.uniforms.uOpacity.value = nextOpacity;
+        mat.uniforms.uEdgeGlowStrength.value =
+          spine.style.edgeGlowStrength ?? 0.0;
+        mat.uniforms.uEdgeGlowWidth.value =
+          spine.style.edgeGlowWidth ?? 0.05;
+        mat.uniforms.uEdgeGlowColor.value.set(
+          spine.style.edgeGlowColor ?? planeColor,
+        );
+        mat.uniforms.uGlowRespondsToCore.value =
+          spine.style.glowRespondsToCore ?? 0.0;
+        mat.uniforms.uCoreInfluenceFalloff.value =
+          spine.style.coreInfluenceFalloff ?? 2.0;
       }
     }
 

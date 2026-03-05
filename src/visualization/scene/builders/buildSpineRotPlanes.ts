@@ -71,7 +71,7 @@ export function buildSpineRotPlanes(): GLSceneSpineRot {
     const scaleY = rot.scaleYMin + rng() * (rot.scaleYMax - rot.scaleYMin);
     const z = rot.zMin + rng() * (rot.zMax - rot.zMin);
     const color = colors[i % colors.length]!;
-    const opacityScale = 0.9 + rng() * 0.2;
+    const opacityScale = 0.75 + rng() * 0.4;
     planes.push({
       z,
       rotationZ,

@@ -57,6 +57,11 @@ export const SPINE_BASE_PRESET = {
     halftoneFadeLevels: 5,
     halftoneFadeStepMix: 0.45,
     halftoneFadeOneSided: true,
+    edgeGlowStrength: 0.46,
+    edgeGlowWidth: 0.05,
+    edgeGlowColor: '#d7ecff',
+    glowRespondsToCore: 0.85,
+    coreInfluenceFalloff: 2.2,
   },
   motion: {
     driftAmpX: 0.038,

@@ -13,6 +13,7 @@
 
 import type { CanonicalSceneMode } from './canonicalMode';
 import type { GLSceneSpineRot } from './builders/buildSpineRotPlanes';
+import type { GLSceneSpineLightCore } from './builders/buildSpineLightCore';
 
 export interface Node {
   id: number;
@@ -339,12 +340,13 @@ export type GLSceneLayerSection = { renderOrderBase: number };
 
 export const GL_SCENE_LAYER_KEYS = [
   'background',
+  'spineLightCore',
   'spineBase',
   'spineShards',
-  'spineRot',
   'glyphsBack',
   'links',
   'glyphsFront',
+  'spineRot',
   'debugOverlay',
 ] as const;
 export type GLSceneLayers = Record<
@@ -419,6 +421,7 @@ export type GLScenePlaneField = {
 
 export type { GLSceneSpine } from './builders/spine';
 export type { GLSceneSpineRot } from './builders/buildSpineRotPlanes';
+export type { GLSceneSpineLightCore } from './builders/buildSpineLightCore';
 
 export type { CanonicalSceneMode } from './canonicalMode';
 
@@ -484,6 +487,7 @@ export type GLSceneDescription = {
   contextLinks: GLSceneContextLinks;
   planeField: GLScenePlaneField;
   spine: GLSceneSpine;
+  spineLightCore: GLSceneSpineLightCore;
   spineRot: GLSceneSpineRot;
   layers: GLSceneLayers;
   presets: GLScenePresets;
@@ -567,6 +571,7 @@ function hexToRgb(hex: string): [number, number, number] {
 
 import { buildSpineDescription, type GLSceneSpine } from './builders/spine';
 import { buildSpineRotPlanes } from './builders/buildSpineRotPlanes';
+import { buildSpineLightCore } from './builders/buildSpineLightCore';
 import { buildContextGlyphsDescription } from './builders/contextGlyphs';
 import { buildContextLinksDescription } from './builders/contextLinks';
 import { buildPlaneLayerFieldDescription } from './builders/planeLayerField';
@@ -648,6 +653,7 @@ export function getSceneDescription(
 
   const planeField = buildPlaneLayerFieldDescription();
   const spine = buildSpineDescription();
+  const spineLightCore = buildSpineLightCore();
   const spineRot = buildSpineRotPlanes();
   const backgroundPlanesWithZ = {
     count: 2,
@@ -694,12 +700,13 @@ export function getSceneDescription(
     backgroundPlanes: backgroundPlanesWithZ,
     layers: {
       background: { renderOrderBase: 1000 },
+      spineLightCore: { renderOrderBase: 1500 },
       spineBase: { renderOrderBase: 2000 },
       spineShards: { renderOrderBase: 2100 },
-      spineRot: { renderOrderBase: 2500 },
       glyphsBack: { renderOrderBase: 3000 },
       links: { renderOrderBase: 3200 },
       glyphsFront: { renderOrderBase: 3500 },
+      spineRot: { renderOrderBase: 3600 },
       debugOverlay: { renderOrderBase: 4000 },
     },
     presets: buildScenePresets(),
@@ -728,6 +735,7 @@ export function getSceneDescription(
     contextLinks: buildContextLinksDescription(),
     planeField,
     spine,
+    spineLightCore,
     spineRot,
   };
 }

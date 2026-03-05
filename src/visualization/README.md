@@ -33,7 +33,7 @@ Visualization is a pure render subsystem. It exposes one public API:
 ## Scene contract (current)
 
 - `scene.layers`: draw-order sections (`renderOrderBase` only)
-  - `background`, `spineBase`, `spineShards`, `spineRot`, `glyphsBack`, `links`, `glyphsFront`, `debugOverlay`
+  - `background`, `spineLightCore`, `spineBase`, `spineShards`, `glyphsBack`, `links`, `glyphsFront`, `spineRot`, `debugOverlay`
 - `scene.presets[mode]`: schema-level mode overrides (not renderer-owned logic)
   - canonical modes: `idle`, `listening`, `processing`, `speaking`
 - `scene.touch`: validated touch art-direction stub

@@ -92,6 +92,11 @@ export type SpineStylePreset = {
   halftoneFadeLevels: number;
   halftoneFadeStepMix: number;
   halftoneFadeOneSided: boolean;
+  edgeGlowStrength: number;
+  edgeGlowWidth: number;
+  edgeGlowColor: string;
+  glowRespondsToCore: number;
+  coreInfluenceFalloff: number;
 };
 
 export type GLSceneSpineStyle = {
@@ -145,6 +150,11 @@ export type GLSceneSpineStyle = {
   halftoneFadeLevels: number;
   halftoneFadeStepMix: number;
   halftoneFadeOneSided: boolean;
+  edgeGlowStrength: number;
+  edgeGlowWidth: number;
+  edgeGlowColor: string;
+  glowRespondsToCore: number;
+  coreInfluenceFalloff: number;
   /** Per-mode micro drift amplitudes in world-space envelope fractions. */
   driftAmpX: number;
   driftAmpY: number;
@@ -252,6 +262,11 @@ export const SPINE_STYLE_PRESET: SpineStylePreset = {
 halftoneFadeLevels: SPINE_ART_DIRECTION.composition.halftoneFadeLevels,
     halftoneFadeStepMix: SPINE_ART_DIRECTION.composition.halftoneFadeStepMix,
     halftoneFadeOneSided: SPINE_ART_DIRECTION.composition.halftoneFadeOneSided,
+  edgeGlowStrength: SPINE_ART_DIRECTION.composition.edgeGlowStrength,
+  edgeGlowWidth: SPINE_ART_DIRECTION.composition.edgeGlowWidth,
+  edgeGlowColor: SPINE_ART_DIRECTION.composition.edgeGlowColor,
+  glowRespondsToCore: SPINE_ART_DIRECTION.composition.glowRespondsToCore,
+  coreInfluenceFalloff: SPINE_ART_DIRECTION.composition.coreInfluenceFalloff,
 };
 
 const SPREAD_IDLE: SpineSpreadProfile = {
@@ -446,6 +461,11 @@ export function buildSpineDescription(): GLSceneSpine {
       halftoneFadeLevels: preset.halftoneFadeLevels,
       halftoneFadeStepMix: preset.halftoneFadeStepMix,
       halftoneFadeOneSided: preset.halftoneFadeOneSided,
+      edgeGlowStrength: preset.edgeGlowStrength,
+      edgeGlowWidth: preset.edgeGlowWidth,
+      edgeGlowColor: preset.edgeGlowColor,
+      glowRespondsToCore: preset.glowRespondsToCore,
+      coreInfluenceFalloff: preset.coreInfluenceFalloff,
       driftAmpX: preset.driftAmpX,
       driftAmpY: preset.driftAmpY,
       perPlaneDriftScale: preset.perPlaneDriftScale,

@@ -116,6 +116,11 @@ export function validateSceneDescription(
     style.edgeBandWidth > 0 &&
     style.edgeBandWidth < 0.5 &&
     typeof style.edgeOpacity === 'number' &&
+    typeof style.edgeGlowStrength === 'number' &&
+    typeof style.edgeGlowWidth === 'number' &&
+    typeof style.edgeGlowColor === 'string' &&
+    typeof style.glowRespondsToCore === 'number' &&
+    typeof style.coreInfluenceFalloff === 'number' &&
     typeof style.halftoneEnabled === 'boolean' &&
     (style.halftoneFadeMode == null || (typeof style.halftoneFadeMode === 'string' && ['none', 'radial', 'linear', 'angled'].includes(style.halftoneFadeMode))) &&
     (style.halftoneFadeInner == null || typeof style.halftoneFadeInner === 'number') &&
@@ -292,6 +297,49 @@ export function validateSceneDescription(
       console.error('[validateSceneDescription] scene.touch.glyphResponse invalid.');
     }
     return false;
+  }
+  const spineLightCore = scene.spineLightCore;
+  if (!spineLightCore) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.spineLightCore is missing.');
+    }
+    return false;
+  }
+  const lightCoreModeKeys = ['idle', 'listening', 'processing', 'speaking'] as const;
+  if (
+    typeof spineLightCore.enabled !== 'boolean' ||
+    typeof spineLightCore.color !== 'string' ||
+    typeof spineLightCore.opacityBase !== 'number' ||
+    typeof spineLightCore.widthScale !== 'number' ||
+    typeof spineLightCore.heightScale !== 'number' ||
+    typeof spineLightCore.zOffset !== 'number' ||
+    typeof spineLightCore.warpAmpX !== 'number' ||
+    typeof spineLightCore.warpAmpY !== 'number' ||
+    typeof spineLightCore.warpFreq !== 'number' ||
+    (spineLightCore.blend !== 'additive' && spineLightCore.blend !== 'normal')
+  ) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error(
+        '[validateSceneDescription] scene.spineLightCore fields (enabled/color/opacityBase/widthScale/heightScale/zOffset/blend) are invalid.',
+      );
+    }
+    return false;
+  }
+  for (const key of lightCoreModeKeys) {
+    const opacity = spineLightCore.opacityByMode?.[key];
+    const warpScale = spineLightCore.warpScaleByMode?.[key];
+    if (typeof opacity !== 'number') {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[validateSceneDescription] scene.spineLightCore.opacityByMode is invalid for key:', key);
+      }
+      return false;
+    }
+    if (typeof warpScale !== 'number') {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[validateSceneDescription] scene.spineLightCore.warpScaleByMode is invalid for key:', key);
+      }
+      return false;
+    }
   }
   const spineRot = scene.spineRot;
   if (!spineRot) {
