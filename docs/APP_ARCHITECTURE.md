@@ -43,9 +43,26 @@ When debug mode is enabled or panels are visible:
 - `InteractionBand` is disabled.
 - RN overlay content receives interaction priority.
 
+### Touch arbitration (VoiceScreen)
+
+Arbitration is a UI-layer decision; VoiceScreen owns the `enabled` prop:
+
+- **Content panels visible** (`anyPanelVisible`) → InteractionBand **disabled**.
+- **Debug mode** (`debugEnabled`) → InteractionBand **disabled** (touch may be routed to debug).
+- **Mode === 'processing'** → InteractionBand **disabled**.
+- Otherwise InteractionBand **enabled**.
+
+When the band becomes disabled, InteractionBand clears ref fields (`touchFieldActive`, `touchFieldNdc`, `touchFieldStrength`, `zoneArmed`) so the engine does not retain phantom touch influence and overlays visually rest.
+
+### Zone layout: single source of truth
+
+Touch zone boundaries (rules / neutral / cards) are defined in **active-region NDC** in `src/visualization/interaction/zoneLayout.ts` (`NEUTRAL_HALF_WIDTH_NDC`, `getZoneFromNdcX`). Scene layout ratios in `formations.ts` are derived from that constant so TouchZones overlays align with what InteractionBand treats as left/center/right.
+
+**Invariant:** NDC for zone classification **MUST** be active-region NDC (from `toNdc(bandRect, canvasSize)` in InteractionBand), **not** screen NDC (e.g. `touchX/screenWidth`). Using raw screen normalization would shift the band and break tap alignment.
+
 ### Visual touch affordance
 
-`ClusterTouchZones` provides GL affordances:
+`ClusterTouchZones` (TouchZones layer) provides GL affordances:
 
 - cluster rings around rules/cards centers
 - screen-aligned GL area overlays that reflect the interaction map:
@@ -76,7 +93,7 @@ Writer split:
 - UI wrappers: `src/screens/voice/UserVoiceView.tsx`, `src/screens/dev/DevScreen.tsx`, `src/screens/voice/VoiceLoadingView.tsx`
 - Viz dev overlay: `src/visualization/render/dev/DebugZoneOverlay.tsx`
 - Visualization surface/canvas: `src/visualization/render/canvas/VisualizationSurface.tsx`, `VisualizationCanvas.tsx`, `VisualizationCanvasR3F.tsx`, `VisualizationCanvasFallback.tsx`
-- Visualization interaction: `src/visualization/interaction/InteractionBand.tsx`, `TouchRaycaster.tsx`, `touchHandlers.ts`
+- Visualization interaction: `src/visualization/interaction/InteractionBand.tsx`, `zoneLayout.ts`, `TouchRaycaster.tsx`, `touchHandlers.ts`
 - Scene/layers: `src/visualization/engine/EngineLoop.tsx`, `render/layers/ContextGlyphs.tsx`, `ContextLinks.tsx`, `TouchZones.tsx`, `CameraOrbit.tsx`, `PostFXPass.tsx`
 - Engine/types: `src/visualization/engine/types.ts`, `createDefaultRef.ts`, `src/visualization/scene/*`, `src/visualization/helpers/*`
 - RAG feature: `src/rag/*`

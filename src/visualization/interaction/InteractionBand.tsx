@@ -2,15 +2,17 @@
  * Optional band that captures drag and drives the canvas-owned touch field (repulsor).
  * Plan: only this or the canvas sets touchField*; App must not.
  * Kept as a top-layer interaction surface while canvas stays pointerEvents="none".
+ *
+ * NDC invariant: zone classification uses active-region NDC only. toNdc(bandRect, canvasSize)
+ * is the only path to NDC — never use raw screen normalization (e.g. touchX/screenWidth).
  */
 
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { LayoutChangeEvent, GestureResponderEvent } from 'react-native';
 import type { RefObject } from 'react';
 import type { VisualizationEngineRef } from '../engine/types';
-
-const BAND_TOP_INSET = 112;
+import { getZoneFromNdcX } from './zoneLayout';
 
 export type InteractionBandProps = {
   visualizationRef: RefObject<VisualizationEngineRef | null>;
@@ -33,6 +35,8 @@ export function InteractionBand({
     const { x, y, width: w, height: h } = e.nativeEvent.layout;
     layoutRef.current = { x, y, w, h };
   }, []);
+  const bandTopInsetPx =
+    visualizationRef.current?.scene?.zones.layout.bandTopInsetPx ?? 112;
 
   const toNdc = useCallback(
     (locationX: number, locationY: number): [number, number] | null => {
@@ -51,12 +55,21 @@ export function InteractionBand({
 
   const setZoneArmedFromNdc = useCallback(
     (v: VisualizationEngineRef, ndc: [number, number]) => {
-      const t = v.scene?.zones?.layout?.deadStripThreshold;
-      if (t == null) return;
-      v.zoneArmed = ndc[0] < -t ? 'rules' : ndc[0] > t ? 'cards' : null;
+      v.zoneArmed = getZoneFromNdcX(ndc[0]);
     },
     [],
   );
+
+  useEffect(() => {
+    if (enabled) return;
+    const v = visualizationRef.current;
+    if (v) {
+      v.touchFieldActive = false;
+      v.touchFieldNdc = null;
+      v.touchFieldStrength = 0;
+      v.zoneArmed = null;
+    }
+  }, [enabled, visualizationRef]);
 
   const handleTouchStart = useCallback(
     (e: GestureResponderEvent) => {
@@ -113,22 +126,31 @@ export function InteractionBand({
 
       const ndc = toNdc(locationX, locationY);
       if (!ndc) return;
-      const t = v?.scene?.zones?.layout?.deadStripThreshold;
-      if (t == null) return;
-      if (ndc[0] < -t) onClusterTap?.('rules');
-      else if (ndc[0] > t) onClusterTap?.('cards');
+      const zone = getZoneFromNdcX(ndc[0]);
+      if (zone === 'rules') onClusterTap?.('rules');
+      else if (zone === 'cards') onClusterTap?.('cards');
     },
     [visualizationRef, toNdc, onClusterTap, enabled],
   );
+  const handleTouchCancel = useCallback(() => {
+    const v = visualizationRef.current;
+    if (v) {
+      v.touchFieldActive = false;
+      v.touchFieldNdc = null;
+      v.touchFieldStrength = 0;
+      v.zoneArmed = null;
+    }
+    touchStartRef.current = null;
+  }, [visualizationRef]);
 
   return (
     <View
-      style={styles.band}
+      style={[styles.band, { top: bandTopInsetPx }]}
       onLayout={onLayout}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      onTouchCancel={handleTouchEnd}
+      onTouchCancel={handleTouchCancel}
       pointerEvents={enabled ? 'auto' : 'none'}
     />
   );
@@ -140,7 +162,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    top: BAND_TOP_INSET,
     zIndex: 2,
   },
 });

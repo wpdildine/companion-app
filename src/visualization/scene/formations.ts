@@ -14,6 +14,7 @@
 import type { CanonicalSceneMode } from './canonicalMode';
 import type { GLSceneSpineRot } from './builders/buildSpineRotPlanes';
 import type { GLSceneSpineLightCore } from './builders/buildSpineLightCore';
+import { NEUTRAL_HALF_WIDTH_NDC } from '../interaction/zoneLayout';
 
 export interface Node {
   id: number;
@@ -669,14 +670,16 @@ export function getSceneDescription(
     lum: 0.55,
   };
 
+  const centerRatio = 2 * NEUTRAL_HALF_WIDTH_NDC;
+  const sideRatio = (1 - centerRatio) / 2;
   return {
     zones: {
       layout: {
-        leftRatio: 0.44,
-        centerRatio: 0.12,
-        rightRatio: 0.44,
+        leftRatio: sideRatio,
+        centerRatio,
+        rightRatio: sideRatio,
         bandTopInsetPx: 112,
-        deadStripThreshold: 0.12,
+        deadStripThreshold: NEUTRAL_HALF_WIDTH_NDC,
       },
       style: zonesStyle,
     },
