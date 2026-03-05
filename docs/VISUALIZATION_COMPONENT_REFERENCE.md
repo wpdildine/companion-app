@@ -12,8 +12,10 @@ Visualization is a pure visualization subsystem.
 
 ### GL state and scene description
 
-- **Scene at runtime:** `getSceneDescription()` (scene/formations) is computed once at mount and stored on `visualizationRef.current.scene`. All GL components read zones, pulse anchors, and cluster anchors from that single instance. Scene recomputes only when `paletteId` or `vizIntensityProfile` changes so anchors/pulses stay deterministic.
+- **Scene at runtime:** `getSceneDescription()` (scene/formations) is computed at viz ref init and stored on `visualizationRef.current.scene`. Render layers consume that scene contract directly.
 - **Single aesthetic source:** All visual constants (zone colors, opacities, ratios, ring radii, edge color, etc.) live in formations / `getSceneDescription()`. Render components do viewport math and camera-facing placement only; they do not define style or zone policy. Missing scene values are a bug (no fallback constants).
+- **Layer contract:** draw order is owned by `scene.layers.*.renderOrderBase`; builders supply final primitive Z values (renderers do not recompute Z layouts).
+- **Preset/touch contract:** `scene.presets` is schema-level mode override data (not renderer-owned logic); `scene.touch` is validated touch-art direction state.
 - **Mode-driven GL state:** Idle — planes calm, zones faint, no clusters unless last answer had evidence. Processing — planes tighten, subtle motion, no new evidence clusters. Resolved (no evidence) — planes settle, no clusters. Resolved (with evidence) — rules/cards cluster counts appear, zone outlines strengthen. Warning / low confidence — links show in full mode; optional warning pulse at center.
 
 ## Directory
@@ -65,8 +67,9 @@ src/visualization/
 - `CameraOrbit` (render/canvas/): camera placement/orbit state.
 - `ContextGlyphs` (render/layers/): point clusters (rules/cards).
 - `ContextLinks` (render/layers/): links between cluster nodes.
-- `TouchZones` (render/layers/): dumb renderer; reads layout and style from `visualizationRef.current.scene` only. Ring outlines at cluster anchors; camera-facing zone planes (rules / center / cards) when `highlighted`. No hardcoded colors, ratios, or opacities.
-- `PlaneLayerField` (render/layers/): background drift planes; reads layerCount, planeOpacity, driftPx from ref (future: scene.backgroundPlanes.style).
+- `TouchZones` (render/layers/): dumb renderer; reads layout/style from `visualizationRef.current.scene` only. Ring outlines at cluster anchors; camera-facing zone planes (rules / center / cards) when `showTouchZones` is enabled in the ref. No hardcoded colors, ratios, or opacities.
+- `Spine` (render/layers/): 5-plane spine + shard field + center halftone membrane; consumes builder-supplied `scene.spine`.
+- `PlaneLayerField` (render/layers/): background drift planes + panel projection planes; consumes `scene.backgroundPlanes`, `scene.layers`, and `scene.planeField`.
 - `PostFXPass` (render/canvas/): optional post effects.
 
 ### Interaction
@@ -107,4 +110,4 @@ When `VisualizationSurface` is used:
 ## Current Gaps / Cleanup Candidates
 
 - `CameraSync.tsx` exists and is not wired.
-- `PlaneLayerField.tsx` exists and is not wired in the live scene path.
+- `scene.presets` exists as schema-level data and is not yet resolved/applied by a dedicated visual resolver.

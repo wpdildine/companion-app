@@ -12,7 +12,7 @@ Canonical "where do I go?" doc; reference from README.
 
 **services/ vs helpers/ (in rag/visualization)** — services/ = IO or talking to the outside world. helpers/ = pure functions only; no side effects.
 
-**Quick placement guide** — New RAG logic/runtime → rag/hooks/, rag/services/, rag/helpers/. New GL/visualization code → visualization/engine/, visualization/scene/, visualization/render/, visualization/interaction/, visualization/materials/. New screen/voice UI → screens/voice/. Dev screen UI → screens/dev/. Theme values → theme/. Pure utils (no React/theme) → utils/. New reusable UI block → components/.
+**Quick placement guide** — New RAG logic/runtime → `src/rag/` (feature-local modules; avoid creating empty helper/service roots). New GL/visualization code → visualization/engine/, visualization/scene/, visualization/render/, visualization/interaction/, visualization/materials/. New screen/voice UI → screens/voice/. Dev screen UI → screens/dev/. Theme values → theme/. Pure utils (no React/theme) → utils/. New reusable UI block → components/.
 
 ---
 

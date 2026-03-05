@@ -3,6 +3,15 @@
 Single source of truth for spine art-direction knobs:
 - Code: `src/visualization/scene/artDirection/spineArtDirection.ts`
 - Consumer: `src/visualization/scene/builders/spine.ts` -> `buildSpineDescription()`
+- Renderer: `src/visualization/render/layers/Spine.tsx` (consumes scene; does not define art-direction defaults)
+
+Render-order contract (current):
+- Draw order comes from `scene.layers` in `src/visualization/scene/formations.ts`
+- Spine sections:
+  - `layers.spineBase.renderOrderBase`
+  - `layers.spineShards.renderOrderBase`
+  - `layers.spineRot.renderOrderBase`
+- Spine plane/mesh Z comes from builder-supplied scene values (`scene.spine.planes[i].z`, `scene.spine.shards[i].z`)
 
 This file documents what each control block does, how to tune it, and which controls are safest to touch first.
 
@@ -100,7 +109,7 @@ If scene looks noisy, reduce count first. If it looks empty, increase shard opac
 ## 3) Practical Guardrails
 
 - Keep `planeCount` at 5 unless renderer contract changes.
-- Keep background render order below foreground; spine planes are in ~900+ range.
+- Keep background render order below foreground; spine ordering is controlled by `scene.layers` (not hardcoded 900-range values).
 - Prefer changing one block at a time and verifying on both iOS + Android.
 - Avoid simultaneous large changes to `baseOpacity`, `planeOpacityScale`, and post-FX vignette.
 
