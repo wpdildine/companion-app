@@ -35,7 +35,6 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full Architecture Navig
 - **`src/theme/`** — Canonical theme home (`getTheme`, tokens).
 - **`src/screens/`** — Screen-level composition and views (`voice/`, `dev/`).
 - **`src/components/`** — Reusable UI blocks (`decon/` panel + content blocks).
-- **`src/ui/`** — Compatibility exports only (legacy imports).
 - **`src/visualization/`** — **Pure visualization layer**: engine, scene, render (VisualizationCanvas, VisualizationSurface, VisualizationCanvasR3F, 2D fallback), interaction (InteractionBand, touchHandlers), materials. Consumes only injected theme primitives and engine ref; no app state or voice. Touch API: short tap, double-tap, long-press, drag; see `visualization/interaction/touchHandlers.ts`.
 - **`src/utils/`** — Pure or side-effect isolated: `log` (logModeChange, logPulse). No React or theme imports.
 - **`src/rag/`** — RAG pipeline, context provider, pack DB.

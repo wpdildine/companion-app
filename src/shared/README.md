@@ -15,4 +15,4 @@
 
 ## Compatibility paths
 
-- `src/ui/*` is a compatibility facade for legacy imports.
+- None. Import shared modules directly from `src/shared/*`.

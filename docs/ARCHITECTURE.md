@@ -6,7 +6,7 @@ Canonical "where do I go?" doc; reference from README.
 
 **Mental model** — app/ = entry + app orchestration; screens/ = screen views/composition; components/ = reusable UI blocks; shared/ = platform-agnostic core; rag/ and visualization/ = product features; utils/ = shared infra.
 
-**Directory map** — src/app/ (app entry + orchestration shell); src/screens/ (voice/, dev/); src/components/ (decon reusable UI blocks); src/shared/ (cross-feature contracts, native diagnostics services); src/theme/ (canonical theme source: getTheme + tokens); src/rag/ (RAG: retrieval + pack logic); src/visualization/ (GL UI: engine/, scene/, render/, interaction/, materials/, utils/). **visualization/scene/** holds formations (contract + assembly), builders (e.g. spine), artDirection. All GL aesthetics live under scene and flow through `visualizationRef.current.scene`. src/utils/ is pure/side-effect isolated utilities. **src/ui/** exists only as a compatibility export facade for legacy imports. **Engine ref / viz state validation** lives in visualization/engine/validateVizState; scene contract validation in visualization/scene/validateSceneDescription. **Scope:** visualization/ and rag/ stay narrow; no analytics, app state, or cross-feature glue in features.
+**Directory map** — src/app/ (app entry + orchestration shell); src/screens/ (voice/, dev/); src/components/ (decon reusable UI blocks); src/shared/ (cross-feature contracts, native diagnostics services); src/theme/ (canonical theme source: getTheme + tokens); src/rag/ (RAG: retrieval + pack logic); src/visualization/ (GL UI: engine/, scene/, render/, interaction/, materials/, utils/). **visualization/scene/** holds formations (contract + assembly), builders (e.g. spine), artDirection. All GL aesthetics live under scene and flow through `visualizationRef.current.scene`. src/utils/ is pure/side-effect isolated utilities. **Engine ref / viz state validation** lives in visualization/engine/validateVizState; scene contract validation in visualization/scene/validateSceneDescription. **Scope:** visualization/ and rag/ stay narrow; no analytics, app state, or cross-feature glue in features.
 
 **The only two rules** — (1) Screens don't do IO; screens call hooks, hooks call services. Hooks may orchestrate state and call services, but should not contain raw NativeModules or fetch logic directly. (2) Shared UI belongs in `src/components/`; feature-local UI stays in feature folders (rag/visualization/screens). **Hard constraint:** No new top-level folders under src without updating ARCHITECTURE.md (prevents infra/, core/, lib/, engine/, manager/ sprawl). **App.tsx** must stay a thin shell.
 
@@ -19,13 +19,12 @@ Canonical "where do I go?" doc; reference from README.
 **Repo map** (short)
 
 - **src/app** — app entry + navigation.
-- **src/rag/** — RAG feature (hooks/, services/, helpers/, types.ts).
+- **src/rag/** — RAG feature (`ask.ts`, runtime/context/provider logic, pack IO, types.ts).
 - **src/visualization/** — Pure visualization layer (engine/, scene/, render/, interaction/, materials/, utils/). VisualizationCanvas, VisualizationSurface, VisualizationCanvasR3F, InteractionBand, DevPanel. No app state or theme import; receives injected theme primitives + engine ref. **GL canvas draw order:** (1) background field, (2) spine, (3) links/glyphs, (4) TouchZones (debug overlay). Engine ref / viz state validation: visualization/engine/validateVizState; scene contract: visualization/scene/validateSceneDescription.
 - **src/shared/** — platform-agnostic core: `types/`, `native/`.
 - **src/theme/** — canonical theme source (`getTheme`, `tokens`).
 - **src/screens/** — screen-level view composition (`voice/`, `dev/`).
 - **src/components/** — reusable UI blocks (`decon/`).
-- **src/ui/** — compatibility exports only (legacy import bridge).
 - **src/utils/** — log. Pure or side-effect isolated; no React/theme imports.
 
 **Two non-negotiables**
