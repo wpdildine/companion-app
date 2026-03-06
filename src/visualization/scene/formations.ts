@@ -305,7 +305,6 @@ export type GLScenePlaneField = {
   /** Depth field: radial falloff strength. */
   radialFalloffStrength: number;
   vignetteScale: number;
-  halftoneDensityVariation: number;
   slowDriftScale: number;
   valueVariation: number;
   intensityProcessingBase: number;
@@ -504,7 +503,7 @@ import { buildSpineLightCore } from './builders/buildSpineLightCore';
 import { buildBackPlaneDescription } from './builders/backPlane';
 import { buildContextGlyphsDescription } from './builders/contextGlyphs';
 import { buildContextLinksDescription } from './builders/contextLinks';
-import { buildPlaneLayerFieldDescription } from './builders/planeLayerField';
+import { buildBackgroundFieldDescription } from './builders/backgroundField';
 
 /** Schema-only; renderers must not read scene.presets yet. Overrides bias base art direction per mode. */
 function buildScenePresets(): GLScenePresets {
@@ -581,7 +580,7 @@ export function getSceneDescription(
     sum(cards, 2),
   ];
 
-  const planeField = buildPlaneLayerFieldDescription();
+  const planeField = buildBackgroundFieldDescription();
   const spine = buildSpineDescription();
   const spineLightCore = buildSpineLightCore();
   const spineRot = buildSpineRotPlanes();

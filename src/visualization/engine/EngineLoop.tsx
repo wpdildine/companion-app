@@ -40,7 +40,8 @@ const CANONICAL_STATES: VisualizationMode[] = [
   'speaking',
 ];
 const DEBUG_MOTION_GRAMMAR =
-  typeof __DEV__ !== 'undefined' && __DEV__;
+  false;
+const DEBUG_TOUCH_FIELD = false;
 // Toggle this to prove consumers are responding to motion, independent of choreography.
 const DEBUG_FORCE_MOTION_BY_MODE = false;
 
@@ -184,7 +185,7 @@ export function EngineLoop({ visualizationRef }: { visualizationRef: React.RefOb
     if (!v.canonicalCycleOn) canonicalLastStepRef.current = -1;
     prevCycleOnRef.current = v.stateCycleOn;
     prevCanonicalOnRef.current = v.canonicalCycleOn;
-    if (v.touchFieldActive && now - touchLogAt.current > 400) {
+    if (DEBUG_TOUCH_FIELD && v.touchFieldActive && now - touchLogAt.current > 400) {
       touchLogAt.current = now;
       console.log('[Viz] EngineLoop touchField', { touchFieldNdc: v.touchFieldNdc, touchWorld: v.touchWorld, touchInfluence: v.touchInfluence.toFixed(3), reduceMotion: v.reduceMotion });
     }

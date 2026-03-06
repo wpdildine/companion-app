@@ -2,10 +2,18 @@
  * @format
  */
 
-import { AppRegistry } from 'react-native';
+import { AppRegistry, Platform } from 'react-native';
 import App from './App';
 import { name as appName } from './app.json';
 import { install as installPluginDiagnostics } from './src/shared/native/PluginDiagnostics';
+
+// R3F native/Expo warns when EXPO_OS was not babel-inlined; define a safe runtime fallback.
+if (typeof process !== 'undefined') {
+  process.env = process.env || {};
+  if (!process.env.EXPO_OS) {
+    process.env.EXPO_OS = Platform.OS;
+  }
+}
 
 installPluginDiagnostics();
 

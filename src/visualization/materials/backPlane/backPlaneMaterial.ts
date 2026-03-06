@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
 let sharedHalftoneTile: THREE.DataTexture | null = null;
+let sharedColumnAlpha: THREE.DataTexture | null = null;
 
 function getHalftoneTile(): THREE.DataTexture {
   if (sharedHalftoneTile) return sharedHalftoneTile;
@@ -37,19 +38,50 @@ function getHalftoneTile(): THREE.DataTexture {
   return tex;
 }
 
+function getColumnAlphaMap(): THREE.DataTexture {
+  if (sharedColumnAlpha) return sharedColumnAlpha;
+  const width = 256;
+  const data = new Uint8Array(width * 4);
+  for (let x = 0; x < width; x++) {
+    const u = x / (width - 1);
+    const dx = Math.abs(u - 0.5) * 2.0;
+    // Strong center column with soft shoulder falloff.
+    const a = Math.pow(Math.max(0, 1 - dx), 1.75);
+    const v = Math.floor(255 * a);
+    const i = x * 4;
+    data[i + 0] = v;
+    data[i + 1] = v;
+    data[i + 2] = v;
+    data[i + 3] = 255;
+  }
+  const tex = new THREE.DataTexture(data, width, 1, THREE.RGBAFormat);
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  sharedColumnAlpha = tex;
+  return tex;
+}
+
 export function createBackPlaneMaterial(
   initialOpacity: number,
   layerPhase: number,
 ): THREE.MeshBasicMaterial {
   const halftone = getHalftoneTile().clone();
+  const alphaRamp = getColumnAlphaMap().clone();
   halftone.needsUpdate = true;
+  alphaRamp.needsUpdate = true;
   halftone.repeat.set(12, 18);
   halftone.offset.set(layerPhase * 0.13, layerPhase * 0.07);
+  alphaRamp.repeat.set(1, 1);
+  alphaRamp.offset.set(0, 0);
 
   const mat = new THREE.MeshBasicMaterial({
     color: new THREE.Color(0.45, 0.48, 0.58),
     map: halftone,
-    alphaMap: halftone,
+    alphaMap: alphaRamp,
     transparent: true,
     depthWrite: false,
     depthTest: false,

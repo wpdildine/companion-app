@@ -4,7 +4,7 @@
  */
 export const SHADER_DEBUG_FLAGS = {
   postFx: true,
-  backgroundBase: true,
+  backgroundBase: false,
   backgroundDetail: true,
   spineHalftone: true,
   contextGlyphs: true,

@@ -86,6 +86,26 @@ export function PostFXPass({
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
 }) {
   const { gl, scene, camera, size } = useThree();
+  useEffect(() => {
+    type GLContextWithPixelStore = {
+      pixelStorei: (pname: number, param: number) => void;
+      UNPACK_ALIGNMENT: number;
+      PACK_ALIGNMENT: number;
+      __pixelStorePatched?: boolean;
+    };
+    const ctx = gl.getContext?.() as GLContextWithPixelStore | undefined;
+    if (!ctx || ctx.__pixelStorePatched || typeof ctx.pixelStorei !== 'function') return;
+    const original = ctx.pixelStorei.bind(ctx);
+    const supported = new Set<number>([
+      ctx.UNPACK_ALIGNMENT,
+      ctx.PACK_ALIGNMENT,
+    ]);
+    ctx.pixelStorei = (pname: number, param: number) => {
+      if (!supported.has(pname)) return;
+      original(pname, param);
+    };
+    ctx.__pixelStorePatched = true;
+  }, [gl]);
   const postCamera = useMemo(
     () => new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1),
     [],

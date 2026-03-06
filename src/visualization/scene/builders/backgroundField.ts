@@ -1,11 +1,11 @@
-import { PLANE_FIELD_ART_DIRECTION } from '../artDirection/planeLayerFieldArtDirection';
+import { BACKGROUND_FIELD_ART_DIRECTION } from '../artDirection/backgroundFieldArtDirection';
 import type { GLScenePlaneField } from '../formations';
 
 /**
- * Build scene descriptor for PlaneLayerField from art direction.
+ * Build scene descriptor for background field from art direction.
  */
-export function buildPlaneLayerFieldDescription(): GLScenePlaneField {
-  const a = PLANE_FIELD_ART_DIRECTION;
+export function buildBackgroundFieldDescription(): GLScenePlaneField {
+  const a = BACKGROUND_FIELD_ART_DIRECTION;
   return {
     opacityClampMin: a.opacityClampMin,
     opacityClampMax: a.opacityClampMax,
@@ -13,7 +13,6 @@ export function buildPlaneLayerFieldDescription(): GLScenePlaneField {
     smoothingSeconds: a.smoothingSeconds,
     radialFalloffStrength: a.radialFalloffStrength,
     vignetteScale: a.vignetteScale,
-    halftoneDensityVariation: a.halftoneDensityVariation,
     slowDriftScale: a.slowDriftScale,
     valueVariation: a.valueVariation,
     intensityProcessingBase: a.intensity.processingBase,

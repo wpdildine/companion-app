@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { VisualizationEngineRef } from '../../engine/types';
 import { createBackPlaneMaterial } from '../../materials/backPlane/backPlaneMaterial';
+import { createBackPlaneGlitchMaterial } from '../../materials/backPlane/backPlaneGlitchMaterial';
 
 function getViewSizeAtDistance(
   camera: THREE.Camera,
@@ -40,13 +41,22 @@ export function BackPlaneLayer({
   const materials = useMemo(() => {
     return [
       createBackPlaneMaterial(0.12, 0.0),
-      createBackPlaneMaterial(0.07, 0.37),
+      createBackPlaneGlitchMaterial(0.07, 0.37),
     ];
   }, []);
   useEffect(
     () => () => {
       for (const mat of materials) {
-        mat.map?.dispose();
+        if ((mat as THREE.MeshBasicMaterial).map) {
+          (mat as THREE.MeshBasicMaterial).map?.dispose();
+          (mat as THREE.MeshBasicMaterial).alphaMap?.dispose();
+        }
+        if ((mat as THREE.ShaderMaterial).isShaderMaterial) {
+          const u = (mat as THREE.ShaderMaterial).uniforms;
+          if (u?.uBaseTex?.value) {
+            (u.uBaseTex.value as THREE.Texture).dispose();
+          }
+        }
         mat.dispose();
       }
     },
@@ -72,30 +82,56 @@ export function BackPlaneLayer({
       const mesh = meshRefs.current[i];
       if (!mesh) continue;
       const driftScale = plane.driftScale ?? 0.4;
-      const mat = mesh.material as THREE.MeshBasicMaterial;
-      mat.opacity = plane.opacityBase * (1 + motionGain * 0.25);
-      mat.color
-        .copy(colorRef.current)
-        .multiplyScalar(0.85 + motionGain * 0.35);
-      const tex = mat.map;
-      if (tex) {
-        const phase = Number(mat.userData.layerPhase ?? 0);
-        tex.offset.x = (phase * 0.17 + v.clock * 0.004 * driftScale) % 1;
-        tex.offset.y = (phase * 0.09 + v.clock * 0.012 * driftScale) % 1;
-      }
       const z = plane.z;
-      mesh.position
-        .copy(tmpCamPos.current)
-        .addScaledVector(tmpDir.current, z);
       const view = getViewSizeAtDistance(camera, z, sizeRef.current);
       const sx = (plane.scaleX ?? 1.35) * view.width;
       const sy = (plane.scaleY ?? 1.35) * view.height;
-      if (mat.map) {
-        // Keep halftone dots circular in world-space: repeatX/repeatY tracks plane aspect.
+      const mat = mesh.material;
+      if ((mat as THREE.ShaderMaterial).isShaderMaterial) {
+        const shaderMat = mat as THREE.ShaderMaterial;
+        const boostedOpacity = plane.opacityBase * (2.6 + motionGain * 0.45);
+        shaderMat.uniforms.uOpacity.value = Math.min(0.26, boostedOpacity);
+        shaderMat.uniforms.uTime.value = v.clock * (0.7 + driftScale * 0.35);
+        shaderMat.uniforms.uResolution.value.set(
+          Math.max(1, state.size.width),
+          Math.max(1, state.size.height),
+        );
+        shaderMat.uniforms.uIntensity.value = 1.35 + motionGain * 0.9;
+        shaderMat.uniforms.uColor.value.set(
+          Math.min(1, colorRef.current.r * 1.25),
+          Math.min(1, colorRef.current.g * 1.35),
+          Math.min(1, colorRef.current.b * 1.55),
+        );
         const aspectXY = sx / Math.max(0.001, sy);
         const densityY = 88;
         const densityX = densityY * aspectXY;
-        mat.map.repeat.set(densityX, densityY);
+        shaderMat.uniforms.uTileRepeat.value.set(densityX, densityY);
+      } else {
+        const basicMat = mat as THREE.MeshBasicMaterial;
+        basicMat.opacity = plane.opacityBase * (1 + motionGain * 0.25);
+        basicMat.color
+          .copy(colorRef.current)
+          .multiplyScalar(0.85 + motionGain * 0.35);
+        const tex = basicMat.map;
+        if (tex) {
+          const phase = Number(basicMat.userData.layerPhase ?? 0);
+          tex.offset.x = phase * 0.17;
+          tex.offset.y = phase * 0.09;
+        }
+      }
+      mesh.position
+        .copy(tmpCamPos.current)
+        .addScaledVector(tmpDir.current, z);
+      if ((mat as THREE.MeshBasicMaterial).map) {
+        const basicMat = mat as THREE.MeshBasicMaterial;
+        // Keep halftone dots circular in world-space: repeatX/repeatY tracks plane aspect.
+        const aspectXY = sx / Math.max(0.001, sy);
+        // Keep dot pixel density stable even if plane scale changes.
+        // 142 * 0.62 ~= 88 (previous tuning baseline).
+        const scaleY = sy / Math.max(0.001, view.height);
+        const densityY = 142 * scaleY;
+        const densityX = densityY * aspectXY;
+        basicMat.map?.repeat.set(densityX, densityY);
       }
       mesh.scale.set(sx, sy, 1);
       mesh.quaternion.copy(camera.quaternion);

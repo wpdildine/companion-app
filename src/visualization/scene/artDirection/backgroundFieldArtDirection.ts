@@ -1,9 +1,8 @@
 /**
- * Art direction knobs for PlaneLayerField.
+ * Art direction knobs for background field rendering.
  * Pure data: no render/runtime logic.
- * Phase 5: depth-field knobs so background reads as spatial volume, not flat wallpaper.
  */
-export const PLANE_FIELD_ART_DIRECTION = {
+export const BACKGROUND_FIELD_ART_DIRECTION = {
   opacityClampMin: 0.25,
   opacityClampMax: 0.65,
   noisePhaseSpeed: 0.12,
@@ -12,8 +11,6 @@ export const PLANE_FIELD_ART_DIRECTION = {
   radialFalloffStrength: 0.4,
   /** Depth field: vignette scale (multiplier; >1 = stronger edge fade). */
   vignetteScale: 1.25,
-  /** Depth field: halftone density variation by distance from center (0 = uniform). */
-  halftoneDensityVariation: 0.22,
   /** Depth field: slow drift scale (multiplier on noise phase). */
   slowDriftScale: 0.85,
   /** Depth field: value variation across the field (0 = flat). */

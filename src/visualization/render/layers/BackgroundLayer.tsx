@@ -1,14 +1,14 @@
 /**
  * Background planes (decon-modern field). Layout and style from visualizationRef.current.scene.backgroundPlanes;
  * only dynamic signals (clock, reduceMotion, panelRects) from ref.
- * Plane 1 (base): broad gradient + vignette + low-freq noise. Plane 2 (detail): halftone + microgrid + speckle (screen feel).
+ * Plane 1 (base): broad gradient + vignette + low-freq noise. Plane 2 (detail): asymmetric tile field.
  */
 
 import { useFrame } from '@react-three/fiber/native';
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { VisualizationEngineRef } from '../../engine/types';
-import { BACKGROUND_LAYER } from '../canvas/PostFXPass';
+import { createBackgroundDetailMaterial } from '../../materials/background/backgroundDetailMaterial';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
 
 // ---- Plane 1: base (gradient + vignette + low-freq noise) ----
@@ -63,75 +63,6 @@ void main() {
 }
 `;
 
-// ---- Plane 2: detail (halftone + microgrid + speckle, screen feel) ----
-const DETAIL_PLANE_VERTEX = BASE_PLANE_VERTEX;
-
-const DETAIL_PLANE_FRAGMENT = `
-precision mediump float;
-
-varying vec2 vUv;
-uniform vec3 uColor;
-uniform float uOpacity;
-uniform float uNoisePhase;
-uniform float uIntensity;
-uniform float uHalftoneThreshold;
-uniform float uHalftoneScale;
-uniform vec2 uResolution;
-uniform float uHalftoneDensityVariation;
-
-float hash(vec2 p) {
-  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-}
-float noise(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  f = f * f * (3.0 - 2.0 * f);
-  float a = hash(i);
-  float b = hash(i + vec2(1.0, 0.0));
-  float c = hash(i + vec2(0.0, 1.0));
-  float d = hash(i + vec2(1.0, 1.0));
-  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-}
-
-void main() {
-  vec2 res = max(uResolution, vec2(1.0));
-  vec2 uv = gl_FragCoord.xy / res;
-  float aspect = res.x / res.y;
-  vec2 uvIso = vec2(uv.x * aspect, uv.y);
-  vec2 centerUv = uvIso - vec2(0.5 * aspect, 0.5);
-  float distFromCenter = length(centerUv);
-  float speckle = noise(uvIso * 60.0 + uNoisePhase * 0.6) - 0.5;
-
-  float microgrid = 0.0;
-  float gridFreq = 140.0;
-  vec2 g = fract(uvIso * gridFreq);
-  float px = 1.0 / max(1.0, min(uResolution.x, uResolution.y));
-  float aaX = px * gridFreq;
-  float aaY = px * gridFreq;
-  float lineX = smoothstep(1.0 - (0.04 + aaX), 1.0 - (0.04 - aaX), g.x);
-  float lineY = smoothstep(1.0 - (0.04 + aaY), 1.0 - (0.04 - aaY), g.y);
-  microgrid = clamp((lineX + lineY) * 0.35, 0.0, 1.0);
-
-  float cellBase = 72.0 / max(0.25, uHalftoneScale);
-  float densityBias = 1.0 + uHalftoneDensityVariation * smoothstep(0.0, 0.6, distFromCenter);
-  float cell = cellBase * densityBias;
-  vec2 p = uvIso * cell + uNoisePhase * 0.15;
-  vec2 f = fract(p) - 0.5;
-  float d = length(f);
-  float dotR = 0.28;
-  float px2 = 1.0 / max(1.0, min(uResolution.x, uResolution.y));
-  float aa = px2 * cell;
-  float dot = 1.0 - smoothstep(dotR - aa, dotR + aa, d);
-  float halftone = smoothstep(uHalftoneThreshold - 0.08, uHalftoneThreshold + 0.08, dot);
-
-  float detail = halftone * 0.5 + microgrid + speckle * 0.15;
-  detail = clamp(detail, 0.0, 1.0);
-  vec3 col = uColor * (0.4 + 0.6 * detail);
-  float a = uOpacity * uIntensity * (0.7 + detail * 0.3);
-  gl_FragColor = vec4(col, a);
-}
-`;
-
 function getViewSizeAtPos(
   camera: THREE.Camera,
   planePos: THREE.Vector3,
@@ -164,7 +95,7 @@ function getViewSizeAtPos(
   return { width: fallbackViewport.width, height: fallbackViewport.height };
 }
 
-export function PlaneLayerField({
+export function BackgroundLayer({
   visualizationRef,
 }: {
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
@@ -212,25 +143,7 @@ export function PlaneLayerField({
     return m;
   }, []);
   const detailMat = useMemo(() => {
-    const m = new THREE.ShaderMaterial({
-      vertexShader: DETAIL_PLANE_VERTEX,
-      fragmentShader: DETAIL_PLANE_FRAGMENT,
-      transparent: true,
-      depthWrite: false,
-      depthTest: false,
-      blending: THREE.AdditiveBlending,
-      side: THREE.DoubleSide,
-      uniforms: {
-        uColor: { value: new THREE.Vector3(0.5, 0.5, 0.6) },
-        uOpacity: { value: 0.18 },
-        uNoisePhase: { value: 0 },
-        uIntensity: { value: 0.8 },
-        uHalftoneThreshold: { value: 0.4 },
-        uHalftoneScale: { value: 1.0 },
-        uResolution: { value: new THREE.Vector2(1, 1) },
-        uHalftoneDensityVariation: { value: 0.22 },
-      },
-    });
+    const m = createBackgroundDetailMaterial();
     detailMatRef.current = m;
     return m;
   }, []);
@@ -394,16 +307,14 @@ export function PlaneLayerField({
       );
       detailMatRef.current.uniforms.uOpacity.value =
         SHADER_DEBUG_FLAGS.backgroundDetail && n >= 2
-          ? opacity * (bp.opacitySecond / bp.opacityBase)
+          ? Math.min(0.95, opacity * (bp.opacitySecond / bp.opacityBase) * 1.8)
           : 0;
       detailMatRef.current.uniforms.uNoisePhase.value = noisePhase;
       detailMatRef.current.uniforms.uIntensity.value =
-        n >= 2 ? intensityRamp : 0;
+        SHADER_DEBUG_FLAGS.backgroundDetail && n >= 2 ? intensityRamp : 0;
       detailMatRef.current.uniforms.uHalftoneThreshold.value =
         halftoneThreshold;
       detailMatRef.current.uniforms.uHalftoneScale.value = halftoneScale;
-      detailMatRef.current.uniforms.uHalftoneDensityVariation.value =
-        pf.halftoneDensityVariation ?? 0.22;
     }
 
     if (g1.current && bp.planes[0]) {
@@ -437,6 +348,7 @@ export function PlaneLayerField({
         1,
       );
       g2.current.quaternion.copy(camera.quaternion);
+      g2.current.visible = SHADER_DEBUG_FLAGS.backgroundDetail && n >= 2;
     }
 
     // Prevent one-frame flash of default mesh transform on mount/refresh.
@@ -447,7 +359,7 @@ export function PlaneLayerField({
         bgInitializedRef.current = true;
         if (g1.current) g1.current.visible = SHADER_DEBUG_FLAGS.backgroundBase;
         if (g2.current)
-          g2.current.visible = SHADER_DEBUG_FLAGS.backgroundDetail;
+          g2.current.visible = SHADER_DEBUG_FLAGS.backgroundDetail && n >= 2;
       } else {
         if (g1.current) g1.current.visible = false;
         if (g2.current) g2.current.visible = false;
@@ -520,7 +432,7 @@ export function PlaneLayerField({
   if (!bp || !layers?.background) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error(
-        '[PlaneLayerField] visualizationRef.current.scene.backgroundPlanes or scene.layers is missing. Set visualizationRef.current.scene = getSceneDescription() in the screen that mounts the viz (e.g. VoiceScreen ref initializer).',
+        '[BackgroundLayer] visualizationRef.current.scene.backgroundPlanes or scene.layers is missing. Set visualizationRef.current.scene = getSceneDescription() in the screen that mounts the viz (e.g. VoiceScreen ref initializer).',
       );
     }
     return null;
@@ -536,7 +448,6 @@ export function PlaneLayerField({
         position={[0, 0, 0]}
         scale={[1, 1, 1]}
         visible={false}
-        layers={BACKGROUND_LAYER}
         frustumCulled={false}
         renderOrder={backgroundRenderOrderBase + 0}
       >
@@ -548,7 +459,6 @@ export function PlaneLayerField({
         position={[0, 0, 0]}
         scale={[1, 1, 1]}
         visible={false}
-        layers={BACKGROUND_LAYER}
         frustumCulled={false}
         renderOrder={backgroundRenderOrderBase + 1}
       >
