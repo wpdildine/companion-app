@@ -53,7 +53,6 @@ export interface VisualizationEngineRef {
   pulseTimes: [number, number, number];
   pulseColors: [number, number, number][];
   lastPulseIndex: number;
-  activityLambda: number;
   lambdaUp: number;
   lambdaDown: number;
   paletteId: number;
@@ -136,6 +135,10 @@ export interface VisualizationEngineRef {
   canonicalCycleOn: boolean;
   canonicalCycleTimerId: ReturnType<typeof setInterval> | null;
   canonicalCycleIdx: number;
+  /** Dev: persistent debug pulse loop toggle (engine-owned; continues when DevPanel is closed). */
+  debugPulseLoopOn: boolean;
+  debugPulseIntervalMs: number;
+  debugLastPulseAtMs: number;
   /** Dev-only: axis lock/bias overrides for consumer-side micro-motion mapping. */
   motionAxisDebug: {
     enabled: boolean;

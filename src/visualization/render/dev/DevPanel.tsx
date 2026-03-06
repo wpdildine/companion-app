@@ -45,6 +45,17 @@ const DEFAULT_POST_FX = {
   chromatic: 0.0002,
   grain: 0.04,
 } as const;
+const DEFAULT_MOTION_AXIS_DEBUG = {
+  enabled: false,
+  axisLockMode: 'none' as const,
+  xGain: 1,
+  yGain: 1,
+  planeDeformGain: 1,
+  planeBendGain: 1,
+  planeWarpGain: 1,
+  shardDriftGain: 1,
+  glyphMotionGain: 1,
+};
 
 export function DevPanel({
   visualizationRef,
@@ -90,11 +101,6 @@ export function DevPanel({
   const setLumBoost = (x: number) => {
     withViz(viz => {
       viz.lumBoost = clamp(x, 0.5, 1.5);
-    });
-  };
-  const setActivityLambda = (x: number) => {
-    withViz(viz => {
-      viz.activityLambda = clamp(x, 0.5, 20);
     });
   };
   const setLambdaUp = (x: number) => {
@@ -226,14 +232,16 @@ export function DevPanel({
         <ScrollView style={styles.scroll}>
           <Text style={[styles.section, { color: muted }]}>Viz</Text>
           <Pressable
-            onPress={() => {
-              v.vizIntensity =
-                v.vizIntensity === 'off'
-                  ? 'subtle'
-                  : v.vizIntensity === 'subtle'
-                    ? 'full'
-                    : 'off';
-            }}
+            onPress={() =>
+              withViz(viz => {
+                viz.vizIntensity =
+                  viz.vizIntensity === 'off'
+                    ? 'subtle'
+                    : viz.vizIntensity === 'subtle'
+                      ? 'full'
+                      : 'off';
+              })
+            }
             style={styles.row}
           >
             <Text style={{ color: textColor }}>Viz intensity</Text>
@@ -261,11 +269,56 @@ export function DevPanel({
               </Pressable>
             </View>
           </View>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>Debug pulse loop</Text>
+            <Pressable
+              onPress={() =>
+                withViz(viz => {
+                  viz.debugPulseLoopOn = !viz.debugPulseLoopOn;
+                  if (viz.debugPulseLoopOn) viz.debugLastPulseAtMs = 0;
+                })
+              }
+            >
+              <Text style={{ color: muted }}>
+                {v.debugPulseLoopOn ? 'ON' : 'OFF'}
+              </Text>
+            </Pressable>
+          </View>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>Pulse interval (ms)</Text>
+            <View style={styles.row}>
+              <Pressable
+                onPress={() =>
+                  withViz(viz => {
+                    viz.debugPulseIntervalMs = Math.max(
+                      120,
+                      viz.debugPulseIntervalMs - 100,
+                    );
+                  })
+                }
+              >
+                <Text style={{ color: textColor }}> − </Text>
+              </Pressable>
+              <Text style={{ color: muted }}>{v.debugPulseIntervalMs}</Text>
+              <Pressable
+                onPress={() =>
+                  withViz(viz => {
+                    viz.debugPulseIntervalMs = Math.min(
+                      5000,
+                      viz.debugPulseIntervalMs + 100,
+                    );
+                  })
+                }
+              >
+                <Text style={{ color: textColor }}> + </Text>
+              </Pressable>
+            </View>
+          </View>
           <Pressable
             onPress={() => triggerPulseAtCenter(visualizationRef)}
             style={[styles.row, styles.button]}
           >
-            <Text style={{ color: textColor }}>Debug pulses</Text>
+            <Text style={{ color: textColor }}>Fire one pulse</Text>
           </Pressable>
           <View style={styles.row}>
             <Text style={{ color: textColor }}>Touch zone meshes</Text>
@@ -280,7 +333,7 @@ export function DevPanel({
             </Pressable>
           </View>
           <View style={styles.row}>
-            <Text style={{ color: textColor }}>Spine halftone planes</Text>
+            <Text style={{ color: textColor }}>Spine halftone accents</Text>
             <Pressable
               onPress={() => {
                 withViz(viz => {
@@ -302,7 +355,7 @@ export function DevPanel({
           <Pressable
             onPress={() => {
               withViz(viz => {
-                // Restore default app-driven mode behavior.
+                // Reset dev mode ownership and set a known baseline.
                 viz.stateCycleOn = false;
                 viz.canonicalCycleOn = false;
                 viz.stateCycleTimerId = null;
@@ -317,7 +370,25 @@ export function DevPanel({
             }}
             style={[styles.row, styles.button]}
           >
-            <Text style={{ color: textColor }}>Reset to default mode behavior</Text>
+            <Text style={{ color: textColor }}>Reset mode override to idle</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              withViz(viz => {
+                viz.stateCycleOn = false;
+                viz.canonicalCycleOn = false;
+                viz.stateCycleTimerId = null;
+                viz.canonicalCycleTimerId = null;
+                viz.modePinActive = false;
+                viz.modePin = null;
+              });
+              onClose();
+            }}
+            style={[styles.row, styles.button]}
+          >
+            <Text style={{ color: textColor }}>
+              Restore app-driven mode (close Dev)
+            </Text>
           </Pressable>
           <Text style={[styles.section, { color: muted }]}>Motion axis debug</Text>
           <View style={styles.row}>
@@ -566,6 +637,30 @@ export function DevPanel({
               </Pressable>
             </View>
           </View>
+          <Pressable
+            onPress={() => {
+              withViz(viz => {
+                viz.motionAxisDebug.enabled = DEFAULT_MOTION_AXIS_DEBUG.enabled;
+                viz.motionAxisDebug.axisLockMode =
+                  DEFAULT_MOTION_AXIS_DEBUG.axisLockMode;
+                viz.motionAxisDebug.xGain = DEFAULT_MOTION_AXIS_DEBUG.xGain;
+                viz.motionAxisDebug.yGain = DEFAULT_MOTION_AXIS_DEBUG.yGain;
+                viz.motionAxisDebug.planeDeformGain =
+                  DEFAULT_MOTION_AXIS_DEBUG.planeDeformGain;
+                viz.motionAxisDebug.planeBendGain =
+                  DEFAULT_MOTION_AXIS_DEBUG.planeBendGain;
+                viz.motionAxisDebug.planeWarpGain =
+                  DEFAULT_MOTION_AXIS_DEBUG.planeWarpGain;
+                viz.motionAxisDebug.shardDriftGain =
+                  DEFAULT_MOTION_AXIS_DEBUG.shardDriftGain;
+                viz.motionAxisDebug.glyphMotionGain =
+                  DEFAULT_MOTION_AXIS_DEBUG.glyphMotionGain;
+              });
+            }}
+            style={[styles.row, styles.button]}
+          >
+            <Text style={{ color: textColor }}>Reset Motion Debug Defaults</Text>
+          </Pressable>
           <View style={styles.row}>
             <Text style={{ color: textColor }}>Cycle all states</Text>
             <Pressable onPress={toggleStateCycle}>
@@ -652,24 +747,6 @@ export function DevPanel({
           </View>
 
           <Text style={[styles.section, { color: muted }]}>Easing</Text>
-          <View style={styles.row}>
-            <Text style={{ color: textColor }}>activityLambda</Text>
-            <View style={styles.row}>
-              <Pressable
-                onPress={() => setActivityLambda(v.activityLambda - 1)}
-              >
-                <Text style={{ color: textColor }}> − </Text>
-              </Pressable>
-              <Text style={{ color: muted }}>
-                {v.activityLambda.toFixed(1)}
-              </Text>
-              <Pressable
-                onPress={() => setActivityLambda(v.activityLambda + 1)}
-              >
-                <Text style={{ color: textColor }}> + </Text>
-              </Pressable>
-            </View>
-          </View>
           <View style={styles.row}>
             <Text style={{ color: textColor }}>lambdaUp</Text>
             <View style={styles.row}>

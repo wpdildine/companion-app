@@ -325,12 +325,6 @@ export default function VoiceScreen() {
     return r;
   })());
 
-  // Keep touch-zone debug meshes strictly dev-only.
-  useEffect(() => {
-    if (!debugEnabled && visualizationRef.current) {
-      visualizationRef.current.showTouchZones = false;
-    }
-  }, [debugEnabled]);
   const recordingSessionIdRef = useRef(0);
   const requestIdRef = useRef(0);
   const modeRef = useRef(mode);

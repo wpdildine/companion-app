@@ -25,7 +25,6 @@ export function createDefaultVisualizationRef(): VisualizationEngineRef {
       [1, 1, 1],
     ],
     lastPulseIndex: 0,
-    activityLambda: 6,
     lambdaUp: 8,
     lambdaDown: 4,
     paletteId: 0,
@@ -86,6 +85,9 @@ export function createDefaultVisualizationRef(): VisualizationEngineRef {
     canonicalCycleOn: false,
     canonicalCycleTimerId: null,
     canonicalCycleIdx: 0,
+    debugPulseLoopOn: false,
+    debugPulseIntervalMs: 1200,
+    debugLastPulseAtMs: 0,
     motionAxisDebug: {
       enabled: false,
       axisLockMode: 'none',

@@ -108,6 +108,22 @@ export function EngineLoop({ visualizationRef }: { visualizationRef: React.RefOb
     didLog.current = true;
     v.clock = state.clock.getElapsedTime();
     const now = Date.now();
+    if (
+      v.debugPulseLoopOn &&
+      now - v.debugLastPulseAtMs >= Math.max(120, v.debugPulseIntervalMs)
+    ) {
+      const i = v.lastPulseIndex % 3;
+      v.pulsePositions[i] = [0, 0, 0];
+      v.pulseTimes[i] = v.clock;
+      v.pulseColors[i] = getPulseColorWithHue(
+        v.paletteId,
+        v.hueShift,
+        'chunkAccepted',
+        v.currentMode,
+      );
+      v.lastPulseIndex = (v.lastPulseIndex + 1) % 3;
+      v.debugLastPulseAtMs = now;
+    }
 
     // Dev cycle ownership lives in EngineLoop so mode writes and mode reads share the same runtime.
     if (v.canonicalCycleOn && v.stateCycleOn) {

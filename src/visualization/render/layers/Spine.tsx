@@ -438,8 +438,16 @@ export function Spine({
         1,
       );
 
+      const halftoneEnabled = spine.style.halftoneEnabled ?? true;
       const planeUsesHalftone =
-        (spine.style.halftoneEnabled ?? true) && i === halftonePlaneIndex;
+        halftoneEnabled &&
+        (v.spineUseHalftonePlanes
+          ? i === halftonePlaneIndex || spine.style.planeAccent?.[i] === true
+          : i === halftonePlaneIndex);
+      const targetMat = planeUsesHalftone ? halftoneMat : planeMats[i];
+      if (targetMat && mesh.material !== targetMat) {
+        mesh.material = targetMat;
+      }
       const planeColor = spine.style.planeColors?.[i] ?? spine.style.color;
       const targetPlaneOpacity =
         spine.style.opacity * opacityScale * dynamicOpacityBoost;
@@ -781,9 +789,6 @@ export function Spine({
         </mesh>
       ))}
       {Array.from({ length: spine.planeCount }, (_, i) => {
-        const halftoneIndex = Math.floor((spine.planeCount - 1) / 2);
-        const isHalftonePlane =
-          i === halftoneIndex && (spine.style.halftoneEnabled ?? true);
         const configuredOrder = spine.style.planeRenderOrder?.[i];
         const planeRenderOrder =
           spineBaseRo + (typeof configuredOrder === 'number' ? configuredOrder : i);
@@ -794,12 +799,10 @@ export function Spine({
             ref={el => {
               planeRefs.current[i] = el;
               if (el) {
-                const mat = isHalftonePlane
-                  ? halftoneMatRef.current
-                  : planeMaterialsRef.current[i];
+                const mat = planeMaterialsRef.current[i];
                 if (mat) {
                   el.material = mat;
-                  if (!isHalftonePlane && 'uniforms' in mat) {
+                  if ('uniforms' in mat) {
                     const supportMat = mat as THREE.ShaderMaterial;
                     supportMat.uniforms.uColor.value.set(
                       spine.style.planeColors?.[i] ?? spine.style.color,
