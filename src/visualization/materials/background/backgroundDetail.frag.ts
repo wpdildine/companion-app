@@ -10,79 +10,70 @@ uniform float uHalftoneThreshold;
 uniform float uHalftoneScale;
 uniform vec2 uResolution;
 
-float hash(vec2 p) {
-  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-}
+// -----------------------------
+// Pattern controls
+// -----------------------------
+const vec2 TILE_GRID = vec2(20.0, 2.0);    // Higher = denser/smaller tiles
+const float TILE_MARGIN = 0.02;             // Higher = thicker black grout
+const vec2 UV_SCROLL = vec2(0.01, 0.04);   // Pattern drift speed
 
-float randSpan(vec2 p) {
-  return hash(p) * 0.6 + 0.2;
+// Fill clustering controls
+const vec2 CLUSTER_BIG_SCALE = vec2(6.0, 6.0);
+const vec2 CLUSTER_MID_SCALE = vec2(3.0, 3.0);
+const float CLUSTER_BIG_WEIGHT = 0.9;
+const float CLUSTER_MID_WEIGHT = 0.8;
+const float LOCAL_JITTER_AMP = 0.12;
+const float FILL_THRESHOLD = 0.68;          // Lower = more fill, higher = more black
+
+// Colors/output
+const vec3 COLOR_BG = vec3(0.0, 0.0, 0.0);
+const vec3 COLOR_FILL = vec3(0.0, 0.9, 0.9);
+const float BORDER_DARKEN = 0.95;
+const float OUTPUT_ALPHA = 0.05;
+
+float hash21(vec2 p) {
+  // Deterministic mediump-safe tile hash.
+  // Keep values bounded with mod to avoid precision collapse on mobile GPUs.
+  vec2 q = mod(p, vec2(61.0, 59.0));
+  float n = q.x * 0.06711056 + q.y * 0.00583715;
+  return fract(52.9829189 * fract(n));
 }
 
 void main() {
+  // Hard debug-visible tile pattern in screen space.
   vec2 res = max(uResolution, vec2(1.0));
-  float scale = mix(3.2, 5.6, clamp((uHalftoneScale - 0.3) / 2.2, 0.0, 1.0));
-  vec2 uv = (2.0 * gl_FragCoord.xy - res.xy) / res.y;
-  uv *= scale;
+  vec2 p = gl_FragCoord.xy / res + UV_SCROLL * uNoisePhase;
+  vec2 g = p * TILE_GRID;
+  vec2 cellId = floor(g);
+  vec2 cellUv = fract(g);
 
-  float t = uNoisePhase * 1.8;
-  uv += vec2(0.7, 0.5) * t;
+  float margin = TILE_MARGIN;
+  float inTile = step(margin, cellUv.x) * step(margin, cellUv.y) *
+                 step(cellUv.x, 1.0 - margin) * step(cellUv.y, 1.0 - margin);
+  float border = 1.0 - inTile;
 
-  vec2 fl = floor(uv);
-  vec2 fr = fract(uv);
-  float ch = step(0.5, mod(fl.x + fl.y, 2.0));
-  vec2 ax = mix(fr.yx, fr.xy, ch);
+  // Two-scale clump field so BOTH magenta and black form contiguous blobs.
+  vec2 clusterBig = floor(cellId / CLUSTER_BIG_SCALE);
+  vec2 clusterMid = floor(cellId / CLUSTER_MID_SCALE);
+  float bigRnd = hash21(clusterBig + vec2(8.3, 1.7));
+  float midRnd = hash21(clusterMid + vec2(3.9, 6.2));
+  float localJitter =
+    (hash21(cellId + vec2(2.7, 9.4)) - 0.5) * LOCAL_JITTER_AMP;
+  float clumpField = clamp(
+    CLUSTER_BIG_WEIGHT * bigRnd + CLUSTER_MID_WEIGHT * midRnd + localJitter,
+    0.0,
+    1.0
+  );
+  // High threshold keeps black dominant while preserving magenta islands.
+  float fillSel = step(FILL_THRESHOLD, clumpField);
 
-  float r1 = randSpan(fl);
-  float a1 = ax.x - r1;
-  float si = sign(a1);
-  vec2 o1 = mix(vec2(0.0, si), vec2(si, 0.0), ch);
+  vec3 blackBg = COLOR_BG;
+  vec3 magentaTile = COLOR_FILL;
 
-  float r2 = randSpan(fl + o1);
-  float a2 = ax.y - r2;
-  vec2 st = step(vec2(0.0), vec2(a1, a2));
-
-  vec2 of = mix(st.yx, st.xy, ch);
-  vec2 id = fl + of - 1.0;
-
-  float ch2 = step(0.5, mod(id.x + id.y, 2.0));
-  float r00 = randSpan(id + vec2(0.0, 0.0));
-  float r10 = randSpan(id + vec2(1.0, 0.0));
-  float r01 = randSpan(id + vec2(0.0, 1.0));
-  float r11 = randSpan(id + vec2(1.0, 1.0));
-
-  vec2 s0 = mix(vec2(r01, r00), vec2(r00, r10), ch2);
-  vec2 s1 = mix(vec2(r10, r11), vec2(r11, r01), ch2);
-  vec2 s = 1.0 - s0 + s1;
-
-  vec2 puv = (uv - id - s0) / max(s, vec2(0.001));
-  vec2 b = (0.5 - abs(puv - 0.5)) * s;
-  float d = min(b.x, b.y);
-  float edgeIn = smoothstep(0.012, 0.038, d); // sharp seams
-  float seam = 1.0 - edgeIn;
-
-  // Fixed occupancy target: ~75% filled.
-  float fillSel = step(0.25, hash(id * 1.31 + 7.2));
-  float tintMix = hash(id * 2.17 + 1.4);
-  vec3 tintA = uColor * 0.72;
-  vec3 tintB = min(vec3(1.0), uColor * 1.35 + vec3(0.02, 0.06, 0.1));
-  vec3 fillCol = mix(tintA, tintB, tintMix);
-  vec3 col = mix(vec3(0.0), fillCol, fillSel);
-
-  col *= edgeIn;
-  col -= seam * 0.28;
-  col = max(col, vec3(0.0));
-
-  // Visibility bias: keep the detail plane readable even when scene tint/opacity is low.
-  vec3 biasColor = vec3(0.72, 0.0, 0.72);
-  float biasMask = 0.22 + 0.58 * edgeIn;
-  col = max(col, biasColor * biasMask);
-
-  float radial = length((gl_FragCoord.xy / res) - 0.5);
-  float vignette = 1.0 - smoothstep(0.22, 0.88, radial);
-  float aShape = mix(0.24, 1.0, fillSel) * (0.8 + 0.2 * edgeIn);
-  float a = uOpacity * max(0.9, uIntensity) * max(0.72, aShape) * (0.85 + 0.15 * vignette);
-  a = max(a, uOpacity * 0.28);
-  if (a < 0.001) discard;
-  gl_FragColor = vec4(col, a);
+  float tileVisible = inTile * fillSel;
+  vec3 col = mix(blackBg, magentaTile, tileVisible);
+  // Hard grout/border to make tile structure obvious.
+  col = mix(col, COLOR_BG, border * BORDER_DARKEN);
+  gl_FragColor = vec4(col, OUTPUT_ALPHA);
 }
 `;

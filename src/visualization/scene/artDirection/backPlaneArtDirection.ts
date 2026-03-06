@@ -5,15 +5,15 @@
 
 export const BACK_PLANE_ART_DIRECTION = {
   /** Number of rear slabs (hero + optional secondary). */
-  planeCount: 0,
+  planeCount: 2,
   /** Opacity for primary (hero) slab. */
   opacityBaseHero: 0.07,
   /** Opacity for secondary slab. */
   opacityBaseSecondary: 0.04,
   /** Scale multiplier for hero plane (view-sized). */
   // Keep these under 1.0 so this layer reads as rear slabs, not a fullscreen wash.
-  scaleHero: 1.04,
-  scaleSecondary: 0.78,
+  scaleHero: 0.62,
+  scaleSecondary: 0.44,
   /** Drift speed scale (restrained; slower than spine). */
   driftScale: 0.4,
   /** Optional parallax (0 = off). */
