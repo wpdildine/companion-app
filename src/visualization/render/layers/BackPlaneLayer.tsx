@@ -5,62 +5,17 @@
  */
 
 import { useFrame } from '@react-three/fiber/native';
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { VisualizationEngineRef } from '../../engine/types';
+import { createBackPlaneMaterial } from '../../materials/backPlane/backPlaneMaterial';
 
-const VERTEX = `
-varying vec2 vUv;
-void main() {
-  vUv = uv;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`;
-
-const FRAGMENT = `
-precision mediump float;
-varying vec2 vUv;
-uniform vec3 uColor;
-uniform float uOpacity;
-uniform float uNoisePhase;
-
-float hash(vec2 p) {
-  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-}
-float noise(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  f = f * f * (3.0 - 2.0 * f);
-  float a = hash(i);
-  float b = hash(i + vec2(1.0, 0.0));
-  float c = hash(i + vec2(0.0, 1.0));
-  float d = hash(i + vec2(1.0, 1.0));
-  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-}
-
-void main() {
-  vec2 c = vUv - 0.5;
-  float r2 = dot(c, c);
-  float vig = 1.0 - smoothstep(0.12, 0.7, r2);
-  float n = noise(vUv * 2.0 + uNoisePhase) - 0.5;
-  float mod = 1.0 + n * 0.06;
-  vec3 col = uColor * vig * mod;
-  float a = uOpacity * vig;
-  gl_FragColor = vec4(col, a);
-}
-`;
-
-function getViewSizeAtPos(
+function getViewSizeAtDistance(
   camera: THREE.Camera,
-  planePos: THREE.Vector3,
+  distance: number,
   fallback: { width: number; height: number },
 ): { width: number; height: number } {
-  const dir = new THREE.Vector3();
-  camera.getWorldDirection(dir);
-  const camPos = new THREE.Vector3();
-  camera.getWorldPosition(camPos);
-  const v = new THREE.Vector3().subVectors(planePos, camPos);
-  const d = Math.max(0.01, v.dot(dir));
+  const d = Math.max(0.01, distance);
   const cam = camera as THREE.PerspectiveCamera;
   if (cam.isPerspectiveCamera) {
     const fovRad = THREE.MathUtils.degToRad(cam.fov ?? 50);
@@ -80,39 +35,23 @@ export function BackPlaneLayer({
   const tmpCamPos = useRef(new THREE.Vector3());
   const tmpDir = useRef(new THREE.Vector3());
   const colorRef = useRef(new THREE.Color(0.45, 0.48, 0.58));
+  const sizeRef = useRef({ width: 1, height: 1 });
 
   const materials = useMemo(() => {
     return [
-      new THREE.ShaderMaterial({
-        vertexShader: VERTEX,
-        fragmentShader: FRAGMENT,
-        transparent: true,
-        depthWrite: false,
-        depthTest: false,
-        blending: THREE.NormalBlending,
-        side: THREE.DoubleSide,
-        uniforms: {
-          uColor: { value: new THREE.Vector3(0.45, 0.48, 0.58) },
-          uOpacity: { value: 0.12 },
-          uNoisePhase: { value: 0 },
-        },
-      }),
-      new THREE.ShaderMaterial({
-        vertexShader: VERTEX,
-        fragmentShader: FRAGMENT,
-        transparent: true,
-        depthWrite: false,
-        depthTest: false,
-        blending: THREE.NormalBlending,
-        side: THREE.DoubleSide,
-        uniforms: {
-          uColor: { value: new THREE.Vector3(0.45, 0.48, 0.58) },
-          uOpacity: { value: 0.07 },
-          uNoisePhase: { value: 0.3 },
-        },
-      }),
+      createBackPlaneMaterial(0.12, 0.0),
+      createBackPlaneMaterial(0.07, 0.37),
     ];
   }, []);
+  useEffect(
+    () => () => {
+      for (const mat of materials) {
+        mat.map?.dispose();
+        mat.dispose();
+      }
+    },
+    [materials],
+  );
 
   useFrame((state) => {
     const v = visualizationRef.current;
@@ -121,7 +60,8 @@ export function BackPlaneLayer({
     const layers = v.scene.layers;
     const backPlaneRo = layers?.backPlane?.renderOrderBase ?? 1250;
     const camera = state.camera;
-    const viewport = { width: state.viewport.width, height: state.viewport.height };
+    sizeRef.current.width = state.viewport.width;
+    sizeRef.current.height = state.viewport.height;
     camera.getWorldPosition(tmpCamPos.current);
     camera.getWorldDirection(tmpDir.current);
     const motion = v.scene?.motion;
@@ -132,27 +72,31 @@ export function BackPlaneLayer({
       const mesh = meshRefs.current[i];
       if (!mesh) continue;
       const driftScale = plane.driftScale ?? 0.4;
-      const noisePhase = v.clock * 0.08 * driftScale + motionGain * 0.5;
-      const mat = mesh.material as THREE.ShaderMaterial;
-      if (mat.uniforms) {
-        mat.uniforms.uOpacity.value = plane.opacityBase * (1 + motionGain * 0.3);
-        mat.uniforms.uNoisePhase.value = noisePhase;
-        // EXGL/iOS: uColor is a vec3 uniform backed by THREE.Vector3.
-        // Do not use Vector3.copy(Color): Color has r/g/b (not x/y/z), which can produce
-        // undefined components and crash uniform3fv with "unsupported type".
-        mat.uniforms.uColor.value.set(
-          colorRef.current.r,
-          colorRef.current.g,
-          colorRef.current.b,
-        );
+      const mat = mesh.material as THREE.MeshBasicMaterial;
+      mat.opacity = plane.opacityBase * (1 + motionGain * 0.25);
+      mat.color
+        .copy(colorRef.current)
+        .multiplyScalar(0.85 + motionGain * 0.35);
+      const tex = mat.map;
+      if (tex) {
+        const phase = Number(mat.userData.layerPhase ?? 0);
+        tex.offset.x = (phase * 0.17 + v.clock * 0.004 * driftScale) % 1;
+        tex.offset.y = (phase * 0.09 + v.clock * 0.012 * driftScale) % 1;
       }
       const z = plane.z;
       mesh.position
         .copy(tmpCamPos.current)
         .addScaledVector(tmpDir.current, z);
-      const view = getViewSizeAtPos(camera, mesh.position, viewport);
+      const view = getViewSizeAtDistance(camera, z, sizeRef.current);
       const sx = (plane.scaleX ?? 1.35) * view.width;
       const sy = (plane.scaleY ?? 1.35) * view.height;
+      if (mat.map) {
+        // Keep halftone dots circular in world-space: repeatX/repeatY tracks plane aspect.
+        const aspectXY = sx / Math.max(0.001, sy);
+        const densityY = 88;
+        const densityX = densityY * aspectXY;
+        mat.map.repeat.set(densityX, densityY);
+      }
       mesh.scale.set(sx, sy, 1);
       mesh.quaternion.copy(camera.quaternion);
       mesh.renderOrder = backPlaneRo + i;
