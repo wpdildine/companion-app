@@ -1,5 +1,7 @@
 /**
  * Seeded RNG for deterministic layout (e.g. cluster placement).
+ * Returns value in [0, 1].
  */
-
-// Stub: add as needed.
+export function seeded(i: number, seed: number): number {
+  return Math.abs(Math.sin((i + 1) * seed));
+}
