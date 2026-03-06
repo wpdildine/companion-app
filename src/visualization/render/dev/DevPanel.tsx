@@ -38,6 +38,7 @@ const APP_STATES: VisualizationMode[] = [
 
 /** Canonical modes only — for spine validation (Cycle canonical). Temporary: remove when done. */
 const CANONICAL_MODES: VisualizationMode[] = ['idle', 'listening', 'processing', 'speaking'];
+const AXIS_LOCK_MODES: Array<'none' | 'x' | 'y'> = ['none', 'x', 'y'];
 const DEFAULT_POST_FX = {
   enabled: true,
   vignette: 0.22,
@@ -318,6 +319,253 @@ export function DevPanel({
           >
             <Text style={{ color: textColor }}>Reset to default mode behavior</Text>
           </Pressable>
+          <Text style={[styles.section, { color: muted }]}>Motion axis debug</Text>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>Axis debug</Text>
+            <Pressable
+              onPress={() => {
+                withViz(viz => {
+                  viz.motionAxisDebug.enabled = !viz.motionAxisDebug.enabled;
+                });
+              }}
+            >
+              <Text style={{ color: muted }}>
+                {v.motionAxisDebug.enabled ? 'ON' : 'OFF'}
+              </Text>
+            </Pressable>
+          </View>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>Lock mode</Text>
+            <Pressable
+              onPress={() => {
+                withViz(viz => {
+                  const idx = AXIS_LOCK_MODES.indexOf(viz.motionAxisDebug.axisLockMode);
+                  viz.motionAxisDebug.axisLockMode =
+                    AXIS_LOCK_MODES[(idx + 1) % AXIS_LOCK_MODES.length]!;
+                });
+              }}
+            >
+              <Text style={{ color: muted }}>{v.motionAxisDebug.axisLockMode}</Text>
+            </Pressable>
+          </View>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>X gain</Text>
+            <View style={styles.row}>
+              <Pressable
+                onPress={() =>
+                  withViz(viz => {
+                    viz.motionAxisDebug.xGain = clamp(viz.motionAxisDebug.xGain - 0.1, 0, 3);
+                  })
+                }
+              >
+                <Text style={{ color: textColor }}> − </Text>
+              </Pressable>
+              <Text style={{ color: muted }}>{v.motionAxisDebug.xGain.toFixed(1)}</Text>
+              <Pressable
+                onPress={() =>
+                  withViz(viz => {
+                    viz.motionAxisDebug.xGain = clamp(viz.motionAxisDebug.xGain + 0.1, 0, 3);
+                  })
+                }
+              >
+                <Text style={{ color: textColor }}> + </Text>
+              </Pressable>
+            </View>
+          </View>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>Y gain</Text>
+            <View style={styles.row}>
+              <Pressable
+                onPress={() =>
+                  withViz(viz => {
+                    viz.motionAxisDebug.yGain = clamp(viz.motionAxisDebug.yGain - 0.1, 0, 3);
+                  })
+                }
+              >
+                <Text style={{ color: textColor }}> − </Text>
+              </Pressable>
+              <Text style={{ color: muted }}>{v.motionAxisDebug.yGain.toFixed(1)}</Text>
+              <Pressable
+                onPress={() =>
+                  withViz(viz => {
+                    viz.motionAxisDebug.yGain = clamp(viz.motionAxisDebug.yGain + 0.1, 0, 3);
+                  })
+                }
+              >
+                <Text style={{ color: textColor }}> + </Text>
+              </Pressable>
+            </View>
+          </View>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>Plane deform gain</Text>
+            <View style={styles.row}>
+              <Pressable
+                onPress={() =>
+                  withViz(viz => {
+                    viz.motionAxisDebug.planeDeformGain = clamp(
+                      viz.motionAxisDebug.planeDeformGain - 0.1,
+                      0,
+                      3,
+                    );
+                  })
+                }
+              >
+                <Text style={{ color: textColor }}> − </Text>
+              </Pressable>
+              <Text style={{ color: muted }}>
+                {v.motionAxisDebug.planeDeformGain.toFixed(1)}
+              </Text>
+              <Pressable
+                onPress={() =>
+                  withViz(viz => {
+                    viz.motionAxisDebug.planeDeformGain = clamp(
+                      viz.motionAxisDebug.planeDeformGain + 0.1,
+                      0,
+                      3,
+                    );
+                  })
+                }
+              >
+                <Text style={{ color: textColor }}> + </Text>
+              </Pressable>
+            </View>
+          </View>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>Plane bend gain</Text>
+            <View style={styles.row}>
+              <Pressable
+                onPress={() =>
+                  withViz(viz => {
+                    viz.motionAxisDebug.planeBendGain = clamp(
+                      viz.motionAxisDebug.planeBendGain - 0.1,
+                      0,
+                      3,
+                    );
+                  })
+                }
+              >
+                <Text style={{ color: textColor }}> − </Text>
+              </Pressable>
+              <Text style={{ color: muted }}>
+                {v.motionAxisDebug.planeBendGain.toFixed(1)}
+              </Text>
+              <Pressable
+                onPress={() =>
+                  withViz(viz => {
+                    viz.motionAxisDebug.planeBendGain = clamp(
+                      viz.motionAxisDebug.planeBendGain + 0.1,
+                      0,
+                      3,
+                    );
+                  })
+                }
+              >
+                <Text style={{ color: textColor }}> + </Text>
+              </Pressable>
+            </View>
+          </View>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>Plane warp gain</Text>
+            <View style={styles.row}>
+              <Pressable
+                onPress={() =>
+                  withViz(viz => {
+                    viz.motionAxisDebug.planeWarpGain = clamp(
+                      viz.motionAxisDebug.planeWarpGain - 0.1,
+                      0,
+                      3,
+                    );
+                  })
+                }
+              >
+                <Text style={{ color: textColor }}> − </Text>
+              </Pressable>
+              <Text style={{ color: muted }}>
+                {v.motionAxisDebug.planeWarpGain.toFixed(1)}
+              </Text>
+              <Pressable
+                onPress={() =>
+                  withViz(viz => {
+                    viz.motionAxisDebug.planeWarpGain = clamp(
+                      viz.motionAxisDebug.planeWarpGain + 0.1,
+                      0,
+                      3,
+                    );
+                  })
+                }
+              >
+                <Text style={{ color: textColor }}> + </Text>
+              </Pressable>
+            </View>
+          </View>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>Shard drift gain</Text>
+            <View style={styles.row}>
+              <Pressable
+                onPress={() =>
+                  withViz(viz => {
+                    viz.motionAxisDebug.shardDriftGain = clamp(
+                      viz.motionAxisDebug.shardDriftGain - 0.1,
+                      0,
+                      3,
+                    );
+                  })
+                }
+              >
+                <Text style={{ color: textColor }}> − </Text>
+              </Pressable>
+              <Text style={{ color: muted }}>
+                {v.motionAxisDebug.shardDriftGain.toFixed(1)}
+              </Text>
+              <Pressable
+                onPress={() =>
+                  withViz(viz => {
+                    viz.motionAxisDebug.shardDriftGain = clamp(
+                      viz.motionAxisDebug.shardDriftGain + 0.1,
+                      0,
+                      3,
+                    );
+                  })
+                }
+              >
+                <Text style={{ color: textColor }}> + </Text>
+              </Pressable>
+            </View>
+          </View>
+          <View style={styles.row}>
+            <Text style={{ color: textColor }}>Glyph motion gain</Text>
+            <View style={styles.row}>
+              <Pressable
+                onPress={() =>
+                  withViz(viz => {
+                    viz.motionAxisDebug.glyphMotionGain = clamp(
+                      viz.motionAxisDebug.glyphMotionGain - 0.1,
+                      0,
+                      3,
+                    );
+                  })
+                }
+              >
+                <Text style={{ color: textColor }}> − </Text>
+              </Pressable>
+              <Text style={{ color: muted }}>
+                {v.motionAxisDebug.glyphMotionGain.toFixed(1)}
+              </Text>
+              <Pressable
+                onPress={() =>
+                  withViz(viz => {
+                    viz.motionAxisDebug.glyphMotionGain = clamp(
+                      viz.motionAxisDebug.glyphMotionGain + 0.1,
+                      0,
+                      3,
+                    );
+                  })
+                }
+              >
+                <Text style={{ color: textColor }}> + </Text>
+              </Pressable>
+            </View>
+          </View>
           <View style={styles.row}>
             <Text style={{ color: textColor }}>Cycle all states</Text>
             <Pressable onPress={toggleStateCycle}>

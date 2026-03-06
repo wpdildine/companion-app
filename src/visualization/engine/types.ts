@@ -136,6 +136,18 @@ export interface VisualizationEngineRef {
   canonicalCycleOn: boolean;
   canonicalCycleTimerId: ReturnType<typeof setInterval> | null;
   canonicalCycleIdx: number;
+  /** Dev-only: axis lock/bias overrides for consumer-side micro-motion mapping. */
+  motionAxisDebug: {
+    enabled: boolean;
+    axisLockMode: 'none' | 'x' | 'y';
+    xGain: number;
+    yGain: number;
+    planeDeformGain: number;
+    planeBendGain: number;
+    planeWarpGain: number;
+    shardDriftGain: number;
+    glyphMotionGain: number;
+  };
   /** Dev: when true, app signal mode/phase writes are ignored and mode stays pinned. */
   modePinActive: boolean;
   modePin: VisualizationMode | null;

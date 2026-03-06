@@ -338,6 +338,7 @@ export function EngineLoop({ visualizationRef }: { visualizationRef: React.RefOb
             canonicalCycleOn: v.canonicalCycleOn,
             modePinActive: v.modePinActive,
             modePin: v.modePin,
+            motionAxisDebug: v.motionAxisDebug,
             stateCycleIdx: v.stateCycleIdx,
             canonicalCycleIdx: v.canonicalCycleIdx,
           });

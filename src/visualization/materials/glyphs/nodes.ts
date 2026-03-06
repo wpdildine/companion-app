@@ -34,6 +34,9 @@ export const nodeVertex = `
   uniform float uMotionAttention;
   uniform float uMotionSettle;
   uniform float uMotionMicro;
+  uniform float uMotionAxisX;
+  uniform float uMotionAxisY;
+  uniform float uGlyphMotionGain;
   varying vec3 vColor;
   varying float vAlpha;
   varying float vPulse;
@@ -57,7 +60,7 @@ export const nodeVertex = `
     float swirl = sin(uTime * (0.32 + decayRate * 0.18) + position.x * 2.1) + cos(uTime * (0.27 + decayRate * 0.15) + position.z * 1.9);
     // Keep spherical core, but loosen edge falloff so the outer shell extends further.
     float edgeRelax = smoothstep(0.25, 1.0, distanceFromRoot);
-    float motionFuzzBoost = 1.0 + uMotionMicro * 0.2;
+    float motionFuzzBoost = 1.0 + uMotionMicro * 0.2 * uGlyphMotionGain;
     float radialFuzz =
       (0.07 + decayDepth * 0.36) * (0.75 + edgeRelax * 1.45) * localNoise +
       (0.05 + edgeRelax * 0.12) * swirl;
@@ -66,11 +69,14 @@ export const nodeVertex = `
     float tangentFuzzB = cos(uTime * 0.31 + decayPhase + position.x * 4.0);
     vec3 tangent = normalize(vec3(-position.z + 1e-3, 0.0, position.x + 1e-3));
     vec3 bitangent = normalize(cross(normalize(position), tangent));
-    vec3 pos =
-      position +
+    vec3 microOffset =
       normalize(position) * radialFuzz +
       tangent * (0.03 + decayDepth * 0.08 + edgeRelax * 0.06) * tangentFuzzA +
       bitangent * (0.03 + decayDepth * 0.08 + edgeRelax * 0.06) * tangentFuzzB;
+    microOffset *= uGlyphMotionGain;
+    microOffset.x *= uMotionAxisX;
+    microOffset.y *= uMotionAxisY;
+    vec3 pos = position + microOffset;
     vec4 worldPreTouch = uModelMatrix * vec4(pos, 1.0);
     vec2 touchDeltaXY = worldPreTouch.xy - uTouchWorld.xy;
     float touchDistXY = length(touchDeltaXY);

@@ -199,6 +199,9 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
       uMotionAttention: { value: 0 },
       uMotionSettle: { value: 0 },
       uMotionMicro: { value: 0 },
+      uMotionAxisX: { value: 1 },
+      uMotionAxisY: { value: 1 },
+      uGlyphMotionGain: { value: 1 },
     }),
     [glyphsScene],
   );
@@ -259,6 +262,31 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
     uniforms.uMotionAttention.value = motion ? motion.attention : 0;
     uniforms.uMotionSettle.value = motion ? motion.settle : 0;
     uniforms.uMotionMicro.value = motion ? motion.microMotion : 0;
+    const axisDebugOn =
+      typeof __DEV__ !== 'undefined' &&
+      __DEV__ &&
+      !!v.motionAxisDebug?.enabled;
+    let axisX = 1;
+    let axisY = 1;
+    if (axisDebugOn) {
+      const mode = v.motionAxisDebug.axisLockMode ?? 'none';
+      const xGain = Math.max(0, v.motionAxisDebug.xGain ?? 1);
+      const yGain = Math.max(0, v.motionAxisDebug.yGain ?? 1);
+      if (mode === 'x') {
+        axisX = 1;
+        axisY = 0;
+      } else if (mode === 'y') {
+        axisX = 0;
+        axisY = 1;
+      } else {
+        axisX = xGain;
+        axisY = yGain;
+      }
+    }
+    uniforms.uMotionAxisX.value = axisX;
+    uniforms.uMotionAxisY.value = axisY;
+    uniforms.uGlyphMotionGain.value =
+      axisDebugOn ? Math.max(0, v.motionAxisDebug.glyphMotionGain ?? 1) : 1;
 
     viewMatrixRef.current.copy(state.camera.matrixWorldInverse);
     projectionMatrixRef.current.copy(state.camera.projectionMatrix);

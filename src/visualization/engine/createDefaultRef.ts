@@ -86,6 +86,17 @@ export function createDefaultVisualizationRef(): VisualizationEngineRef {
     canonicalCycleOn: false,
     canonicalCycleTimerId: null,
     canonicalCycleIdx: 0,
+    motionAxisDebug: {
+      enabled: false,
+      axisLockMode: 'none',
+      xGain: 1,
+      yGain: 1,
+      planeDeformGain: 1,
+      planeBendGain: 1,
+      planeWarpGain: 1,
+      shardDriftGain: 1,
+      glyphMotionGain: 1,
+    },
     modePinActive: false,
     modePin: null,
   };

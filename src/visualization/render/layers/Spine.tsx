@@ -274,6 +274,35 @@ export function Spine({
     cameraRightRef.current
       .crossVectors(cameraDirRef.current, cameraUpRef.current)
       .normalize();
+    const axisDebugOn =
+      typeof __DEV__ !== 'undefined' &&
+      __DEV__ &&
+      !!v.motionAxisDebug?.enabled;
+    let axisX = 1;
+    let axisY = 1;
+    let planeDeformGain = 1;
+    let planeBendGain = 1;
+    let planeWarpGain = 1;
+    let shardDriftGain = 1;
+    if (axisDebugOn) {
+      const mode = v.motionAxisDebug.axisLockMode ?? 'none';
+      const xGain = Math.max(0, v.motionAxisDebug.xGain ?? 1);
+      const yGain = Math.max(0, v.motionAxisDebug.yGain ?? 1);
+      planeDeformGain = Math.max(0, v.motionAxisDebug.planeDeformGain ?? 1);
+      planeBendGain = Math.max(0, v.motionAxisDebug.planeBendGain ?? 1);
+      planeWarpGain = Math.max(0, v.motionAxisDebug.planeWarpGain ?? 1);
+      shardDriftGain = Math.max(0, v.motionAxisDebug.shardDriftGain ?? 1);
+      if (mode === 'x') {
+        axisX = 1;
+        axisY = 0;
+      } else if (mode === 'y') {
+        axisX = 0;
+        axisY = 1;
+      } else {
+        axisX = xGain;
+        axisY = yGain;
+      }
+    }
 
     let driftFactor = 0;
     if (!v.reduceMotion) {
@@ -297,13 +326,15 @@ export function Spine({
       spine.style.driftAmpY *
       driftFactor *
       Math.cos(v.clock * driftRate * 1.7 * 2 * Math.PI);
-    const lockedDriftX = isProcessing ? 0 : driftX;
+    const driftXEffective = driftX * axisX * planeDeformGain;
+    const driftYEffective = driftY * axisY * planeDeformGain;
+    const lockedDriftX = isProcessing && !axisDebugOn ? 0 : driftXEffective;
 
     groupRef.current.position
       .copy(cameraPosRef.current)
       .add(cameraDirRef.current.multiplyScalar(overlayDistance))
       .addScaledVector(cameraRightRef.current, lockedDriftX)
-      .addScaledVector(cameraUpRef.current, spineCenterWorldY + driftY);
+      .addScaledVector(cameraUpRef.current, spineCenterWorldY + driftYEffective);
     groupRef.current.quaternion.copy(cam.quaternion);
 
     const planeCount = spine.planeCount;
@@ -366,6 +397,8 @@ export function Spine({
         Math.abs(relativeToCenter) *
         apertureStride *
         currentApertureRef.current;
+      const apertureShiftEffective =
+        apertureShift * axisY * planeDeformGain * planeBendGain;
 
       const perPlanePhase = i * perPlaneDriftPhaseStep;
       const scale = perPlaneDriftScale;
@@ -383,6 +416,10 @@ export function Spine({
         driftFactor *
         scale *
         Math.cos(v.clock * driftRate * 1.7 * 2 * Math.PI + perPlanePhase);
+      const perPlaneXEffective =
+        perPlaneX * axisX * planeDeformGain * planeWarpGain;
+      const perPlaneYEffective =
+        perPlaneY * axisY * planeDeformGain * planeWarpGain;
 
       const planeZ = spine.planes?.[i]?.z;
       if (typeof planeZ !== 'number') {
@@ -391,8 +428,8 @@ export function Spine({
         continue;
       }
       mesh.position.set(
-        envelopeWidthWorld * offsetX + perPlaneX,
-        localY + apertureShift + perPlaneY,
+        envelopeWidthWorld * offsetX + perPlaneXEffective,
+        localY + apertureShiftEffective + perPlaneYEffective,
         planeZ,
       );
       mesh.scale.set(
@@ -521,7 +558,7 @@ export function Spine({
         mesh.visible = true;
         const mat = planeMats[i];
         const planeX =
-          envelopeWidthWorld * offsetX + perPlaneX;
+          envelopeWidthWorld * offsetX + perPlaneXEffective;
         const beamHalfWidth = Math.max(
           0.0001,
           envelopeWidthWorld * (spine.style.beamHalfWidthFrac ?? 0.12),
@@ -585,6 +622,7 @@ export function Spine({
     const motionOpenness = motion?.openness ?? 0;
     const motionSettle = motion?.settle ?? 0;
     const motionMicro = motion?.microMotion ?? 0;
+    const motionMicroForShards = motionMicro * shardDriftGain;
     const shardBaseWidthScale = spine.style.shardWidthScale ?? 0.28;
     const visibleShardCount =
       spine.shardCountByMode?.[canonicalMode] ?? shards.length;
@@ -598,10 +636,10 @@ export function Spine({
       const shardDriftScale =
         (shard.driftScale ?? 1) *
         0.32 *
-        (1 + motionEnergy * 0.55 + motionMicro * 0.28) *
+        (1 + motionEnergy * 0.55 + motionMicroForShards * 0.28) *
         (1 - motionSettle * 0.35);
       const shardDriftX = !v.reduceMotion
-        ? isProcessing
+        ? isProcessing && !axisDebugOn
           ? 0
           : envelopeWidthWorld *
             spine.style.driftAmpX *
@@ -616,9 +654,11 @@ export function Spine({
           shardDriftScale *
           Math.cos(v.clock * shardRate * 1.7 * 2 * Math.PI + shard.driftPhase)
         : 0;
+      const shardDriftXEffective = shardDriftX * axisX;
+      const shardDriftYEffective = shardDriftY * axisY;
       mesh.position.set(
-        envelopeWidthWorld * shard.offsetX + shardDriftX,
-        envelopeHeightWorld * shard.offsetY + shardDriftY,
+        envelopeWidthWorld * shard.offsetX + shardDriftXEffective,
+        envelopeHeightWorld * shard.offsetY + shardDriftYEffective,
         shard.z,
       );
       mesh.scale.set(

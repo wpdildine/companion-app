@@ -44,7 +44,7 @@ export const SPINE_BASE_PRESET = {
     halftoneFadeCenterY: 0.54,
     halftoneFadeLevels: 4,
     halftoneFadeStepMix: 0.2,
-    halftoneFadeOneSided: true,
+    halftoneFadeOneSided: false,
     edgeGlowStrength: 0.56,
     edgeGlowWidth: 0.062,
     edgeGlowColor: '#8fe9ff',
