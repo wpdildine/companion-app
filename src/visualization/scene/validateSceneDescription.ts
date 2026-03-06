@@ -213,6 +213,28 @@ export function validateSceneDescription(
       return false;
     }
   }
+  const backPlane = scene.backPlane;
+  if (!backPlane || typeof backPlane.count !== 'number' || backPlane.count < 0) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.backPlane is missing or backPlane.count is invalid.');
+    }
+    return false;
+  }
+  if (!Array.isArray(backPlane.planes) || backPlane.planes.length !== backPlane.count) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.backPlane.planes must be array of length backPlane.count.');
+    }
+    return false;
+  }
+  for (let i = 0; i < backPlane.planes.length; i++) {
+    const p = backPlane.planes[i];
+    if (p == null || typeof p.z !== 'number' || typeof p.opacityBase !== 'number') {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[validateSceneDescription] scene.backPlane.planes[] must have z and opacityBase.');
+      }
+      return false;
+    }
+  }
   if (!scene.presets) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error('[validateSceneDescription] scene.presets is missing.');

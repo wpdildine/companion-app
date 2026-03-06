@@ -336,11 +336,26 @@ export type GLSceneBackgroundPlanes = {
   lum: number;
 };
 
+/** Back plane layer: rear structural slabs behind the spine. Z between spine and background; builder-owned. */
+export type GLSceneBackPlane = {
+  count: number;
+  planes: Array<{
+    z: number;
+    scaleX?: number;
+    scaleY?: number;
+    opacityBase: number;
+    driftScale?: number;
+  }>;
+  /** Optional: subtle parallax with camera/spine movement (e.g. 0.02–0.05). */
+  parallaxScale?: number;
+};
+
 /** Draw-order section: renderOrderBase only; Z comes from builders. */
 export type GLSceneLayerSection = { renderOrderBase: number };
 
 export const GL_SCENE_LAYER_KEYS = [
   'background',
+  'backPlane',
   'spineLightCore',
   'spineBase',
   'spineShards',
@@ -361,6 +376,13 @@ export type GLSceneContextGlyphs = {
   touchRadius: number;
   touchStrength: number;
   touchMaxOffset: number;
+  opacityScaleBack: number;
+  opacityScaleFront: number;
+  scaleBack: number;
+  scaleFront: number;
+  motionGainBack: number;
+  motionGainFront: number;
+  relaxSpeed: number;
   zLayerOffsets: number[];
   zLayerJitter: number;
   rulesClusterZBias: number;
@@ -394,6 +416,12 @@ export type GLScenePlaneField = {
   opacityClampMax: number;
   noisePhaseSpeed: number;
   smoothingSeconds: number;
+  /** Depth field: radial falloff strength. */
+  radialFalloffStrength: number;
+  vignetteScale: number;
+  halftoneDensityVariation: number;
+  slowDriftScale: number;
+  valueVariation: number;
   intensityProcessingBase: number;
   intensityProcessingActivityGain: number;
   intensityIdleBase: number;
@@ -510,6 +538,7 @@ export type GLSceneDescription = {
   clusters: GLSceneClusters;
   links: GLSceneLinks;
   backgroundPlanes: GLSceneBackgroundPlanes;
+  backPlane: GLSceneBackPlane;
   contextGlyphs: GLSceneContextGlyphs;
   contextLinks: GLSceneContextLinks;
   planeField: GLScenePlaneField;
@@ -603,6 +632,7 @@ function hexToRgb(hex: string): [number, number, number] {
 import { buildSpineDescription, type GLSceneSpine } from './builders/spine';
 import { buildSpineRotPlanes } from './builders/buildSpineRotPlanes';
 import { buildSpineLightCore } from './builders/buildSpineLightCore';
+import { buildBackPlaneDescription } from './builders/backPlane';
 import { buildContextGlyphsDescription } from './builders/contextGlyphs';
 import { buildContextLinksDescription } from './builders/contextLinks';
 import { buildPlaneLayerFieldDescription } from './builders/planeLayerField';
@@ -700,6 +730,8 @@ export function getSceneDescription(
     lum: 0.55,
   };
 
+  const backPlane = buildBackPlaneDescription(spine, backgroundPlanesWithZ);
+
   const centerRatio = 2 * NEUTRAL_HALF_WIDTH_NDC;
   const sideRatio = (1 - centerRatio) / 2;
   return {
@@ -731,12 +763,14 @@ export function getSceneDescription(
       z: 0,
     },
     backgroundPlanes: backgroundPlanesWithZ,
+    backPlane,
     layers: {
       background: { renderOrderBase: 1000 },
-      spineLightCore: { renderOrderBase: 1500 },
-      spineBase: { renderOrderBase: 2000 },
-      spineShards: { renderOrderBase: 2100 },
-      glyphsBack: { renderOrderBase: 3000 },
+      backPlane: { renderOrderBase: 1250 },
+      glyphsBack: { renderOrderBase: 1500 },
+      spineLightCore: { renderOrderBase: 2000 },
+      spineBase: { renderOrderBase: 2100 },
+      spineShards: { renderOrderBase: 2200 },
       links: { renderOrderBase: 3200 },
       glyphsFront: { renderOrderBase: 3500 },
       spineRot: { renderOrderBase: 3600 },

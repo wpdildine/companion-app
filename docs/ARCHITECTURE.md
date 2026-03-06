@@ -20,7 +20,7 @@ Canonical "where do I go?" doc; reference from README.
 
 - **src/app** — app entry + navigation.
 - **src/rag/** — RAG feature (`ask.ts`, runtime/context/provider logic, pack IO, types.ts).
-- **src/visualization/** — Pure visualization layer (engine/, scene/, render/, interaction/, materials/, utils/). VisualizationCanvas, VisualizationSurface, VisualizationCanvasR3F, InteractionBand, DevPanel. No app state or theme import; receives injected theme primitives + engine ref. **GL canvas draw order:** (1) background field, (2) spine (base + shards + rot layer), (3) links/glyphs, (4) TouchZones (debug overlay). Engine ref / viz state validation: visualization/engine/validateVizState; scene contract: visualization/scene/validateSceneDescription.
+- **src/visualization/** — Pure visualization layer (engine/, scene/, render/, interaction/, materials/, utils/). VisualizationCanvas, VisualizationSurface, VisualizationCanvasR3F, InteractionBand, DevPanel. No app state or theme import; receives injected theme primitives + engine ref. **GL canvas draw order:** (1) background field, (2) spine light core, (3) spine (base + shards + rot layer), (4) links/glyphs, (5) TouchZones (debug overlay), (6) post FX pass. Engine ref / viz state validation: visualization/engine/validateVizState; scene contract: visualization/scene/validateSceneDescription.
 - **src/shared/** — platform-agnostic core: `types/`, `native/`.
 - **src/theme/** — canonical theme source (`getTheme`, `tokens`).
 - **src/screens/** — screen-level view composition (`voice/`, `dev/`).

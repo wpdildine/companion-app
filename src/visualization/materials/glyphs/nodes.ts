@@ -37,6 +37,8 @@ export const nodeVertex = `
   uniform float uMotionAxisX;
   uniform float uMotionAxisY;
   uniform float uGlyphMotionGain;
+  uniform float uOpacityScale;
+  uniform float uScale;
   varying vec3 vColor;
   varying float vAlpha;
   varying float vPulse;
@@ -145,7 +147,7 @@ export const nodeVertex = `
     float sizeMotionScale =
       (0.96 + uMotionOpenness * 0.16 + uMotionAttention * 0.08) *
       (1.0 - uMotionSettle * 0.12);
-    float sizeMult = (1.0 + attentionBias * 0.5) * sizeMotionScale;
+    float sizeMult = (1.0 + attentionBias * 0.5) * sizeMotionScale * uScale;
     float s = (uBaseNodeSize + nodeSize) * sizeDecay * (220.0 / -mv.z) * (1.0 + pulse * 0.35 + touchBoost * 0.2) * sizeMult;
     gl_PointSize = max(s, 2.4) * max(0.0, visible);
     vAlpha *= max(0.0, visible);
@@ -157,6 +159,7 @@ export const nodeFragment = `
   varying float vAlpha;
   varying float vPulse;
   varying float vNodeType;
+  uniform float uOpacityScale;
   void main() {
     vec2 c = gl_PointCoord - 0.5;
     float d = length(c);
@@ -171,8 +174,8 @@ export const nodeFragment = `
     } else if (vNodeType >= 1.5) {
       shapeMask = square;
     }
-    float a = shapeMask * vAlpha;
-    a += vPulse * 0.14 * (1.0 - d * 2.0);
+    float a = shapeMask * vAlpha * uOpacityScale;
+    a += vPulse * 0.14 * (1.0 - d * 2.0) * uOpacityScale;
     gl_FragColor = vec4(vColor, min(a, 1.0));
   }
 `;

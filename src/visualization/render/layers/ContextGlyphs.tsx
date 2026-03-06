@@ -164,46 +164,61 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
     released: 5,
   };
 
-  const uniforms = useMemo(
-    () => ({
-      uTime: { value: 0 },
-      uActivity: { value: 0.1 },
-      uMode: { value: 0 },
-      uBaseNodeSize: { value: glyphsScene?.baseNodeSize ?? 5.25 },
-      uPulseSpeed: { value: glyphsScene?.pulseSpeed ?? 4 },
-      uPulsePositions: {
-        value: [
-          new THREE.Vector3(1e6, 1e6, 1e6),
-          new THREE.Vector3(1e6, 1e6, 1e6),
-          new THREE.Vector3(1e6, 1e6, 1e6),
-        ],
-      },
-      uPulseTimes: { value: new Float32Array([-1e3, -1e3, -1e3]) },
-      uPulseColors: {
-        value: [
-          new THREE.Vector3(1, 1, 1),
-          new THREE.Vector3(1, 1, 1),
-          new THREE.Vector3(1, 1, 1),
-        ],
-      },
-      uTouchWorld: { value: new THREE.Vector3(1e6, 1e6, 1e6) },
-      uTouchInfluence: { value: 0 },
-      uModelMatrix: { value: new THREE.Matrix4() },
-      uViewMatrix: { value: new THREE.Matrix4() },
-      uProjectionMatrix: { value: new THREE.Matrix4() },
-      uTouchRadius: { value: glyphsScene?.touchRadius ?? 3.6 },
-      uTouchStrength: { value: glyphsScene?.touchStrength ?? 2.8 },
-      uTouchMaxOffset: { value: glyphsScene?.touchMaxOffset ?? 1.35 },
-      uFocusBias: { value: 0 },
-      uMotionOpenness: { value: 0 },
-      uMotionAttention: { value: 0 },
-      uMotionSettle: { value: 0 },
-      uMotionMicro: { value: 0 },
-      uMotionAxisX: { value: 1 },
-      uMotionAxisY: { value: 1 },
-      uGlyphMotionGain: { value: 1 },
-    }),
-    [glyphsScene],
+  const opacityScaleBack = glyphsScene?.opacityScaleBack ?? 0.72;
+  const opacityScaleFront = glyphsScene?.opacityScaleFront ?? 1;
+  const scaleBack = glyphsScene?.scaleBack ?? 0.88;
+  const scaleFront = glyphsScene?.scaleFront ?? 1.05;
+  const motionGainBack = glyphsScene?.motionGainBack ?? 0.7;
+  const motionGainFront = glyphsScene?.motionGainFront ?? 0.95;
+
+  const makeUniforms = (uOpacityScale: number, uScale: number, uGlyphMotionGain: number) => ({
+    uTime: { value: 0 },
+    uActivity: { value: 0.1 },
+    uMode: { value: 0 },
+    uBaseNodeSize: { value: glyphsScene?.baseNodeSize ?? 5.25 },
+    uPulseSpeed: { value: glyphsScene?.pulseSpeed ?? 4 },
+    uPulsePositions: {
+      value: [
+        new THREE.Vector3(1e6, 1e6, 1e6),
+        new THREE.Vector3(1e6, 1e6, 1e6),
+        new THREE.Vector3(1e6, 1e6, 1e6),
+      ],
+    },
+    uPulseTimes: { value: new Float32Array([-1e3, -1e3, -1e3]) },
+    uPulseColors: {
+      value: [
+        new THREE.Vector3(1, 1, 1),
+        new THREE.Vector3(1, 1, 1),
+        new THREE.Vector3(1, 1, 1),
+      ],
+    },
+    uTouchWorld: { value: new THREE.Vector3(1e6, 1e6, 1e6) },
+    uTouchInfluence: { value: 0 },
+    uModelMatrix: { value: new THREE.Matrix4() },
+    uViewMatrix: { value: new THREE.Matrix4() },
+    uProjectionMatrix: { value: new THREE.Matrix4() },
+    uTouchRadius: { value: glyphsScene?.touchRadius ?? 3.6 },
+    uTouchStrength: { value: glyphsScene?.touchStrength ?? 2.8 },
+    uTouchMaxOffset: { value: glyphsScene?.touchMaxOffset ?? 1.35 },
+    uFocusBias: { value: 0 },
+    uMotionOpenness: { value: 0 },
+    uMotionAttention: { value: 0 },
+    uMotionSettle: { value: 0 },
+    uMotionMicro: { value: 0 },
+    uMotionAxisX: { value: 1 },
+    uMotionAxisY: { value: 1 },
+    uGlyphMotionGain: { value: uGlyphMotionGain },
+    uOpacityScale: { value: uOpacityScale },
+    uScale: { value: uScale },
+  });
+
+  const backUniforms = useMemo(
+    () => makeUniforms(opacityScaleBack, scaleBack, motionGainBack),
+    [glyphsScene, opacityScaleBack, scaleBack, motionGainBack],
+  );
+  const frontUniforms = useMemo(
+    () => makeUniforms(opacityScaleFront, scaleFront, motionGainFront),
+    [glyphsScene, opacityScaleFront, scaleFront, motionGainFront],
   );
 
   useFrame((state, delta) => {
@@ -222,14 +237,21 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
       const visibleAttr = geom.getAttribute('visible');
       if (visibleAttr) visibleAttr.needsUpdate = true;
     };
-    const applyPositions = (geom: THREE.BufferGeometry, b: GlyphBuffers) => {
+    const relaxSpeed = glyphsScene?.relaxSpeed ?? 2;
+    const blendFactor = 1 - Math.exp(-relaxSpeed * Math.min(delta, 0.1));
+    const blendPositions = (geom: THREE.BufferGeometry, b: GlyphBuffers) => {
+      const pos = b.positions;
       for (let i = 0; i < b.globalIndices.length; i++) {
         const global = b.globalIndices[i]!;
         const node = nodes[global];
         if (!node) continue;
-        b.positions[i * 3] = node.position[0];
-        b.positions[i * 3 + 1] = node.position[1];
-        b.positions[i * 3 + 2] = node.position[2];
+        const tx = node.position[0];
+        const ty = node.position[1];
+        const tz = node.position[2];
+        const ix = i * 3;
+        pos[ix] += (tx - pos[ix]) * blendFactor;
+        pos[ix + 1] += (ty - pos[ix + 1]) * blendFactor;
+        pos[ix + 2] += (tz - pos[ix + 2]) * blendFactor;
       }
       const posAttr = geom.getAttribute('position');
       if (posAttr) posAttr.needsUpdate = true;
@@ -237,41 +259,20 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
 
     applyVisibility(backGeom, backBuffers);
     applyVisibility(frontGeom, frontBuffers);
-    applyPositions(backGeom, backBuffers);
-    applyPositions(frontGeom, frontBuffers);
+    blendPositions(backGeom, backBuffers);
+    blendPositions(frontGeom, frontBuffers);
 
-    uniforms.uTime.value += delta;
-    uniforms.uActivity.value = v.activity;
-    uniforms.uMode.value = MODE_TO_ID[v.currentMode as keyof typeof MODE_TO_ID] ?? 0;
-    uniforms.uPulsePositions.value[0].set(v.pulsePositions[0][0], v.pulsePositions[0][1], v.pulsePositions[0][2]);
-    uniforms.uPulsePositions.value[1].set(v.pulsePositions[1][0], v.pulsePositions[1][1], v.pulsePositions[1][2]);
-    uniforms.uPulsePositions.value[2].set(v.pulsePositions[2][0], v.pulsePositions[2][1], v.pulsePositions[2][2]);
-    uniforms.uPulseTimes.value[0] = v.pulseTimes[0];
-    uniforms.uPulseTimes.value[1] = v.pulseTimes[1];
-    uniforms.uPulseTimes.value[2] = v.pulseTimes[2];
-    uniforms.uPulseColors.value[0].set(v.pulseColors[0][0], v.pulseColors[0][1], v.pulseColors[0][2]);
-    uniforms.uPulseColors.value[1].set(v.pulseColors[1][0], v.pulseColors[1][1], v.pulseColors[1][2]);
-    uniforms.uPulseColors.value[2].set(v.pulseColors[2][0], v.pulseColors[2][1], v.pulseColors[2][2]);
-    const tw = v.touchWorld;
-    uniforms.uTouchWorld.value.set(tw ? tw[0] : 1e6, tw ? tw[1] : 1e6, tw ? tw[2] : 1e6);
-    uniforms.uTouchInfluence.value = v.touchInfluence;
-    const organism = v.scene?.organism;
-    uniforms.uFocusBias.value = organism ? organism.focusBias : 0;
-    const motion = v.scene?.motion;
-    uniforms.uMotionOpenness.value = motion ? motion.openness : 0;
-    uniforms.uMotionAttention.value = motion ? motion.attention : 0;
-    uniforms.uMotionSettle.value = motion ? motion.settle : 0;
-    uniforms.uMotionMicro.value = motion ? motion.microMotion : 0;
     const axisDebugOn =
       typeof __DEV__ !== 'undefined' &&
       __DEV__ &&
       !!v.motionAxisDebug?.enabled;
+    const debugGlyphGain = axisDebugOn ? Math.max(0, v.motionAxisDebug?.glyphMotionGain ?? 1) : null;
     let axisX = 1;
     let axisY = 1;
     if (axisDebugOn) {
-      const mode = v.motionAxisDebug.axisLockMode ?? 'none';
-      const xGain = Math.max(0, v.motionAxisDebug.xGain ?? 1);
-      const yGain = Math.max(0, v.motionAxisDebug.yGain ?? 1);
+      const mode = v.motionAxisDebug?.axisLockMode ?? 'none';
+      const xGain = Math.max(0, v.motionAxisDebug?.xGain ?? 1);
+      const yGain = Math.max(0, v.motionAxisDebug?.yGain ?? 1);
       if (mode === 'x') {
         axisX = 1;
         axisY = 0;
@@ -283,15 +284,43 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
         axisY = yGain;
       }
     }
-    uniforms.uMotionAxisX.value = axisX;
-    uniforms.uMotionAxisY.value = axisY;
-    uniforms.uGlyphMotionGain.value =
-      axisDebugOn ? Math.max(0, v.motionAxisDebug.glyphMotionGain ?? 1) : 1;
+    const organism = v.scene?.organism;
+    const motion = v.scene?.motion;
+    const tw = v.touchWorld;
+
+    for (const u of [backUniforms, frontUniforms]) {
+      u.uTime.value += delta;
+      u.uActivity.value = v.activity;
+      u.uMode.value = MODE_TO_ID[v.currentMode as keyof typeof MODE_TO_ID] ?? 0;
+      u.uPulsePositions.value[0].set(v.pulsePositions[0][0], v.pulsePositions[0][1], v.pulsePositions[0][2]);
+      u.uPulsePositions.value[1].set(v.pulsePositions[1][0], v.pulsePositions[1][1], v.pulsePositions[1][2]);
+      u.uPulsePositions.value[2].set(v.pulsePositions[2][0], v.pulsePositions[2][1], v.pulsePositions[2][2]);
+      u.uPulseTimes.value[0] = v.pulseTimes[0];
+      u.uPulseTimes.value[1] = v.pulseTimes[1];
+      u.uPulseTimes.value[2] = v.pulseTimes[2];
+      u.uPulseColors.value[0].set(v.pulseColors[0][0], v.pulseColors[0][1], v.pulseColors[0][2]);
+      u.uPulseColors.value[1].set(v.pulseColors[1][0], v.pulseColors[1][1], v.pulseColors[1][2]);
+      u.uPulseColors.value[2].set(v.pulseColors[2][0], v.pulseColors[2][1], v.pulseColors[2][2]);
+      u.uTouchWorld.value.set(tw ? tw[0] : 1e6, tw ? tw[1] : 1e6, tw ? tw[2] : 1e6);
+      u.uTouchInfluence.value = v.touchInfluence;
+      u.uFocusBias.value = organism ? organism.focusBias : 0;
+      u.uMotionOpenness.value = motion ? motion.openness : 0;
+      u.uMotionAttention.value = motion ? motion.attention : 0;
+      u.uMotionSettle.value = motion ? motion.settle : 0;
+      u.uMotionMicro.value = motion ? motion.microMotion : 0;
+      u.uMotionAxisX.value = axisX;
+      u.uMotionAxisY.value = axisY;
+      if (debugGlyphGain != null) u.uGlyphMotionGain.value = debugGlyphGain;
+    }
 
     viewMatrixRef.current.copy(state.camera.matrixWorldInverse);
     projectionMatrixRef.current.copy(state.camera.projectionMatrix);
 
-    for (const mesh of [backRef.current, frontRef.current]) {
+    const meshes = [
+      { ref: backRef.current, u: backUniforms },
+      { ref: frontRef.current, u: frontUniforms },
+    ];
+    for (const { ref: mesh, u } of meshes) {
       if (!mesh) continue;
       mesh.rotation.set(0, 0, 0);
       const mat = mesh.material as THREE.ShaderMaterial;
@@ -318,7 +347,7 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
   }
 
   const layers = scene?.layers;
-  const glyphsBackRo = layers?.glyphsBack?.renderOrderBase ?? 3000;
+  const glyphsBackRo = layers?.glyphsBack?.renderOrderBase ?? 1500;
   const glyphsFrontRo = layers?.glyphsFront?.renderOrderBase ?? 3500;
 
   return (
@@ -328,7 +357,7 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
           attach="material"
           vertexShader={nodeVertex}
           fragmentShader={nodeFragment}
-          uniforms={uniforms}
+          uniforms={backUniforms}
           transparent
           depthWrite={false}
           blending={THREE.NormalBlending}
@@ -339,7 +368,7 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
           attach="material"
           vertexShader={nodeVertex}
           fragmentShader={nodeFragment}
-          uniforms={uniforms}
+          uniforms={frontUniforms}
           transparent
           depthWrite={false}
           blending={THREE.NormalBlending}

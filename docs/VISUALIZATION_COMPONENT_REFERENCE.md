@@ -68,7 +68,7 @@ src/visualization/
 - `ContextGlyphs` (render/layers/): point clusters (rules/cards).
 - `ContextLinks` (render/layers/): links between cluster nodes.
 - `TouchZones` (render/layers/): dumb renderer; reads layout/style from `visualizationRef.current.scene` only. Ring outlines at cluster anchors; camera-facing zone planes (rules / center / cards) when `showTouchZones` is enabled in the ref. No hardcoded colors, ratios, or opacities.
-- `Spine` (render/layers/): 5-plane spine + shard field + center halftone membrane; consumes builder-supplied `scene.spine`. Renders `SpineRotLayer` as child (same overlay group).
+- `Spine` (render/layers/): 5-plane spine + shard field + center halftone membrane; consumes builder-supplied `scene.spine`. Renders `SpineRotLayer` as child (same overlay group). Halftone targeting is plane-scoped: default is center plane only; `spineUseHalftonePlanes` adds halftone accents on center + `planeAccent` planes (not global-all planes).
 - `SpineRotLayer` (render/layers/): rotational planes in overlay space; consumes `scene.spineRot` and `scene.layers.spineRot`; rendered under the same group as Spine (no duplicate camera-facing transform). Returns null when `planeCountByMode` for current mode is 0.
 - `PlaneLayerField` (render/layers/): background drift planes + panel projection planes; consumes `scene.backgroundPlanes`, `scene.layers`, and `scene.planeField`.
 - `PostFXPass` (render/canvas/): optional post effects.
@@ -117,6 +117,18 @@ Touch produces a continuous “alive” response (beam lean, bend, halftone tens
 - **Glyph shader (materials/glyphs/nodes):** attention opacity cap (0.12), size multiplier from attention.
 
 No deep animation tuning in this phase; tap pulse path is unchanged.
+
+## Phase 5: Atmospheric systems
+
+Three systems provide environmental layering so the spine feels embedded in space rather than on a flat background:
+
+- **Background field** — Environmental texture, halftone depth, vignette, slow drift, overall field tone. Owned by the background layer and PlaneLayerField. The slowest-moving layer.
+- **Back plane layer** — Large rear structural slabs or ghost planes behind the spine; architectural anchoring. Not “more spine planes”; distinct scene layer and renderer (BackPlaneLayer).
+- **Context glyph atmosphere** — Contextual fragments in front of and behind the spine; ambient semantic field. Rendered as glyphsBack (softer, behind spine) and glyphsFront (more legible, in front). Not decorative UI icons.
+
+**Canonical render order** (draw order via `scene.layers.*.renderOrderBase`): far background → back plane → glyphsBack → spine light core / base / shards → links → glyphsFront → spineRot → debug/foreground. Builders own placement and Z; renderers consume scene only. Glyph “behind/in front” of spine is enforced by render order when `depthWrite=false`.
+
+**Where they live:** Background field — `scene/artDirection/planeLayerFieldArtDirection.ts`, `scene/builders/planeLayerField.ts`, `render/layers/PlaneLayerField.tsx`. Back plane layer — `scene/artDirection/backPlaneArtDirection.ts`, `scene/builders/backPlane.ts`, `render/layers/BackPlaneLayer.tsx`. Context glyph atmosphere — `scene/artDirection/contextGlyphsArtDirection.ts`, `scene/builders/contextGlyphs.ts`, `render/layers/ContextGlyphs.tsx`, `materials/glyphs/nodes.ts`. Glyph atmosphere is distinct from spine structure: glyphs are contextual semantic fragments (rules/cards cluster nodes) with front/back strata and relaxed attractor drift; the spine is the main structural stack (planes, shards, light core) owned by spine builders and renderers.
 
 ## Helpers
 

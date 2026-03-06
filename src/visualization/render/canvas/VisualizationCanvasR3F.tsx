@@ -27,6 +27,7 @@ import type { VisualizationEngineRef } from '../../engine/types';
 import { CameraOrbit } from './CameraOrbit';
 import { ContextGlyphs } from '../layers/ContextGlyphs';
 import { ContextLinks } from '../layers/ContextLinks';
+import { BackPlaneLayer } from '../layers/BackPlaneLayer';
 import { PlaneLayerField } from '../layers/PlaneLayerField';
 import { Spine } from '../layers/Spine';
 import { SpineLightCoreLayer } from '../layers/SpineLightCoreLayer';
@@ -233,6 +234,7 @@ export function VisualizationCanvasR3F({
       >
         <color attach="background" args={[canvasBackground]} />
         <PlaneLayerField visualizationRef={visualizationRef} />
+        <BackPlaneLayer visualizationRef={visualizationRef} />
         <SpineLightCoreLayer visualizationRef={visualizationRef} />
         <Spine visualizationRef={visualizationRef}>
           <SpineRotLayer visualizationRef={visualizationRef} />

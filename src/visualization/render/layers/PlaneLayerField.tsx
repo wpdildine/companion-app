@@ -27,6 +27,9 @@ uniform vec3 uColor;
 uniform float uOpacity;
 uniform float uNoisePhase;
 uniform float uIntensity;
+uniform float uVignetteScale;
+uniform float uRadialFalloff;
+uniform float uValueVariation;
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -44,14 +47,18 @@ float noise(vec2 p) {
 
 void main() {
   vec2 c = vUv - 0.5;
+  float r = length(c);
   float r2 = dot(c, c);
-  float vig = 1.0 - smoothstep(0.15, 0.65, r2);
+  float vigInner = 0.15;
+  float vigOuter = 0.65 - (1.0 - uVignetteScale) * 0.15;
+  float vig = 1.0 - smoothstep(vigInner, vigOuter, r2);
+  float radialFalloff = 1.0 - uRadialFalloff * smoothstep(0.2, 0.75, r);
   float grad = 0.7 + 0.3 * (1.0 - vUv.y);
   float n = noise(vUv * 3.0 + uNoisePhase) - 0.5;
   float lowFreq = noise(vUv * 1.2 + uNoisePhase * 0.3);
-  float mod = 1.0 + (lowFreq - 0.5) * 0.12 + n * 0.04;
-  vec3 col = uColor * grad * vig * mod;
-  float a = uOpacity * uIntensity;
+  float mod = 1.0 + (lowFreq - 0.5) * (0.12 + uValueVariation) + n * (0.04 + uValueVariation * 0.5);
+  vec3 col = uColor * grad * vig * radialFalloff * mod;
+  float a = uOpacity * uIntensity * vig;
   gl_FragColor = vec4(col, a);
 }
 `;
@@ -70,6 +77,7 @@ uniform float uIntensity;
 uniform float uHalftoneThreshold;
 uniform float uHalftoneScale;
 uniform vec2 uResolution;
+uniform float uHalftoneDensityVariation;
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -86,17 +94,17 @@ float noise(vec2 p) {
 }
 
 void main() {
-  // Aspect-correct screen-space UV so halftone dots stay circular on non-square viewports.
   vec2 res = max(uResolution, vec2(1.0));
   vec2 uv = gl_FragCoord.xy / res;
   float aspect = res.x / res.y;
   vec2 uvIso = vec2(uv.x * aspect, uv.y);
+  vec2 centerUv = uvIso - vec2(0.5 * aspect, 0.5);
+  float distFromCenter = length(centerUv);
   float speckle = noise(uvIso * 60.0 + uNoisePhase * 0.6) - 0.5;
 
   float microgrid = 0.0;
   float gridFreq = 140.0;
   vec2 g = fract(uvIso * gridFreq);
-  // Derivative-free AA approximation based on pixel size.
   float px = 1.0 / max(1.0, min(uResolution.x, uResolution.y));
   float aaX = px * gridFreq;
   float aaY = px * gridFreq;
@@ -104,17 +112,16 @@ void main() {
   float lineY = smoothstep(1.0 - (0.04 + aaY), 1.0 - (0.04 - aaY), g.y);
   microgrid = clamp((lineX + lineY) * 0.35, 0.0, 1.0);
 
-  // Halftone: AA circular dots in screen space.
-  float cell = (72.0 / max(0.25, uHalftoneScale)); // larger -> more dots
+  float cellBase = 72.0 / max(0.25, uHalftoneScale);
+  float densityBias = 1.0 + uHalftoneDensityVariation * smoothstep(0.0, 0.6, distFromCenter);
+  float cell = cellBase * densityBias;
   vec2 p = uvIso * cell + uNoisePhase * 0.15;
   vec2 f = fract(p) - 0.5;
   float d = length(f);
   float dotR = 0.28;
-  // Derivative-free AA: approximate edge width in UV units.
   float px2 = 1.0 / max(1.0, min(uResolution.x, uResolution.y));
   float aa = px2 * cell;
   float dot = 1.0 - smoothstep(dotR - aa, dotR + aa, d);
-  // Threshold controls how "filled" the dots feel.
   float halftone = smoothstep(uHalftoneThreshold - 0.08, uHalftoneThreshold + 0.08, dot);
 
   float detail = halftone * 0.5 + microgrid + speckle * 0.15;
@@ -196,6 +203,9 @@ export function PlaneLayerField({
         uOpacity: { value: 0.26 },
         uNoisePhase: { value: 0 },
         uIntensity: { value: 0.8 },
+        uVignetteScale: { value: 1.25 },
+        uRadialFalloff: { value: 0.4 },
+        uValueVariation: { value: 0.08 },
       },
     });
     baseMatRef.current = m;
@@ -205,7 +215,6 @@ export function PlaneLayerField({
     const m = new THREE.ShaderMaterial({
       vertexShader: DETAIL_PLANE_VERTEX,
       fragmentShader: DETAIL_PLANE_FRAGMENT,
-      // Removed: extensions: { derivatives: true },
       transparent: true,
       depthWrite: false,
       depthTest: false,
@@ -219,6 +228,7 @@ export function PlaneLayerField({
         uHalftoneThreshold: { value: 0.4 },
         uHalftoneScale: { value: 1.0 },
         uResolution: { value: new THREE.Vector2(1, 1) },
+        uHalftoneDensityVariation: { value: 0.22 },
       },
     });
     detailMatRef.current = m;
@@ -336,11 +346,15 @@ export function PlaneLayerField({
     tmpUp.current.crossVectors(tmpRight.current, tmpDir.current).normalize();
     const n = Math.min(bp.count, 2);
 
-    const noisePhase = v.clock * pf.noisePhaseSpeed;
+    const noisePhase = v.clock * pf.noisePhaseSpeed * (pf.slowDriftScale ?? 1);
     const isProcessing = v.currentMode === 'processing';
-    const targetIntensity = isProcessing
+    let targetIntensity = isProcessing
       ? pf.intensityProcessingBase + v.activity * pf.intensityProcessingActivityGain
       : pf.intensityIdleBase + v.activity * pf.intensityIdleActivityGain;
+    const motion = v.scene?.motion;
+    if (motion) {
+      targetIntensity += motion.energy * 0.12;
+    }
     const targetThreshold =
       pf.thresholdBase + pf.thresholdAmp * Math.sin(v.clock * pf.thresholdHz);
     const targetScale =
@@ -368,6 +382,9 @@ export function PlaneLayerField({
         SHADER_DEBUG_FLAGS.backgroundBase && n >= 1 ? opacity : 0;
       baseMatRef.current.uniforms.uNoisePhase.value = noisePhase;
       baseMatRef.current.uniforms.uIntensity.value = n >= 1 ? intensityRamp : 0;
+      baseMatRef.current.uniforms.uVignetteScale.value = pf.vignetteScale ?? 1.25;
+      baseMatRef.current.uniforms.uRadialFalloff.value = pf.radialFalloffStrength ?? 0.4;
+      baseMatRef.current.uniforms.uValueVariation.value = pf.valueVariation ?? 0.08;
     }
     if (detailMatRef.current) {
       detailMatRef.current.uniforms.uColor.value.set(
@@ -385,6 +402,8 @@ export function PlaneLayerField({
       detailMatRef.current.uniforms.uHalftoneThreshold.value =
         halftoneThreshold;
       detailMatRef.current.uniforms.uHalftoneScale.value = halftoneScale;
+      detailMatRef.current.uniforms.uHalftoneDensityVariation.value =
+        pf.halftoneDensityVariation ?? 0.22;
     }
 
     if (g1.current && bp.planes[0]) {
