@@ -30,7 +30,7 @@ Context provider logic is shared with **mtg_rules**: the app consumes **@mtg/run
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full Architecture Navigation Map.
 
-- **`src/app/`** — App entry + navigation. `App.tsx` composes `SafeAreaProvider` and `VoiceScreen`. VoiceScreen holds state, handlers, and composes VisualizationSurface + UI.
+- **`src/app/`** — App entry + navigation. `App.tsx` composes `SafeAreaProvider` and `AgentSurface`. AgentSurface is the composition root (orchestrator, visualization controller, results overlay); see [docs/APP_ARCHITECTURE.md](docs/APP_ARCHITECTURE.md).
 - **`src/shared/`** — Platform-agnostic core: shared plugin contracts and native diagnostics service.
 - **`src/theme/`** — Canonical theme home (`getTheme`, tokens).
 - **`src/screens/`** — Screen-level composition and views (`voice/`, `dev/`).
@@ -122,7 +122,7 @@ If everything is set up correctly, the app runs in the Android Emulator, iOS Sim
 
 ## Step 4: Modify your app
 
-Edit `App.tsx` (or any source); [Fast Refresh](https://reactnative.dev/docs/fast-refresh) will update the app. Root entry is `App.tsx`, which re-exports `src/app/App.tsx`; most screen orchestration lives in `src/app/VoiceScreen.tsx`. Add or change screen UI in `src/screens/`, reusable UI in `src/components/`, theme tokens in `src/theme/`, and 3D visualization behavior in `src/visualization/`. To force a full reload:
+Edit `App.tsx` (or any source); [Fast Refresh](https://reactnative.dev/docs/fast-refresh) will update the app. Root entry is `App.tsx`, which re-exports `src/app/App.tsx`; the agent experience composition root is `src/app/AgentSurface.tsx` (see [docs/APP_ARCHITECTURE.md](docs/APP_ARCHITECTURE.md)). Add or change screen UI in `src/screens/`, reusable UI in `src/components/`, theme tokens in `src/theme/`, and 3D visualization behavior in `src/visualization/`. To force a full reload:
 
 - **Android:** Double-tap <kbd>R</kbd> or Dev Menu (<kbd>Ctrl</kbd>+<kbd>M</kbd> / <kbd>Cmd</kbd>+<kbd>M</kbd>) → Reload.
 - **iOS:** <kbd>R</kbd> in the simulator.

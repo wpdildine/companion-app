@@ -1,38 +1,22 @@
 /**
- * Hook: single place for App to push AiUiSignals and events to the node map ref.
- * Exposes setSignals and emitEvent; all writes go through applySignalsToVisualization.
+ * DEPRECATED: legacy visualization bridge naming.
+ * Use VisualizationController / VisualizationSignals instead.
+ * Scheduled for removal after Phase 6 architecture stabilization.
+ * TODO: Remove legacy visualization bridge naming
+ * TODO: Replace AiVizBridge identifiers with VisualizationController equivalents
+ * TODO: Replace VizBridge shorthand with canonical VisualizationController naming
+ * TODO: Remove temporary compatibility exports for legacy bridge identifiers
+ * TODO: Audit repo for remaining shorthand visualization naming
+ * TODO: Ensure only VisualizationController / VisualizationSignals vocabulary remains
  */
 
-import { useCallback, type RefObject } from 'react';
-import { applySignalsToVisualization } from '../../visualization';
-import type {
-  VisualizationEngineRef,
-  VisualizationMode,
-  AiUiSignals,
-  AiUiSignalsEvent,
-  VisualizationPanelRects,
-} from '../../visualization';
+import type { RefObject } from 'react';
+import type { VisualizationEngineRef } from '../../visualization';
+import { useVisualizationSignals } from './useVisualizationSignals';
 
-type AiVizInput = Partial<AiUiSignals> & {
-  mode?: VisualizationMode;
-  panelRects?: VisualizationPanelRects;
-};
-
-export function useAiVizBridge(visualizationRef: RefObject<VisualizationEngineRef | null>) {
-  const setSignals = useCallback(
-    (signals: AiVizInput) => {
-      applySignalsToVisualization(visualizationRef, signals);
-    },
-    [visualizationRef],
-  );
-
-  const emitEvent = useCallback(
-    (eventType: AiUiSignalsEvent) => {
-      if (eventType == null) return;
-      applySignalsToVisualization(visualizationRef, { event: eventType });
-    },
-    [visualizationRef],
-  );
-
-  return { setSignals, emitEvent };
+/** @deprecated Use useVisualizationSignals. */
+export function useAiVizBridge(
+  visualizationRef: RefObject<VisualizationEngineRef | null>,
+) {
+  return useVisualizationSignals(visualizationRef);
 }

@@ -11,7 +11,7 @@ import {
   useColorScheme,
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import VoiceScreen from './VoiceScreen';
+import AgentSurface from './AgentSurface';
 
 // @react-native-voice/voice uses NativeEventEmitter in a way that triggers warnings on new arch (Fabric) when the native module doesn't expose addListener/removeListeners. Voice still works.
 LogBox.ignoreLogs([
@@ -25,7 +25,7 @@ function App() {
   return (
     <SafeAreaProvider>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <VoiceScreen />
+      <AgentSurface />
     </SafeAreaProvider>
   );
 }
