@@ -22,6 +22,7 @@ const config = {
       '@babel/runtime': path.resolve(projectRoot, 'node_modules/@babel/runtime'),
       react: path.resolve(projectRoot, 'node_modules/react'),
       'react-native': path.resolve(projectRoot, 'node_modules/react-native'),
+      'expo-audio': path.resolve(projectRoot, 'node_modules/expo-audio'),
       three: path.resolve(projectRoot, 'node_modules/three'),
       '@react-three/fiber': path.resolve(projectRoot, 'node_modules/@react-three/fiber'),
     },

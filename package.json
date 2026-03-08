@@ -34,7 +34,7 @@
     "@mtg/runtime": "file:../mtg_rules/runtime-ts",
     "expo": "^54.0.0",
     "expo-asset": "~12.0.7",
-    "expo-av": "~16.0.8",
+    "expo-audio": "~1.1.1",
     "expo-file-system": "~19.0.11",
     "expo-gl": "~16.0.6",
     "@react-three/fiber": "^9.5.0",

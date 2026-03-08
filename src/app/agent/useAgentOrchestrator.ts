@@ -6,8 +6,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, type AppStateStatus } from 'react-native';
-import { NativeModules, Platform } from 'react-native';
+import { AppState, Platform, NativeModules, type AppStateStatus } from 'react-native';
 import {
   BUNDLE_PACK_ROOT,
   copyBundlePackToDocuments,
@@ -45,6 +44,7 @@ const TRANSCRIPT_FINALIZATION_TIMEOUT_MS = 400;
 const POST_SPEECH_END_QUIET_WINDOW_MS = 200;
 /** Short window after first final to allow a better final before settlement. */
 const POST_FINAL_STABILIZATION_WINDOW_MS = 120;
+const IOS_STOP_GRACE_MS = 250;
 type VoiceModule = {
   start: (locale: string) => Promise<void>;
   stop: () => Promise<void>;
@@ -246,11 +246,19 @@ export function useAgentOrchestrator(
   const lastSettledSessionIdRef = useRef<string | null>(null);
   /** Timer for post-speechEnd quiet window; cancelled when settlement resolves or session ends. */
   const quietWindowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordingStartAtRef = useRef<number | null>(null);
+  const firstPartialAtRef = useRef<number | null>(null);
+  const firstFinalAtRef = useRef<number | null>(null);
+  const lastPartialNormalizedRef = useRef('');
   /** Timer for post-final stabilization window. */
   const finalStabilizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finalStabilizationActiveRef = useRef(false);
   const finalCandidateTextRef = useRef<string | null>(null);
   const finalCandidateSessionIdRef = useRef<string | null>(null);
+  const iosStopGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const iosStopPendingRef = useRef(false);
+  const iosStopInvokedRef = useRef(false);
+  const nativeStopInFlightRef = useRef(false);
   modeRef.current = mode;
 
   const playListenIn = useCallback(() => {
@@ -306,6 +314,15 @@ export function useAgentOrchestrator(
         clearTimeout(finalStabilizationTimerRef.current);
         finalStabilizationTimerRef.current = null;
       }
+      if (iosStopGraceTimerRef.current) {
+        clearTimeout(iosStopGraceTimerRef.current);
+        iosStopGraceTimerRef.current = null;
+        if (Platform.OS === 'ios' && iosStopPendingRef.current && !iosStopInvokedRef.current) {
+          logInfo('AgentOrchestrator', 'pending ios stop preserved through settlement', {
+            recordingSessionId,
+          });
+        }
+      }
       finalStabilizationActiveRef.current = false;
       finalCandidateTextRef.current = null;
       finalCandidateSessionIdRef.current = null;
@@ -343,6 +360,15 @@ export function useAgentOrchestrator(
         clearTimeout(finalStabilizationTimerRef.current);
         finalStabilizationTimerRef.current = null;
       }
+      if (iosStopGraceTimerRef.current) {
+        clearTimeout(iosStopGraceTimerRef.current);
+        iosStopGraceTimerRef.current = null;
+        if (Platform.OS === 'ios' && iosStopPendingRef.current && !iosStopInvokedRef.current) {
+          logInfo('AgentOrchestrator', 'pending ios stop preserved through settlement', {
+            recordingSessionId,
+          });
+        }
+      }
       finalStabilizationActiveRef.current = false;
       finalCandidateTextRef.current = null;
       finalCandidateSessionIdRef.current = null;
@@ -367,7 +393,19 @@ export function useAgentOrchestrator(
         logInfo('AgentOrchestrator', 'quiet window resolved via synthesized partial fallback', {
           recordingSessionId,
         });
-        finalizeTranscriptFromPartial('quietWindowExpired', recordingSessionId);
+        if (finalCandidateTextRef.current) {
+          updateTranscript(finalCandidateTextRef.current);
+        } else {
+          finalizeTranscriptFromPartial('quietWindowExpired', recordingSessionId);
+        }
+        const normalized = normalizeTranscript(transcribedTextRef.current);
+        if (!normalized) {
+          logWarn('AgentOrchestrator', 'quiet window produced empty transcript; submit skipped', {
+            recordingSessionId,
+          });
+          finalizeStop('quietWindowExpired', recordingSessionId);
+          return;
+        }
       } else if (reason === 'finalStabilized') {
         const candidate = finalCandidateTextRef.current;
         if (candidate) {
@@ -384,6 +422,38 @@ export function useAgentOrchestrator(
         recordingSessionId,
       });
       listenersRef?.current?.onTranscriptReadyForSubmit?.();
+      if (Platform.OS === 'ios' && iosStopPendingRef.current && !iosStopInvokedRef.current) {
+        logInfo('AgentOrchestrator', 'cleanup forcing native voice stop before idle', {
+          recordingSessionId,
+        });
+        iosStopPendingRef.current = false;
+        iosStopInvokedRef.current = true;
+        nativeStopInFlightRef.current = true;
+        logInfo('AgentOrchestrator', 'native voice stop in flight', { recordingSessionId });
+        const V = voiceRef.current;
+        if (V) {
+          V.stop()
+            .catch((e: unknown) => {
+              const msg = e instanceof Error ? e.message : String(e);
+              const nativeVoice = getVoiceNative();
+              if (
+                msg.toLowerCase().includes('stopspeech is null') &&
+                typeof nativeVoice?.stopSpeech === 'function'
+              ) {
+                return nativeVoice.stopSpeech();
+              }
+              return undefined;
+            })
+            .catch(() => {})
+            .finally(() => {
+              nativeStopInFlightRef.current = false;
+              logInfo('AgentOrchestrator', 'native voice stop completed', { recordingSessionId });
+            });
+        } else {
+          nativeStopInFlightRef.current = false;
+          logInfo('AgentOrchestrator', 'native voice stop completed', { recordingSessionId });
+        }
+      }
       finalizeStop(reason, recordingSessionId);
     },
     [finalizeTranscriptFromPartial, finalizeStop, listenersRef],
@@ -394,23 +464,61 @@ export function useAgentOrchestrator(
     logInfo('AgentOrchestrator', 'voice listen stop requested', { recordingSessionId });
     stopRequestedRef.current = true;
     const V = voiceRef.current;
-    if (V) {
-      try {
-        await V.stop();
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        const nativeVoice = getVoiceNative();
-        if (
-          msg.toLowerCase().includes('stopspeech is null') &&
-          typeof nativeVoice?.stopSpeech === 'function'
-        ) {
-          try {
-            await nativeVoice.stopSpeech();
-          } catch {
-            /* ignore */
+    const invokeStop = async () => {
+      iosStopPendingRef.current = false;
+      iosStopInvokedRef.current = true;
+      nativeStopInFlightRef.current = true;
+      logInfo('AgentOrchestrator', 'native voice stop in flight', { recordingSessionId });
+      logInfo('AgentOrchestrator', 'voice stop invoked', {
+        recordingSessionId,
+        platform: Platform.OS,
+        pendingSubmitWhenReady: pendingSubmitWhenReadyRef.current,
+      });
+      if (V) {
+        try {
+          await V.stop();
+          logInfo('AgentOrchestrator', 'native voice stop completed', { recordingSessionId });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          const nativeVoice = getVoiceNative();
+          if (
+            msg.toLowerCase().includes('stopspeech is null') &&
+            typeof nativeVoice?.stopSpeech === 'function'
+          ) {
+            try {
+              await nativeVoice.stopSpeech();
+              logInfo('AgentOrchestrator', 'native voice stop completed', { recordingSessionId });
+            } catch {
+              /* ignore */
+            }
           }
         }
+      } else {
+        logInfo('AgentOrchestrator', 'native voice stop completed', { recordingSessionId });
       }
+      nativeStopInFlightRef.current = false;
+    };
+    if (Platform.OS === 'ios') {
+      logInfo('AgentOrchestrator', 'ios stop grace scheduled', {
+        recordingSessionId,
+        graceMs: IOS_STOP_GRACE_MS,
+      });
+      iosStopPendingRef.current = true;
+      if (iosStopGraceTimerRef.current) {
+        clearTimeout(iosStopGraceTimerRef.current);
+      }
+      iosStopGraceTimerRef.current = setTimeout(() => {
+        iosStopGraceTimerRef.current = null;
+        logInfo('AgentOrchestrator', 'ios stop grace elapsed, calling voice stop', {
+          recordingSessionId,
+        });
+        invokeStop().catch(() => {});
+      }, IOS_STOP_GRACE_MS);
+    } else {
+      logInfo('AgentOrchestrator', 'voice stop invoked immediately (non-ios)', {
+        recordingSessionId,
+      });
+      await invokeStop();
     }
     if (finalizeTimerRef.current) {
       clearTimeout(finalizeTimerRef.current);
@@ -442,23 +550,61 @@ export function useAgentOrchestrator(
       finalStabilizationTimerRef.current = null;
     }
     const V = voiceRef.current;
-    if (V) {
-      try {
-        await V.stop();
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        const nativeVoice = getVoiceNative();
-        if (
-          msg.toLowerCase().includes('stopspeech is null') &&
-          typeof nativeVoice?.stopSpeech === 'function'
-        ) {
-          try {
-            await nativeVoice.stopSpeech();
-          } catch {
-            /* ignore */
+    const invokeStop = async () => {
+      iosStopPendingRef.current = false;
+      iosStopInvokedRef.current = true;
+      nativeStopInFlightRef.current = true;
+      logInfo('AgentOrchestrator', 'native voice stop in flight', { recordingSessionId });
+      logInfo('AgentOrchestrator', 'voice stop invoked', {
+        recordingSessionId,
+        platform: Platform.OS,
+        pendingSubmitWhenReady: pendingSubmitWhenReadyRef.current,
+      });
+      if (V) {
+        try {
+          await V.stop();
+          logInfo('AgentOrchestrator', 'native voice stop completed', { recordingSessionId });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          const nativeVoice = getVoiceNative();
+          if (
+            msg.toLowerCase().includes('stopspeech is null') &&
+            typeof nativeVoice?.stopSpeech === 'function'
+          ) {
+            try {
+              await nativeVoice.stopSpeech();
+              logInfo('AgentOrchestrator', 'native voice stop completed', { recordingSessionId });
+            } catch {
+              /* ignore */
+            }
           }
         }
+      } else {
+        logInfo('AgentOrchestrator', 'native voice stop completed', { recordingSessionId });
       }
+      nativeStopInFlightRef.current = false;
+    };
+    if (Platform.OS === 'ios') {
+      logInfo('AgentOrchestrator', 'ios stop grace scheduled', {
+        recordingSessionId,
+        graceMs: IOS_STOP_GRACE_MS,
+      });
+      iosStopPendingRef.current = true;
+      if (iosStopGraceTimerRef.current) {
+        clearTimeout(iosStopGraceTimerRef.current);
+      }
+      iosStopGraceTimerRef.current = setTimeout(() => {
+        iosStopGraceTimerRef.current = null;
+        logInfo('AgentOrchestrator', 'ios stop grace elapsed, calling voice stop', {
+          recordingSessionId,
+        });
+        invokeStop().catch(() => {});
+      }, IOS_STOP_GRACE_MS);
+    } else {
+      logInfo('AgentOrchestrator', 'voice stop invoked immediately (non-ios)', {
+        recordingSessionId,
+      });
+      await invokeStop();
     }
     finalizeTimerRef.current = setTimeout(() => {
       finalizeTimerRef.current = null;
@@ -482,6 +628,16 @@ export function useAgentOrchestrator(
         logWarn('AgentOrchestrator', 'voice listen start skipped: voice module unavailable');
         return false;
       }
+      if (nativeStopInFlightRef.current) {
+        logWarn('AgentOrchestrator', 'voice listen start skipped: previous native stop still in flight');
+        return false;
+      }
+      if (pendingSubmitWhenReadyRef.current && !settlementResolvedRef.current) {
+        logWarn('AgentOrchestrator', 'voice listen start skipped: pending submit settlement', {
+          recordingSessionId: pendingSubmitSessionIdRef.current ?? undefined,
+        });
+        return false;
+      }
       if (mode === 'processing' || mode === 'speaking') {
         logWarn('AgentOrchestrator', 'voice listen start skipped: lifecycle blocked', { mode });
         return false;
@@ -490,6 +646,7 @@ export function useAgentOrchestrator(
       if (fresh) {
         committedTextRef.current = '';
         partialTranscriptRef.current = '';
+        lastPartialNormalizedRef.current = '';
         speechEndedRef.current = false;
         updateTranscript('');
       } else {
@@ -499,6 +656,13 @@ export function useAgentOrchestrator(
         clearTimeout(quietWindowTimerRef.current);
         quietWindowTimerRef.current = null;
       }
+      if (finalStabilizationTimerRef.current) {
+        clearTimeout(finalStabilizationTimerRef.current);
+        finalStabilizationTimerRef.current = null;
+      }
+      finalCandidateTextRef.current = null;
+      finalCandidateSessionIdRef.current = null;
+      finalStabilizationActiveRef.current = false;
       recordingSessionSeqRef.current += 1;
       const recordingSessionId = `rec-${recordingSessionSeqRef.current}`;
       logInfo('AgentOrchestrator', 'voice listen start requested', {
@@ -506,6 +670,9 @@ export function useAgentOrchestrator(
         fresh,
         committedChars: committedTextRef.current.length,
       });
+      recordingStartAtRef.current = Date.now();
+      firstPartialAtRef.current = null;
+      firstFinalAtRef.current = null;
       try {
         try {
           await V.start('en-US');
@@ -526,7 +693,11 @@ export function useAgentOrchestrator(
         speechEndedRef.current = false;
         setMode('listening');
         setLifecycle('listening');
-        logInfo('AgentOrchestrator', 'voice listen active', { recordingSessionId });
+        logInfo('AgentOrchestrator', 'voice listen active', {
+          recordingSessionId,
+          startLatencyMs:
+            recordingStartAtRef.current != null ? Date.now() - recordingStartAtRef.current : undefined,
+        });
         playListenIn();
         return true;
       } catch (e) {
@@ -901,14 +1072,36 @@ export function useAgentOrchestrator(
         return;
       }
       if (modeRef.current !== 'listening' && !stopRequestedRef.current) return;
-      if (speechEndedRef.current) return;
       const next = (e.value?.[0] ?? '').trim();
+      if (speechEndedRef.current) {
+        const normalizedIncoming = normalizeTranscript(next);
+        logInfo('AgentOrchestrator', 'final ignored because speechEndedRef=true', {
+          recordingSessionId: sessionId,
+          pendingSubmitWhenReady: pendingSubmitWhenReadyRef.current,
+          settlementResolved: settlementResolvedRef.current,
+          finalStabilizationActive: finalStabilizationActiveRef.current,
+          incomingChunkChars: normalizedIncoming.length,
+          incomingTranscriptText: normalizedIncoming,
+          incomingTranscriptPreview: transcriptPreview(normalizedIncoming),
+        });
+        return;
+      }
       if (!next) return;
       const committed = committedTextRef.current.trim();
       const combined = committed ? `${committed} ${next}` : next;
       partialTranscriptRef.current = '';
       updateTranscript(combined);
       const normalizedCombined = normalizeTranscript(combined);
+      if (!firstFinalAtRef.current) {
+        firstFinalAtRef.current = Date.now();
+        logInfo('AgentOrchestrator', 'first final received', {
+          recordingSessionId: sessionId,
+          tMs:
+            recordingStartAtRef.current != null
+              ? firstFinalAtRef.current - recordingStartAtRef.current
+              : undefined,
+        });
+      }
       logInfo('AgentOrchestrator', 'transcript final updated', {
         recordingSessionId: sessionId,
         chunkChars: next.length,
@@ -925,6 +1118,12 @@ export function useAgentOrchestrator(
         finalCandidateTextRef.current = normalizedCombined;
         finalCandidateSessionIdRef.current = sessionId ?? null;
         finalStabilizationActiveRef.current = true;
+        logInfo('AgentOrchestrator', 'final accepted for stabilization candidate', {
+          recordingSessionId: sessionId,
+          candidateChars: normalizedCombined.length,
+          candidateTranscriptText: normalizedCombined,
+          candidateTranscriptPreview: transcriptPreview(normalizedCombined),
+        });
         if (quietWindowTimerRef.current) {
           clearTimeout(quietWindowTimerRef.current);
           quietWindowTimerRef.current = null;
@@ -942,6 +1141,14 @@ export function useAgentOrchestrator(
             finalStabilizationActiveRef.current = false;
             if (settlementResolvedRef.current) return;
             if (recordingSessionRef.current !== pendingSubmitSessionIdRef.current) return;
+            logInfo('AgentOrchestrator', 'final stabilization settling candidate', {
+              recordingSessionId: sessionId,
+              candidateChars: finalCandidateTextRef.current?.length ?? 0,
+              candidateTranscriptText: finalCandidateTextRef.current ?? '',
+              candidateTranscriptPreview: transcriptPreview(finalCandidateTextRef.current ?? ''),
+              speechEnded: speechEndedRef.current,
+              settlementResolved: settlementResolvedRef.current,
+            });
             resolveSettlement('finalStabilized', sessionId);
           }, POST_FINAL_STABILIZATION_WINDOW_MS);
         }
@@ -963,8 +1170,26 @@ export function useAgentOrchestrator(
       }
       if (modeRef.current !== 'listening' && !stopRequestedRef.current) return;
       const partial = (e.value?.[0] ?? '').trim();
-      partialTranscriptRef.current = partial;
       const normalizedPartial = normalizeTranscript(partial);
+      if (!normalizedPartial) {
+        // Ignore empty partials to avoid churn and preserve last usable partial.
+        return;
+      }
+      if (!firstPartialAtRef.current) {
+        firstPartialAtRef.current = Date.now();
+        logInfo('AgentOrchestrator', 'first partial received', {
+          recordingSessionId: sessionId,
+          tMs:
+            recordingStartAtRef.current != null
+              ? firstPartialAtRef.current - recordingStartAtRef.current
+              : undefined,
+        });
+      }
+      if (normalizedPartial === lastPartialNormalizedRef.current) {
+        return;
+      }
+      lastPartialNormalizedRef.current = normalizedPartial;
+      partialTranscriptRef.current = partial;
       const inQuietWindow =
         speechEndedRef.current &&
         pendingSubmitWhenReadyRef.current &&
@@ -1034,8 +1259,16 @@ export function useAgentOrchestrator(
       if (speechEndedRef.current) return;
       logInfo('AgentOrchestrator', 'speech recognition end event', {
         recordingSessionId,
+        tMs:
+          recordingStartAtRef.current != null ? Date.now() - recordingStartAtRef.current : undefined,
       });
       speechEndedRef.current = true;
+      if (finalStabilizationActiveRef.current) {
+        logInfo('AgentOrchestrator', 'speechEnd ignored (final stabilization active)', {
+          recordingSessionId,
+        });
+        return;
+      }
       if (
         pendingSubmitWhenReadyRef.current &&
         recordingSessionRef.current === pendingSubmitSessionIdRef.current &&
@@ -1055,6 +1288,17 @@ export function useAgentOrchestrator(
           quietWindowTimerRef.current = null;
           if (settlementResolvedRef.current) return;
           if (recordingSessionRef.current !== pendingSubmitSessionIdRef.current) return;
+          const currentTranscript = normalizeTranscript(transcribedTextRef.current);
+          const finalCandidate = finalCandidateTextRef.current ?? '';
+          logInfo('AgentOrchestrator', 'quiet window settling current transcript', {
+            recordingSessionId: sessionIdForQuiet,
+            currentTranscriptChars: currentTranscript.length,
+            currentTranscriptText: currentTranscript,
+            currentTranscriptPreview: transcriptPreview(currentTranscript),
+            finalCandidateChars: finalCandidate.length,
+            finalCandidateTranscriptText: finalCandidate,
+            finalCandidateTranscriptPreview: transcriptPreview(finalCandidate),
+          });
           resolveSettlement('quietWindowExpired', sessionIdForQuiet);
         }, POST_SPEECH_END_QUIET_WINDOW_MS);
       }

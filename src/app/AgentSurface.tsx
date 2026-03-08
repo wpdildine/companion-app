@@ -12,6 +12,7 @@ import {
   cleanupEarcons,
   playListeningStartEarcon,
   playListeningEndEarcon,
+  prepareEarcons,
 } from '../shared/feedback/earcons';
 import { triggerListeningStartHaptic, triggerListeningEndHaptic } from '../shared/feedback/haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -153,7 +154,9 @@ export default function AgentSurface() {
     logInfo('AgentSurface', 'mounted as active composition root');
     if (typeof globalThis !== 'undefined') {
       (globalThis as { __LOG_SCOPES__?: string[] }).__LOG_SCOPES__ = DEBUG_LOG_SCOPES;
+      (globalThis as { __DISABLE_IOS_EARCON_START__?: boolean }).__DISABLE_IOS_EARCON_START__ = true;
     }
+    prepareEarcons().catch(() => {});
   }, []);
 
   const scrollYRef = useRef(0);
@@ -408,6 +411,7 @@ export default function AgentSurface() {
       });
       return;
     }
+    logInfo('Interaction', 'hold start detected', { tMs: Date.now() });
     if (singleTapTimerRef.current) {
       clearTimeout(singleTapTimerRef.current);
       singleTapTimerRef.current = null;
