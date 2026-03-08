@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { nodeVertex, nodeFragment } from '../../materials/glyphs/nodes';
 import type { VisualizationEngineRef } from '../../engine/types';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
+import { getEventPulse, injectEventPulse } from '../utils/eventPulse';
 
 type GlyphBuffers = {
   positions: Float32Array;
@@ -288,19 +289,33 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
     const motion = v.scene?.motion;
     const tw = v.touchWorld;
 
+    const pulsePositions: [number, number, number][] = [
+      [v.pulsePositions[0][0], v.pulsePositions[0][1], v.pulsePositions[0][2]],
+      [v.pulsePositions[1][0], v.pulsePositions[1][1], v.pulsePositions[1][2]],
+      [v.pulsePositions[2][0], v.pulsePositions[2][1], v.pulsePositions[2][2]],
+    ];
+    const pulseTimes = [v.pulseTimes[0], v.pulseTimes[1], v.pulseTimes[2]];
+    const pulseColors: [number, number, number][] = [
+      [v.pulseColors[0][0], v.pulseColors[0][1], v.pulseColors[0][2]],
+      [v.pulseColors[1][0], v.pulseColors[1][1], v.pulseColors[1][2]],
+      [v.pulseColors[2][0], v.pulseColors[2][1], v.pulseColors[2][2]],
+    ];
+    const eventPulse = getEventPulse(v, scene);
+    injectEventPulse(pulsePositions, pulseTimes, pulseColors, eventPulse);
+
     for (const u of [backUniforms, frontUniforms]) {
       u.uTime.value += delta;
       u.uActivity.value = v.activity;
       u.uMode.value = MODE_TO_ID[v.currentMode as keyof typeof MODE_TO_ID] ?? 0;
-      u.uPulsePositions.value[0].set(v.pulsePositions[0][0], v.pulsePositions[0][1], v.pulsePositions[0][2]);
-      u.uPulsePositions.value[1].set(v.pulsePositions[1][0], v.pulsePositions[1][1], v.pulsePositions[1][2]);
-      u.uPulsePositions.value[2].set(v.pulsePositions[2][0], v.pulsePositions[2][1], v.pulsePositions[2][2]);
-      u.uPulseTimes.value[0] = v.pulseTimes[0];
-      u.uPulseTimes.value[1] = v.pulseTimes[1];
-      u.uPulseTimes.value[2] = v.pulseTimes[2];
-      u.uPulseColors.value[0].set(v.pulseColors[0][0], v.pulseColors[0][1], v.pulseColors[0][2]);
-      u.uPulseColors.value[1].set(v.pulseColors[1][0], v.pulseColors[1][1], v.pulseColors[1][2]);
-      u.uPulseColors.value[2].set(v.pulseColors[2][0], v.pulseColors[2][1], v.pulseColors[2][2]);
+      u.uPulsePositions.value[0].set(pulsePositions[0][0], pulsePositions[0][1], pulsePositions[0][2]);
+      u.uPulsePositions.value[1].set(pulsePositions[1][0], pulsePositions[1][1], pulsePositions[1][2]);
+      u.uPulsePositions.value[2].set(pulsePositions[2][0], pulsePositions[2][1], pulsePositions[2][2]);
+      u.uPulseTimes.value[0] = pulseTimes[0];
+      u.uPulseTimes.value[1] = pulseTimes[1];
+      u.uPulseTimes.value[2] = pulseTimes[2];
+      u.uPulseColors.value[0].set(pulseColors[0][0], pulseColors[0][1], pulseColors[0][2]);
+      u.uPulseColors.value[1].set(pulseColors[1][0], pulseColors[1][1], pulseColors[1][2]);
+      u.uPulseColors.value[2].set(pulseColors[2][0], pulseColors[2][1], pulseColors[2][2]);
       u.uTouchWorld.value.set(tw ? tw[0] : 1e6, tw ? tw[1] : 1e6, tw ? tw[2] : 1e6);
       u.uTouchInfluence.value = v.touchInfluence;
       u.uFocusBias.value = organism ? organism.focusBias : 0;

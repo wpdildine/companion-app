@@ -26,6 +26,15 @@ export type GLSceneSpineLightCore = {
   warpFreq: number;
   warpScaleByMode: Record<CanonicalSceneMode, number>;
   opacityByMode: Record<CanonicalSceneMode, number>;
+  /** Per-channel weights for render-side transient modulation. */
+  modulationWeights: {
+    hueShift: number;
+    intensity: number;
+    agitation: number;
+    opacityBias: number;
+  };
+  /** Color to lerp toward when applying hueShift (layer application only). */
+  modulationTintColor: string;
 };
 
 export function buildSpineLightCore(): GLSceneSpineLightCore {
@@ -60,5 +69,7 @@ export function buildSpineLightCore(): GLSceneSpineLightCore {
       processing: lightCore.opacityByMode.processing,
       speaking: lightCore.opacityByMode.speaking,
     },
+    modulationWeights: lightCore.modulationWeights,
+    modulationTintColor: lightCore.modulationTintColor,
   };
 }

@@ -2,7 +2,7 @@
  * Render-loop only: smooth activity and touchInfluence from engine ref. No React state.
  * Touch field (viz band) drives touchWorld + touchInfluence when touchFieldActive and !reduceMotion.
  * Organism signals (focusBias, touchPresence, focusZone) derived here; scene.organism mutated each frame.
- * Event-driven pulses: lastEvent tapCitation → pulse at rules cluster center; tapCard → cards cluster center.
+ * Event-driven pulses are handled in render layers; engine only maintains event identity + timing.
  */
 
 import { useRef } from 'react';
@@ -22,7 +22,6 @@ import { createMotionGrammarEngine } from './MotionGrammarEngine';
 import { MOTION_GRAMMAR } from '../scene/artDirection/motionGrammar';
 
 const DT_CAP = 0.1;
-const PULSE_DECAY_MS = 900;
 const APP_STATE_CYCLE_MS = 1300;
 const CANONICAL_CYCLE_MS = 2500;
 const APP_STATES: VisualizationMode[] = [
@@ -84,7 +83,6 @@ export function EngineLoop({ visualizationRef }: { visualizationRef: React.RefOb
   const touchPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0));
   const touchHit = useRef(new THREE.Vector3());
   const touchViewVec = useRef(new THREE.Vector3());
-  const lastProcessedEventTime = useRef(0);
   const touchLogAt = useRef(0);
   const touchNdcSmoothed = useRef(new THREE.Vector2(0, 0));
   const modeLogRef = useRef<string>('');
@@ -194,36 +192,6 @@ export function EngineLoop({ visualizationRef }: { visualizationRef: React.RefOb
     const k = 1 - Math.exp(-lambda * dt);
     v.activity = v.activity + (v.targetActivity - v.activity) * k;
     v.activity = Math.max(0, Math.min(1, v.activity));
-
-    if (v.lastEvent && v.lastEventTime > lastProcessedEventTime.current) {
-      lastProcessedEventTime.current = v.lastEventTime;
-      const age = (v.clock - v.lastEventTime) * 1000;
-      if (age < PULSE_DECAY_MS && v.scene?.pulseAnchors) {
-        const anchors = v.scene.pulseAnchors;
-        const i = v.lastPulseIndex % 3;
-        if (v.lastEvent === 'tapCitation') {
-          v.pulsePositions[i] = [...anchors.rules];
-          v.pulseColors[i] = getPulseColorWithHue(v.paletteId, v.hueShift, 'tapCitation', v.currentMode);
-          v.pulseTimes[i] = v.lastEventTime;
-          v.lastPulseIndex = (v.lastPulseIndex + 1) % 3;
-        } else if (v.lastEvent === 'tapCard') {
-          v.pulsePositions[i] = [...anchors.cards];
-          v.pulseColors[i] = getPulseColorWithHue(v.paletteId, v.hueShift, 'tapCard', v.currentMode);
-          v.pulseTimes[i] = v.lastEventTime;
-          v.lastPulseIndex = (v.lastPulseIndex + 1) % 3;
-        } else if (v.lastEvent === 'chunkAccepted') {
-          v.pulsePositions[i] = [...anchors.rules];
-          v.pulseColors[i] = getPulseColorWithHue(v.paletteId, v.hueShift, 'chunkAccepted', v.currentMode);
-          v.pulseTimes[i] = v.lastEventTime;
-          v.lastPulseIndex = (v.lastPulseIndex + 1) % 3;
-        } else if (v.lastEvent === 'warning') {
-          v.pulsePositions[i] = [...anchors.center];
-          v.pulseColors[i] = getPulseColorWithHue(v.paletteId, v.hueShift, 'warning', v.currentMode);
-          v.pulseTimes[i] = v.lastEventTime;
-          v.lastPulseIndex = (v.lastPulseIndex + 1) % 3;
-        }
-      }
-    }
 
     let touchTarget = 0;
     if (v.touchFieldActive && v.touchFieldNdc && !v.reduceMotion) {

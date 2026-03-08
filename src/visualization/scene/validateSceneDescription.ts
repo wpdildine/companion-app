@@ -370,12 +370,53 @@ export function validateSceneDescription(
       return false;
     }
   }
+  const mw = spineLightCore.modulationWeights;
+  if (
+    !mw ||
+    typeof mw.hueShift !== 'number' ||
+    typeof mw.intensity !== 'number' ||
+    typeof mw.agitation !== 'number' ||
+    typeof mw.opacityBias !== 'number'
+  ) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.spineLightCore.modulationWeights is invalid.');
+    }
+    return false;
+  }
+  if (typeof spineLightCore.modulationTintColor !== 'string') {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.spineLightCore.modulationTintColor must be a string.');
+    }
+    return false;
+  }
   const spineRot = scene.spineRot;
   if (!spineRot) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error('[validateSceneDescription] scene.spineRot is missing.');
     }
     return false;
+  }
+  const transientEffects = scene.transientEffects;
+  if (!transientEffects) {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      console.error('[validateSceneDescription] scene.transientEffects is missing.');
+    }
+    return false;
+  }
+  if (transientEffects.softFail != null) {
+    const sf = transientEffects.softFail;
+    const valid =
+      typeof sf.decayMs === 'number' &&
+      typeof sf.modulation?.hueShift === 'number' &&
+      typeof sf.modulation?.intensity === 'number' &&
+      typeof sf.modulation?.agitation === 'number' &&
+      typeof sf.modulation?.opacityBias === 'number';
+    if (!valid) {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[validateSceneDescription] scene.transientEffects.softFail is invalid.');
+      }
+      return false;
+    }
   }
   const rotPlanes = spineRot.planes;
   if (!Array.isArray(rotPlanes)) {

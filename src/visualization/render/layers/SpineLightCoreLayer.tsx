@@ -8,6 +8,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { VisualizationEngineRef } from '../../engine/types';
 import type { CanonicalSceneMode } from '../../scene/canonicalMode';
+import { computeTransientModulation, scaleModulation } from '../utils/transientModulation';
 
 function toCanonicalMode(mode: string): CanonicalSceneMode {
   switch (mode) {
@@ -34,6 +35,11 @@ export function SpineLightCoreLayer({
   const cameraPosRef = useRef(new THREE.Vector3());
   const cameraDirRef = useRef(new THREE.Vector3());
   const cameraUpRef = useRef(new THREE.Vector3());
+  const baseColorRef = useRef(new THREE.Color());
+  const tintColorRef = useRef(new THREE.Color());
+  const mixedColorRef = useRef(new THREE.Color());
+  const baseOrbColorRef = useRef(new THREE.Color());
+  const mixedOrbColorRef = useRef(new THREE.Color());
   const shaderMat = useMemo(
     () =>
       new THREE.ShaderMaterial({
@@ -185,8 +191,18 @@ export function SpineLightCoreLayer({
     mesh.renderOrder = layers.spineLightCore.renderOrderBase;
 
     const mode = toCanonicalMode(v.currentMode);
-    mat.uniforms.uColor.value.set(lightCore.color);
-    mat.uniforms.uOrbColor.value.set(lightCore.orbColor);
+    const mod = scaleModulation(
+      computeTransientModulation(v.lastEvent, v.lastEventTime, v.clock, scene.transientEffects),
+      lightCore.modulationWeights,
+    );
+    const tintMix = mod.hueShift;
+    const baseColor = baseColorRef.current.set(lightCore.color);
+    const tintColor = tintColorRef.current.set(lightCore.modulationTintColor);
+    const mixedColor = mixedColorRef.current.copy(baseColor).lerp(tintColor, tintMix);
+    const baseOrbColor = baseOrbColorRef.current.set(lightCore.orbColor);
+    const mixedOrbColor = mixedOrbColorRef.current.copy(baseOrbColor).lerp(tintColor, tintMix);
+    mat.uniforms.uColor.value.copy(mixedColor);
+    mat.uniforms.uOrbColor.value.copy(mixedOrbColor);
     const motion = scene.motion;
     const motionEnergy = motion?.energy ?? 0;
     const motionTension = motion?.tension ?? 0;
@@ -202,9 +218,10 @@ export function SpineLightCoreLayer({
       motionEnergy * 0.2 +
       Math.max(0, motionBreath - 0.5) * 0.18 -
       motionSettle * 0.16;
+    const transientOpacityBoost = 1 + mod.opacityBias;
     mat.uniforms.uOpacity.value = Math.min(
       1,
-      Math.max(0, baseOpacity * presenceOpacityBoost * motionOpacityBoost),
+      Math.max(0, baseOpacity * presenceOpacityBoost * motionOpacityBoost * transientOpacityBoost),
     );
     const warpScale = lightCore.warpScaleByMode[mode] ?? 1;
     const motionScale = v.reduceMotion ? 0 : warpScale;
@@ -217,16 +234,28 @@ export function SpineLightCoreLayer({
     const settleDamp = 1 - motionSettle * 0.6;
     mat.uniforms.uTime.value = v.clock;
     mat.uniforms.uWarpFreq.value = lightCore.warpFreq;
+    const transientWarpBoost = 1 + mod.agitation;
     mat.uniforms.uWarpAmpX.value =
       mode === 'processing'
         ? 0
-        : lightCore.warpAmpX * motionScale * activityBoost * motionWarpBoost * settleDamp;
+        : lightCore.warpAmpX *
+          motionScale *
+          activityBoost *
+          motionWarpBoost *
+          settleDamp *
+          transientWarpBoost;
     mat.uniforms.uWarpAmpY.value =
-      lightCore.warpAmpY * motionScale * activityBoost * motionWarpBoost * settleDamp;
+      lightCore.warpAmpY *
+      motionScale *
+      activityBoost *
+      motionWarpBoost *
+      settleDamp *
+      transientWarpBoost;
     const orbStrength = lightCore.orbDebugObvious
       ? lightCore.orbStrength * lightCore.orbDebugMultiplier
       : lightCore.orbStrength;
-    mat.uniforms.uOrbStrength.value = orbStrength;
+    const transientOrbBoost = 1 + mod.agitation;
+    mat.uniforms.uOrbStrength.value = orbStrength * transientOrbBoost;
     mat.uniforms.uOrbRadius.value = lightCore.orbRadius;
     mat.uniforms.uOrbFalloff.value = lightCore.orbFalloff;
     mat.uniforms.uOrbCenterY.value = lightCore.orbCenterY;

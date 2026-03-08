@@ -4,6 +4,7 @@
  */
 
 import type { GLSceneDescription } from '../scene/formations';
+import type { TransientVisualSignal } from './signals';
 
 export type VisualizationMode =
   | 'idle'
@@ -19,6 +20,7 @@ export type AiUiSignalsEvent =
   | 'chunkAccepted'
   | 'warning'
   | 'tapCard'
+  | TransientVisualSignal
   | null;
 
 export type AiUiSignals = {

@@ -21,6 +21,13 @@ export type {
   VisualizationPanelRects,
 } from './engine/types';
 
+export {
+  TRANSIENT_SIGNAL_SOFT_FAIL,
+  VALID_TRANSIENT_SIGNALS,
+  isTransientVisualSignal,
+  type TransientVisualSignal,
+} from './engine/signals';
+
 export { VisualizationCanvas } from './render/canvas/VisualizationCanvas';
 export { VisualizationSurface } from './render/canvas/VisualizationSurface';
 export { VisualizationCanvasR3F, type VisualizationCanvasR3FProps } from './render/canvas/VisualizationCanvasR3F';

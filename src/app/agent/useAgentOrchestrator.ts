@@ -45,6 +45,8 @@ const POST_FINAL_STABILIZATION_WINDOW_MS = 120;
 /** Bounded post-stop flush window: settlement allowed after this from stop-request anchor if speechEnd has not arrived. Single anchor, not mixed per path. */
 const POST_STOP_FLUSH_WINDOW_MS = 400;
 const IOS_STOP_GRACE_MS = 250;
+/** Brief display of failed state before auto-return to idle (lifecycle timer owns failed → idle). */
+const FAILED_DISPLAY_MS = 800;
 type VoiceModule = {
   start: (locale: string) => Promise<void>;
   stop: () => Promise<void>;
@@ -261,6 +263,8 @@ export function useAgentOrchestrator(
   const iosStopPendingRef = useRef(false);
   const iosStopInvokedRef = useRef(false);
   const nativeStopInFlightRef = useRef(false);
+  /** Timer for failed → idle transition only; cleared in finalizeStop and on unmount. */
+  const failedReturnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   modeRef.current = mode;
 
   const playListenIn = useCallback(() => {
@@ -301,7 +305,7 @@ export function useAgentOrchestrator(
   );
 
   const finalizeStop = useCallback(
-    (reason: string, recordingSessionId?: string) => {
+    (reason: string, recordingSessionId?: string, opts?: { keepLifecycle?: boolean }) => {
       if (finalizeInFlightRef.current) return;
       finalizeInFlightRef.current = true;
       if (finalizeTimerRef.current) {
@@ -311,6 +315,10 @@ export function useAgentOrchestrator(
       if (quietWindowTimerRef.current) {
         clearTimeout(quietWindowTimerRef.current);
         quietWindowTimerRef.current = null;
+      }
+      if (failedReturnTimerRef.current) {
+        clearTimeout(failedReturnTimerRef.current);
+        failedReturnTimerRef.current = null;
       }
       if (finalStabilizationTimerRef.current) {
         clearTimeout(finalStabilizationTimerRef.current);
@@ -333,8 +341,10 @@ export function useAgentOrchestrator(
       pendingSubmitSessionIdRef.current = null;
       settlementResolvedRef.current = false;
       finalizeTranscriptFromPartial(reason, recordingSessionId);
-      setMode('idle');
-      setLifecycle('idle');
+      if (!opts?.keepLifecycle) {
+        setMode('idle');
+        setLifecycle('idle');
+      }
       logInfo('AgentOrchestrator', 'voice listen stopped', { recordingSessionId });
       recordingSessionRef.current = null;
       partialTranscriptRef.current = '';
@@ -406,10 +416,25 @@ export function useAgentOrchestrator(
         });
         const normalized = normalizeTranscript(transcribedTextRef.current);
         if (!normalized) {
+          logLifecycle('AgentOrchestrator', 'lifecycle transition listening -> failed', {
+            recordingSessionId,
+            reason: 'speech capture failed: no usable transcript',
+          });
           logWarn('AgentOrchestrator', 'timeout settlement produced empty transcript; submit skipped', {
             recordingSessionId,
           });
-          finalizeStop(reason, recordingSessionId);
+          setMode('idle');
+          setLifecycle('failed');
+          logInfo('AgentOrchestrator', 'recoverable attempt failed; returning to idle-ready state');
+          finalizeStop(reason, recordingSessionId, { keepLifecycle: true });
+          if (failedReturnTimerRef.current) {
+            clearTimeout(failedReturnTimerRef.current);
+            failedReturnTimerRef.current = null;
+          }
+          failedReturnTimerRef.current = setTimeout(() => {
+            failedReturnTimerRef.current = null;
+            setLifecycle('idle');
+          }, FAILED_DISPLAY_MS);
           return;
         }
       } else if (reason === 'speechEnd') {
@@ -431,10 +456,25 @@ export function useAgentOrchestrator(
         }
         const normalized = normalizeTranscript(transcribedTextRef.current);
         if (!normalized) {
+          logLifecycle('AgentOrchestrator', 'lifecycle transition listening -> failed', {
+            recordingSessionId,
+            reason: 'speech capture failed: no usable transcript',
+          });
           logWarn('AgentOrchestrator', 'quiet window produced empty transcript; submit skipped', {
             recordingSessionId,
           });
-          finalizeStop('quietWindowExpired', recordingSessionId);
+          setMode('idle');
+          setLifecycle('failed');
+          logInfo('AgentOrchestrator', 'recoverable attempt failed; returning to idle-ready state');
+          finalizeStop('quietWindowExpired', recordingSessionId, { keepLifecycle: true });
+          if (failedReturnTimerRef.current) {
+            clearTimeout(failedReturnTimerRef.current);
+            failedReturnTimerRef.current = null;
+          }
+          failedReturnTimerRef.current = setTimeout(() => {
+            failedReturnTimerRef.current = null;
+            setLifecycle('idle');
+          }, FAILED_DISPLAY_MS);
           return;
         }
       } else {
@@ -1069,6 +1109,15 @@ export function useAgentOrchestrator(
   }, []);
 
   useEffect(() => {
+    return () => {
+      if (failedReturnTimerRef.current) {
+        clearTimeout(failedReturnTimerRef.current);
+        failedReturnTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (voiceReady) {
       logInfo('AgentOrchestrator', 'initialized');
       logInfo('AgentOrchestrator', 'runtime lifecycle ready');
@@ -1383,8 +1432,14 @@ export function useAgentOrchestrator(
     };
   }, []);
 
+  const emittedLifecycle: AgentLifecycleState = (() => {
+    if (lifecycle === 'failed') return 'failed';
+    if (error) return 'error';
+    return lifecycle;
+  })();
+
   const state: AgentOrchestratorState = {
-    lifecycle: error ? 'error' : lifecycle,
+    lifecycle: emittedLifecycle,
     error,
     voiceReady,
     transcribedText,

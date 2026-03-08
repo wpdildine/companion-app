@@ -39,5 +39,6 @@ export function buildBackgroundFieldDescription(): GLScenePlaneField {
     answerPanelDepth: a.panel.depth.answer,
     cardsPanelDepth: a.panel.depth.cards,
     rulesPanelDepth: a.panel.depth.rules,
+    modulationWeights: a.modulationWeights,
   };
 }

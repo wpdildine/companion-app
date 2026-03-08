@@ -4,6 +4,7 @@
  */
 
 import type { VisualizationMode } from './types';
+import type { TransientVisualSignal } from './signals';
 
 export type PulseEventType =
   | 'tap'
@@ -11,6 +12,7 @@ export type PulseEventType =
   | 'tapCitation'
   | 'tapCard'
   | 'warning'
+  | TransientVisualSignal
   | null;
 
 /** Base palette RGB (0..1) by paletteId. Index 0 = default purple. */

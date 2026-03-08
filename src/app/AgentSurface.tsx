@@ -329,7 +329,10 @@ export default function AgentSurface() {
     orchState.lifecycle === 'speaking' ||
     orchState.responseText != null ||
     orchState.validationSummary != null;
-  const showContentPanels = hasResultContext || hasReferenceStubs || orchState.error != null;
+  const showContentPanels =
+    hasResultContext ||
+    hasReferenceStubs ||
+    (orchState.error != null && orchState.lifecycle === 'error');
   const cardsCount =
     orchState.validationSummary?.cards?.length ?? stubCards.length;
   const rulesCount =
@@ -357,6 +360,7 @@ export default function AgentSurface() {
         : canRevealPanels &&
             (orchState.lifecycle === 'idle' ||
               orchState.lifecycle === 'complete' ||
+              orchState.lifecycle === 'failed' ||
               orchState.lifecycle === 'error')
           ? 'swipeContext'
           : orchState.lifecycle === 'speaking'
@@ -701,7 +705,7 @@ export default function AgentSurface() {
           <ResultsOverlay
             responseText={orchState.responseText}
             validationSummary={orchState.validationSummary}
-            error={orchState.error}
+            error={orchState.lifecycle === 'error' ? orchState.error : null}
             onClearError={handleClearError}
             isAsking={isAsking}
             revealedBlocks={revealedBlocks}

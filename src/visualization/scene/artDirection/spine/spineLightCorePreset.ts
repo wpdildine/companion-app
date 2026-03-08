@@ -33,4 +33,13 @@ export const SPINE_LIGHT_CORE_PRESET = {
     processing: 1.45,
     speaking: 1.0,
   },
+  /** How this layer scales shared modulation channels (render-side). Same flat-preset idiom as warpScaleByMode. */
+  modulationWeights: {
+    hueShift: 1,
+    intensity: 1,
+    agitation: 1,
+    opacityBias: 1,
+  },
+  /** Color to lerp toward when hueShift is applied. Layer application only; no event semantics. */
+  modulationTintColor: '#ff6b6b',
 } as const;

@@ -331,6 +331,12 @@ export type GLScenePlaneField = {
   answerPanelDepth: number;
   cardsPanelDepth: number;
   rulesPanelDepth: number;
+  modulationWeights?: {
+    hueShift: number;
+    intensity: number;
+    agitation: number;
+    opacityBias: number;
+  };
 };
 
 export type { GLSceneSpine } from './builders/spine';
@@ -409,6 +415,20 @@ export type GLSceneMotion = {
   phaseT: number;
 };
 
+export type GLSceneTransientEffect = {
+  decayMs: number;
+  modulation: {
+    hueShift: number;
+    intensity: number;
+    agitation: number;
+    opacityBias: number;
+  };
+};
+
+export type GLSceneTransientEffects = {
+  softFail: GLSceneTransientEffect | null;
+};
+
 export type GLSceneDescription = {
   zones: {
     layout: GLSceneZonesLayout;
@@ -441,6 +461,8 @@ export type GLSceneDescription = {
   organism: GLSceneOrganism;
   /** Motion grammar signals; stub created here, MotionGrammarEngine mutates each frame. */
   motion: GLSceneMotion;
+  /** Shared transient effect definitions; render layers interpret these. */
+  transientEffects: GLSceneTransientEffects;
 };
 
 export type GetSceneDescriptionOptions = {
@@ -500,6 +522,7 @@ function applyContextGlyphZLayers(
 import { buildSpineDescription, type GLSceneSpine } from './builders/spine';
 import { buildSpineRotPlanes } from './builders/buildSpineRotPlanes';
 import { buildSpineLightCore } from './builders/buildSpineLightCore';
+import { buildTransientEffects } from './builders/buildTransientEffects';
 import { buildBackPlaneDescription } from './builders/backPlane';
 import { buildContextGlyphsDescription } from './builders/contextGlyphs';
 import { buildContextLinksDescription } from './builders/contextLinks';
@@ -584,6 +607,7 @@ export function getSceneDescription(
   const spine = buildSpineDescription();
   const spineLightCore = buildSpineLightCore();
   const spineRot = buildSpineRotPlanes();
+  const transientEffects = buildTransientEffects();
   const backgroundPlanesWithZ = {
     count: 2,
     planes: [
@@ -672,6 +696,7 @@ export function getSceneDescription(
     spine,
     spineLightCore,
     spineRot,
+    transientEffects,
     organism: {
       presence: 0,
       focusBias: 0,

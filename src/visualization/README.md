@@ -11,6 +11,18 @@ Visualization is a pure render subsystem. It exposes one public API:
   - `scene/artDirection/*`
   - `scene/builders/*`
 
+## Transient Effects Ownership (System-Wide)
+
+Transient effects are data-driven; render layers respond to **shared modulation channels** derived from event identity + timing.
+
+1. **Orchestrator/Controller** owns semantic event emission (what happened, when). It emits transient event identity only (e.g. via `emitEvent`).
+2. **Engine / shared runtime** carries event identity + timing (`lastEvent`, `lastEventTime`) only.
+3. **Shared effect definitions** live in `scene/artDirection/transientEffects/`. Each effect is data-only: decayMs and modulation peak values. No runtime logic in these files.
+4. **Render-side helpers** derive modulation from event identity + timing + shared effect definitions.
+5. **Render layers** consume only the derived modulation channels plus layer-scoped **response tuning** from their presets (e.g. `modulationWeights`, `modulationTintColor` on the light-core preset). Render-side helpers may interpret event identity for pulse routing, but render layers should not embed event-specific branching.
+
+**Shared modulation contract:** modulation channels are `hueShift`, `intensity`, `agitation`, `opacityBias` (0..1). Layers apply these with their weights to produce pixels.
+
 2. **Builders own final spatial values**
 - Builders/formations compute final `position.z` data for primitives.
 - Renderers do not invent fallback Z layouts.
@@ -57,6 +69,7 @@ Tuning rule: adjust behavior in `scene/artDirection/motionGrammar/*` first; rend
 
 - `engine/` — ref contract, state transforms, pulse plumbing, validation
 - `scene/` — contract assembly + builders + art direction
+- `scene/artDirection/transientEffects/` — shared transient effect definitions (data-driven; one file per effect)
 - `render/canvas/` — canvas host, post-FX, camera sync/orbit
 - `render/layers/` — scene consumers (background, spine, glyphs, links, touch zones)
 - `render/dev/` — dev-only visual tooling (DevPanel, DebugZoneOverlay)

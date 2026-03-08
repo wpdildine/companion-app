@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import type { VisualizationEngineRef } from '../../engine/types';
 import { createBackgroundDetailMaterial } from '../../materials/background/backgroundDetailMaterial';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
+import { computeTransientModulation, scaleModulation } from '../utils/transientModulation';
 
 // ---- Plane 1: base (gradient + vignette + low-freq noise) ----
 const BASE_PLANE_VERTEX = `
@@ -233,11 +234,15 @@ export function BackgroundLayer({
       if (g2.current) g2.current.visible = false;
       return;
     }
-    const hueShift = v.hueShift ?? 0;
+    const transient = scaleModulation(
+      computeTransientModulation(v.lastEvent, v.lastEventTime, v.clock, scene.transientEffects),
+      pf.modulationWeights,
+    );
+    const hueShift = (v.hueShift ?? 0) + transient.hueShift;
     colorRef.current.setHSL((bp.hue + hueShift) % 1, bp.sat, bp.lum);
     const opacity = Math.max(
       pf.opacityClampMin,
-      Math.min(pf.opacityClampMax, bp.opacityBase),
+      Math.min(pf.opacityClampMax, bp.opacityBase * (1 + transient.opacityBias)),
     );
     const viewportWidth = state.viewport.width;
     const viewportHeight = state.viewport.height;
@@ -264,6 +269,7 @@ export function BackgroundLayer({
     let targetIntensity = isProcessing
       ? pf.intensityProcessingBase + v.activity * pf.intensityProcessingActivityGain
       : pf.intensityIdleBase + v.activity * pf.intensityIdleActivityGain;
+    targetIntensity += transient.intensity;
     const motion = v.scene?.motion;
     if (motion) {
       targetIntensity += motion.energy * 0.12;

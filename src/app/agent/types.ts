@@ -13,6 +13,7 @@ export type AgentLifecycleState =
   | 'thinking'
   | 'speaking'
   | 'complete'
+  | 'failed'
   | 'error';
 
 /** Optional metadata for visualization or overlay. */

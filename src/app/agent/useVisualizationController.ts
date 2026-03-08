@@ -6,12 +6,16 @@
 
 import { useEffect, useRef, type RefObject } from 'react';
 import { logInfo } from '../../shared/logging';
-import { applySignalsToVisualization, triggerPulseAtCenter } from '../../visualization';
+import {
+  applySignalsToVisualization,
+  triggerPulseAtCenter,
+  TRANSIENT_SIGNAL_SOFT_FAIL,
+} from '../../visualization';
 import type { VisualizationEngineRef } from '../../visualization';
 import { useVisualizationSignals } from '../hooks/useVisualizationSignals';
 import type { AgentOrchestratorState, AgentOrchestratorListeners } from './types';
 
-/** Maps AgentLifecycleState to VisualizationMode (engine contract). */
+/** Maps AgentLifecycleState to VisualizationMode (engine contract). failed is lifecycle-only; map to idle. */
 function lifecycleToMode(
   lifecycle: AgentOrchestratorState['lifecycle'],
 ): 'idle' | 'listening' | 'processing' | 'speaking' {
@@ -25,6 +29,7 @@ function lifecycleToMode(
       return 'speaking';
     case 'complete':
     case 'error':
+    case 'failed':
     case 'idle':
     default:
       return 'idle';
@@ -95,6 +100,7 @@ export function useVisualizationController(
   const attachedLoggedRef = useRef(false);
   const lastLoggedModeRef = useRef<string | null>(null);
   const lastLoggedLifecycleRef = useRef<string | null>(null);
+  const softFailEmittedRef = useRef(false);
 
   // Map normalized agent state → visualization signals (mode, phase, grounded, etc.)
   useEffect(() => {
@@ -160,6 +166,14 @@ export function useVisualizationController(
         cardRefsCount,
       }),
     );
+    if (state.lifecycle === 'failed') {
+      if (!softFailEmittedRef.current) {
+        softFailEmittedRef.current = true;
+        emitEventRef.current(TRANSIENT_SIGNAL_SOFT_FAIL);
+      }
+    } else {
+      softFailEmittedRef.current = false;
+    }
     if (!attachedLoggedRef.current) {
       attachedLoggedRef.current = true;
       logInfo('VisualizationController', 'attached to visualization signal pipeline');

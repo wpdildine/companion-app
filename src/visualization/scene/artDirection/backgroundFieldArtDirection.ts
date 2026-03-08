@@ -55,4 +55,10 @@ export const BACKGROUND_FIELD_ART_DIRECTION = {
       rules: 6.35,
     },
   },
+  modulationWeights: {
+    hueShift: 0.25,
+    intensity: 0.2,
+    agitation: 0,
+    opacityBias: 0.1,
+  },
 } as const;

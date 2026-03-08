@@ -6,6 +6,7 @@
  */
 
 import type { VisualizationMode, VisualizationIntensity } from './types';
+import { VALID_TRANSIENT_SIGNALS } from './signals';
 
 const DEFAULT_MAX_PER_CLUSTER = 8;
 
@@ -93,10 +94,10 @@ export function validateVizState(
   if (s.reduceMotion != null && typeof s.reduceMotion !== 'boolean') {
     errors.push('reduceMotion must be a boolean');
   }
-  const validEvents = ['tapCitation', 'chunkAccepted', 'warning', 'tapCard'];
+  const validEvents = ['tapCitation', 'chunkAccepted', 'warning', 'tapCard', ...VALID_TRANSIENT_SIGNALS];
   if (s.lastEvent != null && !validEvents.includes(s.lastEvent as string)) {
     errors.push(
-      'lastEvent must be tapCitation | chunkAccepted | warning | tapCard | null',
+      'lastEvent must be tapCitation | chunkAccepted | warning | tapCard | (transient signals) | null',
     );
   }
   if (

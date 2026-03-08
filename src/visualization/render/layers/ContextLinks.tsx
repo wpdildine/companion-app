@@ -12,6 +12,7 @@ import {
 } from '../../materials/links/connections';
 import type { VisualizationEngineRef } from '../../engine/types';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
+import { getEventPulse, injectEventPulse } from '../utils/eventPulse';
 
 function sampleBezier(
   start: [number, number, number],
@@ -177,38 +178,52 @@ export function ContextLinks({
 
     uniforms.uTime.value += delta;
     uniforms.uActivity.value = v.activity;
+    const pulsePositions: [number, number, number][] = [
+      [v.pulsePositions[0][0], v.pulsePositions[0][1], v.pulsePositions[0][2]],
+      [v.pulsePositions[1][0], v.pulsePositions[1][1], v.pulsePositions[1][2]],
+      [v.pulsePositions[2][0], v.pulsePositions[2][1], v.pulsePositions[2][2]],
+    ];
+    const pulseTimes = [v.pulseTimes[0], v.pulseTimes[1], v.pulseTimes[2]];
+    const pulseColors: [number, number, number][] = [
+      [v.pulseColors[0][0], v.pulseColors[0][1], v.pulseColors[0][2]],
+      [v.pulseColors[1][0], v.pulseColors[1][1], v.pulseColors[1][2]],
+      [v.pulseColors[2][0], v.pulseColors[2][1], v.pulseColors[2][2]],
+    ];
+    const eventPulse = getEventPulse(v, v.scene);
+    injectEventPulse(pulsePositions, pulseTimes, pulseColors, eventPulse);
+
     uniforms.uPulsePositions.value[0].set(
-      v.pulsePositions[0][0],
-      v.pulsePositions[0][1],
-      v.pulsePositions[0][2],
+      pulsePositions[0][0],
+      pulsePositions[0][1],
+      pulsePositions[0][2],
     );
     uniforms.uPulsePositions.value[1].set(
-      v.pulsePositions[1][0],
-      v.pulsePositions[1][1],
-      v.pulsePositions[1][2],
+      pulsePositions[1][0],
+      pulsePositions[1][1],
+      pulsePositions[1][2],
     );
     uniforms.uPulsePositions.value[2].set(
-      v.pulsePositions[2][0],
-      v.pulsePositions[2][1],
-      v.pulsePositions[2][2],
+      pulsePositions[2][0],
+      pulsePositions[2][1],
+      pulsePositions[2][2],
     );
-    uniforms.uPulseTimes.value[0] = v.pulseTimes[0];
-    uniforms.uPulseTimes.value[1] = v.pulseTimes[1];
-    uniforms.uPulseTimes.value[2] = v.pulseTimes[2];
+    uniforms.uPulseTimes.value[0] = pulseTimes[0];
+    uniforms.uPulseTimes.value[1] = pulseTimes[1];
+    uniforms.uPulseTimes.value[2] = pulseTimes[2];
     uniforms.uPulseColors.value[0].set(
-      v.pulseColors[0][0],
-      v.pulseColors[0][1],
-      v.pulseColors[0][2],
+      pulseColors[0][0],
+      pulseColors[0][1],
+      pulseColors[0][2],
     );
     uniforms.uPulseColors.value[1].set(
-      v.pulseColors[1][0],
-      v.pulseColors[1][1],
-      v.pulseColors[1][2],
+      pulseColors[1][0],
+      pulseColors[1][1],
+      pulseColors[1][2],
     );
     uniforms.uPulseColors.value[2].set(
-      v.pulseColors[2][0],
-      v.pulseColors[2][1],
-      v.pulseColors[2][2],
+      pulseColors[2][0],
+      pulseColors[2][1],
+      pulseColors[2][2],
     );
     uniforms.uTouchInfluence.value = v.touchInfluence;
 
