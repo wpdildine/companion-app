@@ -3,7 +3,7 @@
  * Visibility gated by vizIntensity (Full mode only). Endpoints and topology from visualizationRef.current.scene.
  */
 
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import {
@@ -13,6 +13,7 @@ import {
 import type { VisualizationEngineRef } from '../../engine/types';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
 import { getEventPulse, injectEventPulse } from '../utils/eventPulse';
+import { logInfo } from '../../../shared/logging';
 
 function sampleBezier(
   start: [number, number, number],
@@ -60,6 +61,7 @@ export function ContextLinks({
 }: {
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
 }) {
+  return null;
   const materialRefs = useRef<Array<THREE.ShaderMaterial | null>>([]);
   const linksScene = visualizationRef.current?.scene?.contextLinks;
 
@@ -168,16 +170,109 @@ export function ContextLinks({
         ],
       },
       uTouchInfluence: { value: 0 },
+      uTouchWorld: { value: new THREE.Vector3(1e6, 1e6, 1e6) },
+      uMotionMicro: { value: 0 },
+      uMotionAxisX: { value: 1 },
+      uMotionAxisY: { value: 1 },
+      uAlphaScale: { value: linksScene?.alphaScale ?? 1 },
     }),
     [linksScene],
   );
+
+  const loggedRef = useRef(false);
+  const frameLoggedRef = useRef(false);
+  useEffect(() => {
+    if (loggedRef.current) return;
+    const v = visualizationRef.current;
+    if (!v) return;
+    loggedRef.current = true;
+    logInfo('Visualization', 'ContextLinks mount state', {
+      vizIntensity: v.vizIntensity,
+      confidence: v.signalsSnapshot?.confidence ?? null,
+      nodesCount: v.scene?.clusters?.nodes?.length ?? 0,
+      edgesCount: v.scene?.links?.edges?.length ?? 0,
+      shaderFlag: SHADER_DEBUG_FLAGS.contextLinks,
+    });
+  }, [visualizationRef.current?.scene?.clusters?.nodes?.length, visualizationRef.current?.vizIntensity]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useFrame((_, delta) => {
     const v = visualizationRef.current;
     if (!v) return;
 
+    if (gate.valid && gate.edges.length && gate.nodes.length && edgeGeometries.length) {
+      const { edges, nodes, segmentsPerEdge } = gate;
+      const controlXAmp = linksScene?.bezierControlXAmp ?? 0.2;
+      const controlYAmp = linksScene?.bezierControlYAmp ?? 0.1;
+      const controlZAmp = linksScene?.bezierControlZAmp ?? 0.03;
+      for (let edgeIndex = 0; edgeIndex < edges.length; edgeIndex++) {
+        const edge = edges[edgeIndex]!;
+        const geom = edgeGeometries[edgeIndex];
+        if (!geom) continue;
+        const start = nodes[edge.a]?.position;
+        const end = nodes[edge.b]?.position;
+        if (!start || !end) continue;
+
+        const startAttr = geom.getAttribute('startPoint') as THREE.BufferAttribute | null;
+        const endAttr = geom.getAttribute('endPoint') as THREE.BufferAttribute | null;
+        const posAttr = geom.getAttribute('position') as THREE.BufferAttribute | null;
+        if (!startAttr || !endAttr || !posAttr) continue;
+
+        for (let i = 0; i <= segmentsPerEdge; i++) {
+          const t = i / segmentsPerEdge;
+          const p = sampleBezier(
+            start,
+            end,
+            edge.pathIndex,
+            controlXAmp,
+            controlYAmp,
+            controlZAmp,
+            t,
+          );
+          const idx = i * 3;
+          startAttr.array[idx] = start[0];
+          startAttr.array[idx + 1] = start[1];
+          startAttr.array[idx + 2] = start[2];
+          endAttr.array[idx] = end[0];
+          endAttr.array[idx + 1] = end[1];
+          endAttr.array[idx + 2] = end[2];
+          posAttr.array[idx] = p[0];
+          posAttr.array[idx + 1] = p[1];
+          posAttr.array[idx + 2] = p[2];
+        }
+        startAttr.needsUpdate = true;
+        endAttr.needsUpdate = true;
+        posAttr.needsUpdate = true;
+      }
+    }
+
     uniforms.uTime.value += delta;
     uniforms.uActivity.value = v.activity;
+    const tw = v.touchWorld;
+    uniforms.uTouchWorld.value.set(tw ? tw[0] : 1e6, tw ? tw[1] : 1e6, tw ? tw[2] : 1e6);
+    uniforms.uTouchInfluence.value = v.touchInfluence;
+    uniforms.uMotionMicro.value = v.scene?.motion?.microMotion ?? 0;
+    const axisDebugOn =
+      typeof __DEV__ !== 'undefined' &&
+      __DEV__ &&
+      !!v.motionAxisDebug?.enabled;
+    if (axisDebugOn) {
+      const mode = v.motionAxisDebug?.axisLockMode ?? 'none';
+      const xGain = Math.max(0, v.motionAxisDebug?.xGain ?? 1);
+      const yGain = Math.max(0, v.motionAxisDebug?.yGain ?? 1);
+      if (mode === 'x') {
+        uniforms.uMotionAxisX.value = 1;
+        uniforms.uMotionAxisY.value = 0;
+      } else if (mode === 'y') {
+        uniforms.uMotionAxisX.value = 0;
+        uniforms.uMotionAxisY.value = 1;
+      } else {
+        uniforms.uMotionAxisX.value = xGain;
+        uniforms.uMotionAxisY.value = yGain;
+      }
+    } else {
+      uniforms.uMotionAxisX.value = 1;
+      uniforms.uMotionAxisY.value = 1;
+    }
     const pulsePositions: [number, number, number][] = [
       [v.pulsePositions[0][0], v.pulsePositions[0][1], v.pulsePositions[0][2]],
       [v.pulsePositions[1][0], v.pulsePositions[1][1], v.pulsePositions[1][2]],
@@ -191,6 +286,25 @@ export function ContextLinks({
     ];
     const eventPulse = getEventPulse(v, v.scene);
     injectEventPulse(pulsePositions, pulseTimes, pulseColors, eventPulse);
+
+    if (!frameLoggedRef.current) {
+      frameLoggedRef.current = true;
+      const strengths = v.scene?.links?.edges?.map(e => e.strength ?? 0) ?? [];
+      const strengthMin = strengths.length ? Math.min(...strengths) : 0;
+      const strengthMax = strengths.length ? Math.max(...strengths) : 0;
+      const strengthAvg = strengths.length
+        ? strengths.reduce((a, b) => a + b, 0) / strengths.length
+        : 0;
+      logInfo('Visualization', 'ContextLinks uniforms snapshot', {
+        activity: v.activity,
+        touchInfluence: v.touchInfluence,
+        strengthMin,
+        strengthMax,
+        strengthAvg,
+        pulseTimes,
+        pulsePositions,
+      });
+    }
 
     uniforms.uPulsePositions.value[0].set(
       pulsePositions[0][0],
@@ -257,8 +371,27 @@ export function ContextLinks({
     ? v?.vizIntensity === 'full'
     : v?.vizIntensity !== 'off';
   const showLinks = isCorrectIntensity && confidence < showConfidenceBelow;
+  const forceShowLinks =
+    typeof __DEV__ !== 'undefined' &&
+    __DEV__ &&
+    true;
+  const loggedGateRef = useRef(false);
+  if (!loggedGateRef.current) {
+    loggedGateRef.current = true;
+    logInfo('Visualization', 'ContextLinks render gate', {
+      shaderFlag: SHADER_DEBUG_FLAGS.contextLinks,
+      showLinks,
+      forceShowLinks,
+      edgeGeometries: edgeGeometries.length,
+      segmentsPerEdge: v?.scene?.links?.segmentsPerEdge ?? 0,
+      vizIntensity: v?.vizIntensity,
+      confidence,
+      showConfidenceBelow,
+      requireFullIntensity,
+    });
+  }
   if (!SHADER_DEBUG_FLAGS.contextLinks || !showLinks || edgeGeometries.length === 0) {
-    return null;
+    if (!forceShowLinks) return null;
   }
 
   const scene = visualizationRef.current?.scene;
@@ -280,6 +413,7 @@ export function ContextLinks({
             vertexShader={connectionVertex}
             fragmentShader={connectionFragment}
             uniforms={uniforms}
+            linewidth={5}
             transparent
             depthWrite={false}
             blending={THREE.NormalBlending}

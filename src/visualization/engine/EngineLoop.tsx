@@ -48,6 +48,18 @@ function seeded01(i: number, seed: number): number {
   return Math.abs(Math.sin(i * seed)) % 1;
 }
 
+function clamp01(v: number): number {
+  if (v < 0) return 0;
+  if (v > 1) return 1;
+  return v;
+}
+
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  if (edge0 === edge1) return 0;
+  const t = clamp01((x - edge0) / (edge1 - edge0));
+  return t * t * (3 - 2 * t);
+}
+
 function toCanonicalMotionMode(mode: string): 'idle' | 'listening' | 'processing' | 'speaking' {
   switch (mode) {
     case 'idle':
@@ -95,6 +107,7 @@ export function EngineLoop({ visualizationRef }: { visualizationRef: React.RefOb
   const canonicalLastStepRef = useRef(-1);
   const prevCycleOnRef = useRef(false);
   const prevCanonicalOnRef = useRef(false);
+  const baseClusterPositionsRef = useRef<Array<[number, number, number]> | null>(null);
   const motionGrammarRef = useRef<ReturnType<typeof createMotionGrammarEngine> | null>(null);
   if (!motionGrammarRef.current) {
     motionGrammarRef.current = createMotionGrammarEngine(MOTION_GRAMMAR);
@@ -358,6 +371,43 @@ export function EngineLoop({ visualizationRef }: { visualizationRef: React.RefOb
           const jitterN = seeded01(node.id + layer * 17, 97.113) * 2 - 1;
           node.position[2] =
             baseZ * spacingScale + jitterN * glyphs.zLayerJitter * jitterScale;
+        }
+      }
+
+      // Pass D: touch-driven repulsion in shared node positions (so glyphs + links stay correlated).
+      if (nodes && nodes.length > 0) {
+        if (!baseClusterPositionsRef.current || baseClusterPositionsRef.current.length !== nodes.length) {
+          baseClusterPositionsRef.current = nodes.map(node => [
+            node.position[0],
+            node.position[1],
+            node.position[2],
+          ]);
+        }
+        const basePositions = baseClusterPositionsRef.current;
+        const touchWorld = v.touchWorld;
+        const touchInfluence = v.touchInfluence;
+        const touchRadius = glyphs?.touchRadius ?? 3.6;
+        const touchStrength = glyphs?.touchStrength ?? 2.8;
+        const touchMaxOffset = glyphs?.touchMaxOffset ?? 1.35;
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i] as { position: [number, number, number] };
+          const base = basePositions[i]!;
+          node.position[0] = base[0];
+          node.position[1] = base[1];
+          if (!touchWorld || touchInfluence <= 0) continue;
+          const dx = node.position[0] - touchWorld[0];
+          const dy = node.position[1] - touchWorld[1];
+          const dist = Math.hypot(dx, dy);
+          const radiusMask = 1 - smoothstep(0, touchRadius, dist);
+          const repulse = Math.min(
+            touchMaxOffset,
+            touchInfluence * touchStrength * radiusMask * radiusMask,
+          );
+          if (dist > 0.0001 && repulse > 0) {
+            const inv = 1 / dist;
+            node.position[0] += dx * inv * repulse;
+            node.position[1] += dy * inv * repulse;
+          }
         }
       }
     }

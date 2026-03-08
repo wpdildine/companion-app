@@ -290,6 +290,7 @@ export type GLSceneContextGlyphs = {
 
 export type GLSceneContextLinks = {
   pulseSpeed: number;
+  alphaScale: number;
   showConfidenceBelow: number;
   requireFullIntensity: boolean;
   bezierControlXAmp: number;
@@ -570,7 +571,7 @@ export function getSceneDescription(
     cardsRgb: hexToRgb(zonesStyle.cardsColor),
   };
   const clustersLayout: GLSceneClustersLayout = {
-    radius: 1.15,
+    radius: 2.3,
     zJitter: 0.035,
     sizeBaseRules: 0.1,
     sizeJitterRules: 0.02,

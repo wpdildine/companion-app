@@ -8,6 +8,7 @@ export function buildContextLinksDescription(): GLSceneContextLinks {
   const a = CONTEXT_LINKS_ART_DIRECTION;
   return {
     pulseSpeed: a.pulseSpeed,
+    alphaScale: a.alphaScale,
     showConfidenceBelow: a.showConfidenceBelow,
     requireFullIntensity: a.requireFullIntensity,
     bezierControlXAmp: a.bezier.controlXAmp,

@@ -7,6 +7,7 @@ import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { nodeVertex, nodeFragment } from '../../materials/glyphs/nodes';
+import { logInfo } from '../../../shared/logging';
 import type { VisualizationEngineRef } from '../../engine/types';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
 import { getEventPulse, injectEventPulse } from '../utils/eventPulse';
@@ -90,6 +91,7 @@ function buildGlyphBuffers(
 }
 
 export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.RefObject<VisualizationEngineRef | null> }) {
+  return null;
   const scene = visualizationRef.current?.scene;
   const glyphsScene = scene?.contextGlyphs;
   const nodes = useMemo(
@@ -222,11 +224,29 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
     [glyphsScene, opacityScaleFront, scaleFront, motionGainFront],
   );
 
+  const loggedRef = useRef(false);
+
   useFrame((state, delta) => {
     const v = visualizationRef.current;
     if (!v) return;
-    const rulesCount = v.rulesClusterCount ?? 0;
-    const cardsCount = v.cardsClusterCount ?? 0;
+    if (!loggedRef.current) {
+      loggedRef.current = true;
+      logInfo('Visualization', 'ContextGlyphs mount state', {
+        vizIntensity: v.vizIntensity,
+        rulesClusterCount: v.rulesClusterCount,
+        cardsClusterCount: v.cardsClusterCount,
+        nodesCount: v.scene?.clusters?.nodes?.length ?? 0,
+        shaderFlag: SHADER_DEBUG_FLAGS.contextGlyphs,
+      });
+    }
+    let rulesCount = v.rulesClusterCount ?? 0;
+    let cardsCount = v.cardsClusterCount ?? 0;
+    if (typeof __DEV__ !== 'undefined' && __DEV__ && rulesCount === 0 && cardsCount === 0) {
+      const nodesCount = nodes.length;
+      const maxPer = v.scene?.maxPerCluster ?? 8;
+      rulesCount = Math.min(nodesCount, maxPer);
+      cardsCount = Math.max(0, Math.min(nodesCount - rulesCount, maxPer));
+    }
     const maxPer = v.scene?.maxPerCluster ?? 8;
 
     const applyVisibility = (geom: THREE.BufferGeometry, b: GlyphBuffers) => {
