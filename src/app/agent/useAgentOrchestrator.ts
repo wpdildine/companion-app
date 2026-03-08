@@ -46,6 +46,7 @@ const POST_FINAL_STABILIZATION_WINDOW_MS = 120;
 const POST_STOP_FLUSH_WINDOW_MS = 400;
 const IOS_STOP_GRACE_MS = 250;
 const NATIVE_RESTART_GUARD_MS = 250;
+const ANDROID_TAIL_GRACE_MS = 200;
 /** Brief display of failed state before auto-return to idle (lifecycle timer owns failed → idle). */
 const FAILED_DISPLAY_MS = 800;
 type VoiceModule = {
@@ -271,6 +272,8 @@ export function useAgentOrchestrator(
   const lastSettledSessionIdRef = useRef<string | null>(null);
   /** Timer for post-speechEnd quiet window; cancelled when settlement resolves or session ends. */
   const quietWindowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tailGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tailGraceSessionIdRef = useRef<string | null>(null);
   const recordingStartAtRef = useRef<number | null>(null);
   const firstPartialAtRef = useRef<number | null>(null);
   const firstFinalAtRef = useRef<number | null>(null);
@@ -384,6 +387,11 @@ export function useAgentOrchestrator(
         clearTimeout(quietWindowTimerRef.current);
         quietWindowTimerRef.current = null;
       }
+      if (tailGraceTimerRef.current) {
+        clearTimeout(tailGraceTimerRef.current);
+        tailGraceTimerRef.current = null;
+      }
+      tailGraceSessionIdRef.current = null;
       if (failedReturnTimerRef.current) {
         clearTimeout(failedReturnTimerRef.current);
         failedReturnTimerRef.current = null;
@@ -427,10 +435,38 @@ export function useAgentOrchestrator(
   const resolveSettlement = useCallback(
     (reason: string, recordingSessionId?: string) => {
       if (settlementResolvedRef.current) return;
-      settlementResolvedRef.current = true;
-      if (recordingSessionId) lastSettledSessionIdRef.current = recordingSessionId;
       const capturedFinalCandidate = finalCandidateTextRef.current ?? '';
       const capturedPartialNorm = normalizeTranscript(partialTranscriptRef.current);
+      if (
+        reason === 'flushWindowExpired' &&
+        Platform.OS === 'android' &&
+        !speechEndedRef.current
+      ) {
+        const bestByLength =
+          capturedFinalCandidate.length >= capturedPartialNorm.length
+            ? capturedFinalCandidate
+            : capturedPartialNorm;
+        const sessionKey = recordingSessionId ?? null;
+        if (
+          bestByLength &&
+          !tailGraceTimerRef.current &&
+          tailGraceSessionIdRef.current !== sessionKey
+        ) {
+          tailGraceSessionIdRef.current = sessionKey;
+          tailGraceTimerRef.current = setTimeout(() => {
+            tailGraceTimerRef.current = null;
+            resolveSettlement('tailGraceExpired', recordingSessionId);
+          }, ANDROID_TAIL_GRACE_MS);
+          logInfo('AgentOrchestrator', 'android tail grace scheduled before fallback commit', {
+            recordingSessionId,
+            graceMs: ANDROID_TAIL_GRACE_MS,
+            candidateChars: bestByLength.length,
+          });
+          return;
+        }
+      }
+      settlementResolvedRef.current = true;
+      if (recordingSessionId) lastSettledSessionIdRef.current = recordingSessionId;
       if (finalizeTimerRef.current) {
         clearTimeout(finalizeTimerRef.current);
         finalizeTimerRef.current = null;
@@ -443,6 +479,11 @@ export function useAgentOrchestrator(
         clearTimeout(finalStabilizationTimerRef.current);
         finalStabilizationTimerRef.current = null;
       }
+      if (tailGraceTimerRef.current) {
+        clearTimeout(tailGraceTimerRef.current);
+        tailGraceTimerRef.current = null;
+      }
+      tailGraceSessionIdRef.current = null;
       if (iosStopGraceTimerRef.current) {
         clearTimeout(iosStopGraceTimerRef.current);
         iosStopGraceTimerRef.current = null;
@@ -458,7 +499,7 @@ export function useAgentOrchestrator(
       finalCandidateSessionIdRef.current = null;
       pendingSubmitWhenReadyRef.current = false;
       pendingSubmitSessionIdRef.current = null;
-      if (reason === 'timeout' || reason === 'flushWindowExpired') {
+      if (reason === 'timeout' || reason === 'flushWindowExpired' || reason === 'tailGraceExpired') {
         const bestByLength =
           capturedFinalCandidate.length >= capturedPartialNorm.length
             ? capturedFinalCandidate
