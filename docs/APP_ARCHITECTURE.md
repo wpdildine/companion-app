@@ -101,14 +101,23 @@ No provider-specific events are fed directly into visualization code.
 | How does agent behavior become visualization behavior? | VisualizationController |
 | How are grounded results shown conventionally? | ResultsOverlay |
 
+## Runtime behavior (stabilization)
+
+- **Transcript settlement before submit** — For hold-to-speak release, submit runs only after transcript settlement. The surface calls `stopListeningAndRequestSubmit()`; the orchestrator waits for final result, speech end (with usable partial), or a bounded timeout, then invokes `onTranscriptReadyForSubmit` once. Submit must not be triggered by direct `stopListening()` + `submit()` on release.
+- **Single active ask** — Only one ask may be in flight. New submit attempts are blocked until the current request settles. Lifecycle transitions are request-scoped (active requestId); stale completions are ignored and logged.
+- **Post-stop speech errors** — Speech recognition errors that occur after stop has been requested (finalization underway) are treated as non-fatal and do not force lifecycle into error.
+- **Failed-request recovery** — `recoverFromRequestFailure()` clears finalization/request state and returns the app to idle. On request failure, result context (response/cards/rules) is cleared so swipe does not reveal stale content. Dismiss error uses this path.
+- **Interaction arbitration** — One interaction owner wins by priority: debug > overlay > holdToSpeak > swipeContext > playbackTap > none. Swipe reveals rules/cards only when valid current context exists; hold is blocked when a request is active or overlay/debug owns.
+
 ## Touch Path
 
 When in user mode and no content panels are visible:
 
 - `InteractionBand` is enabled.
 - It captures touch and writes `touchFieldActive/touchFieldNdc/touchFieldStrength`.
-- On touch release, it maps final NDC X to cluster side and calls `onClusterRelease` (center strip commits nothing).
-- No semantic action is emitted on touch start/move; those phases are continuous organism response only.
+- **Center hold (primary voice affordance):** Press and hold in the center strip for the hold threshold → `onCenterHoldStart`; release → `onCenterHoldEnd`. AgentSurface wires release to `stopListeningAndRequestSubmit()`; submit runs only after transcript settlement (via `onTranscriptReadyForSubmit`). Hold takes precedence: if a center hold started, release does not also trigger rules/cards.
+- On touch release (when not in an active center hold), it maps final NDC X to cluster side and calls `onClusterRelease` (center strip commits nothing; rules/cards reveal panels when context exists).
+- No other semantic action is emitted on touch start/move; those phases are continuous organism response only.
 
 Short tap behavior still exists separately:
 - Canvas short taps write `pendingTapNdc`.
@@ -141,6 +150,14 @@ Touch zone boundaries (rules / neutral / cards) are defined in **active-region N
 
 `ClusterTouchZones` (TouchZones layer) provides GL affordances: cluster rings and screen-aligned area overlays (rules / neutral / cards).
 
+### Interaction grammar
+
+Canonical interaction behavior:
+
+- **Voice input** — Press and hold on the center spine/core to begin listening; release to stop listening; submit runs once after transcript settlement. Earcon and haptic feedback occur on listening start and end. The center spine/core is the intended voice affordance (“press the organism core to speak”).
+- **Playback** — Double tap to play answer; single tap to cancel playback.
+- **Context exploration** — Swipe left/right reveals rules/cards panels only when relevant context exists; center release does nothing.
+
 ## Engine Ref Contract (`VisualizationEngineRef`)
 
 Key fields:
@@ -157,11 +174,28 @@ Writer split:
 - App writes targets/events **only** through VisualizationController (and panel rects from AgentSurface/ResultsOverlay path).
 - EngineLoop writes continuous derived values (`clock`, eased activity, touch influence, world/view touch mapping).
 
+## Phase 6 Manual Verification Logging
+
+During startup and lifecycle testing, the following subsystems emit logs (via `src/shared/logging/`). Use them as a manual verification harness:
+
+- **AppBoot** — application boot started
+- **AgentSurface** — mounted as active composition root
+- **VoiceScreen** — one-time deprecation warning when the legacy entrypoint is imported
+- **AgentOrchestrator** — initialized, runtime lifecycle ready, lifecycle transitions (idle → listening → … → complete/error), request/playback events (voice listen started/stopped, request started, retrieval started/completed, generation started/first token/completed, playback started/completed/interrupted, request failed)
+- **Interaction** — center hold start/end detected, submit triggered from hold release, earcon/haptic start/end fired (gesture-level logs only)
+- **VisualizationController** — initialized, attached to visualization signal pipeline, received lifecycle state, applied visualization mode, emitted semantic events (e.g. chunkAccepted)
+- **ResultsOverlay** — mounted, received answer/cards/rules payload, answer/cards/rules/sources panel shown, panel dismissed, panel rects first reported
+- **Runtime** — adapter bootstrap (e.g. pack copy, model paths) when relevant
+- **Playback** — lower-level TTS/Piper messages when relevant
+
+Logs are state-change and event-based only; no per-frame or render-loop logging.
+
 ## File Map (Current)
 
 - App shell: `src/app/App.tsx`
 - Composition root: `src/app/AgentSurface.tsx`
 - Legacy alias: `src/app/VoiceScreen.tsx` (re-exports AgentSurface)
+- Earcon/haptic hooks: `src/shared/feedback/earcons.ts`, `src/shared/feedback/haptics.ts` (listening start/end; assets at `assets/sound/earcon_in.wav`, `earcon_out.wav`)
 - Agent roles: `src/app/agent/` — `useAgentOrchestrator.ts`, `useVisualizationController.ts`, `ResultsOverlay.tsx`, `types.ts`, `index.ts`
 - Signal hook: `src/app/hooks/useVisualizationSignals.ts`
 - UI wrappers: `src/screens/voice/UserVoiceView.tsx`, `src/screens/dev/DevScreen.tsx`, `src/screens/voice/VoiceLoadingView.tsx`

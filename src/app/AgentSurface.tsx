@@ -7,6 +7,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import { logInfo } from '../shared/logging';
+import {
+  cleanupEarcons,
+  playListeningStartEarcon,
+  playListeningEndEarcon,
+} from '../shared/feedback/earcons';
+import { triggerListeningStartHaptic, triggerListeningEndHaptic } from '../shared/feedback/haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { CardRef, SelectedRule } from '../components';
 import { DevScreen, UserVoiceView, VoiceLoadingView } from '../screens';
@@ -37,6 +44,23 @@ const SHOW_REVEAL_CHIPS = false;
 const SHOW_HOLD_TO_SPEAK = false;
 const DOUBLE_TAP_MS = 280;
 const ASK_HOLD_MS = 400;
+/** Max recording duration for hold-to-speak; timeout triggers stop + submit (same as release). */
+const MAX_RECORDING_DURATION_MS = 12000;
+const DEBUG_DISABLE_PROCESSING = true;
+const DEBUG_LOG_SCOPES: Array<import('../shared/logging').LogScope> = [
+  'AgentOrchestrator',
+  'Interaction',
+  'AgentSurface',
+];
+
+/** Interaction ownership: one owner wins by priority (debug > overlay > holdToSpeak > swipeContext > playbackTap > none). none = no owner holds exclusive interaction. */
+type ActiveInteractionOwner =
+  | 'none'
+  | 'holdToSpeak'
+  | 'swipeContext'
+  | 'playbackTap'
+  | 'overlay'
+  | 'debug';
 
 const dummyAnswer = `
 Blood Moon turns all nonbasic lands into Mountains.
@@ -108,7 +132,9 @@ export default function AgentSurface() {
   const { state: orchState, actions: orchActions } = orch;
 
   const [debugEnabled, setDebugEnabled] = useState(DEBUG_ENABLED_DEFAULT);
-  const [debugShowZones, setDebugShowZones] = useState(false);
+  const [debugShowZones, _setDebugShowZones] = useState(false);
+  const [debugStubCardsEnabled, setDebugStubCardsEnabled] = useState(false);
+  const [debugStubRulesEnabled, setDebugStubRulesEnabled] = useState(false);
   const [panelRectsForDebug, setPanelRectsForDebug] = useState<VisualizationPanelRects>({});
   const [revealedBlocks, setRevealedBlocks] = useState<ResultsOverlayRevealedBlocks>({
     answer: false,
@@ -123,13 +149,28 @@ export default function AgentSurface() {
     debugScenario: DEBUG_SCENARIO,
   });
 
+  useEffect(() => {
+    logInfo('AgentSurface', 'mounted as active composition root');
+    if (typeof globalThis !== 'undefined') {
+      (globalThis as { __LOG_SCOPES__?: string[] }).__LOG_SCOPES__ = DEBUG_LOG_SCOPES;
+    }
+  }, []);
+
   const scrollYRef = useRef(0);
   const panelRectsContentRef = useRef<VisualizationPanelRects>({});
   const lastTapAtRef = useRef(0);
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const userModeLongPressActiveRef = useRef(false);
   const askHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const releaseGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const centerHoldActiveRef = useRef(false);
+  const holdCompletionInFlightRef = useRef(false);
+  const holdStartPromiseRef = useRef<Promise<boolean> | null>(null);
+  const submitTriggeredForReleaseRef = useRef(false);
+  const releaseReasonRef = useRef<'hold release' | 'timeout'>('hold release');
 
+  const panelRectsLoggedRef = useRef(false);
   const flushPanelRects = useCallback(() => {
     const next: VisualizationPanelRects = {};
     const source = panelRectsContentRef.current;
@@ -145,6 +186,10 @@ export default function AgentSurface() {
       };
     }
     setSignals({ panelRects: next });
+    if (Object.keys(next).length > 0 && !panelRectsLoggedRef.current) {
+      panelRectsLoggedRef.current = true;
+      logInfo('ResultsOverlay', 'panel rects first reported');
+    }
   }, [setSignals]);
 
   const updatePanelRect = useCallback(
@@ -190,6 +235,7 @@ export default function AgentSurface() {
         event: null as AiUiSignalsEvent,
       };
       if (debugEnabled) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- omit phase for debug
         const { phase: _p, ...rest } = dummySignals;
         setSignals(rest);
       } else {
@@ -197,8 +243,224 @@ export default function AgentSurface() {
       }
       return null;
     }
+    if (DEBUG_DISABLE_PROCESSING) {
+      logInfo('AgentSurface', 'submit skipped: processing disabled for speech debug');
+      return null;
+    }
     return orchActions.submit();
   }, [orchActions, setSignals, debugEnabled]);
+
+  const clearRecordingTimeout = useCallback(() => {
+    if (recordingTimeoutRef.current) {
+      clearTimeout(recordingTimeoutRef.current);
+      recordingTimeoutRef.current = null;
+    }
+  }, []);
+
+  const playListeningStartFeedback = useCallback(() => {
+    playListeningStartEarcon();
+    triggerListeningStartHaptic();
+    logInfo('Interaction', 'listening started');
+    logInfo('Interaction', 'earcon start fired');
+    logInfo('Interaction', 'haptic start fired');
+  }, []);
+
+  const playListeningEndFeedback = useCallback((reason: 'hold release' | 'timeout') => {
+    playListeningEndEarcon();
+    triggerListeningEndHaptic();
+    logInfo('Interaction', 'listening stopped');
+    logInfo(
+      'Interaction',
+      reason === 'timeout'
+        ? 'submit triggered from recording timeout'
+        : 'submit triggered from hold release',
+    );
+    logInfo('Interaction', 'earcon end fired');
+    logInfo('Interaction', 'haptic end fired');
+  }, []);
+
+  useEffect(() => {
+    const current = listenersRef.current;
+    if (!current) return;
+    const wrapped = {
+      ...current,
+      onTranscriptReadyForSubmit: () => {
+        playListeningEndFeedback(releaseReasonRef.current ?? 'hold release');
+        if (!submitTriggeredForReleaseRef.current) {
+          submitTriggeredForReleaseRef.current = true;
+          handleSubmit().catch(() => {});
+        }
+      },
+      onListeningEnd: () => {
+        current.onListeningEnd?.();
+        clearRecordingTimeout();
+        if (releaseGraceTimerRef.current) {
+          clearTimeout(releaseGraceTimerRef.current);
+          releaseGraceTimerRef.current = null;
+        }
+      },
+      onError: () => {
+        current.onError?.();
+        clearRecordingTimeout();
+        if (releaseGraceTimerRef.current) {
+          clearTimeout(releaseGraceTimerRef.current);
+          releaseGraceTimerRef.current = null;
+        }
+      },
+    };
+    listenersRef.current = wrapped;
+    return () => {
+      if (listenersRef.current === wrapped) {
+        listenersRef.current = current;
+      }
+    };
+  }, [clearRecordingTimeout, handleSubmit, playListeningEndFeedback]);
+
+  const stubCards = debugStubCardsEnabled ? dummyCards : [];
+  const stubRules = debugStubRulesEnabled ? dummyRules : [];
+  const hasReferenceStubs = stubCards.length > 0 || stubRules.length > 0;
+  const hasResultContext =
+    orchState.lifecycle === 'listening' ||
+    orchState.lifecycle === 'retrieving' ||
+    orchState.lifecycle === 'thinking' ||
+    orchState.lifecycle === 'speaking' ||
+    orchState.responseText != null ||
+    orchState.validationSummary != null;
+  const showContentPanels = hasResultContext || hasReferenceStubs || orchState.error != null;
+  const cardsCount =
+    orchState.validationSummary?.cards?.length ?? stubCards.length;
+  const rulesCount =
+    orchState.validationSummary?.rules?.length ?? stubRules.length;
+  const anyPanelVisible =
+    revealedBlocks.answer ||
+    revealedBlocks.cards ||
+    revealedBlocks.rules ||
+    revealedBlocks.sources;
+  const canRevealPanels = DEBUG_SCENARIO || hasResultContext || hasReferenceStubs;
+  const isAsking = orchState.lifecycle === 'thinking' || orchState.lifecycle === 'retrieving';
+  const interactionBandEnabled =
+    !debugEnabled &&
+    !anyPanelVisible &&
+    orchState.lifecycle !== 'thinking' &&
+    orchState.lifecycle !== 'retrieving';
+  const canHoldToSpeak = !isAsking && !anyPanelVisible && !debugEnabled;
+  const canSwipeContext = canRevealPanels && interactionBandEnabled;
+  const activeInteractionOwner: ActiveInteractionOwner = debugEnabled
+    ? 'debug'
+    : anyPanelVisible
+      ? 'overlay'
+      : orchState.lifecycle === 'listening'
+        ? 'holdToSpeak'
+        : canRevealPanels &&
+            (orchState.lifecycle === 'idle' ||
+              orchState.lifecycle === 'complete' ||
+              orchState.lifecycle === 'error')
+          ? 'swipeContext'
+          : orchState.lifecycle === 'speaking'
+            ? 'playbackTap'
+            : 'none';
+
+  const prevInteractionOwnerRef = useRef<ActiveInteractionOwner>(activeInteractionOwner);
+  useEffect(() => {
+    if (prevInteractionOwnerRef.current !== activeInteractionOwner) {
+      logInfo('Interaction', 'interaction owner change', {
+        from: prevInteractionOwnerRef.current,
+        to: activeInteractionOwner,
+      });
+      prevInteractionOwnerRef.current = activeInteractionOwner;
+    }
+  }, [activeInteractionOwner]);
+
+  const stopListeningAndSubmit = useCallback(
+    async (reason: 'hold release' | 'timeout') => {
+      if (holdCompletionInFlightRef.current) return;
+      holdCompletionInFlightRef.current = true;
+      centerHoldActiveRef.current = false;
+      userModeLongPressActiveRef.current = false;
+      releaseReasonRef.current = reason;
+      clearRecordingTimeout();
+      try {
+        const startPromise = holdStartPromiseRef.current;
+        if (startPromise) {
+          const started = await startPromise;
+          if (!started) return;
+        }
+        if (orchState.lifecycle === 'listening') {
+          await orchActions.stopListeningAndRequestSubmit();
+        } else {
+          logInfo('Interaction', 'stopListeningAndRequestSubmit skipped (not listening)');
+        }
+        // Listening stopped / submit triggered logs and feedback run after settlement in onTranscriptReadyForSubmit.
+      } finally {
+        holdStartPromiseRef.current = null;
+        holdCompletionInFlightRef.current = false;
+      }
+    },
+    [clearRecordingTimeout, orchActions, orchState.lifecycle],
+  );
+
+  const handleCenterHoldStart = useCallback(() => {
+    if (holdCompletionInFlightRef.current) return;
+    if (!canHoldToSpeak) {
+      logInfo('Interaction', 'hold blocked', {
+        reason:
+          isAsking ? 'active request' : anyPanelVisible ? 'overlay' : debugEnabled ? 'debug' : 'unknown',
+      });
+      return;
+    }
+    if (singleTapTimerRef.current) {
+      clearTimeout(singleTapTimerRef.current);
+      singleTapTimerRef.current = null;
+    }
+    lastTapAtRef.current = 0;
+    submitTriggeredForReleaseRef.current = false;
+    clearRecordingTimeout();
+    logInfo('Interaction', 'center hold start detected');
+    centerHoldActiveRef.current = true;
+    (async () => {
+      const startPromise = orchActions.startListening(true);
+      holdStartPromiseRef.current = startPromise;
+      const started = await startPromise;
+      if (holdStartPromiseRef.current === startPromise) {
+        holdStartPromiseRef.current = null;
+      }
+      if (!started) {
+        centerHoldActiveRef.current = false;
+        return;
+      }
+      if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current) return;
+      playListeningStartFeedback();
+      recordingTimeoutRef.current = setTimeout(() => {
+        recordingTimeoutRef.current = null;
+        if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current) return;
+        logInfo('Interaction', 'recording timeout reached');
+        stopListeningAndSubmit('timeout').catch(() => {});
+      }, MAX_RECORDING_DURATION_MS);
+    })().catch(() => {
+      centerHoldActiveRef.current = false;
+      holdStartPromiseRef.current = null;
+    });
+  }, [
+    canHoldToSpeak,
+    isAsking,
+    anyPanelVisible,
+    debugEnabled,
+    orchActions,
+    clearRecordingTimeout,
+    stopListeningAndSubmit,
+    playListeningStartFeedback,
+  ]);
+
+  const handleCenterHoldEnd = useCallback(() => {
+    if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current) return;
+    logInfo('Interaction', 'center hold end detected');
+    clearRecordingTimeout();
+    if (releaseGraceTimerRef.current) {
+      clearTimeout(releaseGraceTimerRef.current);
+      releaseGraceTimerRef.current = null;
+    }
+    stopListeningAndSubmit('hold release').catch(() => {});
+  }, [clearRecordingTimeout, stopListeningAndSubmit]);
 
   const handleUserModeTap = useCallback(() => {
     const now = Date.now();
@@ -222,25 +484,65 @@ export default function AgentSurface() {
   }, [orchState.responseText, orchActions]);
 
   const handleUserModeLongPressStart = useCallback(() => {
+    if (holdCompletionInFlightRef.current) return;
+    if (!canHoldToSpeak) {
+      logInfo('Interaction', 'hold blocked', {
+        reason:
+          isAsking ? 'active request' : anyPanelVisible ? 'overlay' : debugEnabled ? 'debug' : 'unknown',
+      });
+      return;
+    }
     if (singleTapTimerRef.current) {
       clearTimeout(singleTapTimerRef.current);
       singleTapTimerRef.current = null;
     }
     lastTapAtRef.current = 0;
+    submitTriggeredForReleaseRef.current = false;
     userModeLongPressActiveRef.current = true;
-    orchActions.startListening(true);
-  }, [orchActions]);
+    clearRecordingTimeout();
+    (async () => {
+      const startPromise = orchActions.startListening(true);
+      holdStartPromiseRef.current = startPromise;
+      const started = await startPromise;
+      if (holdStartPromiseRef.current === startPromise) {
+        holdStartPromiseRef.current = null;
+      }
+      if (!started) {
+        userModeLongPressActiveRef.current = false;
+        return;
+      }
+      if (!userModeLongPressActiveRef.current || holdCompletionInFlightRef.current) return;
+      playListeningStartFeedback();
+      recordingTimeoutRef.current = setTimeout(() => {
+        recordingTimeoutRef.current = null;
+        if (!userModeLongPressActiveRef.current || holdCompletionInFlightRef.current) return;
+        logInfo('Interaction', 'recording timeout reached');
+        stopListeningAndSubmit('timeout').catch(() => {});
+      }, MAX_RECORDING_DURATION_MS);
+    })().catch(() => {
+      userModeLongPressActiveRef.current = false;
+      holdStartPromiseRef.current = null;
+    });
+  }, [
+    canHoldToSpeak,
+    isAsking,
+    anyPanelVisible,
+    debugEnabled,
+    orchActions,
+    clearRecordingTimeout,
+    stopListeningAndSubmit,
+    playListeningStartFeedback,
+  ]);
 
   const handleUserModeLongPressEnd = useCallback(() => {
-    if (!userModeLongPressActiveRef.current) return;
-    userModeLongPressActiveRef.current = false;
-    (async () => {
-      await orchActions.stopListening();
-      setTimeout(() => {
-        handleSubmit();
-      }, 250);
-    })();
-  }, [orchActions, handleSubmit]);
+    if (!userModeLongPressActiveRef.current || holdCompletionInFlightRef.current) return;
+    clearRecordingTimeout();
+    if (releaseGraceTimerRef.current) {
+      clearTimeout(releaseGraceTimerRef.current);
+      releaseGraceTimerRef.current = null;
+    }
+    stopListeningAndSubmit('hold release').catch(() => {});
+  }, [clearRecordingTimeout, stopListeningAndSubmit]);
 
   const handleAskPressIn = useCallback(() => {
     if (askHoldTimerRef.current) clearTimeout(askHoldTimerRef.current);
@@ -261,6 +563,10 @@ export default function AgentSurface() {
 
   const handleClusterTap = useCallback(
     (cluster: 'rules' | 'cards') => {
+      if (!canSwipeContext) {
+        logInfo('Interaction', 'swipe blocked due to no valid context');
+        return;
+      }
       if (cluster === 'rules') {
         setRevealedBlocks({ answer: false, cards: false, rules: true, sources: false });
         emitEvent('tapCitation');
@@ -269,32 +575,40 @@ export default function AgentSurface() {
         emitEvent('tapCard');
       }
     },
-    [emitEvent],
+    [canSwipeContext, emitEvent],
   );
 
   const revealBlock = useCallback((key: keyof ResultsOverlayRevealedBlocks) => {
     setRevealedBlocks(prev => ({ ...prev, [key]: true }));
   }, []);
 
-  const showContentPanels =
-    orchState.lifecycle !== 'idle' ||
-    orchState.responseText != null ||
-    orchState.validationSummary != null ||
-    orchState.error != null;
-  const cardsCount = DEBUG_SCENARIO
-    ? dummyCards.length
-    : (orchState.validationSummary?.cards?.length ?? 0);
-  const rulesCount = DEBUG_SCENARIO
-    ? dummyRules.length
-    : (orchState.validationSummary?.rules?.length ?? 0);
-  const anyPanelVisible =
-    revealedBlocks.answer ||
-    revealedBlocks.cards ||
-    revealedBlocks.rules ||
-    revealedBlocks.sources;
-  // Allow cluster-release interactions to open panel stubs even when no answer payload exists yet.
-  const canRevealPanels = DEBUG_SCENARIO || showContentPanels || anyPanelVisible;
-  const isAsking = orchState.lifecycle === 'thinking' || orchState.lifecycle === 'retrieving';
+  const clearHoldInteractionState = useCallback(() => {
+    clearRecordingTimeout();
+    if (releaseGraceTimerRef.current) {
+      clearTimeout(releaseGraceTimerRef.current);
+      releaseGraceTimerRef.current = null;
+    }
+    centerHoldActiveRef.current = false;
+    userModeLongPressActiveRef.current = false;
+    holdCompletionInFlightRef.current = false;
+    holdStartPromiseRef.current = null;
+  }, [clearRecordingTimeout]);
+
+  const resetInteractionSurface = useCallback(() => {
+    clearHoldInteractionState();
+    setRevealedBlocks({ answer: false, cards: false, rules: false, sources: false });
+  }, [clearHoldInteractionState]);
+
+  const handleClearError = useCallback(() => {
+    orchActions.recoverFromRequestFailure();
+    resetInteractionSurface();
+  }, [orchActions, resetInteractionSurface]);
+
+  useEffect(() => {
+    if (orchState.lifecycle !== 'listening') {
+      clearRecordingTimeout();
+    }
+  }, [orchState.lifecycle, clearRecordingTimeout]);
 
   useEffect(() => {
     if (!canRevealPanels) {
@@ -303,6 +617,11 @@ export default function AgentSurface() {
   }, [
     canRevealPanels,
   ]);
+
+  useEffect(() => {
+    if (orchState.error == null) return;
+    resetInteractionSurface();
+  }, [orchState.error, resetInteractionSurface]);
 
   useEffect(() => {
     if (cardsCount === 0 || !revealedBlocks.cards) clearPanelRect('cards');
@@ -331,8 +650,10 @@ export default function AgentSurface() {
         clearTimeout(singleTapTimerRef.current);
         singleTapTimerRef.current = null;
       }
+      clearHoldInteractionState();
+      cleanupEarcons();
     };
-  }, []);
+  }, [clearHoldInteractionState]);
 
   if (!orchState.voiceReady && !orchState.error) {
     return <VoiceLoadingView theme={theme} paddingTop={insets.top} />;
@@ -377,6 +698,7 @@ export default function AgentSurface() {
             responseText={orchState.responseText}
             validationSummary={orchState.validationSummary}
             error={orchState.error}
+            onClearError={handleClearError}
             isAsking={isAsking}
             revealedBlocks={revealedBlocks}
             revealBlock={revealBlock}
@@ -400,6 +722,8 @@ export default function AgentSurface() {
             dummyAnswer={dummyAnswer}
             dummyCards={dummyCards}
             dummyRules={dummyRules}
+            stubCards={stubCards}
+            stubRules={stubRules}
             showRevealChips={SHOW_REVEAL_CHIPS}
             holdToSpeakSlot={holdToSpeakSlot}
           />
@@ -408,7 +732,9 @@ export default function AgentSurface() {
       <InteractionBand
         visualizationRef={visualizationRef}
         onClusterRelease={handleClusterTap}
-        enabled={!debugEnabled && !anyPanelVisible && orchState.lifecycle !== 'thinking' && orchState.lifecycle !== 'retrieving'}
+        onCenterHoldStart={!debugEnabled ? handleCenterHoldStart : undefined}
+        onCenterHoldEnd={!debugEnabled ? handleCenterHoldEnd : undefined}
+        enabled={interactionBandEnabled}
       />
       <DebugZoneOverlay panelRects={panelRectsForDebug} visible={debugShowZones} />
       {debugEnabled && (
@@ -416,6 +742,10 @@ export default function AgentSurface() {
           visualizationRef={visualizationRef}
           onClose={() => setDebugEnabled(false)}
           theme={{ text: textColor, textMuted: mutedColor, background: inputBg }}
+          stubCardsEnabled={debugStubCardsEnabled}
+          stubRulesEnabled={debugStubRulesEnabled}
+          onToggleStubCards={() => setDebugStubCardsEnabled(prev => !prev)}
+          onToggleStubRules={() => setDebugStubRulesEnabled(prev => !prev)}
         />
       )}
       <Pressable

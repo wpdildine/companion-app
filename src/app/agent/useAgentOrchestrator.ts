@@ -21,6 +21,7 @@ import {
   init as ragInit,
   type ValidationSummary,
 } from '../../rag';
+import { logInfo, logLifecycle, logWarn, logError } from '../../shared/logging';
 import type {
   AgentLifecycleState,
   AgentOrchestratorListeners,
@@ -38,8 +39,12 @@ const BUNDLE_LLM_PATH_CANDIDATES = BUNDLE_MODEL_PREFIXES.map(
 );
 const EMBED_MODEL_FILENAME = 'nomic-embed-text.gguf';
 const CHAT_MODEL_FILENAME = 'model.gguf';
-const MAX_LISTEN_MS = 12000;
-
+/** Bounded timeout for transcript settlement fallback; event-driven settlement (final result or speech end) is preferred. */
+const TRANSCRIPT_FINALIZATION_TIMEOUT_MS = 400;
+/** Short window after speechEnd to wait for final transcript before settling on partial; avoids truncating last word. */
+const POST_SPEECH_END_QUIET_WINDOW_MS = 200;
+/** Short window after first final to allow a better final before settlement. */
+const POST_FINAL_STABILIZATION_WINDOW_MS = 120;
 type VoiceModule = {
   start: (locale: string) => Promise<void>;
   stop: () => Promise<void>;
@@ -64,6 +69,16 @@ function errorMessage(e: unknown): string {
   if (typeof e === 'object' && e !== null && 'message' in e)
     return String((e as { message: unknown }).message);
   return String(e);
+}
+
+function transcriptPreview(text: string): string {
+  const normalized = text.trim().replace(/\s+/g, ' ');
+  if (normalized.length <= 120) return normalized;
+  return `${normalized.slice(0, 117)}...`;
+}
+
+function normalizeTranscript(text: string): string {
+  return text.trim().replace(/\s+/g, ' ');
 }
 
 function getVoiceNative() {
@@ -169,8 +184,8 @@ async function getOnDeviceModelPaths(packRootInDocuments?: string): Promise<{
     }
   }
 
-  if (!chatModelPath && (embedModelPath || chatModelPath)) {
-    console.log('[RAG] Model paths:', { embed: embedModelPath || null, chat: chatModelPath || null });
+  if (embedModelPath || chatModelPath) {
+    logInfo('Runtime', 'Model paths', { embed: embedModelPath || null, chat: chatModelPath || null });
   }
   return { embedModelPath, chatModelPath };
 }
@@ -181,13 +196,17 @@ export interface UseAgentOrchestratorOptions {
 }
 
 export interface AgentOrchestratorActions {
-  startListening: (fresh?: boolean) => Promise<void>;
+  startListening: (fresh?: boolean) => Promise<boolean>;
   stopListening: () => Promise<void>;
+  /** For hold-to-speak release: stop and request submit only after transcript settlement. Submit must be triggered via onTranscriptReadyForSubmit. */
+  stopListeningAndRequestSubmit: () => Promise<void>;
   submit: () => Promise<string | null>;
   playText: (text: string) => Promise<void>;
   cancelPlayback: () => void;
   setTranscribedText: (text: string) => void;
   clearError: () => void;
+  /** Single recovery path: clear finalization/request state, return to idle, stop listening if active. Call on dismiss error. */
+  recoverFromRequestFailure: () => void;
 }
 
 export function useAgentOrchestrator(
@@ -206,27 +225,221 @@ export function useAgentOrchestrator(
 
   const voiceRef = useRef<VoiceModule | null>(null);
   const ttsRef = useRef<TtsModule | null>(null);
+  const transcribedTextRef = useRef('');
   const committedTextRef = useRef('');
+  const partialTranscriptRef = useRef('');
+  const speechEndedRef = useRef(false);
+  const stopRequestedRef = useRef(false);
+  const finalizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const finalizeInFlightRef = useRef(false);
   const modeRef = useRef(mode);
   const playbackInterruptedRef = useRef(false);
-  const autoStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
+  const requestInFlightRef = useRef(false);
+  const activeRequestIdRef = useRef(0);
+  const recordingSessionRef = useRef<string | null>(null);
+  const recordingSessionSeqRef = useRef(0);
+  const pendingSubmitWhenReadyRef = useRef(false);
+  const pendingSubmitSessionIdRef = useRef<string | null>(null);
+  const settlementResolvedRef = useRef(false);
+  /** Session for which settlement already ran; later events for this session are ignored or downgraded. */
+  const lastSettledSessionIdRef = useRef<string | null>(null);
+  /** Timer for post-speechEnd quiet window; cancelled when settlement resolves or session ends. */
+  const quietWindowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Timer for post-final stabilization window. */
+  const finalStabilizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const finalStabilizationActiveRef = useRef(false);
+  const finalCandidateTextRef = useRef<string | null>(null);
+  const finalCandidateSessionIdRef = useRef<string | null>(null);
   modeRef.current = mode;
 
   const playListenIn = useCallback(() => {
+    logInfo('AgentOrchestrator', 'voice listen started');
     listenersRef?.current?.onListeningStart?.();
   }, [listenersRef]);
   const playListenOut = useCallback(() => {
-    listenersRef?.current?.onListeningEnd?.();
-  }, [listenersRef]);
+    logInfo('AgentOrchestrator', 'voice listen stopped');
+  }, []);
   const playError = useCallback(() => {
     listenersRef?.current?.onError?.();
   }, [listenersRef]);
 
+  const updateTranscript = useCallback((next: string) => {
+    transcribedTextRef.current = next;
+    setTranscribedText(next);
+  }, []);
+
+  const finalizeTranscriptFromPartial = useCallback(
+    (reason: string, recordingSessionId?: string) => {
+      const partial = partialTranscriptRef.current.trim();
+      if (!partial) return;
+      const fallback = normalizeTranscript(partial);
+      if (!fallback) return;
+      const current = normalizeTranscript(transcribedTextRef.current);
+      if (current.length >= fallback.length) return;
+      committedTextRef.current = fallback;
+      updateTranscript(fallback);
+      logInfo('AgentOrchestrator', 'transcript final synthesized from partial', {
+        recordingSessionId,
+        totalChars: fallback.length,
+        transcriptText: fallback,
+        transcriptPreview: transcriptPreview(fallback),
+        reason,
+      });
+    },
+    [updateTranscript],
+  );
+
+  const finalizeStop = useCallback(
+    (reason: string, recordingSessionId?: string) => {
+      if (finalizeInFlightRef.current) return;
+      finalizeInFlightRef.current = true;
+      if (finalizeTimerRef.current) {
+        clearTimeout(finalizeTimerRef.current);
+        finalizeTimerRef.current = null;
+      }
+      if (quietWindowTimerRef.current) {
+        clearTimeout(quietWindowTimerRef.current);
+        quietWindowTimerRef.current = null;
+      }
+      if (finalStabilizationTimerRef.current) {
+        clearTimeout(finalStabilizationTimerRef.current);
+        finalStabilizationTimerRef.current = null;
+      }
+      finalStabilizationActiveRef.current = false;
+      finalCandidateTextRef.current = null;
+      finalCandidateSessionIdRef.current = null;
+      pendingSubmitWhenReadyRef.current = false;
+      pendingSubmitSessionIdRef.current = null;
+      settlementResolvedRef.current = false;
+      finalizeTranscriptFromPartial(reason, recordingSessionId);
+      setMode('idle');
+      setLifecycle('idle');
+      logInfo('AgentOrchestrator', 'voice listen stopped', { recordingSessionId });
+      recordingSessionRef.current = null;
+      partialTranscriptRef.current = '';
+      speechEndedRef.current = false;
+      stopRequestedRef.current = false;
+      listenersRef?.current?.onListeningEnd?.();
+      finalizeInFlightRef.current = false;
+    },
+    [finalizeTranscriptFromPartial, listenersRef],
+  );
+
+  const resolveSettlement = useCallback(
+    (reason: string, recordingSessionId?: string) => {
+      if (settlementResolvedRef.current) return;
+      settlementResolvedRef.current = true;
+      if (recordingSessionId) lastSettledSessionIdRef.current = recordingSessionId;
+      if (finalizeTimerRef.current) {
+        clearTimeout(finalizeTimerRef.current);
+        finalizeTimerRef.current = null;
+      }
+      if (quietWindowTimerRef.current) {
+        clearTimeout(quietWindowTimerRef.current);
+        quietWindowTimerRef.current = null;
+      }
+      if (finalStabilizationTimerRef.current) {
+        clearTimeout(finalStabilizationTimerRef.current);
+        finalStabilizationTimerRef.current = null;
+      }
+      finalStabilizationActiveRef.current = false;
+      finalCandidateTextRef.current = null;
+      finalCandidateSessionIdRef.current = null;
+      pendingSubmitWhenReadyRef.current = false;
+      pendingSubmitSessionIdRef.current = null;
+      if (reason === 'timeout') {
+        finalizeTranscriptFromPartial(reason, recordingSessionId);
+        logInfo('AgentOrchestrator', 'transcript finalization timeout fallback used', {
+          recordingSessionId,
+        });
+        const normalized = normalizeTranscript(transcribedTextRef.current);
+        if (!normalized) {
+          logWarn('AgentOrchestrator', 'timeout settlement produced empty transcript; submit skipped', {
+            recordingSessionId,
+          });
+          finalizeStop('timeout', recordingSessionId);
+          return;
+        }
+      } else if (reason === 'speechEnd') {
+        // speechEnd uses quiet-window path; avoid immediate fallback here
+      } else if (reason === 'quietWindowExpired') {
+        logInfo('AgentOrchestrator', 'quiet window resolved via synthesized partial fallback', {
+          recordingSessionId,
+        });
+        finalizeTranscriptFromPartial('quietWindowExpired', recordingSessionId);
+      } else if (reason === 'finalStabilized') {
+        const candidate = finalCandidateTextRef.current;
+        if (candidate) {
+          updateTranscript(candidate);
+        }
+        logInfo('AgentOrchestrator', 'final stabilization window settled', {
+          recordingSessionId,
+        });
+      } else {
+        logInfo('AgentOrchestrator', 'final transcript received', { recordingSessionId });
+      }
+      logInfo('AgentOrchestrator', 'submit triggered after transcript settlement', {
+        reason,
+        recordingSessionId,
+      });
+      listenersRef?.current?.onTranscriptReadyForSubmit?.();
+      finalizeStop(reason, recordingSessionId);
+    },
+    [finalizeTranscriptFromPartial, finalizeStop, listenersRef],
+  );
+
   const stopListening = useCallback(async () => {
-    if (autoStopTimerRef.current) {
-      clearTimeout(autoStopTimerRef.current);
-      autoStopTimerRef.current = null;
+    const recordingSessionId = recordingSessionRef.current ?? undefined;
+    logInfo('AgentOrchestrator', 'voice listen stop requested', { recordingSessionId });
+    stopRequestedRef.current = true;
+    const V = voiceRef.current;
+    if (V) {
+      try {
+        await V.stop();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const nativeVoice = getVoiceNative();
+        if (
+          msg.toLowerCase().includes('stopspeech is null') &&
+          typeof nativeVoice?.stopSpeech === 'function'
+        ) {
+          try {
+            await nativeVoice.stopSpeech();
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    }
+    if (finalizeTimerRef.current) {
+      clearTimeout(finalizeTimerRef.current);
+      finalizeTimerRef.current = null;
+    }
+    finalizeTimerRef.current = setTimeout(() => {
+      finalizeTimerRef.current = null;
+      finalizeStop('stopListening', recordingSessionId);
+    }, 300);
+  }, [finalizeStop]);
+
+  const stopListeningAndRequestSubmit = useCallback(async () => {
+    const recordingSessionId = recordingSessionRef.current ?? undefined;
+    logInfo('AgentOrchestrator', 'voice listen stop requested', { recordingSessionId });
+    logInfo('AgentOrchestrator', 'transcript finalization started', { recordingSessionId });
+    stopRequestedRef.current = true;
+    pendingSubmitWhenReadyRef.current = true;
+    pendingSubmitSessionIdRef.current = recordingSessionRef.current;
+    settlementResolvedRef.current = false;
+    finalCandidateTextRef.current = null;
+    finalCandidateSessionIdRef.current = null;
+    finalStabilizationActiveRef.current = false;
+    if (finalizeTimerRef.current) {
+      clearTimeout(finalizeTimerRef.current);
+      finalizeTimerRef.current = null;
+    }
+    if (finalStabilizationTimerRef.current) {
+      clearTimeout(finalStabilizationTimerRef.current);
+      finalStabilizationTimerRef.current = null;
     }
     const V = voiceRef.current;
     if (V) {
@@ -247,27 +460,52 @@ export function useAgentOrchestrator(
         }
       }
     }
-    setMode('idle');
-    setLifecycle('idle');
-    listenersRef?.current?.onListeningEnd?.();
-  }, [listenersRef]);
+    finalizeTimerRef.current = setTimeout(() => {
+      finalizeTimerRef.current = null;
+      if (finalStabilizationActiveRef.current) {
+        logInfo('AgentOrchestrator', 'finalization timeout ignored (final stabilization active)', {
+          recordingSessionId,
+        });
+        return;
+      }
+      if (!settlementResolvedRef.current && pendingSubmitWhenReadyRef.current) {
+        const sessionId = pendingSubmitSessionIdRef.current ?? undefined;
+        resolveSettlement('timeout', sessionId);
+      }
+    }, TRANSCRIPT_FINALIZATION_TIMEOUT_MS);
+  }, [resolveSettlement]);
 
   const startListening = useCallback(
-    async (fresh = false) => {
+    async (fresh = false): Promise<boolean> => {
       const V = voiceRef.current;
-      if (!V) return;
-      if (mode === 'processing' || mode === 'speaking') return;
+      if (!V) {
+        logWarn('AgentOrchestrator', 'voice listen start skipped: voice module unavailable');
+        return false;
+      }
+      if (mode === 'processing' || mode === 'speaking') {
+        logWarn('AgentOrchestrator', 'voice listen start skipped: lifecycle blocked', { mode });
+        return false;
+      }
       setError(null);
       if (fresh) {
         committedTextRef.current = '';
-        setTranscribedText('');
+        partialTranscriptRef.current = '';
+        speechEndedRef.current = false;
+        updateTranscript('');
       } else {
-        committedTextRef.current = transcribedText;
+        committedTextRef.current = transcribedTextRef.current;
       }
-      if (autoStopTimerRef.current) {
-        clearTimeout(autoStopTimerRef.current);
-        autoStopTimerRef.current = null;
+      if (quietWindowTimerRef.current) {
+        clearTimeout(quietWindowTimerRef.current);
+        quietWindowTimerRef.current = null;
       }
+      recordingSessionSeqRef.current += 1;
+      const recordingSessionId = `rec-${recordingSessionSeqRef.current}`;
+      logInfo('AgentOrchestrator', 'voice listen start requested', {
+        recordingSessionId,
+        fresh,
+        committedChars: committedTextRef.current.length,
+      });
       try {
         try {
           await V.start('en-US');
@@ -283,20 +521,27 @@ export function useAgentOrchestrator(
             throw e;
           }
         }
+        recordingSessionRef.current = recordingSessionId;
+        lastSettledSessionIdRef.current = null;
+        speechEndedRef.current = false;
         setMode('listening');
         setLifecycle('listening');
+        logInfo('AgentOrchestrator', 'voice listen active', { recordingSessionId });
         playListenIn();
-        autoStopTimerRef.current = setTimeout(() => {
-          if (modeRef.current === 'listening') stopListening();
-          autoStopTimerRef.current = null;
-        }, MAX_LISTEN_MS);
+        return true;
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to start voice');
+        const message = e instanceof Error ? e.message : 'Failed to start voice';
+        setError(message);
         setMode('idle');
         setLifecycle('error');
+        logError('AgentOrchestrator', 'voice listen start failed', {
+          recordingSessionId,
+          message,
+        });
+        return false;
       }
     },
-    [transcribedText, mode, stopListening, playListenIn],
+    [mode, playListenIn, updateTranscript],
   );
 
   useEffect(() => {
@@ -309,16 +554,38 @@ export function useAgentOrchestrator(
   }, [stopListening]);
 
   const submit = useCallback(async (): Promise<string | null> => {
-    const question = transcribedText.trim().replace(/\s+/g, ' ');
-    if (!question) return null;
+    if (requestInFlightRef.current) {
+      logWarn('AgentOrchestrator', 'submit blocked because active request exists');
+      return null;
+    }
+      const question = normalizeTranscript(transcribedTextRef.current);
+    if (!question) {
+      logWarn('AgentOrchestrator', 'submit skipped: empty transcript', {
+        transcriptChars: transcribedTextRef.current.length,
+      });
+      return null;
+    }
     requestIdRef.current += 1;
     const reqId = requestIdRef.current;
+    activeRequestIdRef.current = reqId;
+    requestInFlightRef.current = true;
+    logInfo('AgentOrchestrator', 'active requestId set', { requestId: reqId });
     setError(null);
     setResponseText(null);
     setValidationSummary(null);
     setMode('processing');
     setLifecycle('retrieving');
+    logInfo('AgentOrchestrator', 'request started', {
+      requestId: reqId,
+      transcriptChars: transcribedTextRef.current.length,
+      partialChars: partialTranscriptRef.current.length,
+      normalizedChars: question.length,
+      wordCount: question.split(/\s+/).filter(Boolean).length,
+      transcriptText: question,
+      transcriptPreview: transcriptPreview(question),
+    });
     listenersRef?.current?.onRequestStart?.();
+    logInfo('AgentOrchestrator', 'retrieval started', { requestId: reqId });
     listenersRef?.current?.onRetrievalStart?.();
     try {
       if (!getPackState()) {
@@ -326,10 +593,7 @@ export function useAgentOrchestrator(
         try {
           packRoot = await copyBundlePackToDocuments();
         } catch (e) {
-          console.log(
-            '[RAG] Copy pack to Documents failed, using bundle:',
-            e instanceof Error ? e.message : e,
-          );
+          logInfo('Runtime', 'Copy pack to Documents failed, using bundle', { message: e instanceof Error ? e.message : String(e) });
           packRoot = (await getContentPackPathInDocuments()) ?? '';
         }
         const reader =
@@ -347,17 +611,38 @@ export function useAgentOrchestrator(
           reader,
         );
       }
+      logInfo('AgentOrchestrator', 'retrieval completed', { requestId: reqId });
       listenersRef?.current?.onRetrievalEnd?.();
+      logInfo('AgentOrchestrator', 'generation started', { requestId: reqId });
       listenersRef?.current?.onGenerationStart?.();
       setLifecycle('thinking');
       const result = await ragAsk(question);
       const nudged = result.nudged;
       setResponseText(nudged);
       setValidationSummary(result.validationSummary);
+      logInfo('AgentOrchestrator', 'first token received', { requestId: reqId });
+      listenersRef?.current?.onFirstToken?.();
+      logInfo('AgentOrchestrator', 'generation completed', { requestId: reqId });
+      logInfo('AgentOrchestrator', 'result payload ready', {
+        requestId: reqId,
+        responseChars: nudged.length,
+        rulesCount: result.validationSummary.rules.length,
+        cardsCount: result.validationSummary.cards.length,
+      });
       listenersRef?.current?.onGenerationEnd?.();
       listenersRef?.current?.onComplete?.();
-      setMode('idle');
-      setLifecycle('complete');
+      if (reqId === activeRequestIdRef.current) {
+        requestInFlightRef.current = false;
+        logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: reqId });
+        setError(null);
+        setMode('idle');
+        setLifecycle('complete');
+        return nudged;
+      }
+      logWarn('AgentOrchestrator', 'stale completion ignored (non-active request)', {
+        requestId: reqId,
+        activeRequestId: activeRequestIdRef.current,
+      });
       return nudged;
     } catch (e) {
       const msg = errorMessage(e);
@@ -367,18 +652,40 @@ export function useAgentOrchestrator(
       if (code === 'E_MODEL_PATH' && Platform.OS === 'android') {
         displayMsg += ` Put the chat GGUF in the app's files/models/ folder (filename: ${CHAT_MODEL_FILENAME}).`;
       }
-      setError(displayMsg);
-      listenersRef?.current?.onError?.();
-      setMode('idle');
-      setLifecycle('error');
+      if (reqId === activeRequestIdRef.current) {
+        requestInFlightRef.current = false;
+        logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: reqId });
+        setResponseText(null);
+        setValidationSummary(null);
+        logInfo('AgentOrchestrator', 'result context invalidated after failed request', {
+          requestId: reqId,
+        });
+        setError(displayMsg);
+        logError('AgentOrchestrator', 'request failed', {
+          requestId: reqId,
+          message: displayMsg,
+        });
+        listenersRef?.current?.onError?.();
+        setMode('idle');
+        setLifecycle('error');
+        return null;
+      }
+      logWarn('AgentOrchestrator', 'stale completion ignored (non-active request)', {
+        requestId: reqId,
+        activeRequestId: activeRequestIdRef.current,
+        message: displayMsg,
+      });
       return null;
     }
-  }, [transcribedText, listenersRef]);
+  }, [listenersRef]);
 
   const playText = useCallback(
     async (text: string) => {
       const normalized = text.trim();
-      if (!normalized) return;
+      if (!normalized) {
+        logWarn('AgentOrchestrator', 'playback skipped: empty text');
+        return;
+      }
       setError(null);
       playbackInterruptedRef.current = false;
       const PiperTts = require('piper-tts').default;
@@ -392,6 +699,7 @@ export function useAgentOrchestrator(
         }
       }
       if (canUsePiper) {
+        logInfo('Playback', 'tts path selected', { provider: 'piper', textChars: normalized.length });
         PiperTts.setOptions({
           lengthScale: 1.08,
           noiseScale: 0.62,
@@ -402,15 +710,20 @@ export function useAgentOrchestrator(
         });
         setMode('speaking');
         setLifecycle('speaking');
+        logInfo('AgentOrchestrator', 'playback started');
         listenersRef?.current?.onPlaybackStart?.();
         try {
           await PiperTts.speak(normalized);
         } catch (e) {
-          if (!playbackInterruptedRef.current)
-            setError(e instanceof Error ? e.message : 'Piper playback failed');
+          if (!playbackInterruptedRef.current) {
+            const message = e instanceof Error ? e.message : 'Piper playback failed';
+            setError(message);
+            logError('Playback', 'piper playback failed', { message, textChars: normalized.length });
+          }
         } finally {
           setMode('idle');
           setLifecycle('complete');
+          logInfo('AgentOrchestrator', 'playback completed');
           listenersRef?.current?.onPlaybackEnd?.();
         }
         return;
@@ -420,15 +733,19 @@ export function useAgentOrchestrator(
         Tts = require('react-native-tts').default as TtsModule;
         ttsRef.current = Tts;
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'TTS failed to load');
+        const message = e instanceof Error ? e.message : 'TTS failed to load';
+        setError(message);
+        logError('Playback', 'tts module load failed', { message });
         return;
       }
       try {
         await Tts.getInitStatus();
         if (Platform.OS === 'android') Tts.stop();
+        logInfo('Playback', 'tts path selected', { provider: 'react-native-tts', textChars: normalized.length });
         const onFinish = () => {
           setMode('idle');
           setLifecycle('complete');
+          logInfo('AgentOrchestrator', 'playback completed');
           listenersRef?.current?.onPlaybackEnd?.();
           try {
             if (typeof Tts.removeEventListener === 'function') {
@@ -442,13 +759,17 @@ export function useAgentOrchestrator(
         Tts.addEventListener('tts-finish', onFinish);
         Tts.addEventListener('tts-cancel', onFinish);
         setMode('speaking');
+        setLifecycle('speaking');
+        logInfo('AgentOrchestrator', 'playback started');
         listenersRef?.current?.onPlaybackStart?.();
         Tts.speak(normalized);
       } catch (e) {
         if (!playbackInterruptedRef.current) {
-          setError(e instanceof Error ? e.message : 'TTS playback failed');
+          const message = e instanceof Error ? e.message : 'TTS playback failed';
+          setError(message);
           setMode('idle');
           setLifecycle('error');
+          logError('Playback', 'tts playback failed', { message, textChars: normalized.length });
         }
       }
     },
@@ -456,6 +777,7 @@ export function useAgentOrchestrator(
   );
 
   const cancelPlayback = useCallback(() => {
+    logInfo('AgentOrchestrator', 'playback interrupted');
     playbackInterruptedRef.current = true;
     try {
       const PiperTts = require('piper-tts').default;
@@ -474,12 +796,36 @@ export function useAgentOrchestrator(
     setTimeout(() => {
       playbackInterruptedRef.current = false;
     }, 120);
-  }, [listenersRef]);
+  }, [listenersRef, responseText]);
 
   const clearError = useCallback(() => {
     setError(null);
     setLifecycle(responseText ? 'complete' : 'idle');
   }, [responseText]);
+
+  const recoverFromRequestFailure = useCallback(() => {
+    logInfo('AgentOrchestrator', 'failed request recovery started');
+    if (finalizeTimerRef.current) {
+      clearTimeout(finalizeTimerRef.current);
+      finalizeTimerRef.current = null;
+    }
+    if (quietWindowTimerRef.current) {
+      clearTimeout(quietWindowTimerRef.current);
+      quietWindowTimerRef.current = null;
+    }
+    pendingSubmitWhenReadyRef.current = false;
+    pendingSubmitSessionIdRef.current = null;
+    settlementResolvedRef.current = true;
+    requestInFlightRef.current = false;
+    activeRequestIdRef.current = 0;
+    if (modeRef.current === 'listening') {
+      stopListening();
+    }
+    setError(null);
+    setMode('idle');
+    setLifecycle('idle');
+    logInfo('AgentOrchestrator', 'retryable idle state restored');
+  }, [stopListening]);
 
   // Lazy-load Voice
   useEffect(() => {
@@ -510,10 +856,6 @@ export function useAgentOrchestrator(
       setError(e instanceof Error ? e.message : 'Voice module failed to load');
     }
     return () => {
-      if (autoStopTimerRef.current) {
-        clearTimeout(autoStopTimerRef.current);
-        autoStopTimerRef.current = null;
-      }
       const V = voiceRef.current;
       if (V) {
         V.destroy().then(() => V.removeAllListeners());
@@ -522,32 +864,200 @@ export function useAgentOrchestrator(
     };
   }, []);
 
-  // Voice event handlers: update transcript and notify for pulse
+  useEffect(() => {
+    if (voiceReady) {
+      logInfo('AgentOrchestrator', 'initialized');
+      logInfo('AgentOrchestrator', 'runtime lifecycle ready');
+    }
+  }, [voiceReady]);
+
+  const prevLifecycleRef = useRef<AgentLifecycleState>(lifecycle);
+  useEffect(() => {
+    const prev = prevLifecycleRef.current;
+    if (prev !== lifecycle) {
+      const details: { requestId?: number } = {};
+      if (requestIdRef.current > 0) details.requestId = requestIdRef.current;
+      logLifecycle('AgentOrchestrator', `lifecycle transition ${prev} -> ${lifecycle}`, details);
+      prevLifecycleRef.current = lifecycle;
+    }
+  }, [lifecycle]);
+
+  // Voice event handlers: update transcript and notify for pulse. Late-event isolation: guards at top before any mutation.
   useEffect(() => {
     const V = voiceRef.current;
     if (!V) return;
     V.onSpeechResults = e => {
-      if (modeRef.current !== 'listening') return;
+      const sessionId = recordingSessionRef.current ?? undefined;
+      if (settlementResolvedRef.current) {
+        logWarn('AgentOrchestrator', 'late final ignored for settled session', { recordingSessionId: sessionId });
+        return;
+      }
+      if (sessionId && sessionId === lastSettledSessionIdRef.current) {
+        logWarn('AgentOrchestrator', 'late final ignored for settled session', { recordingSessionId: sessionId });
+        return;
+      }
+      if (!sessionId && !stopRequestedRef.current) {
+        logWarn('AgentOrchestrator', 'late final ignored for inactive session', {});
+        return;
+      }
+      if (modeRef.current !== 'listening' && !stopRequestedRef.current) return;
+      if (speechEndedRef.current) return;
       const next = (e.value?.[0] ?? '').trim();
       if (!next) return;
       const committed = committedTextRef.current.trim();
-      setTranscribedText(committed ? `${committed} ${next}` : next);
+      const combined = committed ? `${committed} ${next}` : next;
+      partialTranscriptRef.current = '';
+      updateTranscript(combined);
+      const normalizedCombined = normalizeTranscript(combined);
+      logInfo('AgentOrchestrator', 'transcript final updated', {
+        recordingSessionId: sessionId,
+        chunkChars: next.length,
+        totalChars: normalizedCombined.length,
+        transcriptText: normalizedCombined,
+        transcriptPreview: transcriptPreview(normalizedCombined),
+      });
       listenersRef?.current?.onTranscriptUpdate?.();
+      if (
+        pendingSubmitWhenReadyRef.current &&
+        recordingSessionRef.current === pendingSubmitSessionIdRef.current &&
+        !settlementResolvedRef.current
+      ) {
+        finalCandidateTextRef.current = normalizedCombined;
+        finalCandidateSessionIdRef.current = sessionId ?? null;
+        finalStabilizationActiveRef.current = true;
+        if (quietWindowTimerRef.current) {
+          clearTimeout(quietWindowTimerRef.current);
+          quietWindowTimerRef.current = null;
+        }
+        if (finalizeTimerRef.current) {
+          clearTimeout(finalizeTimerRef.current);
+          finalizeTimerRef.current = null;
+        }
+        if (!finalStabilizationTimerRef.current) {
+          logInfo('AgentOrchestrator', 'final transcript received, stabilization window started', {
+            recordingSessionId: sessionId,
+          });
+          finalStabilizationTimerRef.current = setTimeout(() => {
+            finalStabilizationTimerRef.current = null;
+            finalStabilizationActiveRef.current = false;
+            if (settlementResolvedRef.current) return;
+            if (recordingSessionRef.current !== pendingSubmitSessionIdRef.current) return;
+            resolveSettlement('finalStabilized', sessionId);
+          }, POST_FINAL_STABILIZATION_WINDOW_MS);
+        }
+      }
     };
-    V.onSpeechPartialResults = () => {
-      if (modeRef.current !== 'listening') return;
+    V.onSpeechPartialResults = e => {
+      const sessionId = recordingSessionRef.current ?? undefined;
+      if (settlementResolvedRef.current) {
+        logWarn('AgentOrchestrator', 'late partial ignored for settled session', { recordingSessionId: sessionId });
+        return;
+      }
+      if (sessionId && sessionId === lastSettledSessionIdRef.current) {
+        logWarn('AgentOrchestrator', 'late partial ignored for settled session', { recordingSessionId: sessionId });
+        return;
+      }
+      if (!sessionId && !stopRequestedRef.current) {
+        logWarn('AgentOrchestrator', 'late partial ignored for inactive session', {});
+        return;
+      }
+      if (modeRef.current !== 'listening' && !stopRequestedRef.current) return;
+      const partial = (e.value?.[0] ?? '').trim();
+      partialTranscriptRef.current = partial;
+      const normalizedPartial = normalizeTranscript(partial);
+      const inQuietWindow =
+        speechEndedRef.current &&
+        pendingSubmitWhenReadyRef.current &&
+        !settlementResolvedRef.current;
+      logInfo('AgentOrchestrator', 'transcript partial updated', {
+        recordingSessionId: recordingSessionRef.current ?? undefined,
+        partialChars: normalizedPartial.length,
+        transcriptText: normalizedPartial,
+        transcriptPreview: transcriptPreview(normalizedPartial),
+        ...(inQuietWindow ? { inQuietWindow: true } : {}),
+      });
       listenersRef?.current?.onTranscriptUpdate?.();
     };
     V.onSpeechError = e => {
-      setError(e.error?.message ?? 'Speech recognition error');
+      const sessionId = recordingSessionRef.current ?? undefined;
+      if (settlementResolvedRef.current || (sessionId && sessionId === lastSettledSessionIdRef.current)) {
+        logWarn('AgentOrchestrator', 'late speechError downgraded for settled session', {
+          recordingSessionId: sessionId,
+          message: e.error?.message ?? 'Speech recognition error',
+        });
+        return;
+      }
+      if (!sessionId && !stopRequestedRef.current) {
+        logWarn('AgentOrchestrator', 'late speechError downgraded for inactive session', {
+          message: e.error?.message ?? 'Speech recognition error',
+        });
+        return;
+      }
+      if (stopRequestedRef.current || modeRef.current !== 'listening') {
+        logWarn('AgentOrchestrator', 'post-stop speech error downgraded to non-fatal', {
+          recordingSessionId: sessionId,
+          message: e.error?.message ?? 'Speech recognition error',
+        });
+        return;
+      }
+      const message = e.error?.message ?? 'Speech recognition error';
+      setError(message);
       playError();
+      if (finalizeTimerRef.current) {
+        clearTimeout(finalizeTimerRef.current);
+        finalizeTimerRef.current = null;
+      }
+      stopRequestedRef.current = false;
       setMode('idle');
       setLifecycle('error');
+      logError('AgentOrchestrator', 'speech recognition error (fatal: transcript acquisition failed)', {
+        recordingSessionId: recordingSessionRef.current ?? undefined,
+        message,
+      });
+      recordingSessionRef.current = null;
+      speechEndedRef.current = false;
     };
     V.onSpeechEnd = () => {
-      playListenOut();
-      setMode('idle');
-      setLifecycle('idle');
+      const recordingSessionId = recordingSessionRef.current ?? undefined;
+      if (settlementResolvedRef.current) {
+        logWarn('AgentOrchestrator', 'late speechEnd ignored for settled session', { recordingSessionId });
+        return;
+      }
+      if (recordingSessionId && recordingSessionId === lastSettledSessionIdRef.current) {
+        logWarn('AgentOrchestrator', 'late speechEnd ignored for settled session', { recordingSessionId });
+        return;
+      }
+      if (!recordingSessionId && !stopRequestedRef.current) {
+        logWarn('AgentOrchestrator', 'late speechEnd ignored for inactive session', {});
+        return;
+      }
+      if (speechEndedRef.current) return;
+      logInfo('AgentOrchestrator', 'speech recognition end event', {
+        recordingSessionId,
+      });
+      speechEndedRef.current = true;
+      if (
+        pendingSubmitWhenReadyRef.current &&
+        recordingSessionRef.current === pendingSubmitSessionIdRef.current &&
+        !settlementResolvedRef.current
+      ) {
+        const sessionIdForQuiet = recordingSessionId ?? undefined;
+        logInfo('AgentOrchestrator', 'speechEnd received, quiet window started', { recordingSessionId: sessionIdForQuiet });
+        if (quietWindowTimerRef.current) {
+          clearTimeout(quietWindowTimerRef.current);
+          quietWindowTimerRef.current = null;
+        }
+        if (finalStabilizationTimerRef.current) {
+          clearTimeout(finalStabilizationTimerRef.current);
+          finalStabilizationTimerRef.current = null;
+        }
+        quietWindowTimerRef.current = setTimeout(() => {
+          quietWindowTimerRef.current = null;
+          if (settlementResolvedRef.current) return;
+          if (recordingSessionRef.current !== pendingSubmitSessionIdRef.current) return;
+          resolveSettlement('quietWindowExpired', sessionIdForQuiet);
+        }, POST_SPEECH_END_QUIET_WINDOW_MS);
+      }
     };
     return () => {
       V.onSpeechResults = null;
@@ -555,7 +1065,17 @@ export function useAgentOrchestrator(
       V.onSpeechError = null;
       V.onSpeechEnd = null;
     };
-  }, [voiceReady, playListenIn, playListenOut, playError, listenersRef]);
+  }, [
+    voiceReady,
+    playListenIn,
+    playListenOut,
+    playError,
+    listenersRef,
+    updateTranscript,
+    finalizeTranscriptFromPartial,
+    finalizeStop,
+    resolveSettlement,
+  ]);
 
   // Piper model copy and availability
   useEffect(() => {
@@ -567,9 +1087,9 @@ export function useAgentOrchestrator(
           : null;
       if (!copy) return;
       copy()
-        .then((path: string) => path && console.log('[Piper] Model copied to', path))
+        .then((path: string) => path && logInfo('Playback', 'Piper model copied to', { path }))
         .catch((e: unknown) =>
-          console.warn('[Piper] copyModelToFiles failed:', e instanceof Error ? e.message : e),
+          logWarn('Playback', 'Piper copyModelToFiles failed', { message: e instanceof Error ? e.message : String(e) }),
         );
     };
     run();
@@ -612,11 +1132,13 @@ export function useAgentOrchestrator(
   const actions: AgentOrchestratorActions = {
     startListening,
     stopListening,
+    stopListeningAndRequestSubmit,
     submit,
     playText,
     cancelPlayback,
     setTranscribedText,
     clearError,
+    recoverFromRequestFailure,
   };
 
   return { state, actions };

@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useRef, type RefObject } from 'react';
+import { logInfo } from '../../shared/logging';
 import { applySignalsToVisualization, triggerPulseAtCenter } from '../../visualization';
 import type { VisualizationEngineRef } from '../../visualization';
 import { useVisualizationSignals } from '../hooks/useVisualizationSignals';
@@ -64,6 +65,7 @@ export function useVisualizationController(
 
   // Populate listeners so orchestrator can drive pulses and semantic events
   useEffect(() => {
+    logInfo('VisualizationController', 'initialized');
     const ref = visualizationRef;
     listenersRef.current = {
       onListeningStart: () => {},
@@ -77,6 +79,7 @@ export function useVisualizationController(
       onGenerationStart: () => {},
       onFirstToken: () => {},
       onGenerationEnd: () => {
+        logInfo('VisualizationController', 'emitted event chunkAccepted');
         emitEventRef.current('chunkAccepted');
       },
       onPlaybackStart: () => {},
@@ -88,6 +91,10 @@ export function useVisualizationController(
       listenersRef.current = null;
     };
   }, [visualizationRef, listenersRef]);
+
+  const attachedLoggedRef = useRef(false);
+  const lastLoggedModeRef = useRef<string | null>(null);
+  const lastLoggedLifecycleRef = useRef<string | null>(null);
 
   // Map normalized agent state → visualization signals (mode, phase, grounded, etc.)
   useEffect(() => {
@@ -113,6 +120,15 @@ export function useVisualizationController(
         : state.lifecycle === 'speaking'
           ? 'resolved'
           : 'idle';
+
+    if (lastLoggedLifecycleRef.current !== state.lifecycle) {
+      lastLoggedLifecycleRef.current = state.lifecycle;
+      logInfo('VisualizationController', `received lifecycle state ${state.lifecycle}`);
+    }
+    if (lastLoggedModeRef.current !== mode) {
+      lastLoggedModeRef.current = mode;
+      logInfo('VisualizationController', `applied visualization mode ${mode}`);
+    }
     const grounded =
       state.validationSummary != null
         ? state.validationSummary.stats.unknownCardCount === 0 &&
@@ -144,6 +160,10 @@ export function useVisualizationController(
         cardRefsCount,
       }),
     );
+    if (!attachedLoggedRef.current) {
+      attachedLoggedRef.current = true;
+      logInfo('VisualizationController', 'attached to visualization signal pipeline');
+    }
   }, [
     state.lifecycle,
     state.validationSummary,

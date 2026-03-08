@@ -4,7 +4,9 @@
  * Does not know provider orchestration or visualization mode selection.
  */
 
+import { useEffect, useRef } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { logInfo } from '../../shared/logging';
 import {
   CardReferenceBlock,
   DeconPanel,
@@ -38,6 +40,7 @@ export interface ResultsOverlayProps {
   responseText: string | null;
   validationSummary: ValidationSummary | null;
   error: string | null;
+  onClearError?: () => void;
   isAsking: boolean;
   /** Reveal state and handlers */
   revealedBlocks: ResultsOverlayRevealedBlocks;
@@ -63,6 +66,8 @@ export interface ResultsOverlayProps {
   dummyAnswer?: string;
   dummyCards?: CardRef[];
   dummyRules?: SelectedRule[];
+  stubCards?: CardRef[];
+  stubRules?: SelectedRule[];
   /** Show reveal chips row (e.g. Reveal Answer, Reveal Cards) */
   showRevealChips?: boolean;
   /** Optional hold-to-speak row (rendered above content stack) */
@@ -137,12 +142,13 @@ export function ResultsOverlay({
   responseText,
   validationSummary,
   error,
+  onClearError,
   isAsking,
   revealedBlocks,
   revealBlock,
   setRevealedBlocks,
   updatePanelRect,
-  clearPanelRect,
+  clearPanelRect: _clearPanelRect,
   theme,
   intensity,
   reduceMotion,
@@ -153,6 +159,8 @@ export function ResultsOverlay({
   dummyAnswer = '',
   dummyCards = [],
   dummyRules = [],
+  stubCards = [],
+  stubRules = [],
   showRevealChips = false,
   holdToSpeakSlot,
 }: ResultsOverlayProps) {
@@ -165,36 +173,58 @@ export function ResultsOverlay({
     warning: warn,
   } = theme;
 
-  const cardsCount = debugScenario
-    ? dummyCards.length
-    : (validationSummary?.cards?.length ?? 0);
-  const rulesCount = debugScenario
-    ? dummyRules.length
-    : (validationSummary?.rules?.length ?? 0);
+  const cards = debugScenario
+    ? dummyCards
+    : validationSummary?.cards?.map(c => ({
+        id: c.doc_id ?? c.raw,
+        name: c.canonical ?? c.raw,
+        imageUri: undefined,
+      })) ?? stubCards;
+  const rules = debugScenario
+    ? dummyRules
+    : validationSummary?.rules?.map(r => ({
+        id: r.canonical ?? r.raw,
+        title: r.raw,
+        excerpt: r.raw.length > 160 ? r.raw.slice(0, 160) + '...' : r.raw,
+        used: r.status === 'valid',
+      })) ?? stubRules;
+  const cardsCount = cards.length;
+  const rulesCount = rules.length;
   const sourcesCount = debugScenario
     ? dummyRules.length + dummyCards.length
-    : (validationSummary?.rules?.length ?? 0) +
-      (validationSummary?.cards?.length ?? 0);
+    : rules.length + cards.length;
 
-  const handleClusterReveal = (cluster: 'rules' | 'cards') => {
-    if (cluster === 'rules') {
-      setRevealedBlocks({
-        answer: true,
-        cards: false,
-        rules: true,
-        sources: false,
-      });
-      emitEvent('tapCitation');
-    } else {
-      setRevealedBlocks({
-        answer: true,
-        cards: true,
-        rules: false,
-        sources: false,
-      });
-      emitEvent('tapCard');
+  const mountedLoggedRef = useRef(false);
+  const payloadLoggedRef = useRef(false);
+  const prevRevealedRef = useRef({ answer: false, cards: false, rules: false, sources: false });
+  useEffect(() => {
+    if (!mountedLoggedRef.current && (canRevealPanels || showContentPanels)) {
+      mountedLoggedRef.current = true;
+      logInfo('ResultsOverlay', 'mounted');
     }
-  };
+  }, [canRevealPanels, showContentPanels]);
+  const hasPayload = responseText != null || (validationSummary != null && (validationSummary.cards?.length > 0 || validationSummary.rules?.length > 0));
+  useEffect(() => {
+    if (hasPayload && !payloadLoggedRef.current) {
+      payloadLoggedRef.current = true;
+      logInfo('ResultsOverlay', 'received answer/cards/rules payload');
+    }
+  }, [hasPayload]);
+  useEffect(() => {
+    const prev = prevRevealedRef.current;
+    const keys: Array<keyof typeof revealedBlocks> = ['answer', 'cards', 'rules', 'sources'];
+    for (const key of keys) {
+      const next = revealedBlocks[key];
+      if (prev[key] !== next) {
+        if (next) {
+          logInfo('ResultsOverlay', key === 'answer' ? 'answer panel shown' : key === 'cards' ? 'cards panel shown' : key === 'rules' ? 'rules panel shown' : 'sources panel shown');
+        } else {
+          logInfo('ResultsOverlay', 'panel dismissed');
+        }
+      }
+    }
+    prevRevealedRef.current = { ...revealedBlocks };
+  }, [revealedBlocks]);
 
   if (!canRevealPanels && !showContentPanels) {
     return null;
@@ -375,6 +405,8 @@ export function ResultsOverlay({
                   panelStroke={borderColor}
                   accentIntrusionA={accentIntrusionA}
                   warn={warn}
+                  dismissible
+                  onDismiss={onClearError}
                 >
                   <Text style={styles.errorText}>{error}</Text>
                 </DeconPanel>
@@ -448,12 +480,6 @@ export function ResultsOverlay({
 
               {revealedBlocks.cards && (
                 (() => {
-                  const cards =
-                    validationSummary?.cards?.map(c => ({
-                      id: c.doc_id ?? c.raw,
-                      name: c.canonical ?? c.raw,
-                      imageUri: null,
-                    })) ?? [];
                   if (cards.length === 0) {
                     return (
                       <DeconPanel
@@ -507,16 +533,6 @@ export function ResultsOverlay({
               )}
               {revealedBlocks.rules && (
                 (() => {
-                  const rules =
-                    validationSummary?.rules?.map(r => ({
-                      id: r.canonical ?? r.raw,
-                      title: r.raw,
-                      excerpt:
-                        r.raw.length > 160
-                          ? r.raw.slice(0, 160) + '…'
-                          : r.raw,
-                      used: r.status === 'valid',
-                    })) ?? [];
                   if (rules.length === 0) {
                     return (
                       <DeconPanel

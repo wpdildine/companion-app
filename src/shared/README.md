@@ -6,6 +6,7 @@
 
 - `types/` — cross-feature contracts and shared type surfaces.
 - `native/` — app-wide native integration helpers used by multiple features.
+- `feedback/` — shared earcon/haptic adapters and user-feedback services used by multiple features.
 
 ## Not allowed
 

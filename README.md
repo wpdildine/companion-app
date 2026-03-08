@@ -31,7 +31,7 @@ Context provider logic is shared with **mtg_rules**: the app consumes **@mtg/run
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full Architecture Navigation Map.
 
 - **`src/app/`** — App entry + navigation. `App.tsx` composes `SafeAreaProvider` and `AgentSurface`. AgentSurface is the composition root (orchestrator, visualization controller, results overlay); see [docs/APP_ARCHITECTURE.md](docs/APP_ARCHITECTURE.md).
-- **`src/shared/`** — Platform-agnostic core: shared plugin contracts and native diagnostics service.
+- **`src/shared/`** — Platform-agnostic core: shared plugin contracts, feedback adapters, and native diagnostics services.
 - **`src/theme/`** — Canonical theme home (`getTheme`, tokens).
 - **`src/screens/`** — Screen-level composition and views (`voice/`, `dev/`).
 - **`src/components/`** — Reusable UI blocks (`decon/` panel + content blocks).

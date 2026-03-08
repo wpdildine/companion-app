@@ -5,12 +5,14 @@
  * TTS: Piper (offline) as main voice; fallback to react-native-tts when model not installed
  */
 
+import { useEffect } from 'react';
 import {
   LogBox,
   StatusBar,
   useColorScheme,
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { logInfo } from '../shared/logging';
 import AgentSurface from './AgentSurface';
 
 // @react-native-voice/voice uses NativeEventEmitter in a way that triggers warnings on new arch (Fabric) when the native module doesn't expose addListener/removeListeners. Voice still works.
@@ -21,6 +23,10 @@ LogBox.ignoreLogs([
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
+
+  useEffect(() => {
+    logInfo('AppBoot', 'application boot started');
+  }, []);
 
   return (
     <SafeAreaProvider>

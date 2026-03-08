@@ -29,6 +29,8 @@ export type AgentStateMetadata = {
 export interface AgentOrchestratorListeners {
   onListeningStart?: () => void;
   onListeningEnd?: () => void;
+  /** Called once when transcript is ready after stopListeningAndRequestSubmit (submit must only be triggered from this path for hold-to-speak release). */
+  onTranscriptReadyForSubmit?: () => void;
   onTranscriptUpdate?: () => void;
   onRequestStart?: () => void;
   onRetrievalStart?: () => void;

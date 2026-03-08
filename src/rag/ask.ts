@@ -12,6 +12,7 @@ import { loadVectors, searchL2, loadChunksForRows } from './retrieval';
 import { trimChunksToFitPrompt, buildPrompt } from './runtimePrompt';
 import { ragError } from './errors';
 import { RAG_CONFIG } from './config';
+import { logError, logInfo, logWarn } from '../shared/logging';
 
 export interface RunRagFlowResult {
   raw: string;
@@ -24,7 +25,7 @@ export interface RunRagFlowResult {
 let embedContext: import('llama.rn').LlamaContext | null = null;
 let chatContext: import('llama.rn').LlamaContext | null = null;
 
-function useOllama(params: RagInitParams): boolean {
+function shouldUseOllama(params: RagInitParams): boolean {
   return !!(
     params.ollamaHost &&
     params.ollamaEmbedModel &&
@@ -165,7 +166,7 @@ export async function runRagFlow(
   let queryVec: Float32Array;
   let raw: string;
 
-  if (useOllama(params)) {
+  if (shouldUseOllama(params)) {
     const host = params.ollamaHost!;
     const embedModel = params.ollamaEmbedModel!;
     const chatModel = params.ollamaChatModel!;
@@ -218,6 +219,11 @@ export async function runRagFlow(
     if (RAG_USE_DETERMINISTIC_CONTEXT_ONLY) {
       const packRoot = params.packRoot;
       let bundleText = '';
+      logInfo('RAG', 'deterministic context requested', {
+        packRootPresent: !!packRoot,
+        readerPresent: !!reader,
+        questionChars: question.length,
+      });
 
       try {
         const runtime = await import('@mtg/runtime');
@@ -230,15 +236,18 @@ export async function runRagFlow(
             typeof result === 'string'
               ? result
               : (result as { final_context_bundle_canonical?: string })?.final_context_bundle_canonical ?? '';
+          logInfo('RAG', 'runtime deterministic context completed', {
+            bundleChars: bundleText.length,
+          });
         }
       } catch (e) {
         const err = e as { code?: string; message?: string };
         const msg = e instanceof Error ? e.message : String(e);
         if (packRoot && reader) {
           // Runtime getContext is a stub on RN; we use in-app getContextRN. Log as debug, not error.
-          console.log('[RAG] getContext (runtime stub), using getContextRN');
+          logWarn('RAG', 'runtime getContext unavailable, falling back to getContextRN');
         } else {
-          console.error('[RAG] getContext failed:', msg, e);
+          logError('RAG', 'runtime getContext failed', { message: msg });
         }
         if (err && typeof err === 'object' && typeof err.code === 'string') throw e;
         if (packRoot && reader) {
@@ -248,8 +257,13 @@ export async function runRagFlow(
             const result = await getContextRN(question, packRoot, reader);
             mark('getContext end');
             bundleText = result.final_context_bundle_canonical ?? '';
+            logInfo('RAG', 'getContextRN completed', {
+              bundleChars: bundleText.length,
+            });
           } catch (rnErr) {
-            console.error('[RAG] getContextRN failed:', rnErr);
+            logError('RAG', 'getContextRN failed', {
+              message: rnErr instanceof Error ? rnErr.message : String(rnErr),
+            });
             throw ragError(
               'E_DETERMINISTIC_ONLY',
               `Deterministic context provider not available: ${msg}. Ensure @mtg/runtime is installed with RN entrypoint and getContext is exported.`
@@ -270,16 +284,27 @@ export async function runRagFlow(
           const result = await getContextRN(question, packRoot, reader);
           mark('getContext end');
           bundleText = result.final_context_bundle_canonical ?? '';
+          logInfo('RAG', 'getContextRN retry completed', {
+            bundleChars: bundleText.length,
+          });
         } catch {
           // ignore
         }
       }
       if (!bundleText?.trim()) {
+        logError('RAG', 'deterministic context returned empty bundle', {
+          questionChars: question.length,
+          packRootPresent: !!packRoot,
+        });
         throw ragError('E_RETRIEVAL', 'Deterministic context provider returned empty bundle.');
       }
       mark('context build start');
       const prompt = buildPrompt(bundleText, question);
       mark('context build end');
+      logInfo('RAG', 'prompt built from deterministic bundle', {
+        bundleChars: bundleText.length,
+        promptChars: prompt.length,
+      });
       if (!params.chatModelPath?.trim()) {
         throw ragError('E_MODEL_PATH', 'chatModelPath required for deterministic path.');
       }
