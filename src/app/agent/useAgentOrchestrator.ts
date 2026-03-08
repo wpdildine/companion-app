@@ -38,12 +38,12 @@ const BUNDLE_LLM_PATH_CANDIDATES = BUNDLE_MODEL_PREFIXES.map(
 );
 const EMBED_MODEL_FILENAME = 'nomic-embed-text.gguf';
 const CHAT_MODEL_FILENAME = 'model.gguf';
-/** Bounded timeout for transcript settlement fallback; event-driven settlement (final result or speech end) is preferred. */
-const TRANSCRIPT_FINALIZATION_TIMEOUT_MS = 400;
 /** Short window after speechEnd to wait for final transcript before settling on partial; avoids truncating last word. */
 const POST_SPEECH_END_QUIET_WINDOW_MS = 200;
-/** Short window after first final to allow a better final before settlement. */
+/** Short window after first final to allow a better final before settlement; refines candidate only, does not authorize settlement. */
 const POST_FINAL_STABILIZATION_WINDOW_MS = 120;
+/** Bounded post-stop flush window: settlement allowed after this from stop-request anchor if speechEnd has not arrived. Single anchor, not mixed per path. */
+const POST_STOP_FLUSH_WINDOW_MS = 400;
 const IOS_STOP_GRACE_MS = 250;
 type VoiceModule = {
   start: (locale: string) => Promise<void>;
@@ -255,6 +255,8 @@ export function useAgentOrchestrator(
   const finalStabilizationActiveRef = useRef(false);
   const finalCandidateTextRef = useRef<string | null>(null);
   const finalCandidateSessionIdRef = useRef<string | null>(null);
+  /** Single anchor for flush-boundary readiness: timestamp when stop was requested (submit path). Settlement allowed only after speechEnd or POST_STOP_FLUSH_WINDOW_MS from this. */
+  const flushBoundaryAnchorAtRef = useRef<number | null>(null);
   const iosStopGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const iosStopPendingRef = useRef(false);
   const iosStopInvokedRef = useRef(false);
@@ -323,6 +325,7 @@ export function useAgentOrchestrator(
           });
         }
       }
+      flushBoundaryAnchorAtRef.current = null;
       finalStabilizationActiveRef.current = false;
       finalCandidateTextRef.current = null;
       finalCandidateSessionIdRef.current = null;
@@ -348,6 +351,8 @@ export function useAgentOrchestrator(
       if (settlementResolvedRef.current) return;
       settlementResolvedRef.current = true;
       if (recordingSessionId) lastSettledSessionIdRef.current = recordingSessionId;
+      const capturedFinalCandidate = finalCandidateTextRef.current ?? '';
+      const capturedPartialNorm = normalizeTranscript(partialTranscriptRef.current);
       if (finalizeTimerRef.current) {
         clearTimeout(finalizeTimerRef.current);
         finalizeTimerRef.current = null;
@@ -369,32 +374,58 @@ export function useAgentOrchestrator(
           });
         }
       }
+      flushBoundaryAnchorAtRef.current = null;
       finalStabilizationActiveRef.current = false;
       finalCandidateTextRef.current = null;
       finalCandidateSessionIdRef.current = null;
       pendingSubmitWhenReadyRef.current = false;
       pendingSubmitSessionIdRef.current = null;
-      if (reason === 'timeout') {
-        finalizeTranscriptFromPartial(reason, recordingSessionId);
-        logInfo('AgentOrchestrator', 'transcript finalization timeout fallback used', {
+      if (reason === 'timeout' || reason === 'flushWindowExpired') {
+        const bestByLength =
+          capturedFinalCandidate.length >= capturedPartialNorm.length
+            ? capturedFinalCandidate
+            : capturedPartialNorm;
+        if (bestByLength) {
+          updateTranscript(bestByLength);
+        } else {
+          finalizeTranscriptFromPartial(reason, recordingSessionId);
+        }
+        logInfo('AgentOrchestrator', 'flush boundary fallback settling candidate after stop completion', {
           recordingSessionId,
+          candidateChars: capturedFinalCandidate.length,
+          candidateTranscriptText: capturedFinalCandidate,
+          speechEnded: speechEndedRef.current,
+          nativeStopInFlight: nativeStopInFlightRef.current,
+          quietWindowActive: !!quietWindowTimerRef.current,
+          finalStabilizationActive: finalStabilizationActiveRef.current,
+        });
+        logInfo('AgentOrchestrator', 'flush-boundary settlement (flush window or timeout)', {
+          recordingSessionId,
+          hadFinal: !!capturedFinalCandidate,
+          hadPartial: !!capturedPartialNorm,
         });
         const normalized = normalizeTranscript(transcribedTextRef.current);
         if (!normalized) {
           logWarn('AgentOrchestrator', 'timeout settlement produced empty transcript; submit skipped', {
             recordingSessionId,
           });
-          finalizeStop('timeout', recordingSessionId);
+          finalizeStop(reason, recordingSessionId);
           return;
         }
       } else if (reason === 'speechEnd') {
         // speechEnd uses quiet-window path; avoid immediate fallback here
       } else if (reason === 'quietWindowExpired') {
-        logInfo('AgentOrchestrator', 'quiet window resolved via synthesized partial fallback', {
+        const bestByLength =
+          capturedFinalCandidate.length >= capturedPartialNorm.length
+            ? capturedFinalCandidate
+            : capturedPartialNorm;
+        logInfo('AgentOrchestrator', 'quiet window resolved at flush boundary', {
           recordingSessionId,
+          hadFinal: !!capturedFinalCandidate,
+          hadPartial: !!capturedPartialNorm,
         });
-        if (finalCandidateTextRef.current) {
-          updateTranscript(finalCandidateTextRef.current);
+        if (bestByLength) {
+          updateTranscript(bestByLength);
         } else {
           finalizeTranscriptFromPartial('quietWindowExpired', recordingSessionId);
         }
@@ -406,20 +437,20 @@ export function useAgentOrchestrator(
           finalizeStop('quietWindowExpired', recordingSessionId);
           return;
         }
-      } else if (reason === 'finalStabilized') {
-        const candidate = finalCandidateTextRef.current;
-        if (candidate) {
-          updateTranscript(candidate);
-        }
-        logInfo('AgentOrchestrator', 'final stabilization window settled', {
-          recordingSessionId,
-        });
       } else {
-        logInfo('AgentOrchestrator', 'final transcript received', { recordingSessionId });
+        logInfo('AgentOrchestrator', 'settlement at flush boundary', { reason, recordingSessionId });
       }
       logInfo('AgentOrchestrator', 'submit triggered after transcript settlement', {
         reason,
         recordingSessionId,
+      });
+      logInfo('AgentOrchestrator', 'settlement resolved; restart eligible', {
+        recordingSessionId,
+        pendingSubmitWhenReady: pendingSubmitWhenReadyRef.current,
+        settlementResolved: settlementResolvedRef.current,
+        finalStabilizationActive: finalStabilizationActiveRef.current,
+        quietWindowActive: !!quietWindowTimerRef.current,
+        nativeStopInFlight: nativeStopInFlightRef.current,
       });
       listenersRef?.current?.onTranscriptReadyForSubmit?.();
       if (Platform.OS === 'ios' && iosStopPendingRef.current && !iosStopInvokedRef.current) {
@@ -456,7 +487,7 @@ export function useAgentOrchestrator(
       }
       finalizeStop(reason, recordingSessionId);
     },
-    [finalizeTranscriptFromPartial, finalizeStop, listenersRef],
+    [finalizeTranscriptFromPartial, finalizeStop, listenersRef, updateTranscript],
   );
 
   const stopListening = useCallback(async () => {
@@ -541,6 +572,7 @@ export function useAgentOrchestrator(
     finalCandidateTextRef.current = null;
     finalCandidateSessionIdRef.current = null;
     finalStabilizationActiveRef.current = false;
+    flushBoundaryAnchorAtRef.current = Date.now();
     if (finalizeTimerRef.current) {
       clearTimeout(finalizeTimerRef.current);
       finalizeTimerRef.current = null;
@@ -608,17 +640,11 @@ export function useAgentOrchestrator(
     }
     finalizeTimerRef.current = setTimeout(() => {
       finalizeTimerRef.current = null;
-      if (finalStabilizationActiveRef.current) {
-        logInfo('AgentOrchestrator', 'finalization timeout ignored (final stabilization active)', {
-          recordingSessionId,
-        });
-        return;
-      }
       if (!settlementResolvedRef.current && pendingSubmitWhenReadyRef.current) {
         const sessionId = pendingSubmitSessionIdRef.current ?? undefined;
-        resolveSettlement('timeout', sessionId);
+        resolveSettlement('flushWindowExpired', sessionId);
       }
-    }, TRANSCRIPT_FINALIZATION_TIMEOUT_MS);
+    }, POST_STOP_FLUSH_WINDOW_MS);
   }, [resolveSettlement]);
 
   const startListening = useCallback(
@@ -633,8 +659,13 @@ export function useAgentOrchestrator(
         return false;
       }
       if (pendingSubmitWhenReadyRef.current && !settlementResolvedRef.current) {
-        logWarn('AgentOrchestrator', 'voice listen start skipped: pending submit settlement', {
+        logWarn('AgentOrchestrator', 'restart blocked: pending settlement still open', {
           recordingSessionId: pendingSubmitSessionIdRef.current ?? undefined,
+          pendingSubmitWhenReady: pendingSubmitWhenReadyRef.current,
+          settlementResolved: settlementResolvedRef.current,
+          finalStabilizationActive: finalStabilizationActiveRef.current,
+          quietWindowActive: !!quietWindowTimerRef.current,
+          nativeStopInFlight: nativeStopInFlightRef.current,
         });
         return false;
       }
@@ -660,6 +691,7 @@ export function useAgentOrchestrator(
         clearTimeout(finalStabilizationTimerRef.current);
         finalStabilizationTimerRef.current = null;
       }
+      flushBoundaryAnchorAtRef.current = null;
       finalCandidateTextRef.current = null;
       finalCandidateSessionIdRef.current = null;
       finalStabilizationActiveRef.current = false;
@@ -984,6 +1016,7 @@ export function useAgentOrchestrator(
       clearTimeout(quietWindowTimerRef.current);
       quietWindowTimerRef.current = null;
     }
+    flushBoundaryAnchorAtRef.current = null;
     pendingSubmitWhenReadyRef.current = false;
     pendingSubmitSessionIdRef.current = null;
     settlementResolvedRef.current = true;
@@ -1115,10 +1148,13 @@ export function useAgentOrchestrator(
         recordingSessionRef.current === pendingSubmitSessionIdRef.current &&
         !settlementResolvedRef.current
       ) {
-        finalCandidateTextRef.current = normalizedCombined;
-        finalCandidateSessionIdRef.current = sessionId ?? null;
+        const currentCandidate = finalCandidateTextRef.current ?? '';
+        if (normalizedCombined.length >= currentCandidate.length) {
+          finalCandidateTextRef.current = normalizedCombined;
+          finalCandidateSessionIdRef.current = sessionId ?? null;
+        }
         finalStabilizationActiveRef.current = true;
-        logInfo('AgentOrchestrator', 'final accepted for stabilization candidate', {
+        logInfo('AgentOrchestrator', 'final accepted for stabilization candidate (refines only; settlement at flush boundary)', {
           recordingSessionId: sessionId,
           candidateChars: normalizedCombined.length,
           candidateTranscriptText: normalizedCombined,
@@ -1128,28 +1164,18 @@ export function useAgentOrchestrator(
           clearTimeout(quietWindowTimerRef.current);
           quietWindowTimerRef.current = null;
         }
-        if (finalizeTimerRef.current) {
-          clearTimeout(finalizeTimerRef.current);
-          finalizeTimerRef.current = null;
-        }
         if (!finalStabilizationTimerRef.current) {
-          logInfo('AgentOrchestrator', 'final transcript received, stabilization window started', {
+          logInfo('AgentOrchestrator', 'final stabilization window started (candidate refinement only)', {
             recordingSessionId: sessionId,
           });
           finalStabilizationTimerRef.current = setTimeout(() => {
             finalStabilizationTimerRef.current = null;
             finalStabilizationActiveRef.current = false;
             if (settlementResolvedRef.current) return;
-            if (recordingSessionRef.current !== pendingSubmitSessionIdRef.current) return;
-            logInfo('AgentOrchestrator', 'final stabilization settling candidate', {
+            logInfo('AgentOrchestrator', 'final stabilization window elapsed; candidate held for flush boundary', {
               recordingSessionId: sessionId,
               candidateChars: finalCandidateTextRef.current?.length ?? 0,
-              candidateTranscriptText: finalCandidateTextRef.current ?? '',
-              candidateTranscriptPreview: transcriptPreview(finalCandidateTextRef.current ?? ''),
-              speechEnded: speechEndedRef.current,
-              settlementResolved: settlementResolvedRef.current,
             });
-            resolveSettlement('finalStabilized', sessionId);
           }, POST_FINAL_STABILIZATION_WINDOW_MS);
         }
       }
@@ -1263,12 +1289,6 @@ export function useAgentOrchestrator(
           recordingStartAtRef.current != null ? Date.now() - recordingStartAtRef.current : undefined,
       });
       speechEndedRef.current = true;
-      if (finalStabilizationActiveRef.current) {
-        logInfo('AgentOrchestrator', 'speechEnd ignored (final stabilization active)', {
-          recordingSessionId,
-        });
-        return;
-      }
       if (
         pendingSubmitWhenReadyRef.current &&
         recordingSessionRef.current === pendingSubmitSessionIdRef.current &&
