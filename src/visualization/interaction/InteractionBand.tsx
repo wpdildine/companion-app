@@ -15,7 +15,7 @@
  */
 
 import React, { useRef, useCallback, useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Animated, StyleSheet, View } from 'react-native';
 import type { LayoutChangeEvent, GestureResponderEvent } from 'react-native';
 import type { RefObject } from 'react';
 import type { VisualizationEngineRef } from '../engine/types';
@@ -37,6 +37,8 @@ export type InteractionBandProps = {
   /** Center spine hold: called once when touch ends after hold had started. */
   onCenterHoldEnd?: () => void;
   enabled?: boolean;
+  blocked?: boolean;
+  blockedUntil?: number | null;
 };
 
 export function InteractionBand({
@@ -46,6 +48,8 @@ export function InteractionBand({
   onCenterHoldStart,
   onCenterHoldEnd,
   enabled = true,
+  blocked = false,
+  blockedUntil = null,
 }: InteractionBandProps) {
   const layoutRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -102,6 +106,23 @@ export function InteractionBand({
       v.zoneArmed = null;
     }
   }, [enabled, visualizationRef, clearCenterHoldState]);
+
+  const blockedOpacity = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!blocked) {
+      blockedOpacity.stopAnimation();
+      blockedOpacity.setValue(0);
+      return;
+    }
+    const now = Date.now();
+    const duration = blockedUntil != null ? Math.max(0, blockedUntil - now) : 200;
+    blockedOpacity.setValue(1);
+    Animated.timing(blockedOpacity, {
+      toValue: 0,
+      duration,
+      useNativeDriver: true,
+    }).start();
+  }, [blocked, blockedUntil, blockedOpacity]);
 
   const handleTouchStart = useCallback(
     (e: GestureResponderEvent) => {
@@ -213,7 +234,14 @@ export function InteractionBand({
       onTouchEnd={handleTouchEnd}
       onTouchCancel={handleTouchCancel}
       pointerEvents={enabled ? 'auto' : 'none'}
-    />
+    >
+      {blocked && (
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.blockedOverlay, { opacity: blockedOpacity }]}
+        />
+      )}
+    </View>
   );
 }
 
@@ -224,5 +252,11 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 2,
+  },
+  blockedOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderColor: '#ff4a4a',
+    borderWidth: 2,
+    backgroundColor: 'rgba(255, 74, 74, 0.08)',
   },
 });

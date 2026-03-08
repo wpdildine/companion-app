@@ -53,5 +53,7 @@ export interface AgentOrchestratorState {
   transcribedText: string;
   responseText: string | null;
   validationSummary: ValidationSummary | null;
+  ioBlockedUntil?: number | null;
+  ioBlockedReason?: string | null;
   metadata?: AgentStateMetadata;
 }

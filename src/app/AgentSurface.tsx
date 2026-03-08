@@ -30,6 +30,7 @@ import type {
   VisualizationPanelRects,
   AiUiSignalsEvent,
 } from '../visualization';
+import { TRANSIENT_SIGNAL_SOFT_FAIL } from '../visualization';
 import { useVisualizationSignals } from './hooks/useVisualizationSignals';
 import {
   useAgentOrchestrator,
@@ -389,8 +390,8 @@ export default function AgentSurface() {
       try {
         const startPromise = holdStartPromiseRef.current;
         if (startPromise) {
-          const started = await startPromise;
-          if (!started) return;
+          const result = await startPromise;
+          if (!result.ok) return;
         }
         if (orchState.lifecycle === 'listening') {
           await orchActions.stopListeningAndRequestSubmit();
@@ -428,15 +429,27 @@ export default function AgentSurface() {
     (async () => {
       const startPromise = orchActions.startListening(true);
       holdStartPromiseRef.current = startPromise;
-      const started = await startPromise;
+      const result = await startPromise;
       if (holdStartPromiseRef.current === startPromise) {
         holdStartPromiseRef.current = null;
       }
-      if (!started) {
+      if (!result.ok) {
         centerHoldActiveRef.current = false;
+        if (
+          result.reason === 'audioNotReady' ||
+          result.reason === 'audioStarting' ||
+          result.reason === 'audioStopping' ||
+          result.reason === 'audioSettling' ||
+          result.reason === 'nativeGuard' ||
+          result.reason === 'iosStopPending' ||
+          result.reason === 'nativeReentrancy'
+        ) {
+          emitEvent(TRANSIENT_SIGNAL_SOFT_FAIL);
+        }
         return;
       }
       if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current) return;
+      emitEvent('chunkAccepted');
       playListeningStartFeedback();
       recordingTimeoutRef.current = setTimeout(() => {
         recordingTimeoutRef.current = null;
@@ -457,6 +470,7 @@ export default function AgentSurface() {
     clearRecordingTimeout,
     stopListeningAndSubmit,
     playListeningStartFeedback,
+    emitEvent,
   ]);
 
   const handleCenterHoldEnd = useCallback(() => {
@@ -511,15 +525,27 @@ export default function AgentSurface() {
     (async () => {
       const startPromise = orchActions.startListening(true);
       holdStartPromiseRef.current = startPromise;
-      const started = await startPromise;
+      const result = await startPromise;
       if (holdStartPromiseRef.current === startPromise) {
         holdStartPromiseRef.current = null;
       }
-      if (!started) {
+      if (!result.ok) {
         userModeLongPressActiveRef.current = false;
+        if (
+          result.reason === 'audioNotReady' ||
+          result.reason === 'audioStarting' ||
+          result.reason === 'audioStopping' ||
+          result.reason === 'audioSettling' ||
+          result.reason === 'nativeGuard' ||
+          result.reason === 'iosStopPending' ||
+          result.reason === 'nativeReentrancy'
+        ) {
+          emitEvent(TRANSIENT_SIGNAL_SOFT_FAIL);
+        }
         return;
       }
       if (!userModeLongPressActiveRef.current || holdCompletionInFlightRef.current) return;
+      emitEvent('chunkAccepted');
       playListeningStartFeedback();
       recordingTimeoutRef.current = setTimeout(() => {
         recordingTimeoutRef.current = null;
@@ -540,6 +566,7 @@ export default function AgentSurface() {
     clearRecordingTimeout,
     stopListeningAndSubmit,
     playListeningStartFeedback,
+    emitEvent,
   ]);
 
   const handleUserModeLongPressEnd = useCallback(() => {
@@ -743,6 +770,8 @@ export default function AgentSurface() {
         onCenterHoldStart={!debugEnabled ? handleCenterHoldStart : undefined}
         onCenterHoldEnd={!debugEnabled ? handleCenterHoldEnd : undefined}
         enabled={interactionBandEnabled}
+        blocked={orchState.ioBlockedUntil != null}
+        blockedUntil={orchState.ioBlockedUntil ?? null}
       />
       <DebugZoneOverlay panelRects={panelRectsForDebug} visible={debugShowZones} />
       {debugEnabled && (

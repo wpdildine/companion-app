@@ -7,19 +7,12 @@
 
 import { useEffect } from 'react';
 import {
-  LogBox,
   StatusBar,
   useColorScheme,
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { logInfo } from '../shared/logging';
 import AgentSurface from './AgentSurface';
-
-// @react-native-voice/voice uses NativeEventEmitter in a way that triggers warnings on new arch (Fabric) when the native module doesn't expose addListener/removeListeners. Voice still works.
-LogBox.ignoreLogs([
-  'new NativeEventEmitter() was called with a non-null argument without the required `addListener` method',
-  'new NativeEventEmitter() was called with a non-null argument without the required `removeListeners` method',
-]);
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
