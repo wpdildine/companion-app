@@ -3,16 +3,16 @@
  * Supports either on-device llama.rn (GGUF paths) or Ollama HTTP API.
  */
 
-import type { PackState, PackFileReader, RagInitParams } from './types';
+import { logError, logInfo } from '../shared/logging';
+import { RAG_CONFIG } from './config';
+import { ragError } from './errors';
+import { loadChunksForRows, loadVectors, searchL2 } from './retrieval';
+import { buildPrompt, trimChunksToFitPrompt } from './runtimePrompt';
+import type { PackFileReader, PackState, RagInitParams } from './types';
+import { RAG_USE_DETERMINISTIC_CONTEXT_ONLY } from './types';
 
 /** Llama 3 stop sequences (not exported from @mtg/runtime RN entrypoint; define here to avoid passing undefined to native). */
 const LLAMA3_STOP_SEQUENCES = ['<|eot_id|>', '<|end_of_text|>'];
-import { RAG_USE_DETERMINISTIC_CONTEXT_ONLY } from './types';
-import { loadVectors, searchL2, loadChunksForRows } from './retrieval';
-import { trimChunksToFitPrompt, buildPrompt } from './runtimePrompt';
-import { ragError } from './errors';
-import { RAG_CONFIG } from './config';
-import { logError, logInfo, logWarn } from '../shared/logging';
 
 export interface RunRagFlowResult {
   raw: string;
@@ -33,7 +33,11 @@ function shouldUseOllama(params: RagInitParams): boolean {
   );
 }
 
-async function ollamaEmbedding(host: string, model: string, prompt: string): Promise<number[]> {
+async function ollamaEmbedding(
+  host: string,
+  model: string,
+  prompt: string,
+): Promise<number[]> {
   const base = host.replace(/\/$/, '');
   const res = await fetch(`${base}/api/embeddings`, {
     method: 'POST',
@@ -42,16 +46,26 @@ async function ollamaEmbedding(host: string, model: string, prompt: string): Pro
   });
   if (!res.ok) {
     const text = await res.text();
-    throw ragError('E_OLLAMA', `Ollama embeddings failed: ${res.status} ${text}`);
+    throw ragError(
+      'E_OLLAMA',
+      `Ollama embeddings failed: ${res.status} ${text}`,
+    );
   }
   const data = (await res.json()) as { embedding?: number[] };
   if (!Array.isArray(data.embedding)) {
-    throw ragError('E_OLLAMA', 'Ollama embeddings response missing embedding array');
+    throw ragError(
+      'E_OLLAMA',
+      'Ollama embeddings response missing embedding array',
+    );
   }
   return data.embedding;
 }
 
-async function ollamaGenerate(host: string, model: string, prompt: string): Promise<string> {
+async function ollamaGenerate(
+  host: string,
+  model: string,
+  prompt: string,
+): Promise<string> {
   const base = host.replace(/\/$/, '');
   const res = await fetch(`${base}/api/generate`, {
     method: 'POST',
@@ -66,7 +80,9 @@ async function ollamaGenerate(host: string, model: string, prompt: string): Prom
   return typeof data.response === 'string' ? data.response : '';
 }
 
-async function getEmbedContext(embedModelPath: string): Promise<import('llama.rn').LlamaContext> {
+async function getEmbedContext(
+  embedModelPath: string,
+): Promise<import('llama.rn').LlamaContext> {
   if (embedContext) return embedContext;
   const { initLlama } = require('llama.rn');
   const ctx = await initLlama({
@@ -79,7 +95,9 @@ async function getEmbedContext(embedModelPath: string): Promise<import('llama.rn
   return ctx;
 }
 
-async function getChatContext(chatModelPath: string): Promise<import('llama.rn').LlamaContext> {
+async function getChatContext(
+  chatModelPath: string,
+): Promise<import('llama.rn').LlamaContext> {
   if (chatContext) return chatContext;
   const { initLlama } = require('llama.rn');
   const ctx = await initLlama({
@@ -102,26 +120,37 @@ function logDebugPromptAndChunks(
   chunks: ChunkForPromptLog[],
   prompt: string,
   generationParams: Record<string, unknown> | null,
-  chatModelPathOrLabel: string
+  chatModelPathOrLabel: string,
 ): void {
   console.log('[RAG][DEBUG] --- final prompt ---');
   console.log('[RAG][DEBUG] prompt length (chars):', prompt.length);
-  const preview = prompt.length <= RAG_CONFIG.debug.prompt_preview_len
-    ? prompt
-    : prompt.slice(0, RAG_CONFIG.debug.prompt_preview_len) + '...';
+  const preview =
+    prompt.length <= RAG_CONFIG.debug.prompt_preview_len
+      ? prompt
+      : prompt.slice(0, RAG_CONFIG.debug.prompt_preview_len) + '...';
   console.log('[RAG][DEBUG] prompt preview:', preview);
   console.log('[RAG][DEBUG] --- retrieved chunks (top K) ---');
   chunks.forEach((c, i) => {
     const excerpt = (c.text ?? '').slice(0, RAG_CONFIG.debug.excerpt_len);
-    const excerptSuffix = (c.text?.length ?? 0) > RAG_CONFIG.debug.excerpt_len ? '...' : '';
-    console.log(`[RAG][DEBUG] chunk ${i + 1}: doc_id=${c.doc_id} source_type=${c.source_type} title=${c.title ?? '(none)'}`);
+    const excerptSuffix =
+      (c.text?.length ?? 0) > RAG_CONFIG.debug.excerpt_len ? '...' : '';
+    console.log(
+      `[RAG][DEBUG] chunk ${i + 1}: doc_id=${c.doc_id} source_type=${
+        c.source_type
+      } title=${c.title ?? '(none)'}`,
+    );
     console.log(`[RAG][DEBUG]   excerpt: ${excerpt}${excerptSuffix}`);
   });
   if (generationParams) {
-    console.log('[RAG][DEBUG] --- generation params ---', JSON.stringify(generationParams));
+    console.log(
+      '[RAG][DEBUG] --- generation params ---',
+      JSON.stringify(generationParams),
+    );
   }
   console.log('[RAG][DEBUG] --- chat model ---', chatModelPathOrLabel);
-  console.log('[RAG][DEBUG] (Compute SHA256 of model file locally to confirm same artifact as CLI.)');
+  console.log(
+    '[RAG][DEBUG] (Compute SHA256 of model file locally to confirm same artifact as CLI.)',
+  );
 }
 
 /**
@@ -130,7 +159,7 @@ function logDebugPromptAndChunks(
  */
 export function runListPreClassifier(
   _question: string,
-  _packState: PackState
+  _packState: PackState,
 ): { useListPath: boolean } | null {
   const hasStructured =
     _packState.manifest?.sidecars?.capabilities?.card_meta != null;
@@ -141,20 +170,30 @@ export function runListPreClassifier(
 /**
  * Run full RAG flow: embed query → L2 top-k rules + cards → merge → load chunks → prompt → completion.
  */
+export interface RunRagFlowOptions {
+  signal?: AbortSignal;
+  /** Called with full accumulated text as generation streams. */
+  onPartial?: (accumulatedText: string) => void;
+}
+
 export async function runRagFlow(
   packState: PackState,
   params: RagInitParams,
   reader: PackFileReader,
   question: string,
-  _options?: { signal?: AbortSignal }
+  options?: RunRagFlowOptions,
 ): Promise<RunRagFlowResult> {
   const t0 = Date.now();
-  const mark = (msg: string) => console.log(`[RAG][${Date.now() - t0}ms] ${msg}`);
+  const mark = (msg: string) =>
+    console.log(`[RAG][${Date.now() - t0}ms] ${msg}`);
   mark('runRagFlow start');
 
   const listResult = runListPreClassifier(question, packState);
   if (listResult?.useListPath) {
-    return { raw: '[Deterministic list path not yet implemented]', intent: 'unknown' };
+    return {
+      raw: '[Deterministic list path not yet implemented]',
+      intent: 'unknown',
+    };
   }
 
   const rulesMeta = packState.rules.indexMeta;
@@ -173,7 +212,10 @@ export async function runRagFlow(
     const embedding = await ollamaEmbedding(host, embedModel, question);
     queryVec = new Float32Array(embedding);
     if (queryVec.length !== rulesMeta.dim) {
-      throw ragError('E_EMBED_MISMATCH', `Ollama embedding dim ${queryVec.length} !== index dim ${rulesMeta.dim}. Use model that matches pack (e.g. nomic-embed-text).`);
+      throw ragError(
+        'E_EMBED_MISMATCH',
+        `Ollama embedding dim ${queryVec.length} !== index dim ${rulesMeta.dim}. Use model that matches pack (e.g. nomic-embed-text).`,
+      );
     }
 
     mark('vectors load start');
@@ -183,22 +225,32 @@ export async function runRagFlow(
     ]);
     mark('vectors load end');
     mark('retrieval start');
-    const rulesTopK = Math.min(RAG_CONFIG.retrieval.top_k_rules, rulesIndex.nRows);
-    const cardsTopK = Math.min(RAG_CONFIG.retrieval.top_k_cards, cardsIndex.nRows);
+    const rulesTopK = Math.min(
+      RAG_CONFIG.retrieval.top_k_rules,
+      rulesIndex.nRows,
+    );
+    const cardsTopK = Math.min(
+      RAG_CONFIG.retrieval.top_k_cards,
+      cardsIndex.nRows,
+    );
     const rulesHits = searchL2(rulesIndex, queryVec, rulesTopK);
     const cardsHits = searchL2(cardsIndex, queryVec, cardsTopK);
     const merged = mergeHits(rulesHits, cardsHits);
     const topMerged = merged.slice(0, RAG_CONFIG.retrieval.top_k_merge);
     mark('retrieval end');
-    const rulesRowIds = topMerged.filter((h) => h.source_type === 'rules').map((h) => h.rowId);
-    const cardsRowIds = topMerged.filter((h) => h.source_type === 'cards').map((h) => h.rowId);
+    const rulesRowIds = topMerged
+      .filter(h => h.source_type === 'rules')
+      .map(h => h.rowId);
+    const cardsRowIds = topMerged
+      .filter(h => h.source_type === 'cards')
+      .map(h => h.rowId);
     mark('chunks load start');
     const [rulesChunks, cardsChunks] = await Promise.all([
       loadChunksForRows(reader, packState.rules.chunksPath, rulesRowIds),
       loadChunksForRows(reader, packState.cards.chunksPath, cardsRowIds),
     ]);
     mark('chunks load end');
-    const chunksForPrompt = topMerged.map((h) => {
+    const chunksForPrompt = topMerged.map(h => {
       const map = h.source_type === 'rules' ? rulesChunks : cardsChunks;
       const c = map.get(h.rowId);
       return {
@@ -211,7 +263,12 @@ export async function runRagFlow(
     mark('context build start');
     const { prompt } = trimChunksToFitPrompt(chunksForPrompt, question);
     mark('context build end');
-    logDebugPromptAndChunks(chunksForPrompt, prompt, null, `Ollama model=${chatModel} (params server-side)`);
+    logDebugPromptAndChunks(
+      chunksForPrompt,
+      prompt,
+      null,
+      `Ollama model=${chatModel} (params server-side)`,
+    );
     mark('completion start');
     raw = await ollamaGenerate(host, chatModel, prompt);
     mark('completion end');
@@ -223,56 +280,65 @@ export async function runRagFlow(
         packRootPresent: !!packRoot,
         readerPresent: !!reader,
         questionChars: question.length,
+        packRoot: packRoot ?? null,
       });
 
       try {
-        const runtime = await import('@mtg/runtime');
-        const getContext = runtime.getContext ?? (runtime as { default?: { getContext?: typeof runtime.getContext } }).default?.getContext;
-        if (typeof getContext === 'function') {
+        if (packRoot && reader) {
+          const { getContextRN } = await import('./getContextRN');
           mark('getContext start');
-          const result = await getContext(question, packRoot);
+          const result = await getContextRN(question, packRoot, reader);
           mark('getContext end');
-          bundleText =
-            typeof result === 'string'
-              ? result
-              : (result as { final_context_bundle_canonical?: string })?.final_context_bundle_canonical ?? '';
-          logInfo('RAG', 'runtime deterministic context completed', {
+          bundleText = result.final_context_bundle_canonical ?? '';
+          logInfo('RAG', 'getContextRN completed', {
             bundleChars: bundleText.length,
           });
+        } else {
+          const runtime = await import('@mtg/runtime');
+          const getContext =
+            runtime.getContext ??
+            (
+              runtime as {
+                default?: { getContext?: typeof runtime.getContext };
+              }
+            ).default?.getContext;
+          if (typeof getContext === 'function') {
+            mark('getContext start');
+            const result = await getContext(question, packRoot);
+            mark('getContext end');
+            bundleText =
+              typeof result === 'string'
+                ? result
+                : (result as { final_context_bundle_canonical?: string })
+                    ?.final_context_bundle_canonical ?? '';
+            logInfo('RAG', 'runtime deterministic context completed', {
+              bundleChars: bundleText.length,
+            });
+          }
         }
       } catch (e) {
         const err = e as { code?: string; message?: string };
         const msg = e instanceof Error ? e.message : String(e);
+        const isBundleLoadError = msg
+          .toLowerCase()
+          .includes('could not load bundle');
         if (packRoot && reader) {
-          // Runtime getContext is a stub on RN; we use in-app getContextRN. Log as debug, not error.
-          logWarn('RAG', 'runtime getContext unavailable, falling back to getContextRN');
+          logError('RAG', 'getContextRN failed', { message: msg });
+          throw ragError(
+            'E_RETRIEVAL',
+            `Deterministic context provider could not load bundle. Ensure content_pack is present on device and packRoot is valid.`,
+          );
         } else {
           logError('RAG', 'runtime getContext failed', { message: msg });
-        }
-        if (err && typeof err === 'object' && typeof err.code === 'string') throw e;
-        if (packRoot && reader) {
-          try {
-            const { getContextRN } = await import('./getContextRN');
-            mark('getContext start');
-            const result = await getContextRN(question, packRoot, reader);
-            mark('getContext end');
-            bundleText = result.final_context_bundle_canonical ?? '';
-            logInfo('RAG', 'getContextRN completed', {
-              bundleChars: bundleText.length,
-            });
-          } catch (rnErr) {
-            logError('RAG', 'getContextRN failed', {
-              message: rnErr instanceof Error ? rnErr.message : String(rnErr),
-            });
+          if (isBundleLoadError) {
             throw ragError(
-              'E_DETERMINISTIC_ONLY',
-              `Deterministic context provider not available: ${msg}. Ensure @mtg/runtime is installed with RN entrypoint and getContext is exported.`
+              'E_RETRIEVAL',
+              `Deterministic context provider could not load bundle. Ensure content_pack is present on device and packRoot is valid.`,
             );
           }
-        } else {
           throw ragError(
             'E_DETERMINISTIC_ONLY',
-            `Deterministic context provider not available: ${msg}. Ensure pack is copied to device (packRoot set) and @mtg/runtime or in-app getContextRN is used.`
+            `Deterministic context provider not available: ${msg}. Ensure pack is copied to device (packRoot set) and @mtg/runtime or in-app getContextRN is used.`,
           );
         }
       }
@@ -296,7 +362,10 @@ export async function runRagFlow(
           questionChars: question.length,
           packRootPresent: !!packRoot,
         });
-        throw ragError('E_RETRIEVAL', 'Deterministic context provider returned empty bundle.');
+        throw ragError(
+          'E_RETRIEVAL',
+          'Deterministic context provider returned empty bundle.',
+        );
       }
       mark('context build start');
       const prompt = buildPrompt(bundleText, question);
@@ -306,26 +375,56 @@ export async function runRagFlow(
         promptChars: prompt.length,
       });
       if (!params.chatModelPath?.trim()) {
-        throw ragError('E_MODEL_PATH', 'chatModelPath required for deterministic path.');
+        throw ragError(
+          'E_MODEL_PATH',
+          'chatModelPath required for deterministic path.',
+        );
       }
       mark('chat model load start');
       const chatCtx = await getChatContext(params.chatModelPath);
       mark('chat model load end');
       mark('completion start');
-      const completionResult = await chatCtx.completion({
-        prompt,
-        n_predict: RAG_CONFIG.n_predict,
-        stop: LLAMA3_STOP_SEQUENCES,
-        ...RAG_CONFIG.generation,
-      });
-      raw = completionResult?.text ?? (completionResult as { content?: string })?.content ?? '';
+      if (options?.onPartial) {
+        let streamBuffer = '';
+        const completionResult = await chatCtx.completion(
+          {
+            prompt,
+            n_predict: RAG_CONFIG.n_predict,
+            stop: LLAMA3_STOP_SEQUENCES,
+            ...RAG_CONFIG.generation,
+          },
+          (data: { token?: string; text?: string }) => {
+            const chunk = data?.token ?? data?.text ?? '';
+            if (chunk) {
+              streamBuffer += chunk;
+              options.onPartial?.(streamBuffer);
+            }
+          },
+        );
+        raw =
+          streamBuffer ||
+          completionResult?.text ||
+          (completionResult as { content?: string })?.content ||
+          '';
+      } else {
+        const completionResult = await chatCtx.completion({
+          prompt,
+          n_predict: RAG_CONFIG.n_predict,
+          stop: LLAMA3_STOP_SEQUENCES,
+          ...RAG_CONFIG.generation,
+        });
+        raw =
+          completionResult?.text ??
+          (completionResult as { content?: string })?.content ??
+          '';
+      }
       mark('completion end');
       return { raw, contextText: bundleText, intent: 'unknown' };
     }
     if (!params.embedModelPath?.trim() || !params.chatModelPath?.trim()) {
       throw ragError(
         'E_MODEL_PATH',
-        'On-device models not configured. Set embedModelPath and chatModelPath to local GGUF file paths (e.g. in app documents or bundled assets). Pack expects an embed model matching index dim (e.g. nomic-embed-text) and a chat model for completion.'
+        'On-device models not configured. Set embedModelPath and chatModelPath to local GGUF file paths (e.g. in app documents or bundled assets). Pack expects an embed model matching index dim (e.g. nomic-embed-text) and a chat model for completion.',
       );
     }
     mark('embed model load start');
@@ -336,14 +435,20 @@ export async function runRagFlow(
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       mark('embed model load failed');
-      throw ragError('E_MODEL_PATH', `Embed model load failed: ${msg} Path: ${params.embedModelPath}`);
+      throw ragError(
+        'E_MODEL_PATH',
+        `Embed model load failed: ${msg} Path: ${params.embedModelPath}`,
+      );
     }
 
     mark('embedding start');
     const embRes = await embedCtx.embedding(question);
     queryVec = new Float32Array(embRes.embedding);
     if (queryVec.length !== rulesMeta.dim) {
-      throw ragError('E_EMBED_MISMATCH', `Query embedding dim ${queryVec.length} !== index dim ${rulesMeta.dim}`);
+      throw ragError(
+        'E_EMBED_MISMATCH',
+        `Query embedding dim ${queryVec.length} !== index dim ${rulesMeta.dim}`,
+      );
     }
     mark('embedding end');
 
@@ -355,16 +460,26 @@ export async function runRagFlow(
     mark('vectors load end');
 
     mark('retrieval start');
-    const rulesTopK = Math.min(RAG_CONFIG.retrieval.top_k_rules, rulesIndex.nRows);
-    const cardsTopK = Math.min(RAG_CONFIG.retrieval.top_k_cards, cardsIndex.nRows);
+    const rulesTopK = Math.min(
+      RAG_CONFIG.retrieval.top_k_rules,
+      rulesIndex.nRows,
+    );
+    const cardsTopK = Math.min(
+      RAG_CONFIG.retrieval.top_k_cards,
+      cardsIndex.nRows,
+    );
     const rulesHits = searchL2(rulesIndex, queryVec, rulesTopK);
     const cardsHits = searchL2(cardsIndex, queryVec, cardsTopK);
     const merged = mergeHits(rulesHits, cardsHits);
     const topMerged = merged.slice(0, RAG_CONFIG.retrieval.top_k_merge);
     mark('retrieval end');
 
-    const rulesRowIds = topMerged.filter((h) => h.source_type === 'rules').map((h) => h.rowId);
-    const cardsRowIds = topMerged.filter((h) => h.source_type === 'cards').map((h) => h.rowId);
+    const rulesRowIds = topMerged
+      .filter(h => h.source_type === 'rules')
+      .map(h => h.rowId);
+    const cardsRowIds = topMerged
+      .filter(h => h.source_type === 'cards')
+      .map(h => h.rowId);
     mark('chunks load start');
     const [rulesChunks, cardsChunks] = await Promise.all([
       loadChunksForRows(reader, packState.rules.chunksPath, rulesRowIds),
@@ -373,7 +488,7 @@ export async function runRagFlow(
     mark('chunks load end');
 
     mark('context build start');
-    const chunksForPrompt = topMerged.map((h) => {
+    const chunksForPrompt = topMerged.map(h => {
       const map = h.source_type === 'rules' ? rulesChunks : cardsChunks;
       const c = map.get(h.rowId);
       return {
@@ -390,7 +505,7 @@ export async function runRagFlow(
       chunksForPrompt,
       prompt,
       RAG_CONFIG.generation,
-      params.chatModelPath ?? '(none)'
+      params.chatModelPath ?? '(none)',
     );
 
     mark('chat model load start');
@@ -401,17 +516,40 @@ export async function runRagFlow(
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       mark('chat model load failed');
-      throw ragError('E_MODEL_PATH', `Chat model load failed: ${msg} Path: ${params.chatModelPath}`);
+      throw ragError(
+        'E_MODEL_PATH',
+        `Chat model load failed: ${msg} Path: ${params.chatModelPath}`,
+      );
     }
 
     mark('completion start');
-    const result = await chatCtx.completion({
-      prompt,
-      n_predict: RAG_CONFIG.n_predict,
-      stop: LLAMA3_STOP_SEQUENCES,
-      ...RAG_CONFIG.generation,
-    });
-    raw = result?.text ?? result?.content ?? '';
+    if (options?.onPartial) {
+      let streamBuffer = '';
+      const result = await chatCtx.completion(
+        {
+          prompt,
+          n_predict: RAG_CONFIG.n_predict,
+          stop: LLAMA3_STOP_SEQUENCES,
+          ...RAG_CONFIG.generation,
+        },
+        (data: { token?: string; text?: string }) => {
+          const chunk = data?.token ?? data?.text ?? '';
+          if (chunk) {
+            streamBuffer += chunk;
+            options.onPartial?.(streamBuffer);
+          }
+        },
+      );
+      raw = streamBuffer || (result?.text ?? result?.content ?? '');
+    } else {
+      const result = await chatCtx.completion({
+        prompt,
+        n_predict: RAG_CONFIG.n_predict,
+        stop: LLAMA3_STOP_SEQUENCES,
+        ...RAG_CONFIG.generation,
+      });
+      raw = result?.text ?? result?.content ?? '';
+    }
     mark('completion end');
   }
 
@@ -420,20 +558,30 @@ export async function runRagFlow(
 
 function mergeHits(
   rulesHits: Array<{ rowId: number; score: number }>,
-  cardsHits: Array<{ rowId: number; score: number }>
-): Array<{ rowId: number; score: number; source_type: 'rules' | 'cards'; doc_id: string }> {
-  const out: Array<{ rowId: number; score: number; source_type: 'rules' | 'cards'; doc_id: string }> = [];
-  const rMax = rulesHits.length ? Math.max(...rulesHits.map((h) => h.score)) : 1;
-  const cMax = cardsHits.length ? Math.max(...cardsHits.map((h) => h.score)) : 1;
+  cardsHits: Array<{ rowId: number; score: number }>,
+): Array<{
+  rowId: number;
+  score: number;
+  source_type: 'rules' | 'cards';
+  doc_id: string;
+}> {
+  const out: Array<{
+    rowId: number;
+    score: number;
+    source_type: 'rules' | 'cards';
+    doc_id: string;
+  }> = [];
+  const rMax = rulesHits.length ? Math.max(...rulesHits.map(h => h.score)) : 1;
+  const cMax = cardsHits.length ? Math.max(...cardsHits.map(h => h.score)) : 1;
   const rNorm = (s: number) => (rMax > 0 ? s / rMax : 0);
   const cNorm = (s: number) => (cMax > 0 ? s / cMax : 0);
-  const rulesWithDocId = rulesHits.map((h) => ({
+  const rulesWithDocId = rulesHits.map(h => ({
     ...h,
     source_type: 'rules' as const,
     doc_id: `rules:${h.rowId}`,
     normScore: RAG_CONFIG.retrieval.rules_weight * (1 - rNorm(h.score)),
   }));
-  const cardsWithDocId = cardsHits.map((h) => ({
+  const cardsWithDocId = cardsHits.map(h => ({
     ...h,
     source_type: 'cards' as const,
     doc_id: `cards:${h.rowId}`,
@@ -442,7 +590,12 @@ function mergeHits(
   const all = [...rulesWithDocId, ...cardsWithDocId];
   all.sort((a, b) => b.normScore - a.normScore);
   for (const h of all) {
-    out.push({ rowId: h.rowId, score: h.score, source_type: h.source_type, doc_id: h.doc_id });
+    out.push({
+      rowId: h.rowId,
+      score: h.score,
+      source_type: h.source_type,
+      doc_id: h.doc_id,
+    });
   }
   return out;
 }

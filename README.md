@@ -12,7 +12,7 @@ This is a [**React Native**](https://reactnative.dev) project, bootstrapped usin
 
 ## How the app works
 
-- **Visualization:** The voice screen uses a fullscreen Three.js/R3F visualization (starfield, node cloud, connections) as the background. Mode (idle, listening, processing, speaking, touched, released) drives activity and pulses; see [docs/APP_ARCHITECTURE.md](docs/APP_ARCHITECTURE.md) for high- and low-level architecture. Agent lifecycle includes `failed` (recoverable, short-lived; e.g. no usable transcript) and `error` (system/runtime fault); only `error` shows the persistent error panel.
+- **Visualization:** The voice screen uses a fullscreen Three.js/R3F visualization (starfield, node cloud, connections) as the background. Mode (idle, listening, processing, speaking, touched, released) drives activity and pulses; see [docs/APP_ARCHITECTURE.md](docs/APP_ARCHITECTURE.md) for high- and low-level architecture.
 - **Voice:** Speech-to-text via `@react-native-voice/voice` (lazy-loaded). You speak; the app turns it into text and sends it to the RAG pipeline.
 - **TTS:** Piper (offline) as the main voice; fallback to `react-native-tts` when the Piper model isn’t installed.
 - **RAG / “Ask” path:** The app does **not** run embeddings or vector search on-device. It uses a **deterministic context provider** that:
@@ -53,13 +53,13 @@ This app is the **mobile consumer** of the **mtg_rules** (Rules Service) pipelin
 
 **How they connect:**
 
-| Piece | In mtg_rules | In companion-app |
-|-------|----------------|-------------------|
-| **Content pack** | `./run.sh pack` → `content_pack/` | Synced into `assets/content_pack/` via `pnpm run sync-pack-small` (or sync-pack-full for a one-off full pack with models). Build uses a **real directory** (no symlink). |
-| **Context provider** | Python: `service/context_provider.py`; TS: `runtime-ts/` (same algorithm, spec-driven) | App imports `@mtg/runtime`; uses `getContext` from runtime or **getContextRN** when runtime doesn’t provide it. Reads pack from device (e.g. Documents/content_pack) or bundle. |
-| **Spec / constants** | Exported in pack as `context_provider_spec.json` | Loaded by runtime / getContextRN; no hardcoded scoring or thresholds in app code. |
-| **Validation (nudge)** | `validate_response.py`; same contract in pack’s validate sidecars | App calls `nudgeResponse()` with pack state and reader; uses same rule_ids + name_lookup from pack. |
-| **Parity & fixtures** | Python exports reference traces to `runtime-ts/fixtures/`; TS runs `yarn test:parity` in runtime-ts | App does not run parity tests; it just consumes the runtime and pack. |
+| Piece                  | In mtg_rules                                                                                        | In companion-app                                                                                                                                                                |
+| ---------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Content pack**       | `./run.sh pack` → `content_pack/`                                                                   | Synced into `assets/content_pack/` via `pnpm run sync-pack-small` (or sync-pack-full for a one-off full pack with models). Build uses a **real directory** (no symlink).        |
+| **Context provider**   | Python: `service/context_provider.py`; TS: `runtime-ts/` (same algorithm, spec-driven)              | App imports `@mtg/runtime`; uses `getContext` from runtime or **getContextRN** when runtime doesn’t provide it. Reads pack from device (e.g. Documents/content_pack) or bundle. |
+| **Spec / constants**   | Exported in pack as `context_provider_spec.json`                                                    | Loaded by runtime / getContextRN; no hardcoded scoring or thresholds in app code.                                                                                               |
+| **Validation (nudge)** | `validate_response.py`; same contract in pack’s validate sidecars                                   | App calls `nudgeResponse()` with pack state and reader; uses same rule_ids + name_lookup from pack.                                                                             |
+| **Parity & fixtures**  | Python exports reference traces to `runtime-ts/fixtures/`; TS runs `yarn test:parity` in runtime-ts | App does not run parity tests; it just consumes the runtime and pack.                                                                                                           |
 
 **Scripts and linking:**
 
@@ -82,12 +82,12 @@ See **[docs/CONTENT_PACK_SETUP.md](docs/CONTENT_PACK_SETUP.md)** for pack layout
 
 The app needs a content pack in `assets/content_pack/` (manifest, router, rules.db, cards.db, context_provider_spec, validate sidecars). Either:
 
-- **Sync from mtg_rules:**  
-  In mtg_rules run `./run.sh pack --from-flat --out ./content_pack`. Then in companion-app:  
-  `pnpm run sync-pack-small`  
+- **Sync from mtg_rules:**
+  In mtg_rules run `./run.sh pack --from-flat --out ./content_pack`. Then in companion-app:
+  `pnpm run sync-pack-small`
   (or `sync-pack-full` if you want to ship the pack with models once; see docs/CONTENT_PACK_SETUP.md.)
 
-- **Dev link:**  
+- **Dev link:**
   `node scripts/link-mtg-rules.js link` to symlink `assets/content_pack` to your mtg_rules repo. Before any build that must work without the symlink, run `pnpm run sync-pack-small`.
 
 ## Step 2: Start Metro

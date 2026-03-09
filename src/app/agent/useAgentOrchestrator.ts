@@ -263,6 +263,8 @@ export function useAgentOrchestrator(
   const requestIdRef = useRef(0);
   const requestInFlightRef = useRef(false);
   const activeRequestIdRef = useRef(0);
+  /** Tracks whether onFirstToken was fired for the current request (streaming); must not refire on late chunks. */
+  const firstChunkSentRef = useRef(false);
   const recordingSessionRef = useRef<string | null>(null);
   const recordingSessionSeqRef = useRef(0);
   const pendingSubmitWhenReadyRef = useRef(false);
@@ -290,6 +292,7 @@ export function useAgentOrchestrator(
   const iosStopInvokedRef = useRef(false);
   const audioStateRef = useRef<'idleReady' | 'starting' | 'listening' | 'stopping' | 'settling'>('idleReady');
   const nativeRestartGuardUntilRef = useRef(0);
+  const playTextRef = useRef<(text: string) => Promise<void>>(null);
   const ioBlockedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Timer for failed → idle transition only; cleared in finalizeStop and on unmount. */
   const failedReturnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -956,11 +959,14 @@ export function useAgentOrchestrator(
   }, [stopListening]);
 
   const submit = useCallback(async (): Promise<string | null> => {
+    // Canonical path: normalize → retrieval → context → payload → inference (stream) → settle → cards/rules update → speak → complete.
     if (requestInFlightRef.current) {
       logWarn('AgentOrchestrator', 'submit blocked because active request exists');
       return null;
     }
-      const question = normalizeTranscript(transcribedTextRef.current);
+    // Normalize input (canonical step: trim + collapse whitespace).
+    // Canonical normalize step for accepted transcript before RAG submit.
+    const question = normalizeTranscript(transcribedTextRef.current);
     if (!question) {
       logWarn('AgentOrchestrator', 'submit skipped: empty transcript', {
         transcriptChars: transcribedTextRef.current.length,
@@ -970,6 +976,7 @@ export function useAgentOrchestrator(
     requestIdRef.current += 1;
     const reqId = requestIdRef.current;
     activeRequestIdRef.current = reqId;
+    firstChunkSentRef.current = false;
     requestInFlightRef.current = true;
     logInfo('AgentOrchestrator', 'active requestId set', { requestId: reqId });
     setError(null);
@@ -998,6 +1005,11 @@ export function useAgentOrchestrator(
           logInfo('Runtime', 'Copy pack to Documents failed, using bundle', { message: e instanceof Error ? e.message : String(e) });
           packRoot = (await getContentPackPathInDocuments()) ?? '';
         }
+        logInfo('Runtime', 'pack path resolved', {
+          packRoot,
+          hasPackRoot: !!packRoot,
+          usingDocumentsReader: !!packRoot,
+        });
         const reader =
           (packRoot ? createDocumentsPackReader(packRoot) : null) ??
           createBundlePackReader() ??
@@ -1018,12 +1030,27 @@ export function useAgentOrchestrator(
       logInfo('AgentOrchestrator', 'generation started', { requestId: reqId });
       listenersRef?.current?.onGenerationStart?.();
       setLifecycle('thinking');
-      const result = await ragAsk(question);
+      const result = await ragAsk(question, {
+        onPartial: (accumulatedText: string) => {
+          setResponseText(accumulatedText);
+          if (
+            !firstChunkSentRef.current &&
+            reqId === activeRequestIdRef.current &&
+            accumulatedText.length > 0
+          ) {
+            firstChunkSentRef.current = true;
+            logInfo('AgentOrchestrator', 'first token received', { requestId: reqId });
+            listenersRef?.current?.onFirstToken?.();
+          }
+        },
+      });
       const nudged = result.nudged;
       setResponseText(nudged);
       setValidationSummary(result.validationSummary);
-      logInfo('AgentOrchestrator', 'first token received', { requestId: reqId });
-      listenersRef?.current?.onFirstToken?.();
+      if (!firstChunkSentRef.current && reqId === activeRequestIdRef.current) {
+        logInfo('AgentOrchestrator', 'first token received', { requestId: reqId });
+        listenersRef?.current?.onFirstToken?.();
+      }
       logInfo('AgentOrchestrator', 'generation completed', { requestId: reqId });
       logInfo('AgentOrchestrator', 'result payload ready', {
         requestId: reqId,
@@ -1039,6 +1066,9 @@ export function useAgentOrchestrator(
         setError(null);
         setMode('idle');
         setLifecycle('complete');
+        if (nudged.trim().length > 0) {
+          playTextRef.current?.(nudged).catch(() => {});
+        }
         return nudged;
       }
       logWarn('AgentOrchestrator', 'stale completion ignored (non-active request)', {
@@ -1177,6 +1207,8 @@ export function useAgentOrchestrator(
     },
     [piperAvailable, listenersRef],
   );
+
+  playTextRef.current = playText;
 
   const cancelPlayback = useCallback(() => {
     logInfo('AgentOrchestrator', 'playback interrupted');

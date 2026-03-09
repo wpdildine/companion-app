@@ -35,6 +35,8 @@ export interface AskOptions {
   signal?: AbortSignal;
   /** When true, skip nudgeResponse (return raw as nudged, empty validation). Use to match CLI/local output for debugging. */
   debugSkipNudge?: boolean;
+  /** Called with full accumulated text as generation streams; UI should replace (not append) to avoid duplicate tokens. */
+  onPartial?: (accumulatedText: string) => void;
 }
 
 /** Result of ask(question). */
@@ -45,7 +47,7 @@ export interface AskResult {
 }
 
 /** Set to true to disable nudge globally (for debugging prompt/chunks vs CLI). */
-export let RAG_DEBUG_SKIP_NUDGE = true;
+export let RAG_DEBUG_SKIP_NUDGE = false;
 
 let packState: PackState | null = null;
 let initParams: RagInitParams | null = null;

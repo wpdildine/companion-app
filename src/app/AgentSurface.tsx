@@ -48,7 +48,7 @@ const DOUBLE_TAP_MS = 280;
 const ASK_HOLD_MS = 400;
 /** Max recording duration for hold-to-speak; timeout triggers stop + submit (same as release). */
 const MAX_RECORDING_DURATION_MS = 12000;
-const DEBUG_DISABLE_PROCESSING = true;
+const DEBUG_DISABLE_PROCESSING = false;
 const DEBUG_LOG_SCOPES: Array<import('../shared/logging').LogScope> = [
   'AgentOrchestrator',
   'Interaction',
