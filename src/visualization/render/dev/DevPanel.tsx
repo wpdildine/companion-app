@@ -18,7 +18,7 @@ import {
 import { TARGET_ACTIVITY_BY_MODE } from '../../engine/createDefaultRef';
 import { triggerPulseAtCenter } from '../../engine/triggerPulse';
 
-/** Minimal theme for DevPanel; injected by App/DevScreen (no theme import in nodeMap). */
+/** Minimal theme for DevPanel; injected by App (no theme import in nodeMap). */
 export type DevPanelTheme = {
   text: string;
   textMuted: string;
@@ -61,10 +61,14 @@ export function DevPanel({
   visualizationRef,
   onClose,
   theme,
+  variant = 'overlay',
+  showClose = true,
 }: {
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
   onClose: () => void;
   theme: DevPanelTheme;
+  variant?: 'overlay' | 'panel' | 'embed';
+  showClose?: boolean;
 }) {
   const [, setUiVersion] = useState(0);
 
@@ -220,14 +224,21 @@ export function DevPanel({
     return () => clearInterval(id);
   }, [v.stateCycleOn, v.canonicalCycleOn]);
 
+  const wrapperStyle =
+    variant === 'overlay' ? [StyleSheet.absoluteFill, styles.overlay] : [styles.inlineWrap];
+  const panelStyle =
+    variant === 'overlay' ? styles.panel : variant === 'embed' ? styles.panelEmbed : styles.panelInline;
+
   return (
-    <View style={[StyleSheet.absoluteFill, styles.overlay]} pointerEvents="auto">
-      <View style={[styles.panel, { backgroundColor: bg }]}>
+    <View style={wrapperStyle} pointerEvents={variant === 'overlay' ? 'auto' : 'box-none'}>
+      <View style={[panelStyle, { backgroundColor: bg }]} pointerEvents="auto">
         <View style={styles.header}>
           <Text style={[styles.title, { color: textColor }]}>DevPanel</Text>
-          <Pressable onPress={onClose} style={styles.closeBtn}>
-            <Text style={{ color: textColor }}>Close</Text>
-          </Pressable>
+          {showClose && (
+            <Pressable onPress={onClose} style={styles.closeBtn}>
+              <Text style={{ color: textColor }}>Close</Text>
+            </Pressable>
+          )}
         </View>
         <ScrollView style={styles.scroll}>
           <Text style={[styles.section, { color: muted }]}>Viz</Text>
@@ -835,6 +846,11 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     elevation: 20,
   },
+  inlineWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   panel: {
     width: '90%',
     maxWidth: 360,
@@ -843,6 +859,23 @@ const styles = StyleSheet.create({
     padding: 16,
     zIndex: 1001,
     elevation: 21,
+  },
+  panelInline: {
+    width: '88%',
+    maxWidth: 360,
+    maxHeight: '65%',
+    borderRadius: 12,
+    padding: 16,
+    zIndex: 1001,
+    elevation: 21,
+  },
+  panelEmbed: {
+    width: '100%',
+    maxWidth: '100%',
+    maxHeight: '100%',
+    padding: 0,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
   },
   header: {
     flexDirection: 'row',

@@ -30,6 +30,19 @@ export { getPackEmbedModelId, PACK_EMBED_MODEL_ID_DETERMINISTIC_ONLY } from './l
 import type { ValidationSummary } from './validate';
 import { runHumanShortPipeline, runPipelineHumanShort } from '@mtg/runtime';
 
+/** Payload shape for request-debug sink (same contract as app requestDebugStore.emit). */
+export type RequestDebugSinkPayload = {
+  type: string;
+  requestId: number | null;
+  timestamp?: number;
+  [key: string]: unknown;
+};
+
+export interface RagInitOptions {
+  /** Optional request-debug sink; init emits rag_init_* and pack telemetry with requestId: null. */
+  requestDebugSink?: (payload: RequestDebugSinkPayload) => void;
+}
+
 /** Options for ask(). */
 export interface AskOptions {
   signal?: AbortSignal;
@@ -37,6 +50,10 @@ export interface AskOptions {
   debugSkipNudge?: boolean;
   /** Called with full accumulated text as generation streams; UI should replace (not append) to avoid duplicate tokens. */
   onPartial?: (accumulatedText: string) => void;
+  /** Request id from orchestrator; when set with requestDebugSink, RAG emits telemetry into the same store. */
+  requestId?: number;
+  /** Sink for request-scoped debug telemetry; receives events with type, requestId, timestamp, and payload. */
+  requestDebugSink?: (payload: RequestDebugSinkPayload) => void;
 }
 
 /** Result of ask(question). */
@@ -63,17 +80,29 @@ let askInFlight = false;
  */
 export async function init(
   params: RagInitParams,
-  reader: PackFileReader
+  reader: PackFileReader,
+  options?: RagInitOptions
 ): Promise<PackState> {
   const t0 = Date.now();
   const mark = (msg: string) => console.log(`[RAG][${Date.now() - t0}ms] ${msg}`);
   mark('init start');
+  const emitInit = (type: string, payload?: Record<string, unknown>) => {
+    options?.requestDebugSink?.({ type, requestId: null, timestamp: Date.now(), ...(payload ?? {}) });
+  };
+  emitInit('rag_init_start');
   if (packState && initParams && fileReader && initParams.packRoot === params.packRoot) {
     mark('init end (cached)');
+    emitInit('rag_init_end', { cached: true });
     return packState;
   }
-  const state = await loadPack(reader, params);
+  const state = await loadPack(reader, params, (type, payload) => emitInit(type, payload));
+  emitInit('rag_pack_identity', {
+    packRoot: params.packRoot ?? undefined,
+    embedModelId: params.embedModelId ?? undefined,
+    chatModelPath: params.chatModelPath ?? undefined,
+  });
   mark('init end (pack loaded)');
+  emitInit('rag_init_end');
   packState = state;
   initParams = params;
   fileReader = reader;

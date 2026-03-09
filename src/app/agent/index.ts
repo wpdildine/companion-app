@@ -10,7 +10,11 @@ export type {
   AgentStateMetadata,
 } from './types';
 export { useAgentOrchestrator } from './useAgentOrchestrator';
-export type { AgentOrchestratorActions, UseAgentOrchestratorOptions } from './useAgentOrchestrator';
+export type {
+  AgentOrchestratorActions,
+  RequestDebugSink,
+  UseAgentOrchestratorOptions,
+} from './useAgentOrchestrator';
 export { useVisualizationController } from './useVisualizationController';
 export type { UseVisualizationControllerOptions } from './useVisualizationController';
 export { ResultsOverlay } from './ResultsOverlay';
@@ -19,3 +23,16 @@ export type {
   ResultsOverlayRevealedBlocks,
   ResultsOverlayTheme,
 } from './ResultsOverlay';
+export { emit, getState, subscribe } from './requestDebugStore';
+export { PipelineTelemetryPanel } from './PipelineTelemetryPanel';
+export type { PipelineTelemetryPanelProps } from './PipelineTelemetryPanel';
+export { VizDebugPanel } from './VizDebugPanel';
+export type { VizDebugPanelProps } from './VizDebugPanel';
+export { REQUEST_DEBUG_RECENT_MAX } from './requestDebugTypes';
+export type {
+  RequestDebugEvent,
+  RequestDebugSnapshot,
+  RequestDebugState,
+  RequestDebugEmitPayload,
+  RequestDebugStatus,
+} from './requestDebugTypes';

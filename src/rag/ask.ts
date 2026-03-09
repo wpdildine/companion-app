@@ -167,6 +167,14 @@ export function runListPreClassifier(
   return { useListPath: false };
 }
 
+/** Sink payload for request-debug (same shape as app store.emit). */
+export type RagRequestDebugPayload = {
+  type: string;
+  requestId: number | null;
+  timestamp?: number;
+  [key: string]: unknown;
+};
+
 /**
  * Run full RAG flow: embed query → L2 top-k rules + cards → merge → load chunks → prompt → completion.
  */
@@ -174,7 +182,41 @@ export interface RunRagFlowOptions {
   signal?: AbortSignal;
   /** Called with full accumulated text as generation streams. */
   onPartial?: (accumulatedText: string) => void;
+  /** Request id from orchestrator; when set with requestDebugSink, RAG emits telemetry. */
+  requestId?: number;
+  /** Sink for request-scoped debug telemetry. */
+  requestDebugSink?: (payload: RagRequestDebugPayload) => void;
 }
+
+function simplePromptHash(prompt: string): string {
+  let h = 0;
+  for (let i = 0; i < prompt.length; i++)
+    h = (h << 5) - h + prompt.charCodeAt(i);
+  return (h >>> 0).toString(36);
+}
+
+function extractTotalTokens(result: unknown): number | undefined {
+  if (!result || typeof result !== 'object') return undefined;
+  const rec = result as Record<string, unknown>;
+  const direct = rec.tokens ?? rec.token_count ?? rec.total_tokens;
+  if (typeof direct === 'number') return direct;
+  const usage = rec.usage as Record<string, unknown> | undefined;
+  if (usage && typeof usage.total_tokens === 'number') return usage.total_tokens;
+  return undefined;
+}
+
+function generationTelemetryParams(): Record<string, unknown> {
+  const generation = RAG_CONFIG.generation as Record<string, unknown>;
+  return {
+    temperature: generation.temperature,
+    topP: generation.top_p ?? generation.topP,
+    topK: generation.top_k ?? generation.topK,
+    maxTokens: RAG_CONFIG.n_predict,
+  };
+}
+
+const PROMPT_PREVIEW_MAX = 200;
+const BUNDLE_PREVIEW_MAX = 200;
 
 export async function runRagFlow(
   packState: PackState,
@@ -187,6 +229,16 @@ export async function runRagFlow(
   const mark = (msg: string) =>
     console.log(`[RAG][${Date.now() - t0}ms] ${msg}`);
   mark('runRagFlow start');
+
+  const requestId = options?.requestId ?? null;
+  const requestDebugSink = options?.requestDebugSink;
+  const emitRag = (type: string, payload: Record<string, unknown>) => {
+    if (requestDebugSink)
+      requestDebugSink({ type, requestId, timestamp: Date.now(), ...payload });
+  };
+  if (requestId != null && requestDebugSink) {
+    emitRag('rag_retrieval_start', {});
+  }
 
   const listResult = runListPreClassifier(question, packState);
   if (listResult?.useListPath) {
@@ -238,6 +290,9 @@ export async function runRagFlow(
     const merged = mergeHits(rulesHits, cardsHits);
     const topMerged = merged.slice(0, RAG_CONFIG.retrieval.top_k_merge);
     mark('retrieval end');
+    if (requestId != null && requestDebugSink) {
+      emitRag('rag_retrieval_mode', { retrievalMode: 'vector' });
+    }
     const rulesRowIds = topMerged
       .filter(h => h.source_type === 'rules')
       .map(h => h.rowId);
@@ -261,8 +316,42 @@ export async function runRagFlow(
       };
     });
     mark('context build start');
-    const { prompt } = trimChunksToFitPrompt(chunksForPrompt, question);
+    const { prompt, contextBlock } = trimChunksToFitPrompt(chunksForPrompt, question);
     mark('context build end');
+    if (requestId != null && requestDebugSink) {
+      emitRag('rag_retrieval_mode', { retrievalMode: 'vector' });
+      emitRag('rag_context_bundle_selected', {
+        contextLength: contextBlock.length,
+        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules').length,
+        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards').length,
+        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+      });
+      emitRag('rag_context_assembled', {
+        contextLength: contextBlock.length,
+        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules').length,
+        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards').length,
+        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+      });
+      emitRag('rag_retrieval_complete', {
+        retrievalMode: 'vector',
+        contextLength: contextBlock.length,
+        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules').length,
+        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards').length,
+        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+      });
+      emitRag('rag_prompt_built', {
+        promptLength: prompt.length,
+        contextLength: contextBlock.length,
+        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules').length,
+        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards').length,
+        promptPreview: prompt.slice(0, PROMPT_PREVIEW_MAX) + (prompt.length > PROMPT_PREVIEW_MAX ? '…' : ''),
+        promptHash: simplePromptHash(prompt),
+      });
+      emitRag('rag_generation_request_start', {
+        modelId: chatModel,
+        ...generationTelemetryParams(),
+      });
+    }
     logDebugPromptAndChunks(
       chunksForPrompt,
       prompt,
@@ -270,12 +359,23 @@ export async function runRagFlow(
       `Ollama model=${chatModel} (params server-side)`,
     );
     mark('completion start');
+    const completionStartedAt = Date.now();
     raw = await ollamaGenerate(host, chatModel, prompt);
     mark('completion end');
+    if (requestId != null && requestDebugSink) {
+      emitRag('rag_generation_complete', {
+        finalLength: raw.length,
+        generationTimeMs: Date.now() - completionStartedAt,
+      });
+    }
   } else {
     if (RAG_USE_DETERMINISTIC_CONTEXT_ONLY) {
       const packRoot = params.packRoot;
       let bundleText = '';
+      let bundleRulesCount: number | undefined;
+      let bundleCardsCount: number | undefined;
+      let bundleId: string | undefined;
+      let ruleSetId: string | undefined;
       logInfo('RAG', 'deterministic context requested', {
         packRootPresent: !!packRoot,
         readerPresent: !!reader,
@@ -290,6 +390,12 @@ export async function runRagFlow(
           const result = await getContextRN(question, packRoot, reader);
           mark('getContext end');
           bundleText = result.final_context_bundle_canonical ?? '';
+          if (result?.bundle) {
+            bundleRulesCount = Array.isArray(result.bundle.rules) ? result.bundle.rules.length : undefined;
+            bundleCardsCount = Array.isArray(result.bundle.cards) ? result.bundle.cards.length : undefined;
+            bundleId = (result.bundle as { bundle_id?: string }).bundle_id;
+            ruleSetId = (result.bundle as { rule_set_id?: string }).rule_set_id;
+          }
           logInfo('RAG', 'getContextRN completed', {
             bundleChars: bundleText.length,
           });
@@ -311,6 +417,14 @@ export async function runRagFlow(
                 ? result
                 : (result as { final_context_bundle_canonical?: string })
                     ?.final_context_bundle_canonical ?? '';
+            const bundle = (result as { bundle?: { rules?: unknown[]; cards?: unknown[]; bundle_id?: string; rule_set_id?: string } })
+              ?.bundle;
+            if (bundle) {
+              bundleRulesCount = Array.isArray(bundle.rules) ? bundle.rules.length : undefined;
+              bundleCardsCount = Array.isArray(bundle.cards) ? bundle.cards.length : undefined;
+              bundleId = bundle.bundle_id;
+              ruleSetId = bundle.rule_set_id;
+            }
             logInfo('RAG', 'runtime deterministic context completed', {
               bundleChars: bundleText.length,
             });
@@ -370,6 +484,42 @@ export async function runRagFlow(
       mark('context build start');
       const prompt = buildPrompt(bundleText, question);
       mark('context build end');
+      if (requestId != null && requestDebugSink) {
+        emitRag('rag_retrieval_mode', { retrievalMode: 'deterministic' });
+        emitRag('rag_context_bundle_selected', {
+          contextLength: bundleText.length,
+          bundleId,
+          ruleSetId,
+          rulesCount: bundleRulesCount,
+          cardsCount: bundleCardsCount,
+          bundlePreview: bundleText.slice(0, BUNDLE_PREVIEW_MAX) + (bundleText.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+        });
+        emitRag('rag_context_assembled', {
+          contextLength: bundleText.length,
+          bundleId,
+          ruleSetId,
+          rulesCount: bundleRulesCount,
+          cardsCount: bundleCardsCount,
+          bundlePreview: bundleText.slice(0, BUNDLE_PREVIEW_MAX) + (bundleText.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+        });
+        emitRag('rag_retrieval_complete', {
+          retrievalMode: 'deterministic',
+          contextLength: bundleText.length,
+          bundleId,
+          ruleSetId,
+          rulesCount: bundleRulesCount,
+          cardsCount: bundleCardsCount,
+          bundlePreview: bundleText.slice(0, BUNDLE_PREVIEW_MAX) + (bundleText.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+        });
+        emitRag('rag_prompt_built', {
+          promptLength: prompt.length,
+          contextLength: bundleText.length,
+          rulesCount: bundleRulesCount,
+          cardsCount: bundleCardsCount,
+          promptPreview: prompt.slice(0, PROMPT_PREVIEW_MAX) + (prompt.length > PROMPT_PREVIEW_MAX ? '…' : ''),
+          promptHash: simplePromptHash(prompt),
+        });
+      }
       logInfo('RAG', 'prompt built from deterministic bundle', {
         bundleChars: bundleText.length,
         promptChars: prompt.length,
@@ -383,9 +533,19 @@ export async function runRagFlow(
       mark('chat model load start');
       const chatCtx = await getChatContext(params.chatModelPath);
       mark('chat model load end');
+      if (requestId != null && requestDebugSink) {
+        emitRag('rag_generation_request_start', {
+          modelPath: params.chatModelPath ?? undefined,
+          ...generationTelemetryParams(),
+        });
+      }
       mark('completion start');
+      const completionStartedAt = Date.now();
+      let completionTotalTokens: number | undefined;
       if (options?.onPartial) {
         let streamBuffer = '';
+        let firstTokenEmitted = false;
+        let lastStreamEmitAt = 0;
         const completionResult = await chatCtx.completion(
           {
             prompt,
@@ -397,10 +557,25 @@ export async function runRagFlow(
             const chunk = data?.token ?? data?.text ?? '';
             if (chunk) {
               streamBuffer += chunk;
+              if (requestId != null && requestDebugSink) {
+                if (!firstTokenEmitted) {
+                  firstTokenEmitted = true;
+                  emitRag('rag_first_token', { elapsedMs: Date.now() - completionStartedAt });
+                }
+                const now = Date.now();
+                if (now - lastStreamEmitAt >= 400) {
+                  lastStreamEmitAt = now;
+                  emitRag('rag_stream_update', {
+                    partialLength: streamBuffer.length,
+                    elapsedMs: now - completionStartedAt,
+                  });
+                }
+              }
               options.onPartial?.(streamBuffer);
             }
           },
         );
+        completionTotalTokens = extractTotalTokens(completionResult);
         raw =
           streamBuffer ||
           completionResult?.text ||
@@ -413,12 +588,20 @@ export async function runRagFlow(
           stop: LLAMA3_STOP_SEQUENCES,
           ...RAG_CONFIG.generation,
         });
+        completionTotalTokens = extractTotalTokens(completionResult);
         raw =
           completionResult?.text ??
           (completionResult as { content?: string })?.content ??
           '';
       }
       mark('completion end');
+      if (requestId != null && requestDebugSink) {
+        emitRag('rag_generation_complete', {
+          finalLength: raw.length,
+          totalTokens: completionTotalTokens,
+          generationTimeMs: Date.now() - completionStartedAt,
+        });
+      }
       return { raw, contextText: bundleText, intent: 'unknown' };
     }
     if (!params.embedModelPath?.trim() || !params.chatModelPath?.trim()) {
@@ -498,8 +681,37 @@ export async function runRagFlow(
         text: c?.text,
       };
     });
-    const { prompt } = trimChunksToFitPrompt(chunksForPrompt, question);
+    const { prompt, contextBlock } = trimChunksToFitPrompt(chunksForPrompt, question);
     mark('context build end');
+    if (requestId != null && requestDebugSink) {
+      emitRag('rag_context_bundle_selected', {
+        contextLength: contextBlock.length,
+        rulesCount: rulesRowIds.length,
+        cardsCount: cardsRowIds.length,
+        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+      });
+      emitRag('rag_context_assembled', {
+        contextLength: contextBlock.length,
+        rulesCount: rulesRowIds.length,
+        cardsCount: cardsRowIds.length,
+        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+      });
+      emitRag('rag_retrieval_complete', {
+        retrievalMode: 'vector',
+        contextLength: contextBlock.length,
+        rulesCount: rulesRowIds.length,
+        cardsCount: cardsRowIds.length,
+        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+      });
+      emitRag('rag_prompt_built', {
+        promptLength: prompt.length,
+        contextLength: contextBlock.length,
+        rulesCount: rulesRowIds.length,
+        cardsCount: cardsRowIds.length,
+        promptPreview: prompt.slice(0, PROMPT_PREVIEW_MAX) + (prompt.length > PROMPT_PREVIEW_MAX ? '…' : ''),
+        promptHash: simplePromptHash(prompt),
+      });
+    }
 
     logDebugPromptAndChunks(
       chunksForPrompt,
@@ -522,7 +734,15 @@ export async function runRagFlow(
       );
     }
 
+    if (requestId != null && requestDebugSink) {
+      emitRag('rag_generation_request_start', {
+        modelPath: params.chatModelPath ?? undefined,
+        ...generationTelemetryParams(),
+      });
+    }
     mark('completion start');
+    const completionStartedAt = Date.now();
+    let completionTotalTokens: number | undefined;
     if (options?.onPartial) {
       let streamBuffer = '';
       const result = await chatCtx.completion(
@@ -540,6 +760,7 @@ export async function runRagFlow(
           }
         },
       );
+      completionTotalTokens = extractTotalTokens(result);
       raw = streamBuffer || (result?.text ?? result?.content ?? '');
     } else {
       const result = await chatCtx.completion({
@@ -548,9 +769,17 @@ export async function runRagFlow(
         stop: LLAMA3_STOP_SEQUENCES,
         ...RAG_CONFIG.generation,
       });
+      completionTotalTokens = extractTotalTokens(result);
       raw = result?.text ?? result?.content ?? '';
     }
     mark('completion end');
+    if (requestId != null && requestDebugSink) {
+      emitRag('rag_generation_complete', {
+        finalLength: raw.length,
+        totalTokens: completionTotalTokens,
+        generationTimeMs: Date.now() - completionStartedAt,
+      });
+    }
   }
 
   return { raw, intent: 'unknown' };

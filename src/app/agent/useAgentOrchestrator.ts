@@ -26,6 +26,7 @@ import type {
   AgentOrchestratorListeners,
   AgentOrchestratorState,
 } from './types';
+import type { RequestDebugEmitPayload } from './requestDebugTypes';
 
 const BUNDLE_MODEL_PREFIXES = Array.from(
   new Set([BUNDLE_PACK_ROOT, '', 'content_pack'].filter(Boolean)),
@@ -45,6 +46,8 @@ const POST_FINAL_STABILIZATION_WINDOW_MS = 120;
 /** Bounded post-stop flush window: settlement allowed after this from stop-request anchor if speechEnd has not arrived. Single anchor, not mixed per path. */
 const POST_STOP_FLUSH_WINDOW_MS = 400;
 const IOS_STOP_GRACE_MS = 250;
+/** Min ms between partial_output emissions to request-debug (throttle). */
+const PARTIAL_EMIT_THROTTLE_MS = 400;
 const NATIVE_RESTART_GUARD_MS = 250;
 const ANDROID_TAIL_GRACE_MS = 200;
 /** Brief display of failed state before auto-return to idle (lifecycle timer owns failed → idle). */
@@ -213,9 +216,14 @@ async function getOnDeviceModelPaths(packRootInDocuments?: string): Promise<{
   return { embedModelPath, chatModelPath };
 }
 
+/** Sink for request-scoped debug telemetry: (payload) => void. Payload must include type and requestId. */
+export type RequestDebugSink = (payload: RequestDebugEmitPayload & { type: string }) => void;
+
 export interface UseAgentOrchestratorOptions {
   /** Optional ref to listeners; orchestrator will call these on lifecycle events. */
   listenersRef?: React.RefObject<AgentOrchestratorListeners | null>;
+  /** Optional ref to request-debug sink; orchestrator will emit lifecycle events here. */
+  requestDebugSinkRef?: React.RefObject<RequestDebugSink | null>;
 }
 
 export interface AgentOrchestratorActions {
@@ -235,7 +243,7 @@ export interface AgentOrchestratorActions {
 export function useAgentOrchestrator(
   options: UseAgentOrchestratorOptions = {},
 ): { state: AgentOrchestratorState; actions: AgentOrchestratorActions } {
-  const { listenersRef } = options;
+  const { listenersRef, requestDebugSinkRef } = options;
 
   const [mode, setMode] = useState<'idle' | 'listening' | 'processing' | 'speaking'>('idle');
   const [lifecycle, setLifecycle] = useState<AgentLifecycleState>('idle');
@@ -265,6 +273,10 @@ export function useAgentOrchestrator(
   const activeRequestIdRef = useRef(0);
   /** Tracks whether onFirstToken was fired for the current request (streaming); must not refire on late chunks. */
   const firstChunkSentRef = useRef(false);
+  /** Throttle partial_output: last time we emitted to request-debug sink. */
+  const lastPartialEmitAtRef = useRef(0);
+  /** RequestId for the request whose response is currently playing (for tts_start/tts_end). */
+  const playbackRequestIdRef = useRef<number | null>(null);
   const recordingSessionRef = useRef<string | null>(null);
   const recordingSessionSeqRef = useRef(0);
   const pendingSubmitWhenReadyRef = useRef(false);
@@ -855,7 +867,7 @@ export function useAgentOrchestrator(
           settlementResolved: settlementResolvedRef.current,
           finalStabilizationActive: finalStabilizationActiveRef.current,
           quietWindowActive: !!quietWindowTimerRef.current,
-          audioStopping: audioStateRef.current === 'stopping',
+          audioState: audioStateRef.current,
         });
         return { ok: false, reason: 'pendingSettlement' };
       }
@@ -977,6 +989,7 @@ export function useAgentOrchestrator(
     const reqId = requestIdRef.current;
     activeRequestIdRef.current = reqId;
     firstChunkSentRef.current = false;
+    lastPartialEmitAtRef.current = 0;
     requestInFlightRef.current = true;
     logInfo('AgentOrchestrator', 'active requestId set', { requestId: reqId });
     setError(null);
@@ -984,6 +997,15 @@ export function useAgentOrchestrator(
     setValidationSummary(null);
     setMode('processing');
     setLifecycle('retrieving');
+    const requestStartedAt = Date.now();
+    requestDebugSinkRef?.current?.({
+      type: 'request_start',
+      requestId: reqId,
+      acceptedTranscript: transcribedTextRef.current,
+      normalizedTranscript: question,
+      requestStartedAt,
+      timestamp: requestStartedAt,
+    });
     logInfo('AgentOrchestrator', 'request started', {
       requestId: reqId,
       transcriptChars: transcribedTextRef.current.length,
@@ -994,6 +1016,13 @@ export function useAgentOrchestrator(
       transcriptPreview: transcriptPreview(question),
     });
     listenersRef?.current?.onRequestStart?.();
+    const retrievalStartedAt = Date.now();
+    requestDebugSinkRef?.current?.({
+      type: 'retrieval_start',
+      requestId: reqId,
+      retrievalStartedAt,
+      timestamp: retrievalStartedAt,
+    });
     logInfo('AgentOrchestrator', 'retrieval started', { requestId: reqId });
     listenersRef?.current?.onRetrievalStart?.();
     try {
@@ -1023,14 +1052,32 @@ export function useAgentOrchestrator(
         await ragInit(
           { embedModelId, embedModelPath, chatModelPath, packRoot: packRoot || '' },
           reader,
+          { requestDebugSink: requestDebugSinkRef?.current ?? undefined },
         );
       }
+      const retrievalEndedAt = Date.now();
+      requestDebugSinkRef?.current?.({
+        type: 'retrieval_end',
+        requestId: reqId,
+        retrievalEndedAt,
+        packIdentity: null,
+        timestamp: retrievalEndedAt,
+      });
       logInfo('AgentOrchestrator', 'retrieval completed', { requestId: reqId });
       listenersRef?.current?.onRetrievalEnd?.();
+      const generationStartedAt = Date.now();
+      requestDebugSinkRef?.current?.({
+        type: 'generation_start',
+        requestId: reqId,
+        generationStartedAt,
+        timestamp: generationStartedAt,
+      });
       logInfo('AgentOrchestrator', 'generation started', { requestId: reqId });
       listenersRef?.current?.onGenerationStart?.();
       setLifecycle('thinking');
       const result = await ragAsk(question, {
+        requestId: reqId,
+        requestDebugSink: requestDebugSinkRef?.current ?? undefined,
         onPartial: (accumulatedText: string) => {
           setResponseText(accumulatedText);
           if (
@@ -1039,8 +1086,25 @@ export function useAgentOrchestrator(
             accumulatedText.length > 0
           ) {
             firstChunkSentRef.current = true;
+            const firstTokenAt = Date.now();
+            requestDebugSinkRef?.current?.({
+              type: 'first_token',
+              requestId: reqId,
+              firstTokenAt,
+              timestamp: firstTokenAt,
+            });
             logInfo('AgentOrchestrator', 'first token received', { requestId: reqId });
             listenersRef?.current?.onFirstToken?.();
+          }
+          const now = Date.now();
+          if (now - lastPartialEmitAtRef.current >= PARTIAL_EMIT_THROTTLE_MS) {
+            lastPartialEmitAtRef.current = now;
+            requestDebugSinkRef?.current?.({
+              type: 'partial_output',
+              requestId: reqId,
+              accumulatedText,
+              timestamp: now,
+            });
           }
         },
       });
@@ -1051,6 +1115,21 @@ export function useAgentOrchestrator(
         logInfo('AgentOrchestrator', 'first token received', { requestId: reqId });
         listenersRef?.current?.onFirstToken?.();
       }
+      const generationEndedAt = Date.now();
+      requestDebugSinkRef?.current?.({
+        type: 'partial_output',
+        requestId: reqId,
+        accumulatedText: nudged,
+        timestamp: generationEndedAt,
+      });
+      requestDebugSinkRef?.current?.({
+        type: 'generation_end',
+        requestId: reqId,
+        generationEndedAt,
+        finalSettledOutput: nudged,
+        validationSummary: result.validationSummary,
+        timestamp: generationEndedAt,
+      });
       logInfo('AgentOrchestrator', 'generation completed', { requestId: reqId });
       logInfo('AgentOrchestrator', 'result payload ready', {
         requestId: reqId,
@@ -1062,11 +1141,19 @@ export function useAgentOrchestrator(
       listenersRef?.current?.onComplete?.();
       if (reqId === activeRequestIdRef.current) {
         requestInFlightRef.current = false;
+        requestDebugSinkRef?.current?.({
+          type: 'request_complete',
+          requestId: reqId,
+          status: 'completed',
+          completedAt: generationEndedAt,
+          timestamp: Date.now(),
+        });
         logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: reqId });
         setError(null);
         setMode('idle');
         setLifecycle('complete');
         if (nudged.trim().length > 0) {
+          playbackRequestIdRef.current = reqId;
           playTextRef.current?.(nudged).catch(() => {});
         }
         return nudged;
@@ -1086,6 +1173,15 @@ export function useAgentOrchestrator(
       }
       if (reqId === activeRequestIdRef.current) {
         requestInFlightRef.current = false;
+        const failedAt = Date.now();
+        requestDebugSinkRef?.current?.({
+          type: 'request_failed',
+          requestId: reqId,
+          failureReason: displayMsg,
+          status: 'failed',
+          completedAt: failedAt,
+          timestamp: failedAt,
+        });
         logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: reqId });
         setResponseText(null);
         setValidationSummary(null);
@@ -1142,6 +1238,13 @@ export function useAgentOrchestrator(
         });
         setMode('speaking');
         setLifecycle('speaking');
+        const ttsStartedAt = Date.now();
+        requestDebugSinkRef?.current?.({
+          type: 'tts_start',
+          requestId: playbackRequestIdRef.current,
+          ttsStartedAt,
+          timestamp: ttsStartedAt,
+        });
         logInfo('AgentOrchestrator', 'playback started');
         listenersRef?.current?.onPlaybackStart?.();
         try {
@@ -1153,6 +1256,14 @@ export function useAgentOrchestrator(
             logError('Playback', 'piper playback failed', { message, textChars: normalized.length });
           }
         } finally {
+          const ttsEndedAt = Date.now();
+          requestDebugSinkRef?.current?.({
+            type: 'tts_end',
+            requestId: playbackRequestIdRef.current,
+            ttsEndedAt,
+            timestamp: ttsEndedAt,
+          });
+          playbackRequestIdRef.current = null;
           setMode('idle');
           setLifecycle('complete');
           logInfo('AgentOrchestrator', 'playback completed');
@@ -1174,7 +1285,16 @@ export function useAgentOrchestrator(
         await Tts.getInitStatus();
         if (Platform.OS === 'android') Tts.stop();
         logInfo('Playback', 'tts path selected', { provider: 'react-native-tts', textChars: normalized.length });
+        const reqIdForTts = playbackRequestIdRef.current;
         const onFinish = () => {
+          const ttsEndedAt = Date.now();
+          requestDebugSinkRef?.current?.({
+            type: 'tts_end',
+            requestId: reqIdForTts,
+            ttsEndedAt,
+            timestamp: ttsEndedAt,
+          });
+          playbackRequestIdRef.current = null;
           setMode('idle');
           setLifecycle('complete');
           logInfo('AgentOrchestrator', 'playback completed');
@@ -1192,6 +1312,13 @@ export function useAgentOrchestrator(
         Tts.addEventListener('tts-cancel', onFinish);
         setMode('speaking');
         setLifecycle('speaking');
+        const ttsStartedAt = Date.now();
+        requestDebugSinkRef?.current?.({
+          type: 'tts_start',
+          requestId: reqIdForTts,
+          ttsStartedAt,
+          timestamp: ttsStartedAt,
+        });
         logInfo('AgentOrchestrator', 'playback started');
         listenersRef?.current?.onPlaybackStart?.();
         Tts.speak(normalized);

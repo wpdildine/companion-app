@@ -15,6 +15,8 @@ import {
   type RagInitParams,
 } from './types';
 import { ragError } from './errors';
+
+export type RagInitTelemetry = (type: string, payload?: Record<string, unknown>) => void;
 import { applyPackRagConfig, type PackRagConfig } from './config';
 
 function parseJson<T>(raw: string, path: string): T {
@@ -151,24 +153,30 @@ export async function getPackEmbedModelId(reader: PackFileReader): Promise<strin
  */
 export async function loadPack(
   reader: PackFileReader,
-  params: RagInitParams
+  params: RagInitParams,
+  telemetry?: RagInitTelemetry
 ): Promise<PackState> {
   const t0 = Date.now();
   const mark = (msg: string) => console.log(`[RAG][${Date.now() - t0}ms] ${msg}`);
+  const emit = (type: string, payload?: Record<string, unknown>) => telemetry?.(type, payload);
   mark('pack load start');
+  emit('rag_pack_load_start');
   const { packRoot, embedModelId } = params;
   const manifest = await loadManifest(reader, packRoot);
   await loadAndApplyPackRagConfig(reader);
   mark('manifest read end');
+  emit('rag_manifest_read_end');
 
   const validate = manifest.sidecars!.capabilities!.validate!;
   const rulesRuleIdsPath = validate.files.rules_rule_ids.path;
   const cardsNameLookupPath = validate.files.cards_name_lookup.path;
   mark('rule_ids/name_lookup paths resolved');
+  emit('rag_rule_ids_resolved');
 
   const rulesMeta = await loadIndexMetaOrStub(reader, 'rules');
   const cardsMeta = await loadIndexMetaOrStub(reader, 'cards');
   mark('index_meta loaded end');
+  emit('rag_index_meta_loaded');
 
   if (!RAG_USE_DETERMINISTIC_CONTEXT_ONLY) {
     if (rulesMeta.embed_model_id !== embedModelId) {
@@ -196,6 +204,7 @@ export async function loadPack(
   }
 
   mark('pack load end');
+  emit('rag_pack_load_end');
 
   if (typeof __DEV__ !== 'undefined' && __DEV__) {
     try {

@@ -8,7 +8,7 @@
   - **VisualizationSurface** (visual background)
   - **UserVoiceView** (scrollable RN content) wrapping **ResultsOverlay**
   - **InteractionBand** (cluster touch input, conditionally enabled)
-  - **DevScreen** (debug panel wrapper when enabled)
+  - **Debug HUD panels** (Pipeline telemetry + Viz debug overlay)
 
 **Legacy name:** `VoiceScreen.tsx` re-exports `AgentSurface` for compatibility. Prefer importing `AgentSurface`.
 
@@ -53,7 +53,7 @@ When adding new failure handling, use **`failed`** when the app and runtime are 
 
 **Owns:** Top-level user-facing composition.
 
-- Composing VisualizationSurface, UserVoiceView, ResultsOverlay, InteractionBand, DevScreen
+- Composing VisualizationSurface, UserVoiceView, ResultsOverlay, InteractionBand, debug HUD overlay (Dev button cycles Telemetry → Viz → Off)
 - Local UI state (revealed blocks, panel rects, debug toggles)
 - High-level layout and safe-area composition
 - Feeding normalized agent state into VisualizationController and ResultsOverlay
@@ -216,8 +216,8 @@ Logs are state-change and event-based only; no per-frame or render-loop logging.
 - Earcon/haptic hooks: `src/shared/feedback/earcons.ts`, `src/shared/feedback/haptics.ts` (listening start/end; assets at `assets/sound/earcon_in.wav`, `earcon_out.wav`)
 - Agent roles: `src/app/agent/` — `useAgentOrchestrator.ts`, `useVisualizationController.ts`, `ResultsOverlay.tsx`, `types.ts`, `index.ts`
 - Signal hook: `src/app/hooks/useVisualizationSignals.ts`
-- UI wrappers: `src/screens/voice/UserVoiceView.tsx`, `src/screens/dev/DevScreen.tsx`, `src/screens/voice/VoiceLoadingView.tsx`
-- Viz dev overlay: `src/visualization/render/dev/DebugZoneOverlay.tsx`
+- UI wrappers: `src/screens/voice/UserVoiceView.tsx`, `src/screens/voice/VoiceLoadingView.tsx`
+- Debug HUD panels: `src/app/agent/PipelineTelemetryPanel.tsx`, `src/app/agent/VizDebugPanel.tsx`
 - Visualization surface/canvas: `src/visualization/render/canvas/VisualizationSurface.tsx`, `VisualizationCanvas.tsx`, `VisualizationCanvasR3F.tsx`, `VisualizationCanvasFallback.tsx`
 - Visualization interaction: `src/visualization/interaction/InteractionBand.tsx`, `zoneLayout.ts`, `TouchRaycaster.tsx`, `touchHandlers.ts`
 - Scene/layers: `src/visualization/engine/EngineLoop.tsx`, `applySignalsToVisualization.ts`, `render/layers/ContextGlyphs.tsx`, `ContextLinks.tsx`, `TouchZones.tsx`, `CameraOrbit.tsx`, `PostFXPass.tsx`

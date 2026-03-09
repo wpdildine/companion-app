@@ -15,6 +15,7 @@ This is a [**React Native**](https://reactnative.dev) project, bootstrapped usin
 - **Visualization:** The voice screen uses a fullscreen Three.js/R3F visualization (starfield, node cloud, connections) as the background. Mode (idle, listening, processing, speaking, touched, released) drives activity and pulses; see [docs/APP_ARCHITECTURE.md](docs/APP_ARCHITECTURE.md) for high- and low-level architecture.
 - **Voice:** Speech-to-text via `@react-native-voice/voice` (lazy-loaded). You speak; the app turns it into text and sends it to the RAG pipeline.
 - **TTS:** Piper (offline) as the main voice; fallback to `react-native-tts` when the Piper model isn’t installed.
+- **Debug HUD:** Dev button cycles between **Pipeline Telemetry** and **Viz Debug** overlays. Both are read-only HUD panels for observability and visualization tuning.
 - **RAG / “Ask” path:** The app does **not** run embeddings or vector search on-device. It uses a **deterministic context provider** that:
   1. Normalizes the query and resolves card entities using the pack’s `name_lookup` / rules.
   2. Uses **router_map.json** and **context_provider_spec.json** (from the content pack) to pick rule sections and snippets.
@@ -33,11 +34,12 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full Architecture Navig
 - **`src/app/`** — App entry + navigation. `App.tsx` composes `SafeAreaProvider` and `AgentSurface`. AgentSurface is the composition root (orchestrator, visualization controller, results overlay); see [docs/APP_ARCHITECTURE.md](docs/APP_ARCHITECTURE.md).
 - **`src/shared/`** — Platform-agnostic core: shared plugin contracts, feedback adapters, and native diagnostics services.
 - **`src/theme/`** — Canonical theme home (`getTheme`, tokens).
-- **`src/screens/`** — Screen-level composition and views (`voice/`, `dev/`).
+- **`src/screens/`** — Screen-level composition and views (`voice/`).
 - **`src/components/`** — Reusable UI blocks (`decon/` panel + content blocks).
 - **`src/visualization/`** — **Pure visualization layer**: engine, scene, render (VisualizationCanvas, VisualizationSurface, VisualizationCanvasR3F, 2D fallback), interaction (InteractionBand, touchHandlers), materials. Consumes only injected theme primitives and engine ref; no app state or voice. Touch API: short tap, double-tap, long-press, drag; see `visualization/interaction/touchHandlers.ts`.
 - **`src/utils/`** — Pure or side-effect isolated: `log` (logModeChange, logPulse). No React or theme imports.
 - **`src/rag/`** — RAG pipeline, context provider, pack DB.
+- **`src/app/agent/`** — Agent orchestrator + debug HUD panels (`PipelineTelemetryPanel`, `VizDebugPanel`).
 
 The app does **not** use Skia. Graphics are driven by Three.js/R3F and the theme’s viz primitives. To add features: shared core contracts/services → `src/shared`, theme → `src/theme`, screens → `src/screens`, reusable UI → `src/components`, visualization → `src/visualization`.
 

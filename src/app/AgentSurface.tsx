@@ -1,12 +1,12 @@
 /**
  * AgentSurface: top-level composition root for the agent experience.
- * Composes VisualizationSurface, ResultsOverlay, InteractionBand, DevScreen.
+ * Composes VisualizationSurface, ResultsOverlay, InteractionBand, telemetry overlay.
  * Feeds normalized agent state into VisualizationController and ResultsOverlay.
  * Does not own provider/runtime logic; that lives in AgentOrchestrator.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import { AccessibilityInfo, Dimensions, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
 import { logInfo } from '../shared/logging';
 import {
   cleanupEarcons,
@@ -17,11 +17,10 @@ import {
 import { triggerListeningStartHaptic, triggerListeningEndHaptic } from '../shared/feedback/haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { CardRef, SelectedRule } from '../components';
-import { DevScreen, UserVoiceView, VoiceLoadingView } from '../screens';
+import { UserVoiceView, VoiceLoadingView } from '../screens';
 import { getTheme } from '../theme';
 import {
   createDefaultVisualizationRef,
-  DebugZoneOverlay,
   getSceneDescription,
   VisualizationSurface,
   InteractionBand,
@@ -36,7 +35,13 @@ import {
   useAgentOrchestrator,
   useVisualizationController,
   ResultsOverlay,
+  emit as requestDebugEmit,
+  getState as getRequestDebugState,
+  subscribe as subscribeRequestDebug,
+  PipelineTelemetryPanel,
+  VizDebugPanel,
   type ResultsOverlayRevealedBlocks,
+  type RequestDebugState,
 } from './agent';
 import { copyBundlePackToDocuments } from '../rag';
 
@@ -130,14 +135,22 @@ export default function AgentSurface() {
     })(),
   );
   const listenersRef = useRef<import('./agent').AgentOrchestratorListeners | null>(null);
-  const orch = useAgentOrchestrator({ listenersRef });
+  const requestDebugSinkRef = useRef<import('./agent').RequestDebugSink | null>(requestDebugEmit);
+  const orch = useAgentOrchestrator({ listenersRef, requestDebugSinkRef });
   const { state: orchState, actions: orchActions } = orch;
 
-  const [debugEnabled, setDebugEnabled] = useState(DEBUG_ENABLED_DEFAULT);
-  const [debugShowZones, _setDebugShowZones] = useState(false);
+  const [requestDebugState, setRequestDebugState] = useState<RequestDebugState>(getRequestDebugState);
+  useEffect(() => {
+    return subscribeRequestDebug(() => setRequestDebugState(getRequestDebugState()));
+  }, []);
+
+  const [debugPanelMode, setDebugPanelMode] = useState<'off' | 'telemetry' | 'viz'>(
+    DEBUG_ENABLED_DEFAULT ? 'telemetry' : 'off',
+  );
+  const debugEnabled = debugPanelMode !== 'off';
   const [debugStubCardsEnabled, setDebugStubCardsEnabled] = useState(false);
   const [debugStubRulesEnabled, setDebugStubRulesEnabled] = useState(false);
-  const [panelRectsForDebug, setPanelRectsForDebug] = useState<VisualizationPanelRects>({});
+  const [telemetryLayout, setTelemetryLayout] = useState({ width: 0, height: 0 });
   const [revealedBlocks, setRevealedBlocks] = useState<ResultsOverlayRevealedBlocks>({
     answer: false,
     cards: false,
@@ -200,14 +213,8 @@ export default function AgentSurface() {
     (key: keyof VisualizationPanelRects, rect: { x: number; y: number; w: number; h: number }) => {
       panelRectsContentRef.current = { ...panelRectsContentRef.current, [key]: rect };
       flushPanelRects();
-      if (debugShowZones) {
-        setPanelRectsForDebug(prev => ({
-          ...prev,
-          [key]: { ...rect, y: rect.y - scrollYRef.current },
-        }));
-      }
     },
-    [flushPanelRects, debugShowZones],
+    [flushPanelRects],
   );
 
   const clearPanelRect = useCallback(
@@ -773,25 +780,73 @@ export default function AgentSurface() {
         blocked={orchState.ioBlockedUntil != null}
         blockedUntil={orchState.ioBlockedUntil ?? null}
       />
-      <DebugZoneOverlay panelRects={panelRectsForDebug} visible={debugShowZones} />
-      {debugEnabled && (
-        <DevScreen
-          visualizationRef={visualizationRef}
-          onClose={() => setDebugEnabled(false)}
-          theme={{ text: textColor, textMuted: mutedColor, background: inputBg }}
-          stubCardsEnabled={debugStubCardsEnabled}
-          stubRulesEnabled={debugStubRulesEnabled}
-          onToggleStubCards={() => setDebugStubCardsEnabled(prev => !prev)}
-          onToggleStubRules={() => setDebugStubRulesEnabled(prev => !prev)}
-        />
+      {debugPanelMode !== 'off' && (
+        <View
+          style={[
+            localStyles.telemetryOverlay,
+            {
+              paddingTop: (insets.top || 0) + 8,
+              paddingBottom: (insets.bottom || 0) + 8,
+              paddingHorizontal: 16,
+            },
+          ]}
+          pointerEvents="box-none"
+          onLayout={(e) => {
+            const { width, height } = e.nativeEvent.layout;
+            setTelemetryLayout({ width, height });
+          }}
+        >
+          <View style={localStyles.telemetryPanelWrap}>
+            {debugPanelMode === 'telemetry' && (
+              <PipelineTelemetryPanel
+                state={requestDebugState}
+                onClose={() => setDebugPanelMode('off')}
+                maxHeight={
+                  telemetryLayout.height > 0
+                    ? telemetryLayout.height - ((insets.top || 0) + (insets.bottom || 0) + 16)
+                    : Dimensions.get('window').height - ((insets.top || 0) + (insets.bottom || 0) + 16)
+                }
+                maxWidth={
+                  telemetryLayout.width > 0
+                    ? telemetryLayout.width - 32
+                    : Dimensions.get('window').width - 32
+                }
+              />
+            )}
+            {debugPanelMode === 'viz' && (
+              <VizDebugPanel
+                visualizationRef={visualizationRef}
+                onClose={() => setDebugPanelMode('off')}
+                stubCardsEnabled={debugStubCardsEnabled}
+                stubRulesEnabled={debugStubRulesEnabled}
+                onToggleStubCards={() => setDebugStubCardsEnabled(prev => !prev)}
+                onToggleStubRules={() => setDebugStubRulesEnabled(prev => !prev)}
+                maxHeight={
+                  telemetryLayout.height > 0
+                    ? telemetryLayout.height - ((insets.top || 0) + (insets.bottom || 0) + 16)
+                    : Dimensions.get('window').height - ((insets.top || 0) + (insets.bottom || 0) + 16)
+                }
+                maxWidth={
+                  telemetryLayout.width > 0
+                    ? telemetryLayout.width - 32
+                    : Dimensions.get('window').width - 32
+                }
+              />
+            )}
+          </View>
+        </View>
       )}
       <Pressable
         style={[localStyles.devToggle, { bottom: (insets.bottom || 16) + 92 }]}
         hitSlop={10}
-        onPress={() => setDebugEnabled(prev => !prev)}
+        onPress={() =>
+          setDebugPanelMode(prev =>
+            prev === 'off' ? 'telemetry' : prev === 'telemetry' ? 'viz' : 'off',
+          )
+        }
       >
         <Text style={localStyles.devToggleLabel}>
-          {debugEnabled ? 'User' : 'Dev'}
+          {debugPanelMode === 'off' ? 'Dev' : debugPanelMode === 'telemetry' ? 'Telemetry' : 'Viz'}
         </Text>
       </Pressable>
     </View>
@@ -814,8 +869,20 @@ const localStyles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 20,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 5,
-    elevation: 5,
+    zIndex: 60,
+    elevation: 60,
   },
   devToggleLabel: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  telemetryOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 40,
+    alignItems: 'center',
+  },
+  telemetryPanelWrap: {
+    alignSelf: 'center',
+  },
 });
