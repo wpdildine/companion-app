@@ -36,7 +36,7 @@ AgentSurface
 - Provider selection or fallback logic
 - Normalized error handling
 
-**Emits:** Normalized lifecycle state (`idle` | `listening` | `retrieving` | `thinking` | `speaking` | `complete` | `failed` | `error`) and optional listener callbacks (e.g. `onListeningStart`, `onTranscriptUpdate`, `onGenerationEnd`) for the VisualizationController.
+**Emits:** Normalized lifecycle state (`idle` | `listening` | `processing` | `speaking` | `complete` | `failed` | `error`) plus `processingSubstate` (only when lifecycle is `processing`), and optional listener callbacks (e.g. `onListeningStart`, `onTranscriptUpdate`, `onGenerationEnd`) for the VisualizationController.
 
 **Lifecycle semantics (failed vs error):**
 
@@ -153,7 +153,7 @@ Arbitration is a UI-layer decision; AgentSurface owns the `enabled` prop:
 
 - **Content panels visible** (`anyPanelVisible`) → InteractionBand **disabled**.
 - **Debug mode** (`debugEnabled`) → InteractionBand **disabled** (touch may be routed to debug).
-- **Lifecycle === 'thinking' | 'retrieving'** → InteractionBand **disabled**.
+- **Lifecycle === 'processing'** → InteractionBand **disabled**.
 - Otherwise InteractionBand **enabled**.
 
 When the band becomes disabled, InteractionBand clears ref fields so the engine does not retain phantom touch influence.

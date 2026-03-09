@@ -9,12 +9,22 @@ import type { ValidationSummary } from '../../rag';
 export type AgentLifecycleState =
   | 'idle'
   | 'listening'
-  | 'retrieving'
-  | 'thinking'
+  | 'processing'
   | 'speaking'
   | 'complete'
   | 'failed'
   | 'error';
+
+/** Processing substate: meaningful only when lifecycle === 'processing'; otherwise null. */
+export type ProcessingSubstate =
+  | 'retrieving'
+  | 'preparingContext'
+  | 'loadingModel'
+  | 'awaitingFirstToken'
+  | 'streaming'
+  | 'validating'
+  | 'settling'
+  | 'fallback';
 
 /** Optional metadata for visualization or overlay. */
 export type AgentStateMetadata = {
@@ -48,6 +58,8 @@ export interface AgentOrchestratorListeners {
 /** State emitted by AgentOrchestrator. Single source of truth for agent runtime. */
 export interface AgentOrchestratorState {
   lifecycle: AgentLifecycleState;
+  /** Meaningful only when lifecycle === 'processing'; otherwise null. */
+  processingSubstate: ProcessingSubstate | null;
   error: string | null;
   voiceReady: boolean;
   transcribedText: string;

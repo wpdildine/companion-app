@@ -54,6 +54,14 @@ export interface AskOptions {
   requestId?: number;
   /** Sink for request-scoped debug telemetry; receives events with type, requestId, timestamp, and payload. */
   requestDebugSink?: (payload: RequestDebugSinkPayload) => void;
+  /** Called once when retrieval/context assembly is done, before prompt build. */
+  onRetrievalComplete?: () => void;
+  /** Called once immediately before loading the chat model (not used on Ollama/non-local path). */
+  onModelLoadStart?: () => void;
+  /** Called once immediately before starting model inference. */
+  onGenerationStart?: () => void;
+  /** Called once after runRagFlow returns, before nudgeResponse (post-generation validation). */
+  onValidationStart?: () => void;
 }
 
 /** Result of ask(question). */
@@ -186,6 +194,7 @@ export async function ask(
         },
       };
     }
+    options?.onValidationStart?.();
     const validateModule = await import('./validate');
     const nudgeResult = await validateModule.nudgeResponse(
       result.raw,

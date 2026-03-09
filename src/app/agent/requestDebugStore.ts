@@ -4,6 +4,7 @@
  */
 
 import type { ValidationSummary } from '../../rag';
+import type { ProcessingSubstate } from './types';
 import type {
   RequestDebugEvent,
   RequestDebugSnapshot,
@@ -110,6 +111,9 @@ function mergePayloadIntoSnapshot(
       if (rag.initTrace != null) snapshot.ragTelemetry.initTrace = rag.initTrace;
     }
     const skipKeys = new Set(['ragTelemetry', 'type', 'timestamp', 'requestId']);
+    if (type === 'processing_substate' && payload.processingSubstate !== undefined) {
+      snapshot.processingSubstate = payload.processingSubstate as ProcessingSubstate | null;
+    }
     for (const key of Object.keys(payload)) {
       if (skipKeys.has(key)) continue;
       const v = payload[key];

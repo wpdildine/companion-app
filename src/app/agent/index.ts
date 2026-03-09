@@ -8,6 +8,7 @@ export type {
   AgentOrchestratorListeners,
   AgentOrchestratorState,
   AgentStateMetadata,
+  ProcessingSubstate,
 } from './types';
 export { useAgentOrchestrator } from './useAgentOrchestrator';
 export type {

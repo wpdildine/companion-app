@@ -158,6 +158,33 @@ export default function AgentSurface() {
     sources: false,
   });
 
+  const handleTelemetryClose = useCallback(() => {
+    const activeId = requestDebugState.activeRequestId;
+    let snapshot = activeId != null ? requestDebugState.snapshotsById.get(activeId) ?? null : null;
+    if (!snapshot && requestDebugState.recentRequestIds.length > 0) {
+      const lastId = requestDebugState.recentRequestIds[requestDebugState.recentRequestIds.length - 1];
+      snapshot = requestDebugState.snapshotsById.get(lastId) ?? null;
+    }
+    if (snapshot) {
+      logInfo('AgentSurface', 'telemetry panel closed', {
+        requestId: snapshot.requestId,
+        status: snapshot.status,
+        lifecycle: orchState.lifecycle,
+        processingSubstate: orchState.processingSubstate ?? null,
+        snapshotLifecycle: snapshot.lifecycle,
+        snapshotProcessingSubstate: snapshot.processingSubstate ?? null,
+        failureReason: snapshot.failureReason ?? null,
+        durations: snapshot.durations ?? null,
+        cards: snapshot.validationSummary?.cards.length ?? 0,
+        rules: snapshot.validationSummary?.rules.length ?? 0,
+        modelInfo: snapshot.modelInfo ?? null,
+      });
+    } else {
+      logInfo('AgentSurface', 'telemetry panel closed (no snapshot)');
+    }
+    setDebugPanelMode('off');
+  }, [orchState.lifecycle, orchState.processingSubstate, requestDebugState]);
+
   const { setSignals, emitEvent } = useVisualizationSignals(visualizationRef);
   useVisualizationController(visualizationRef, orchState, listenersRef, {
     debugEnabled,
@@ -332,8 +359,7 @@ export default function AgentSurface() {
   const hasReferenceStubs = stubCards.length > 0 || stubRules.length > 0;
   const hasResultContext =
     orchState.lifecycle === 'listening' ||
-    orchState.lifecycle === 'retrieving' ||
-    orchState.lifecycle === 'thinking' ||
+    orchState.lifecycle === 'processing' ||
     orchState.lifecycle === 'speaking' ||
     orchState.responseText != null ||
     orchState.validationSummary != null;
@@ -351,12 +377,11 @@ export default function AgentSurface() {
     revealedBlocks.rules ||
     revealedBlocks.sources;
   const canRevealPanels = DEBUG_SCENARIO || hasResultContext || hasReferenceStubs;
-  const isAsking = orchState.lifecycle === 'thinking' || orchState.lifecycle === 'retrieving';
+  const isAsking = orchState.lifecycle === 'processing';
   const interactionBandEnabled =
     !debugEnabled &&
     !anyPanelVisible &&
-    orchState.lifecycle !== 'thinking' &&
-    orchState.lifecycle !== 'retrieving';
+    orchState.lifecycle !== 'processing';
   const canHoldToSpeak = !isAsking && !anyPanelVisible && !debugEnabled;
   const canSwipeContext = canRevealPanels && interactionBandEnabled;
   const activeInteractionOwner: ActiveInteractionOwner = debugEnabled
@@ -800,7 +825,7 @@ export default function AgentSurface() {
             {debugPanelMode === 'telemetry' && (
               <PipelineTelemetryPanel
                 state={requestDebugState}
-                onClose={() => setDebugPanelMode('off')}
+                onClose={handleTelemetryClose}
                 maxHeight={
                   telemetryLayout.height > 0
                     ? telemetryLayout.height - ((insets.top || 0) + (insets.bottom || 0) + 16)

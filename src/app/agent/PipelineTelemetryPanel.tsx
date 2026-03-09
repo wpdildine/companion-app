@@ -124,6 +124,9 @@ export function PipelineTelemetryPanel({ state, onClose, maxHeight, maxWidth }: 
           <Text style={styles.label}>status: </Text>
           <Text style={styles.value}>{snapshot.status}</Text>
         </Text>
+        {snapshot.status === 'active' && snapshot.processingSubstate != null && (
+          <Row label="processingSubstate" value={snapshot.processingSubstate} />
+        )}
         <Row label="acceptedTranscript" value={truncate(snapshot.acceptedTranscript, TRUNCATE_PREVIEW)} muted />
         <Row label="normalizedTranscript" value={truncate(snapshot.normalizedTranscript, TRUNCATE_PREVIEW)} muted />
         {snapshot.failureReason != null && (

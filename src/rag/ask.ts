@@ -186,6 +186,12 @@ export interface RunRagFlowOptions {
   requestId?: number;
   /** Sink for request-scoped debug telemetry. */
   requestDebugSink?: (payload: RagRequestDebugPayload) => void;
+  /** Called once when retrieval/context assembly is done, before prompt build. Orchestrator uses for processing substate. */
+  onRetrievalComplete?: () => void;
+  /** Called once immediately before loading the chat model (getChatContext). Not called on Ollama/non-local path. */
+  onModelLoadStart?: () => void;
+  /** Called once immediately before starting model inference. Orchestrator uses for processing substate. */
+  onGenerationStart?: () => void;
 }
 
 function simplePromptHash(prompt: string): string {
@@ -315,6 +321,7 @@ export async function runRagFlow(
         text: c?.text,
       };
     });
+    options?.onRetrievalComplete?.();
     mark('context build start');
     const { prompt, contextBlock } = trimChunksToFitPrompt(chunksForPrompt, question);
     mark('context build end');
@@ -358,6 +365,7 @@ export async function runRagFlow(
       null,
       `Ollama model=${chatModel} (params server-side)`,
     );
+    options?.onGenerationStart?.();
     mark('completion start');
     const completionStartedAt = Date.now();
     raw = await ollamaGenerate(host, chatModel, prompt);
@@ -481,6 +489,7 @@ export async function runRagFlow(
           'Deterministic context provider returned empty bundle.',
         );
       }
+      options?.onRetrievalComplete?.();
       mark('context build start');
       const prompt = buildPrompt(bundleText, question);
       mark('context build end');
@@ -530,6 +539,7 @@ export async function runRagFlow(
           'chatModelPath required for deterministic path.',
         );
       }
+      options?.onModelLoadStart?.();
       mark('chat model load start');
       const chatCtx = await getChatContext(params.chatModelPath);
       mark('chat model load end');
@@ -539,6 +549,7 @@ export async function runRagFlow(
           ...generationTelemetryParams(),
         });
       }
+      options?.onGenerationStart?.();
       mark('completion start');
       const completionStartedAt = Date.now();
       let completionTotalTokens: number | undefined;
@@ -681,6 +692,7 @@ export async function runRagFlow(
         text: c?.text,
       };
     });
+    options?.onRetrievalComplete?.();
     const { prompt, contextBlock } = trimChunksToFitPrompt(chunksForPrompt, question);
     mark('context build end');
     if (requestId != null && requestDebugSink) {
@@ -720,6 +732,7 @@ export async function runRagFlow(
       params.chatModelPath ?? '(none)',
     );
 
+    options?.onModelLoadStart?.();
     mark('chat model load start');
     let chatCtx: import('llama.rn').LlamaContext;
     try {
@@ -740,6 +753,7 @@ export async function runRagFlow(
         ...generationTelemetryParams(),
       });
     }
+    options?.onGenerationStart?.();
     mark('completion start');
     const completionStartedAt = Date.now();
     let completionTotalTokens: number | undefined;

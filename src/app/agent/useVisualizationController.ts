@@ -22,8 +22,7 @@ function lifecycleToMode(
   switch (lifecycle) {
     case 'listening':
       return 'listening';
-    case 'thinking':
-    case 'retrieving':
+    case 'processing':
       return 'processing';
     case 'speaking':
       return 'speaking';
@@ -121,7 +120,7 @@ export function useVisualizationController(
 
     const mode = lifecycleToMode(state.lifecycle);
     const phase =
-      state.lifecycle === 'thinking' || state.lifecycle === 'retrieving'
+      state.lifecycle === 'processing'
         ? 'processing'
         : state.lifecycle === 'speaking'
           ? 'resolved'

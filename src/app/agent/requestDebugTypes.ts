@@ -4,6 +4,7 @@
  */
 
 import type { ValidationSummary } from '../../rag';
+import type { ProcessingSubstate } from './types';
 
 /** Status of a request in the debug store. */
 export type RequestDebugStatus = 'active' | 'completed' | 'failed';
@@ -86,6 +87,8 @@ export interface RequestDebugSnapshot {
   ttsEndedAt: number | null;
   failureReason: string | null;
   lifecycle: string;
+  /** Orchestrator processing substate when lifecycle is processing. */
+  processingSubstate?: ProcessingSubstate | null;
   completedAt?: number;
   eventsSeen?: number;
   modelInfo?: RequestDebugModelInfo | null;
