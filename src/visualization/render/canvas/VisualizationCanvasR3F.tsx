@@ -101,12 +101,6 @@ export function VisualizationCanvasR3F({
     longPressTriggered.current = false;
     dragActive.current = false;
     // InteractionBand owns touchField*; canvas path is discrete gestures only.
-    if (visualizationRef.current) {
-      const v = visualizationRef.current;
-      const w = v.canvasWidth ?? 1;
-      const h = v.canvasHeight ?? 1;
-      console.log('[Visualization] touchStart', { canvasSize: [w, h] });
-    }
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
@@ -151,9 +145,6 @@ export function VisualizationCanvasR3F({
   const onTouchEnd = (e: GestureResponderEvent) => {
     if (!inputEnabled) return;
     // InteractionBand clears touchField*; canvas end handles only local gesture completion.
-    if (visualizationRef.current) {
-      console.log('[Visualization] touchEnd');
-    }
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;

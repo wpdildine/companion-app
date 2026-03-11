@@ -34,7 +34,11 @@ export type AgentStateMetadata = {
   requestPhase?: string;
 };
 
-/** Normalized events emitted by AgentOrchestrator for VisualizationController. */
+/**
+ * Normalized events emitted by AgentOrchestrator for VisualizationController.
+ * Submit contract: submit-worthy = non-empty normalized transcript (candidate input at submit time);
+ * request accepted = request_start (same boundary as processing start).
+ */
 export interface AgentOrchestratorListeners {
   onListeningStart?: () => void;
   onListeningEnd?: () => void;

@@ -91,6 +91,25 @@ function normalizeTranscript(text: string): string {
   return text.trim().replace(/\s+/g, ' ');
 }
 
+/** Map RAG/orchestrator error codes to canonical failureReason for telemetry (terminal request failure). */
+const ERROR_CODE_TO_FAILURE_REASON: Record<string, string> = {
+  E_RETRIEVAL: 'retrieval',
+  E_NOT_INITIALIZED: 'retrieval',
+  E_EMBED: 'retrieval',
+  E_EMBED_MISMATCH: 'retrieval',
+  E_DETERMINISTIC_ONLY: 'retrieval',
+  E_MODEL_PATH: 'modelLoad',
+  E_COMPLETION: 'inference',
+  E_OLLAMA: 'inference',
+  E_PACK_LOAD: 'retrieval',
+  E_PACK_SCHEMA: 'retrieval',
+  E_INDEX_META: 'retrieval',
+  E_VALIDATE_CAPABILITY: 'retrieval',
+  E_VALIDATE_SCHEMA: 'retrieval',
+  E_RETRIEVAL_FORMAT: 'retrieval',
+  E_COUNTS_MISMATCH: 'retrieval',
+};
+
 function isRecognizerReentrancyError(message: string): boolean {
   return message.toLowerCase().includes('already started');
 }
@@ -263,6 +282,8 @@ export function useAgentOrchestrator(
   const voiceRef = useRef<VoiceModule | null>(null);
   const ttsRef = useRef<TtsModule | null>(null);
   const transcribedTextRef = useRef('');
+  const responseTextRef = useRef<string | null>(responseText);
+  const validationSummaryRef = useRef<ValidationSummary | null>(validationSummary);
   const committedTextRef = useRef('');
   const partialTranscriptRef = useRef('');
   const speechEndedRef = useRef(false);
@@ -313,6 +334,8 @@ export function useAgentOrchestrator(
   const playTextRef = useRef<(text: string) => Promise<void>>(null);
   const ioBlockedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPlaybackCompleteRef = useRef<{ requestId: number; endedAt: number } | null>(null);
+  const previousCommittedResponseRef = useRef<string | null>(null);
+  const previousCommittedValidationRef = useRef<ValidationSummary | null>(null);
   const prevLifecycleRef = useRef<AgentLifecycleState>(lifecycle);
   modeRef.current = mode;
   lifecycleRef.current = lifecycle;
@@ -388,6 +411,14 @@ export function useAgentOrchestrator(
     transcribedTextRef.current = next;
     setTranscribedText(next);
   }, []);
+
+  useEffect(() => {
+    responseTextRef.current = responseText;
+  }, [responseText]);
+
+  useEffect(() => {
+    validationSummaryRef.current = validationSummary;
+  }, [validationSummary]);
 
   const finalizeTranscriptFromPartial = useCallback(
     (reason: string, recordingSessionId?: string) => {
@@ -983,6 +1014,13 @@ export function useAgentOrchestrator(
   }, [stopListening]);
 
   const submit = useCallback(async (): Promise<string | null> => {
+    // --- Submission / acceptance contract (Contracts for Request Control plan) ---
+    // Acceptance rule: requestInFlightRef must be false and normalizeTranscript(candidate input) must be non-empty.
+    // Request becomes real (request_start = request accepted = processing start) only when both guards pass and requestId is assigned.
+    // Current runtime policy: no queueing; no automatic cancel; no automatic supersession; new input during processing/speaking is denied.
+    // Cancel/supersession is contract-defined but implementation-deferred; all callbacks must guard with activeRequestIdRef === reqId before mutating state.
+    // Guard points: onRetrievalComplete, onModelLoadStart, onGenerationStart, onValidationStart, onPartial; after ragAsk return; in catch before request_failed and lifecycle update.
+    // ---
     // Canonical path: normalize → retrieval → context → payload → inference (stream) → settle → cards/rules update → speak → idle.
     if (requestInFlightRef.current) {
       logWarn('AgentOrchestrator', 'submit blocked because active request exists');
@@ -999,6 +1037,8 @@ export function useAgentOrchestrator(
     }
     requestIdRef.current += 1;
     const reqId = requestIdRef.current;
+    previousCommittedResponseRef.current = responseTextRef.current;
+    previousCommittedValidationRef.current = validationSummaryRef.current;
     activeRequestIdRef.current = reqId;
     firstChunkSentRef.current = false;
     lastPartialEmitAtRef.current = 0;
@@ -1166,10 +1206,10 @@ export function useAgentOrchestrator(
           });
         },
         onPartial: (accumulatedText: string) => {
+          if (activeRequestIdRef.current !== reqId) return;
           const now = Date.now();
           const isFirstChunk =
             !firstChunkSentRef.current &&
-            reqId === activeRequestIdRef.current &&
             accumulatedText.length > 0;
           if (isFirstChunk) {
             firstChunkSentRef.current = true;
@@ -1201,12 +1241,6 @@ export function useAgentOrchestrator(
             if (now - lastResponseTextUpdateAtRef.current >= RESPONSE_TEXT_UPDATE_THROTTLE_MS) {
               lastResponseTextUpdateAtRef.current = now;
               setResponseText(accumulatedText);
-              logInfo('ResponseSurface', 'response_surface_partial_updated', {
-                requestId: reqId,
-                lifecycle: 'processing',
-                processingSubstate: 'streaming',
-                partialChars: accumulatedText.length,
-              });
             }
           }
           if (now - lastPartialEmitAtRef.current >= PARTIAL_EMIT_THROTTLE_MS) {
@@ -1220,6 +1254,15 @@ export function useAgentOrchestrator(
           }
         },
       });
+      if (reqId !== activeRequestIdRef.current) {
+        previousCommittedResponseRef.current = null;
+        previousCommittedValidationRef.current = null;
+        logWarn('AgentOrchestrator', 'stale completion ignored (non-active request)', {
+          requestId: reqId,
+          activeRequestId: activeRequestIdRef.current,
+        });
+        return null;
+      }
       const nudgedRaw = result.nudged;
       const committedText =
         nudgedRaw.trim().length > 0 ? nudgedRaw : EMPTY_RESPONSE_FALLBACK_MESSAGE;
@@ -1233,7 +1276,7 @@ export function useAgentOrchestrator(
       }
       setResponseText(committedText);
       setValidationSummary(result.validationSummary);
-      if (!firstChunkSentRef.current && reqId === activeRequestIdRef.current) {
+      if (!firstChunkSentRef.current) {
         logInfo('AgentOrchestrator', 'first token received', { requestId: reqId });
         listenersRef?.current?.onFirstToken?.();
       }
@@ -1261,105 +1304,101 @@ export function useAgentOrchestrator(
       });
       listenersRef?.current?.onGenerationEnd?.();
       listenersRef?.current?.onComplete?.();
-      if (reqId === activeRequestIdRef.current) {
-        requestInFlightRef.current = false;
-        const validationEndedAt = Date.now();
-        const settlingStartedAt = validationEndedAt;
-        setProcessingSubstate('settling');
-        requestDebugSinkRef?.current?.({
-          type: 'validation_end',
-          requestId: reqId,
-          validationEndedAt,
-          timestamp: validationEndedAt,
-        });
-        logInfo('AgentOrchestrator', 'validation_end', {
-          requestId: reqId,
-          lifecycle: 'processing',
-          processingSubstate: 'settling',
-        });
-        requestDebugSinkRef?.current?.({
-          type: 'settling_start',
-          requestId: reqId,
-          settlingStartedAt,
-          timestamp: settlingStartedAt,
-        });
-        logInfo('AgentOrchestrator', 'settling_start', {
-          requestId: reqId,
-          lifecycle: 'processing',
-          processingSubstate: 'settling',
-        });
-        requestDebugSinkRef?.current?.({
-          type: 'processing_substate',
-          requestId: reqId,
-          processingSubstate: 'settling',
-          lifecycle: 'processing',
-          timestamp: settlingStartedAt,
-        });
-        const settledAt = Date.now();
-        requestDebugSinkRef?.current?.({
-          type: 'response_settled',
-          requestId: reqId,
-          lifecycle: 'processing',
-          processingSubstate: 'settling',
-          committedChars: committedText.length,
-          rulesCount: result.validationSummary.rules.length,
-          cardsCount: result.validationSummary.cards.length,
-          finalSettledOutput: committedText,
-          validationSummary: result.validationSummary,
-          timestamp: settledAt,
-        });
-        logInfo('ResponseSurface', 'response_settled', {
-          requestId: reqId,
-          lifecycle: 'processing',
-          processingSubstate: 'settling',
-          committedChars: committedText.length,
-          rulesCount: result.validationSummary.rules.length,
-          cardsCount: result.validationSummary.cards.length,
-        });
-        setError(null);
-        setProcessingSubstate(null);
-        requestDebugSinkRef?.current?.({
-          type: 'processing_substate',
-          requestId: reqId,
-          processingSubstate: null,
-          timestamp: Date.now(),
-        });
-        setMode('idle');
-        setLifecycle('idle');
-        if (committedText.length > 0 && !isEmptyOutput) {
-          playbackRequestIdRef.current = reqId;
-          logInfo('ResponseSurface', 'response_surface_playback_bound_to_committed_response', {
-            requestId: reqId,
-            speakingBoundToCommittedResponse: true,
-            committedChars: committedText.length,
-          });
-          playTextRef.current?.(committedText).catch(() => {});
-        } else {
-          const completedAt = Date.now();
-          requestDebugSinkRef?.current?.({
-            type: 'request_complete',
-            requestId: reqId,
-            status: 'completed',
-            completedAt,
-            lifecycle: 'idle',
-            timestamp: completedAt,
-          });
-          activeRequestIdRef.current = 0;
-          setAudioState('idleReady', { reason: 'requestComplete' });
-          logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: reqId });
-        }
-        return committedText;
-      }
-      setProcessingSubstate(null);
-      logWarn('AgentOrchestrator', 'stale completion ignored (non-active request)', {
+      requestInFlightRef.current = false;
+      const validationEndedAt = Date.now();
+      const settlingStartedAt = validationEndedAt;
+      setProcessingSubstate('settling');
+      requestDebugSinkRef?.current?.({
+        type: 'validation_end',
         requestId: reqId,
-        activeRequestId: activeRequestIdRef.current,
+        validationEndedAt,
+        timestamp: validationEndedAt,
       });
+      logInfo('AgentOrchestrator', 'validation_end', {
+        requestId: reqId,
+        lifecycle: 'processing',
+        processingSubstate: 'settling',
+      });
+      requestDebugSinkRef?.current?.({
+        type: 'settling_start',
+        requestId: reqId,
+        settlingStartedAt,
+        timestamp: settlingStartedAt,
+      });
+      logInfo('AgentOrchestrator', 'settling_start', {
+        requestId: reqId,
+        lifecycle: 'processing',
+        processingSubstate: 'settling',
+      });
+      requestDebugSinkRef?.current?.({
+        type: 'processing_substate',
+        requestId: reqId,
+        processingSubstate: 'settling',
+        lifecycle: 'processing',
+        timestamp: settlingStartedAt,
+      });
+      const settledAt = Date.now();
+      requestDebugSinkRef?.current?.({
+        type: 'response_settled',
+        requestId: reqId,
+        lifecycle: 'processing',
+        processingSubstate: 'settling',
+        committedChars: committedText.length,
+        rulesCount: result.validationSummary.rules.length,
+        cardsCount: result.validationSummary.cards.length,
+        finalSettledOutput: committedText,
+        validationSummary: result.validationSummary,
+        timestamp: settledAt,
+      });
+      logInfo('ResponseSurface', 'response_settled', {
+        requestId: reqId,
+        lifecycle: 'processing',
+        processingSubstate: 'settling',
+        committedChars: committedText.length,
+        rulesCount: result.validationSummary.rules.length,
+        cardsCount: result.validationSummary.cards.length,
+      });
+      setError(null);
+      setProcessingSubstate(null);
+      requestDebugSinkRef?.current?.({
+        type: 'processing_substate',
+        requestId: reqId,
+        processingSubstate: null,
+        timestamp: Date.now(),
+      });
+      setMode('idle');
+      setLifecycle('idle');
+      previousCommittedResponseRef.current = null;
+      previousCommittedValidationRef.current = null;
+      if (committedText.length > 0 && !isEmptyOutput) {
+        playbackRequestIdRef.current = reqId;
+        logInfo('ResponseSurface', 'response_surface_playback_bound_to_committed_response', {
+          requestId: reqId,
+          speakingBoundToCommittedResponse: true,
+          committedChars: committedText.length,
+        });
+        playTextRef.current?.(committedText).catch(() => {});
+      } else {
+        const completedAt = Date.now();
+        requestDebugSinkRef?.current?.({
+          type: 'request_complete',
+          requestId: reqId,
+          status: 'completed',
+          completedAt,
+          lifecycle: 'idle',
+          timestamp: completedAt,
+        });
+        activeRequestIdRef.current = 0;
+        setAudioState('idleReady', { reason: 'requestComplete' });
+        logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: reqId });
+      }
       return committedText;
     } catch (e) {
       const msg = errorMessage(e);
       const code =
         e && typeof e === 'object' && 'code' in e ? (e as { code: string }).code : '';
+      const failureReasonLabel =
+        code && ERROR_CODE_TO_FAILURE_REASON[code] ? ERROR_CODE_TO_FAILURE_REASON[code] : 'request';
       let displayMsg = code ? `[${code}] ${msg}` : msg;
       if (code === 'E_MODEL_PATH' && Platform.OS === 'android') {
         displayMsg += ` Put the chat GGUF in the app's files/models/ folder (filename: ${CHAT_MODEL_FILENAME}).`;
@@ -1370,25 +1409,18 @@ export function useAgentOrchestrator(
         requestDebugSinkRef?.current?.({
           type: 'request_failed',
           requestId: reqId,
-          failureReason: displayMsg,
+          failureReason: failureReasonLabel,
           status: 'failed',
           completedAt: failedAt,
-          lifecycle: 'error',
+          lifecycle: 'idle',
           timestamp: failedAt,
         });
         activeRequestIdRef.current = 0;
         logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: reqId });
-        setResponseText(null);
-        setValidationSummary(null);
-        logInfo('AgentOrchestrator', 'result context invalidated after failed request', {
-          requestId: reqId,
-        });
-        setError(displayMsg);
-        logError('AgentOrchestrator', 'request failed', {
-          requestId: reqId,
-          message: displayMsg,
-        });
-        listenersRef?.current?.onError?.();
+        setResponseText(previousCommittedResponseRef.current);
+        setValidationSummary(previousCommittedValidationRef.current);
+        previousCommittedResponseRef.current = null;
+        previousCommittedValidationRef.current = null;
         setProcessingSubstate(null);
         requestDebugSinkRef?.current?.({
           type: 'processing_substate',
@@ -1397,11 +1429,17 @@ export function useAgentOrchestrator(
           timestamp: Date.now(),
         });
         setMode('idle');
-        setLifecycle('error');
+        setLifecycle('idle');
         setAudioState('idleReady', { reason: 'requestFailed' });
+        logError('AgentOrchestrator', 'request failed (terminal request failure; returning to idle)', {
+          requestId: reqId,
+          message: displayMsg,
+          failureReason: failureReasonLabel,
+        });
         return null;
       }
-      setProcessingSubstate(null);
+      previousCommittedResponseRef.current = null;
+      previousCommittedValidationRef.current = null;
       logWarn('AgentOrchestrator', 'stale completion ignored (non-active request)', {
         requestId: reqId,
         activeRequestId: activeRequestIdRef.current,
@@ -1767,13 +1805,6 @@ export function useAgentOrchestrator(
               : undefined,
         });
       }
-      logInfo('AgentOrchestrator', 'transcript final updated', {
-        recordingSessionId: sessionId,
-        chunkChars: next.length,
-        totalChars: normalizedCombined.length,
-        transcriptText: normalizedCombined,
-        transcriptPreview: transcriptPreview(normalizedCombined),
-      });
       listenersRef?.current?.onTranscriptUpdate?.();
       if (
         pendingSubmitWhenReadyRef.current &&
@@ -1786,28 +1817,15 @@ export function useAgentOrchestrator(
           finalCandidateSessionIdRef.current = sessionId ?? null;
         }
         finalStabilizationActiveRef.current = true;
-        logInfo('AgentOrchestrator', 'final accepted for stabilization candidate (refines only; settlement at flush boundary)', {
-          recordingSessionId: sessionId,
-          candidateChars: normalizedCombined.length,
-          candidateTranscriptText: normalizedCombined,
-          candidateTranscriptPreview: transcriptPreview(normalizedCombined),
-        });
         if (quietWindowTimerRef.current) {
           clearTimeout(quietWindowTimerRef.current);
           quietWindowTimerRef.current = null;
         }
         if (!finalStabilizationTimerRef.current) {
-          logInfo('AgentOrchestrator', 'final stabilization window started (candidate refinement only)', {
-            recordingSessionId: sessionId,
-          });
           finalStabilizationTimerRef.current = setTimeout(() => {
             finalStabilizationTimerRef.current = null;
             finalStabilizationActiveRef.current = false;
             if (settlementResolvedRef.current) return;
-            logInfo('AgentOrchestrator', 'final stabilization window elapsed; candidate held for flush boundary', {
-              recordingSessionId: sessionId,
-              candidateChars: finalCandidateTextRef.current?.length ?? 0,
-            });
           }, POST_FINAL_STABILIZATION_WINDOW_MS);
         }
       }
@@ -1848,17 +1866,6 @@ export function useAgentOrchestrator(
       }
       lastPartialNormalizedRef.current = normalizedPartial;
       partialTranscriptRef.current = partial;
-      const inQuietWindow =
-        speechEndedRef.current &&
-        pendingSubmitWhenReadyRef.current &&
-        !settlementResolvedRef.current;
-      logInfo('AgentOrchestrator', 'transcript partial updated', {
-        recordingSessionId: recordingSessionRef.current ?? undefined,
-        partialChars: normalizedPartial.length,
-        transcriptText: normalizedPartial,
-        transcriptPreview: transcriptPreview(normalizedPartial),
-        ...(inQuietWindow ? { inQuietWindow: true } : {}),
-      });
       listenersRef?.current?.onTranscriptUpdate?.();
     };
     V.onSpeechError = e => {

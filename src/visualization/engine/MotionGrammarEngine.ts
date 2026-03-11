@@ -9,7 +9,7 @@ import type { MotionGrammarTemplate, MotionSignals, MotionTargets } from '../sce
 import type { VisualizationMode } from './types';
 
 const DEBUG_MOTION_GRAMMAR =
-  typeof __DEV__ !== 'undefined' && __DEV__;
+  false;
 
 export type MotionGrammarInputs = {
   mode: VisualizationMode;

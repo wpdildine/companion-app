@@ -262,6 +262,8 @@ export function emit(payload: RequestDebugEmitPayload & { type: string }): void 
       break;
     case 'request_complete':
     case 'request_failed':
+    case 'request_canceled':
+    case 'request_superseded':
       if (requestId != null) {
         if (activeRequestId === requestId) activeRequestId = null;
         if (!recentRequestIds.includes(requestId)) {

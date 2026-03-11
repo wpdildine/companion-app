@@ -299,8 +299,6 @@ export default function AgentSurface() {
     playListeningStartEarcon();
     triggerListeningStartHaptic();
     logInfo('Interaction', 'listening started');
-    logInfo('Interaction', 'earcon start fired');
-    logInfo('Interaction', 'haptic start fired');
   }, []);
 
   const playListeningEndFeedback = useCallback((reason: 'hold release' | 'timeout') => {
@@ -313,8 +311,6 @@ export default function AgentSurface() {
         ? 'submit triggered from recording timeout'
         : 'submit triggered from hold release',
     );
-    logInfo('Interaction', 'earcon end fired');
-    logInfo('Interaction', 'haptic end fired');
   }, []);
 
   useEffect(() => {
@@ -514,6 +510,9 @@ export default function AgentSurface() {
   }, [clearRecordingTimeout, stopListeningAndSubmit]);
 
   const handleUserModeTap = useCallback(() => {
+    if (orchState.lifecycle === 'processing' || orchState.lifecycle === 'listening') {
+      return;
+    }
     const now = Date.now();
     const sinceLast = now - lastTapAtRef.current;
     if (sinceLast > 0 && sinceLast <= DOUBLE_TAP_MS) {
@@ -532,7 +531,7 @@ export default function AgentSurface() {
       singleTapTimerRef.current = null;
       orchActions.cancelPlayback();
     }, DOUBLE_TAP_MS + 20);
-  }, [orchState.responseText, orchActions]);
+  }, [orchState.lifecycle, orchState.responseText, orchActions]);
 
   const handleUserModeLongPressStart = useCallback(() => {
     if (holdCompletionInFlightRef.current) return;

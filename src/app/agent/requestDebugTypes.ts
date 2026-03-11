@@ -9,8 +9,15 @@
 import type { ValidationSummary } from '../../rag';
 import type { ProcessingSubstate } from './types';
 
-/** Request outcome for telemetry: active, terminal success (completed), or terminal error (failed). Not a lifecycle value. */
-export type RequestDebugStatus = 'active' | 'completed' | 'failed';
+/**
+ * Request outcome for telemetry. These are request outcomes, not lifecycle values.
+ * - active: request in flight
+ * - completed: request ran to completion
+ * - failed: terminal request failure (or fatal path)
+ * - canceled: request was explicitly canceled (reserved; not emitted in current chunk)
+ * - superseded: request was replaced by a new request (reserved; not emitted in current chunk)
+ */
+export type RequestDebugStatus = 'active' | 'completed' | 'failed' | 'canceled' | 'superseded';
 
 /** Pack identity (orchestrator or RAG). */
 export type RequestDebugPackIdentity = {

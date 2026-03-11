@@ -75,13 +75,10 @@ export function VisualizationCanvas({
   const [r3fFailed, setR3FFailed] = useState(false);
 
   useEffect(() => {
-    console.log('[Visualization] init: platform=', Platform.OS, 'r3fFailed=', r3fFailed);
     if (r3fFailed) {
-      console.log('[Visualization] skipping R3F load (already failed)');
       return;
     }
     if (SKIP_R3F_ON_ANDROID && Platform.OS === 'android') {
-      console.log('[Visualization] using fallback (SKIP_R3F_ON_ANDROID=true)');
       return;
     }
     let cancelled = false;
@@ -91,7 +88,6 @@ export function VisualizationCanvas({
       try {
         const mod = require('./VisualizationCanvasR3F');
         if (mod?.VisualizationCanvasR3F) {
-          console.log('[Visualization] R3F module loaded, mounting Canvas');
           setR3FComponent(() => mod.VisualizationCanvasR3F);
         } else {
           console.warn('[Visualization] R3F module missing VisualizationCanvasR3F export');
@@ -120,7 +116,6 @@ export function VisualizationCanvas({
           // no-op; we'll keep polling until timeout
         }
         if (isExpoReady()) {
-          console.log('[Visualization] Expo EventEmitter ready; loading R3F');
           tryLoadR3F();
           return true;
         }
@@ -159,11 +154,8 @@ export function VisualizationCanvas({
   const fallback = dotsOnlyFallback;
 
   if (!R3FComponent || r3fFailed) {
-    console.log('[Visualization] render: fallback (no R3F)', { hasR3F: !!R3FComponent, r3fFailed });
     return fallback;
   }
-
-  console.log('[Visualization] render: R3F Canvas path');
 
   return (
     <VisualizationErrorBoundary

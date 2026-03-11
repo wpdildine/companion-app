@@ -18,6 +18,7 @@ const TEXT_MUTED = '#8b949e';
 const STATUS_ACTIVE = '#58a6ff';
 const STATUS_COMPLETED = '#3fb950';
 const STATUS_FAILED = '#f85149';
+const STATUS_CANCELED_SUPERSEDED = '#8b949e'; // reserved; not emitted in current chunk
 const TIMELINE_MUTED = 'rgba(139,148,158,0.9)';
 
 const fontMono = Platform.select({ ios: 'Menlo', android: 'monospace' });
@@ -99,7 +100,13 @@ export function PipelineTelemetryPanel({ state, onClose, maxHeight, maxWidth }: 
   const pa = snapshot.ragTelemetry?.promptAssembly;
   const model = snapshot.modelInfo ?? snapshot.ragTelemetry?.generationRequest;
   const statusColor =
-    snapshot.status === 'active' ? STATUS_ACTIVE : snapshot.status === 'completed' ? STATUS_COMPLETED : STATUS_FAILED;
+    snapshot.status === 'active'
+      ? STATUS_ACTIVE
+      : snapshot.status === 'completed'
+        ? STATUS_COMPLETED
+        : snapshot.status === 'canceled' || snapshot.status === 'superseded'
+          ? STATUS_CANCELED_SUPERSEDED
+          : STATUS_FAILED;
 
   const window = Dimensions.get('window');
   const panelWidth = Math.min(PANEL_WIDTH, Math.max(240, (maxWidth ?? window.width) - 24));

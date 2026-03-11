@@ -8,8 +8,6 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import type { VisualizationEngineRef } from '../../engine/types';
 
-const LOG_FALLBACK = true;
-
 const DEFAULT_FALLBACK_BG = '#000000';
 const NODE_COUNT = 72;
 const SEED = 54321;
@@ -63,10 +61,6 @@ export function VisualizationCanvasFallback({
   const { width, height } = useWindowDimensions();
   const [activity, setActivity] = useState(0.15);
   const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    if (LOG_FALLBACK) console.log('[Visualization] VisualizationCanvasFallback mounted (2D dots)', { width, height });
-  }, [width, height]);
 
   useEffect(() => {
     const id = setInterval(() => {
