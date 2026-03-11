@@ -120,10 +120,14 @@ export function PipelineTelemetryPanel({ state, onClose, maxHeight, maxWidth }: 
       >
         <SectionTitle title="Request" />
         <Row label="requestId" value={snapshot.requestId} />
+        <Row label="lifecycle" value={snapshot.lifecycle || undefined} />
         <Text style={[styles.row, { color: statusColor }]}>
-          <Text style={styles.label}>status: </Text>
+          <Text style={styles.label}>request outcome: </Text>
           <Text style={styles.value}>{snapshot.status}</Text>
         </Text>
+        {snapshot.platform != null && (
+          <Row label="platform" value={snapshot.platform} muted />
+        )}
         {snapshot.status === 'active' && snapshot.processingSubstate != null && (
           <Row label="processingSubstate" value={snapshot.processingSubstate} />
         )}
@@ -134,6 +138,9 @@ export function PipelineTelemetryPanel({ state, onClose, maxHeight, maxWidth }: 
             <Text style={styles.label}>failureReason: </Text>
             <Text style={styles.value}>{truncate(snapshot.failureReason, TRUNCATE_PREVIEW)}</Text>
           </Text>
+        )}
+        {snapshot.lastRecoverableFailureReason != null && (
+          <Row label="lastRecoverableFailure" value={truncate(snapshot.lastRecoverableFailureReason, TRUNCATE_PREVIEW)} muted />
         )}
 
         <SectionTitle title="Retrieval" />
@@ -163,6 +170,9 @@ export function PipelineTelemetryPanel({ state, onClose, maxHeight, maxWidth }: 
         <SectionTitle title="Generation" />
         <Row label="modelPath" value={model?.modelPath} />
         <Row label="modelId" value={model?.modelId} />
+        {snapshot.modelLoadCold != null && (
+          <Row label="modelLoadCold" value={snapshot.modelLoadCold ? 'cold' : 'warm'} />
+        )}
         <Row label="temperature" value={model?.temperature} />
         <Row label="topP" value={model?.topP} />
         <Row label="maxTokens" value={model?.maxTokens} />
@@ -204,10 +214,21 @@ export function PipelineTelemetryPanel({ state, onClose, maxHeight, maxWidth }: 
 
         <SectionTitle title="Performance" />
         <Row label="retrievalMs" value={d?.retrievalMs != null ? `${d.retrievalMs} ms` : undefined} />
+        <Row label="contextPrepMs" value={d?.contextPrepMs != null ? `${d.contextPrepMs} ms` : undefined} />
+        <Row label="modelLoadMs" value={d?.modelLoadMs != null ? `${d.modelLoadMs} ms` : undefined} />
         <Row label="generationMs" value={d?.generationMs != null ? `${d.generationMs} ms` : undefined} />
-        <Row label="timeToFirstTokenMs" value={d?.timeToFirstTokenMs != null ? `${d.timeToFirstTokenMs} ms` : undefined} />
-        <Row label="ttsMs" value={d?.ttsMs != null ? `${d.ttsMs} ms` : undefined} />
+        <Row label="TTFT (from ask start)" value={d?.timeToFirstTokenMs != null ? `${d.timeToFirstTokenMs} ms` : undefined} />
+        {d?.timeToFirstTokenFromInferenceMs != null && (
+          <Row label="TTFT (from inference start)" value={`${d.timeToFirstTokenFromInferenceMs} ms`} />
+        )}
+        <Row label="streamingMs" value={d?.streamingMs != null ? `${d.streamingMs} ms` : undefined} />
+        <Row label="validationMs" value={d?.validationMs != null ? `${d.validationMs} ms` : undefined} />
+        <Row label="settlingMs" value={d?.settlingMs != null ? `${d.settlingMs} ms` : undefined} />
+        <Row label="playbackMs" value={d?.ttsMs != null ? `${d.ttsMs} ms` : undefined} />
         <Row label="totalRequestMs" value={d?.totalRequestMs != null ? `${d.totalRequestMs} ms` : undefined} />
+
+        <SectionTitle title="Boundaries" />
+        <Text style={[styles.row, styles.rowMuted]}>response_settled = commit; request_complete = terminal</Text>
 
         <SectionTitle title="Timeline" />
         {timelineEvents.length === 0 ? (

@@ -11,8 +11,6 @@ export type AgentLifecycleState =
   | 'listening'
   | 'processing'
   | 'speaking'
-  | 'complete'
-  | 'failed'
   | 'error';
 
 /** Processing substate: meaningful only when lifecycle === 'processing'; otherwise null. */
@@ -52,6 +50,8 @@ export interface AgentOrchestratorListeners {
   onPlaybackStart?: () => void;
   onPlaybackEnd?: () => void;
   onComplete?: () => void;
+  /** Recoverable rejection/failure that returns cleanly to idle; maps to transient softFail. */
+  onRecoverableFailure?: (reason: string, details?: Record<string, unknown>) => void;
   onError?: () => void;
 }
 

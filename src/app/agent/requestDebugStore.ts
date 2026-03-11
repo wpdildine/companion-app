@@ -46,11 +46,30 @@ function deriveDurations(s: RequestDebugSnapshot): RequestDebugDurations | null 
   if (s.retrievalStartedAt != null && s.retrievalEndedAt != null) {
     d.retrievalMs = s.retrievalEndedAt - s.retrievalStartedAt;
   }
+  if (s.contextReadyAt != null && s.retrievalEndedAt != null) {
+    d.contextPrepMs = s.contextReadyAt - s.retrievalEndedAt;
+  }
+  if (s.modelLoadStartAt != null && s.modelLoadEndAt != null) {
+    d.modelLoadMs = s.modelLoadEndAt - s.modelLoadStartAt;
+  }
   if (s.generationStartedAt != null && s.generationEndedAt != null) {
     d.generationMs = s.generationEndedAt - s.generationStartedAt;
   }
   if (s.generationStartedAt != null && s.firstTokenAt != null) {
     d.timeToFirstTokenMs = s.firstTokenAt - s.generationStartedAt;
+  }
+  const inferenceStartedAt = (s as Record<string, unknown>).inferenceStartedAt as number | undefined;
+  if (inferenceStartedAt != null && s.firstTokenAt != null) {
+    d.timeToFirstTokenFromInferenceMs = s.firstTokenAt - inferenceStartedAt;
+  }
+  if (s.firstTokenAt != null && s.generationEndedAt != null) {
+    d.streamingMs = s.generationEndedAt - s.firstTokenAt;
+  }
+  if (s.validationStartedAt != null && s.validationEndedAt != null) {
+    d.validationMs = s.validationEndedAt - s.validationStartedAt;
+  }
+  if (s.settlingStartedAt != null && s.responseSettledAt != null) {
+    d.settlingMs = s.responseSettledAt - s.settlingStartedAt;
   }
   if (s.ttsStartedAt != null && s.ttsEndedAt != null) {
     d.ttsMs = s.ttsEndedAt - s.ttsStartedAt;
@@ -92,6 +111,20 @@ function mergeRagPayloadIntoSnapshot(
   if (type === 'rag_prompt_built' && payload.promptHash != null) {
     (snapshot as Record<string, unknown>).promptHash = payload.promptHash;
   }
+  if (type === 'rag_retrieval_complete' && typeof payload.timestamp === 'number') {
+    snapshot.contextReadyAt = payload.timestamp;
+  }
+  if (type === 'rag_model_load_start' && typeof payload.timestamp === 'number') {
+    snapshot.modelLoadStartAt = payload.timestamp;
+    if (typeof payload.cold === 'boolean') snapshot.modelLoadCold = payload.cold;
+  }
+  if (type === 'rag_model_load_end' && typeof payload.timestamp === 'number') {
+    snapshot.modelLoadEndAt = payload.timestamp;
+    if (typeof payload.cold === 'boolean') snapshot.modelLoadCold = payload.cold;
+  }
+  if (type === 'rag_inference_start' && typeof payload.timestamp === 'number') {
+    snapshot.inferenceStartedAt = payload.timestamp;
+  }
 }
 
 function mergePayloadIntoSnapshot(
@@ -124,6 +157,21 @@ function mergePayloadIntoSnapshot(
       if (payload.validationSummary !== undefined) {
         snapshot.validationSummary = payload.validationSummary as ValidationSummary | null;
       }
+      const ts = typeof payload.timestamp === 'number' ? payload.timestamp : undefined;
+      if (ts != null) snapshot.responseSettledAt = ts;
+    }
+    if (type === 'validation_start' && typeof payload.timestamp === 'number') {
+      snapshot.validationStartedAt = payload.timestamp;
+    }
+    if (type === 'validation_end' && typeof payload.timestamp === 'number') {
+      snapshot.validationEndedAt = payload.timestamp;
+    }
+    if (type === 'settling_start' && typeof payload.timestamp === 'number') {
+      snapshot.settlingStartedAt = payload.timestamp;
+    }
+    if (type === 'recoverable_failure') {
+      snapshot.lastRecoverableFailureReason = (payload.reason as string) ?? null;
+      snapshot.lastRecoverableFailureAt = typeof payload.timestamp === 'number' ? payload.timestamp : null;
     }
     for (const key of Object.keys(payload)) {
       if (skipKeys.has(key)) continue;
@@ -198,7 +246,7 @@ export function emit(payload: RequestDebugEmitPayload & { type: string }): void 
       snapshotsById.set(requestId, snapshot);
     }
     mergePayloadIntoSnapshot(snapshot, event.type, event.payload);
-  } else {
+  } else if (payload.type !== 'recoverable_failure') {
     const skip = new Set(['type', 'timestamp', 'requestId']);
     const add: Record<string, unknown> = { ...lastRagInitTrace };
     add[event.type] = event.timestamp;

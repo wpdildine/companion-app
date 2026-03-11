@@ -391,10 +391,7 @@ export default function AgentSurface() {
       : orchState.lifecycle === 'listening'
         ? 'holdToSpeak'
         : canRevealPanels &&
-            (orchState.lifecycle === 'idle' ||
-              orchState.lifecycle === 'complete' ||
-              orchState.lifecycle === 'failed' ||
-              orchState.lifecycle === 'error')
+            (orchState.lifecycle === 'idle' || orchState.lifecycle === 'error')
           ? 'swipeContext'
           : orchState.lifecycle === 'speaking'
             ? 'playbackTap'

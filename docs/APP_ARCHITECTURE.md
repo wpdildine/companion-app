@@ -36,14 +36,13 @@ AgentSurface
 - Provider selection or fallback logic
 - Normalized error handling
 
-**Emits:** Normalized lifecycle state (`idle` | `listening` | `processing` | `speaking` | `complete` | `failed` | `error`) plus `processingSubstate` (only when lifecycle is `processing`), and optional listener callbacks (e.g. `onListeningStart`, `onTranscriptUpdate`, `onGenerationEnd`) for the VisualizationController.
+**Emits:** Normalized lifecycle state (`idle` | `listening` | `processing` | `speaking` | `error`) plus `processingSubstate` (only when lifecycle is `processing`), and optional listener callbacks (e.g. `onListeningStart`, `onTranscriptUpdate`, `onGenerationEnd`) for the VisualizationController.
 
-**Lifecycle semantics (failed vs error):**
+**Lifecycle semantics (error):**
 
-- **`failed`** — Recoverable attempt failure; the system is healthy and the user can retry immediately. Used for: no usable speech transcript (no-speech, empty transcript after settlement), partial/recognition miss where the app is still healthy. Lifecycle-only in this pass; maps to idle visualization mode. A brief transient “soft fail” visual (red pulse) is shown via transient signal; the app auto-returns to idle after a short delay. Does not populate the hard-error field or show the persistent error panel.
 - **`error`** — True system/integration/runtime failure. Used for: voice module failure, playback subsystem failure, pack/runtime initialization failure, unexpected native/infrastructure faults. Shows the persistent error panel and requires user recovery (e.g. dismiss).
 
-When adding new failure handling, use **`failed`** when the app and runtime are still correct and the user can simply try again; use **`error`** when something is broken and may need recovery or investigation.
+Recoverable attempt failures (e.g. no usable transcript) return to `idle` without entering a dedicated lifecycle state. A transient “soft fail” visual may still be emitted.
 
 **Does not know:** Visualization rendering, panel layout, render-layer internals, scene.motion or scene.organism details.
 
@@ -124,7 +123,7 @@ Do not put transient event logic into art-direction files. Per-layer render file
 - **Single active ask** — Only one ask may be in flight. New submit attempts are blocked until the current request settles. Lifecycle transitions are request-scoped (active requestId); stale completions are ignored and logged.
 - **Post-stop speech errors** — Speech recognition errors that occur after stop has been requested (finalization underway) are treated as non-fatal and do not force lifecycle into error.
 - **Failed-request recovery** — `recoverFromRequestFailure()` clears finalization/request state and returns the app to idle. On request failure, result context (response/cards/rules) is cleared so swipe does not reveal stale content. Dismiss error uses this path.
-- **Recoverable failure (`failed`)** — Empty or no-usable transcript at settlement sets lifecycle to `failed` (not `error`). Stop finalization and cleanup run promptly; a separate lifecycle timer transitions `failed` → `idle` after a brief display interval. A transient soft-fail visual (red pulse) is emitted; no persistent error panel. The user can retry immediately after the brief failed interval. `failed` does not wedge touch ownership and behaves like an idle-adjacent recoverable state.
+- **Recoverable failure (idle)** — Empty or no-usable transcript at settlement returns lifecycle to `idle` (not `error`). Stop finalization and cleanup run promptly. A transient soft-fail visual (red pulse) is emitted; no persistent error panel. The user can retry immediately.
 - **Interaction arbitration** — One interaction owner wins by priority: debug > overlay > holdToSpeak > swipeContext > playbackTap > none. Swipe reveals rules/cards only when valid current context exists; hold is blocked when a request is active or overlay/debug owns.
 
 ## Touch Path
@@ -199,7 +198,7 @@ During startup and lifecycle testing, the following subsystems emit logs (via `s
 - **AppBoot** — application boot started
 - **AgentSurface** — mounted as active composition root
 - **VoiceScreen** — one-time deprecation warning when the legacy entrypoint is imported
-- **AgentOrchestrator** — initialized, runtime lifecycle ready, lifecycle transitions (idle → listening → … → complete/failed/error), request/playback events (voice listen started/stopped, request started, retrieval started/completed, generation started/first token/completed, playback started/completed/interrupted, request failed). Recoverable failures log e.g. “lifecycle transition listening -> failed”, “recoverable attempt failed; returning to idle-ready state”; hard errors log e.g. “voice listen start failed”, “speech recognition error (fatal: …)”.
+- **AgentOrchestrator** — initialized, runtime lifecycle ready, lifecycle transitions (idle → listening → … → speaking/idle/error), request/playback events (voice listen started/stopped, request started, retrieval started/completed, generation started/first token/completed, playback started/completed/interrupted, request failed). Recoverable failures log e.g. “lifecycle transition listening -> idle”, “recoverable attempt failed; returning to idle-ready state”; hard errors log e.g. “voice listen start failed”, “speech recognition error (fatal: …)”.
 - **Interaction** — center hold start/end detected, submit triggered from hold release, earcon/haptic start/end fired (gesture-level logs only)
 - **VisualizationController** — initialized, attached to visualization signal pipeline, received lifecycle state, applied visualization mode, emitted semantic events (e.g. chunkAccepted)
 - **ResultsOverlay** — mounted, received answer/cards/rules payload, answer/cards/rules/sources panel shown, panel dismissed, panel rects first reported

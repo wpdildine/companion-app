@@ -16,7 +16,7 @@ import type { VisualizationEngineRef } from '../../visualization';
 import { useVisualizationSignals } from '../hooks/useVisualizationSignals';
 import type { AgentOrchestratorState, AgentOrchestratorListeners } from './types';
 
-/** Maps AgentLifecycleState to VisualizationMode (engine contract). failed is lifecycle-only; map to idle. */
+/** Maps AgentLifecycleState to VisualizationMode (engine contract). */
 function lifecycleToMode(
   lifecycle: AgentOrchestratorState['lifecycle'],
 ): 'idle' | 'listening' | 'processing' | 'speaking' {
@@ -27,9 +27,7 @@ function lifecycleToMode(
       return 'processing';
     case 'speaking':
       return 'speaking';
-    case 'complete':
     case 'error':
-    case 'failed':
     case 'idle':
     default:
       return 'idle';
@@ -93,6 +91,13 @@ export function useVisualizationController(
       onPlaybackStart: () => {},
       onPlaybackEnd: () => {},
       onComplete: () => {},
+      onRecoverableFailure: (reason, details) => {
+        logInfo('VisualizationController', 'emitted transient: softFail', {
+          reason,
+          ...(details ?? {}),
+        });
+        emitEventRef.current(TRANSIENT_SIGNAL_SOFT_FAIL);
+      },
       onError: () => {},
     };
     return () => {
@@ -103,7 +108,6 @@ export function useVisualizationController(
   const attachedLoggedRef = useRef(false);
   const lastLoggedModeRef = useRef<string | null>(null);
   const lastLoggedLifecycleRef = useRef<string | null>(null);
-  const softFailEmittedRef = useRef(false);
 
   // Map normalized agent state → visualization signals (mode, phase, grounded, etc.)
   useEffect(() => {
@@ -169,14 +173,6 @@ export function useVisualizationController(
         cardRefsCount,
       }),
     );
-    if (state.lifecycle === 'failed') {
-      if (!softFailEmittedRef.current) {
-        softFailEmittedRef.current = true;
-        emitEventRef.current(TRANSIENT_SIGNAL_SOFT_FAIL);
-      }
-    } else {
-      softFailEmittedRef.current = false;
-    }
     if (!attachedLoggedRef.current) {
       attachedLoggedRef.current = true;
       logInfo('VisualizationController', 'attached to visualization signal pipeline');

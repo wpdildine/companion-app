@@ -539,10 +539,23 @@ export async function runRagFlow(
           'chatModelPath required for deterministic path.',
         );
       }
+      const chatContextWasWarm = !!chatContext;
       options?.onModelLoadStart?.();
       mark('chat model load start');
+      if (requestId != null && requestDebugSink) {
+        emitRag('rag_model_load_start', {
+          modelPath: params.chatModelPath ?? undefined,
+          cold: !chatContextWasWarm,
+        });
+      }
       const chatCtx = await getChatContext(params.chatModelPath);
       mark('chat model load end');
+      if (requestId != null && requestDebugSink) {
+        emitRag('rag_model_load_end', {
+          modelPath: params.chatModelPath ?? undefined,
+          cold: !chatContextWasWarm,
+        });
+      }
       if (requestId != null && requestDebugSink) {
         emitRag('rag_generation_request_start', {
           modelPath: params.chatModelPath ?? undefined,
@@ -550,6 +563,9 @@ export async function runRagFlow(
         });
       }
       options?.onGenerationStart?.();
+      if (requestId != null && requestDebugSink) {
+        emitRag('rag_inference_start', {});
+      }
       mark('completion start');
       const completionStartedAt = Date.now();
       let completionTotalTokens: number | undefined;
@@ -732,12 +748,25 @@ export async function runRagFlow(
       params.chatModelPath ?? '(none)',
     );
 
+    const chatContextWasWarm = !!chatContext;
     options?.onModelLoadStart?.();
     mark('chat model load start');
     let chatCtx: import('llama.rn').LlamaContext;
     try {
+      if (requestId != null && requestDebugSink) {
+        emitRag('rag_model_load_start', {
+          modelPath: params.chatModelPath ?? undefined,
+          cold: !chatContextWasWarm,
+        });
+      }
       chatCtx = await getChatContext(params.chatModelPath);
       mark('chat model load end');
+      if (requestId != null && requestDebugSink) {
+        emitRag('rag_model_load_end', {
+          modelPath: params.chatModelPath ?? undefined,
+          cold: !chatContextWasWarm,
+        });
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       mark('chat model load failed');
@@ -754,6 +783,9 @@ export async function runRagFlow(
       });
     }
     options?.onGenerationStart?.();
+    if (requestId != null && requestDebugSink) {
+      emitRag('rag_inference_start', {});
+    }
     mark('completion start');
     const completionStartedAt = Date.now();
     let completionTotalTokens: number | undefined;

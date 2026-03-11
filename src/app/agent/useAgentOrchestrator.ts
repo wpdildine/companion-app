@@ -55,8 +55,6 @@ const RESPONSE_TEXT_UPDATE_THROTTLE_MS = 150;
 const EMPTY_RESPONSE_FALLBACK_MESSAGE = 'No answer generated';
 const NATIVE_RESTART_GUARD_MS = 250;
 const ANDROID_TAIL_GRACE_MS = 200;
-/** Brief display of failed state before auto-return to idle (lifecycle timer owns failed → idle). */
-const FAILED_DISPLAY_MS = 800;
 type VoiceModule = {
   start: (locale: string) => Promise<void>;
   stop: () => Promise<void>;
@@ -314,8 +312,7 @@ export function useAgentOrchestrator(
   const nativeRestartGuardUntilRef = useRef(0);
   const playTextRef = useRef<(text: string) => Promise<void>>(null);
   const ioBlockedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** Timer for failed → idle transition only; cleared in finalizeStop and on unmount. */
-  const failedReturnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingPlaybackCompleteRef = useRef<{ requestId: number; endedAt: number } | null>(null);
   modeRef.current = mode;
   lifecycleRef.current = lifecycle;
 
@@ -329,6 +326,19 @@ export function useAgentOrchestrator(
   const playError = useCallback(() => {
     listenersRef?.current?.onError?.();
   }, [listenersRef]);
+  const emitRecoverableFailure = useCallback(
+    (reason: string, details?: Record<string, unknown>) => {
+      listenersRef?.current?.onRecoverableFailure?.(reason, details);
+      const requestId = activeRequestIdRef.current;
+      requestDebugSinkRef?.current?.({
+        type: 'recoverable_failure',
+        requestId: requestId !== 0 ? requestId : null,
+        reason,
+        timestamp: Date.now(),
+      });
+    },
+    [listenersRef],
+  );
 
   const setAudioState = useCallback(
     (next: 'idleReady' | 'starting' | 'listening' | 'stopping' | 'settling', context?: object) => {
@@ -341,7 +351,7 @@ export function useAgentOrchestrator(
         setLifecycle('listening');
       } else if (next === 'idleReady') {
         if (modeRef.current === 'listening') setMode('idle');
-        if (lifecycleRef.current === 'listening' || lifecycleRef.current === 'failed' || lifecycleRef.current === 'idle') {
+        if (lifecycleRef.current === 'listening' || lifecycleRef.current === 'idle') {
           setProcessingSubstate(null);
           setLifecycle('idle');
         }
@@ -416,10 +426,6 @@ export function useAgentOrchestrator(
         tailGraceTimerRef.current = null;
       }
       tailGraceSessionIdRef.current = null;
-      if (failedReturnTimerRef.current) {
-        clearTimeout(failedReturnTimerRef.current);
-        failedReturnTimerRef.current = null;
-      }
       if (finalStabilizationTimerRef.current) {
         clearTimeout(finalStabilizationTimerRef.current);
         finalStabilizationTimerRef.current = null;
@@ -551,28 +557,20 @@ export function useAgentOrchestrator(
         });
         const normalized = normalizeTranscript(transcribedTextRef.current);
         if (!normalized) {
-          logLifecycle('AgentOrchestrator', 'lifecycle transition listening -> failed', {
+          logLifecycle('AgentOrchestrator', 'lifecycle transition listening -> idle', {
             recordingSessionId,
             reason: 'speech capture failed: no usable transcript',
           });
           logWarn('AgentOrchestrator', 'timeout settlement produced empty transcript; submit skipped', {
             recordingSessionId,
           });
+          emitRecoverableFailure('noUsableTranscript', { recordingSessionId, reason });
           setProcessingSubstate(null);
           setMode('idle');
-          setLifecycle('failed');
+          setLifecycle('idle');
+          setAudioState('idleReady', { recordingSessionId, reason: 'noUsableTranscript' });
           logInfo('AgentOrchestrator', 'recoverable attempt failed; returning to idle-ready state');
           finalizeStop(reason, recordingSessionId, { keepLifecycle: true });
-          if (failedReturnTimerRef.current) {
-            clearTimeout(failedReturnTimerRef.current);
-            failedReturnTimerRef.current = null;
-          }
-          failedReturnTimerRef.current = setTimeout(() => {
-            failedReturnTimerRef.current = null;
-            setAudioState('idleReady', { recordingSessionId, reason: 'failedReturn' });
-            setProcessingSubstate(null);
-            setLifecycle('idle');
-          }, FAILED_DISPLAY_MS);
           return;
         }
       } else if (reason === 'speechEnd') {
@@ -594,28 +592,20 @@ export function useAgentOrchestrator(
         }
         const normalized = normalizeTranscript(transcribedTextRef.current);
         if (!normalized) {
-          logLifecycle('AgentOrchestrator', 'lifecycle transition listening -> failed', {
+          logLifecycle('AgentOrchestrator', 'lifecycle transition listening -> idle', {
             recordingSessionId,
             reason: 'speech capture failed: no usable transcript',
           });
           logWarn('AgentOrchestrator', 'quiet window produced empty transcript; submit skipped', {
             recordingSessionId,
           });
+          emitRecoverableFailure('noUsableTranscript', { recordingSessionId, reason: 'quietWindowExpired' });
           setProcessingSubstate(null);
           setMode('idle');
-          setLifecycle('failed');
+          setLifecycle('idle');
+          setAudioState('idleReady', { recordingSessionId, reason: 'noUsableTranscript' });
           logInfo('AgentOrchestrator', 'recoverable attempt failed; returning to idle-ready state');
           finalizeStop('quietWindowExpired', recordingSessionId, { keepLifecycle: true });
-          if (failedReturnTimerRef.current) {
-            clearTimeout(failedReturnTimerRef.current);
-            failedReturnTimerRef.current = null;
-          }
-          failedReturnTimerRef.current = setTimeout(() => {
-            failedReturnTimerRef.current = null;
-            setAudioState('idleReady', { recordingSessionId, reason: 'failedReturn' });
-            setProcessingSubstate(null);
-            setLifecycle('idle');
-          }, FAILED_DISPLAY_MS);
           return;
         }
       } else {
@@ -1038,6 +1028,8 @@ export function useAgentOrchestrator(
       normalizedTranscript: question,
       requestStartedAt,
       timestamp: requestStartedAt,
+      lifecycle: 'processing',
+      platform: Platform.OS,
     });
     logInfo('AgentOrchestrator', 'request started', {
       requestId: reqId,
@@ -1142,12 +1134,25 @@ export function useAgentOrchestrator(
         },
         onValidationStart: () => {
           if (activeRequestIdRef.current !== reqId) return;
+          const validationStartedAt = Date.now();
           setProcessingSubstate('validating');
+          requestDebugSinkRef?.current?.({
+            type: 'validation_start',
+            requestId: reqId,
+            validationStartedAt,
+            timestamp: validationStartedAt,
+          });
+          logInfo('AgentOrchestrator', 'validation_start', {
+            requestId: reqId,
+            lifecycle: 'processing',
+            processingSubstate: 'validating',
+          });
           requestDebugSinkRef?.current?.({
             type: 'processing_substate',
             requestId: reqId,
             processingSubstate: 'validating',
-            timestamp: Date.now(),
+            lifecycle: 'processing',
+            timestamp: validationStartedAt,
           });
         },
         onPartial: (accumulatedText: string) => {
@@ -1248,14 +1253,39 @@ export function useAgentOrchestrator(
       listenersRef?.current?.onComplete?.();
       if (reqId === activeRequestIdRef.current) {
         requestInFlightRef.current = false;
+        const validationEndedAt = Date.now();
+        const settlingStartedAt = validationEndedAt;
         setProcessingSubstate('settling');
-        const settledAt = Date.now();
+        requestDebugSinkRef?.current?.({
+          type: 'validation_end',
+          requestId: reqId,
+          validationEndedAt,
+          timestamp: validationEndedAt,
+        });
+        logInfo('AgentOrchestrator', 'validation_end', {
+          requestId: reqId,
+          lifecycle: 'processing',
+          processingSubstate: 'settling',
+        });
+        requestDebugSinkRef?.current?.({
+          type: 'settling_start',
+          requestId: reqId,
+          settlingStartedAt,
+          timestamp: settlingStartedAt,
+        });
+        logInfo('AgentOrchestrator', 'settling_start', {
+          requestId: reqId,
+          lifecycle: 'processing',
+          processingSubstate: 'settling',
+        });
         requestDebugSinkRef?.current?.({
           type: 'processing_substate',
           requestId: reqId,
           processingSubstate: 'settling',
-          timestamp: settledAt,
+          lifecycle: 'processing',
+          timestamp: settlingStartedAt,
         });
+        const settledAt = Date.now();
         requestDebugSinkRef?.current?.({
           type: 'response_settled',
           requestId: reqId,
@@ -1276,14 +1306,6 @@ export function useAgentOrchestrator(
           rulesCount: result.validationSummary.rules.length,
           cardsCount: result.validationSummary.cards.length,
         });
-        requestDebugSinkRef?.current?.({
-          type: 'request_complete',
-          requestId: reqId,
-          status: 'completed',
-          completedAt: generationEndedAt,
-          timestamp: settledAt,
-        });
-        logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: reqId });
         setError(null);
         setProcessingSubstate(null);
         requestDebugSinkRef?.current?.({
@@ -1302,6 +1324,18 @@ export function useAgentOrchestrator(
             committedChars: committedText.length,
           });
           playTextRef.current?.(committedText).catch(() => {});
+        } else {
+          const completedAt = Date.now();
+          requestDebugSinkRef?.current?.({
+            type: 'request_complete',
+            requestId: reqId,
+            status: 'completed',
+            completedAt,
+            lifecycle: 'idle',
+            timestamp: completedAt,
+          });
+          setAudioState('idleReady', { reason: 'requestComplete' });
+          logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: reqId });
         }
         return committedText;
       }
@@ -1328,6 +1362,7 @@ export function useAgentOrchestrator(
           failureReason: displayMsg,
           status: 'failed',
           completedAt: failedAt,
+          lifecycle: 'error',
           timestamp: failedAt,
         });
         logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: reqId });
@@ -1351,6 +1386,7 @@ export function useAgentOrchestrator(
         });
         setMode('idle');
         setLifecycle('error');
+        setAudioState('idleReady', { reason: 'requestFailed' });
         return null;
       }
       setProcessingSubstate(null);
@@ -1401,6 +1437,7 @@ export function useAgentOrchestrator(
           requestId: playbackRequestIdRef.current,
           ttsStartedAt,
           timestamp: ttsStartedAt,
+          lifecycle: 'speaking',
         });
         logInfo('AgentOrchestrator', 'playback started');
         listenersRef?.current?.onPlaybackStart?.();
@@ -1420,16 +1457,16 @@ export function useAgentOrchestrator(
             requestId: reqIdForLog,
             ttsEndedAt,
             timestamp: ttsEndedAt,
+            lifecycle: 'idle',
           });
+          if (reqIdForLog != null) {
+            pendingPlaybackCompleteRef.current = { requestId: reqIdForLog, endedAt: ttsEndedAt };
+          }
           playbackRequestIdRef.current = null;
           setProcessingSubstate(null);
           setMode('idle');
           setLifecycle('idle');
-          logInfo('ResponseSurface', 'response_surface_concealed_after_playback', {
-            requestId: reqIdForLog ?? undefined,
-            lifecycle: 'idle',
-            reason: 'playbackComplete',
-          });
+          setAudioState('idleReady', { reason: 'playbackComplete' });
           logInfo('AgentOrchestrator', 'playback completed');
           listenersRef?.current?.onPlaybackEnd?.();
         }
@@ -1457,16 +1494,16 @@ export function useAgentOrchestrator(
             requestId: reqIdForTts,
             ttsEndedAt,
             timestamp: ttsEndedAt,
+            lifecycle: 'idle',
           });
+          if (reqIdForTts != null) {
+            pendingPlaybackCompleteRef.current = { requestId: reqIdForTts, endedAt: ttsEndedAt };
+          }
           playbackRequestIdRef.current = null;
           setProcessingSubstate(null);
           setMode('idle');
           setLifecycle('idle');
-          logInfo('ResponseSurface', 'response_surface_concealed_after_playback', {
-            requestId: reqIdForTts ?? undefined,
-            lifecycle: 'idle',
-            reason: 'playbackComplete',
-          });
+          setAudioState('idleReady', { reason: 'playbackComplete' });
           logInfo('AgentOrchestrator', 'playback completed');
           listenersRef?.current?.onPlaybackEnd?.();
           try {
@@ -1489,6 +1526,7 @@ export function useAgentOrchestrator(
           requestId: reqIdForTts,
           ttsStartedAt,
           timestamp: ttsStartedAt,
+          lifecycle: 'speaking',
         });
         logInfo('AgentOrchestrator', 'playback started');
         listenersRef?.current?.onPlaybackStart?.();
@@ -1609,10 +1647,6 @@ export function useAgentOrchestrator(
 
   useEffect(() => {
     return () => {
-      if (failedReturnTimerRef.current) {
-        clearTimeout(failedReturnTimerRef.current);
-        failedReturnTimerRef.current = null;
-      }
     };
   }, []);
 
@@ -1633,6 +1667,31 @@ export function useAgentOrchestrator(
       prevLifecycleRef.current = lifecycle;
     }
   }, [lifecycle]);
+
+  useEffect(() => {
+    if (lifecycle !== 'idle') return;
+    const pending = pendingPlaybackCompleteRef.current;
+    if (!pending) return;
+    pendingPlaybackCompleteRef.current = null;
+    requestDebugSinkRef?.current?.({
+      type: 'request_complete',
+      requestId: pending.requestId,
+      status: 'completed',
+      completedAt: pending.endedAt,
+      lifecycle: 'idle',
+      timestamp: pending.endedAt,
+    });
+    logInfo('AgentOrchestrator', 'request_complete', {
+      requestId: pending.requestId,
+      lifecycle: 'idle',
+    });
+    logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: pending.requestId });
+    logInfo('ResponseSurface', 'response_surface_concealed_after_playback', {
+      requestId: pending.requestId,
+      lifecycle: 'idle',
+      reason: 'playbackComplete',
+    });
+  }, [lifecycle, requestDebugSinkRef]);
 
   useEffect(() => {
     // No lifecycle-based resets here; native readiness is owned by native start/stop boundaries.
@@ -1809,6 +1868,10 @@ export function useAgentOrchestrator(
           recordingSessionId: sessionId,
           message,
         });
+        emitRecoverableFailure('speechErrorRecoverable', {
+          recordingSessionId: sessionId,
+          message,
+        });
         stopListeningAndRequestSubmit().catch(() => {});
         return;
       }
@@ -1972,11 +2035,7 @@ export function useAgentOrchestrator(
     };
   }, []);
 
-  const emittedLifecycle: AgentLifecycleState = (() => {
-    if (lifecycle === 'failed') return 'failed';
-    if (error) return 'error';
-    return lifecycle;
-  })();
+  const emittedLifecycle: AgentLifecycleState = error ? 'error' : lifecycle;
 
   const state: AgentOrchestratorState = {
     lifecycle: emittedLifecycle,
