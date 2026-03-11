@@ -22,6 +22,7 @@ import { getTheme } from '../theme';
 import {
   createDefaultVisualizationRef,
   getSceneDescription,
+  setVisualizationScene,
   VisualizationSurface,
   InteractionBand,
 } from '../visualization';
@@ -130,7 +131,7 @@ export default function AgentSurface() {
   const visualizationRef = useRef(
     (() => {
       const r = createDefaultVisualizationRef();
-      r.scene = getSceneDescription();
+      setVisualizationScene(r, getSceneDescription());
       return r;
     })(),
   );

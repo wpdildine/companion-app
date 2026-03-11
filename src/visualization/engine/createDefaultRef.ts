@@ -72,6 +72,8 @@ export function createDefaultVisualizationRef(): VisualizationEngineRef {
     touchFieldNdc: null,
     touchFieldStrength: 0,
     scene: undefined,
+    sceneRevision: 0,
+    sceneListeners: new Set(),
     zoneArmed: null,
     focusBias: 0,
     touchPresence: 0,

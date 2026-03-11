@@ -10,6 +10,7 @@ import {
   connectionVertex,
   connectionFragment,
 } from '../../materials/links/connections';
+import { getLayerRuntimeInputs } from '../../engine/layerRuntimeInputs';
 import type { VisualizationEngineRef } from '../../engine/types';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
@@ -202,6 +203,7 @@ export function ContextLinks({
   useFrame((_, delta) => {
     const v = visualizationRef.current;
     if (!v) return;
+    const runtime = getLayerRuntimeInputs(v);
 
     if (gate.valid && gate.edges.length && gate.nodes.length && edgeGeometries.length) {
       const { edges, nodes, segmentsPerEdge } = gate;
@@ -250,7 +252,7 @@ export function ContextLinks({
     }
 
     uniforms.uTime.value += delta;
-    uniforms.uActivity.value = v.activity;
+    uniforms.uActivity.value = runtime.activity ?? 0;
     const tw = v.touchWorld;
     uniforms.uTouchWorld.value.set(tw ? tw[0] : 1e6, tw ? tw[1] : 1e6, tw ? tw[2] : 1e6);
     uniforms.uTouchInfluence.value = v.touchInfluence;
@@ -278,15 +280,19 @@ export function ContextLinks({
       uniforms.uMotionAxisY.value = 1;
     }
     const pulsePositions: [number, number, number][] = [
-      [v.pulsePositions[0][0], v.pulsePositions[0][1], v.pulsePositions[0][2]],
-      [v.pulsePositions[1][0], v.pulsePositions[1][1], v.pulsePositions[1][2]],
-      [v.pulsePositions[2][0], v.pulsePositions[2][1], v.pulsePositions[2][2]],
+      [runtime.pulsePositions?.[0]?.[0] ?? 1e6, runtime.pulsePositions?.[0]?.[1] ?? 1e6, runtime.pulsePositions?.[0]?.[2] ?? 1e6],
+      [runtime.pulsePositions?.[1]?.[0] ?? 1e6, runtime.pulsePositions?.[1]?.[1] ?? 1e6, runtime.pulsePositions?.[1]?.[2] ?? 1e6],
+      [runtime.pulsePositions?.[2]?.[0] ?? 1e6, runtime.pulsePositions?.[2]?.[1] ?? 1e6, runtime.pulsePositions?.[2]?.[2] ?? 1e6],
     ];
-    const pulseTimes = [v.pulseTimes[0], v.pulseTimes[1], v.pulseTimes[2]];
+    const pulseTimes = [
+      runtime.pulseTimes?.[0] ?? -1e3,
+      runtime.pulseTimes?.[1] ?? -1e3,
+      runtime.pulseTimes?.[2] ?? -1e3,
+    ];
     const pulseColors: [number, number, number][] = [
-      [v.pulseColors[0][0], v.pulseColors[0][1], v.pulseColors[0][2]],
-      [v.pulseColors[1][0], v.pulseColors[1][1], v.pulseColors[1][2]],
-      [v.pulseColors[2][0], v.pulseColors[2][1], v.pulseColors[2][2]],
+      [runtime.pulseColors?.[0]?.[0] ?? 1, runtime.pulseColors?.[0]?.[1] ?? 1, runtime.pulseColors?.[0]?.[2] ?? 1],
+      [runtime.pulseColors?.[1]?.[0] ?? 1, runtime.pulseColors?.[1]?.[1] ?? 1, runtime.pulseColors?.[1]?.[2] ?? 1],
+      [runtime.pulseColors?.[2]?.[0] ?? 1, runtime.pulseColors?.[2]?.[1] ?? 1, runtime.pulseColors?.[2]?.[2] ?? 1],
     ];
     const eventPulse = getEventPulse(v, v.scene);
     injectEventPulse(pulsePositions, pulseTimes, pulseColors, eventPulse);
@@ -300,7 +306,7 @@ export function ContextLinks({
         ? strengths.reduce((a, b) => a + b, 0) / strengths.length
         : 0;
       logInfo('Visualization', 'ContextLinks uniforms snapshot', {
-        activity: v.activity,
+        activity: runtime.activity ?? 0,
         touchInfluence: v.touchInfluence,
         strengthMin,
         strengthMax,

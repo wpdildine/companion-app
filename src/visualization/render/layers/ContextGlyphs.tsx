@@ -8,6 +8,7 @@ import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { nodeVertex, nodeFragment } from '../../materials/glyphs/nodes';
 import { logInfo } from '../../../shared/logging';
+import { getLayerRuntimeInputs } from '../../engine/layerRuntimeInputs';
 import type { VisualizationEngineRef } from '../../engine/types';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
@@ -239,6 +240,7 @@ export function ContextGlyphs({
   useFrame((state, delta) => {
     const v = visualizationRef.current;
     if (!v) return;
+    const runtime = getLayerRuntimeInputs(v);
     if (!loggedRef.current) {
       loggedRef.current = true;
       logInfo('Visualization', 'ContextGlyphs mount state', {
@@ -320,23 +322,27 @@ export function ContextGlyphs({
     const tw = v.touchWorld;
 
     const pulsePositions: [number, number, number][] = [
-      [v.pulsePositions[0][0], v.pulsePositions[0][1], v.pulsePositions[0][2]],
-      [v.pulsePositions[1][0], v.pulsePositions[1][1], v.pulsePositions[1][2]],
-      [v.pulsePositions[2][0], v.pulsePositions[2][1], v.pulsePositions[2][2]],
+      [runtime.pulsePositions?.[0]?.[0] ?? 1e6, runtime.pulsePositions?.[0]?.[1] ?? 1e6, runtime.pulsePositions?.[0]?.[2] ?? 1e6],
+      [runtime.pulsePositions?.[1]?.[0] ?? 1e6, runtime.pulsePositions?.[1]?.[1] ?? 1e6, runtime.pulsePositions?.[1]?.[2] ?? 1e6],
+      [runtime.pulsePositions?.[2]?.[0] ?? 1e6, runtime.pulsePositions?.[2]?.[1] ?? 1e6, runtime.pulsePositions?.[2]?.[2] ?? 1e6],
     ];
-    const pulseTimes = [v.pulseTimes[0], v.pulseTimes[1], v.pulseTimes[2]];
+    const pulseTimes = [
+      runtime.pulseTimes?.[0] ?? -1e3,
+      runtime.pulseTimes?.[1] ?? -1e3,
+      runtime.pulseTimes?.[2] ?? -1e3,
+    ];
     const pulseColors: [number, number, number][] = [
-      [v.pulseColors[0][0], v.pulseColors[0][1], v.pulseColors[0][2]],
-      [v.pulseColors[1][0], v.pulseColors[1][1], v.pulseColors[1][2]],
-      [v.pulseColors[2][0], v.pulseColors[2][1], v.pulseColors[2][2]],
+      [runtime.pulseColors?.[0]?.[0] ?? 1, runtime.pulseColors?.[0]?.[1] ?? 1, runtime.pulseColors?.[0]?.[2] ?? 1],
+      [runtime.pulseColors?.[1]?.[0] ?? 1, runtime.pulseColors?.[1]?.[1] ?? 1, runtime.pulseColors?.[1]?.[2] ?? 1],
+      [runtime.pulseColors?.[2]?.[0] ?? 1, runtime.pulseColors?.[2]?.[1] ?? 1, runtime.pulseColors?.[2]?.[2] ?? 1],
     ];
     const eventPulse = getEventPulse(v, scene);
     injectEventPulse(pulsePositions, pulseTimes, pulseColors, eventPulse);
 
     for (const u of [backUniforms, frontUniforms]) {
       u.uTime.value += delta;
-      u.uActivity.value = v.activity;
-      u.uMode.value = MODE_TO_ID[v.currentMode as keyof typeof MODE_TO_ID] ?? 0;
+      u.uActivity.value = runtime.activity ?? 0;
+      u.uMode.value = MODE_TO_ID[(runtime.mode ?? 'idle') as keyof typeof MODE_TO_ID] ?? 0;
       u.uPulsePositions.value[0].set(pulsePositions[0][0], pulsePositions[0][1], pulsePositions[0][2]);
       u.uPulsePositions.value[1].set(pulsePositions[1][0], pulsePositions[1][1], pulsePositions[1][2]);
       u.uPulsePositions.value[2].set(pulsePositions[2][0], pulsePositions[2][1], pulsePositions[2][2]);

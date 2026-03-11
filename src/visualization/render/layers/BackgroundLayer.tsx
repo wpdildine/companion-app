@@ -7,6 +7,7 @@
 import { useFrame } from '@react-three/fiber/native';
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
+import { getLayerRuntimeInputs } from '../../engine/layerRuntimeInputs';
 import type { VisualizationEngineRef } from '../../engine/types';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { createBackgroundDetailMaterial } from '../../materials/background/backgroundDetailMaterial';
@@ -210,6 +211,7 @@ export function BackgroundLayer({
   useFrame((state, delta) => {
     const v = visualizationRef.current;
     if (!v) return;
+    const runtime = getLayerRuntimeInputs(v);
     const bp = v.scene?.backgroundPlanes;
     const pf = v.scene?.planeField;
     const show = v.vizIntensity !== 'off';
@@ -239,10 +241,15 @@ export function BackgroundLayer({
       return;
     }
     const transient = scaleModulation(
-      computeTransientModulation(v.lastEvent, v.lastEventTime, v.clock, scene.transientEffects),
+      computeTransientModulation(
+        runtime.lastEvent ?? null,
+        runtime.lastEventTime ?? 0,
+        runtime.clock ?? 0,
+        scene.transientEffects,
+      ),
       pf.modulationWeights,
     );
-    const hueShift = (v.hueShift ?? 0) + transient.hueShift;
+    const hueShift = (runtime.hueShift ?? 0) + transient.hueShift;
     colorRef.current.setHSL((bp.hue + hueShift) % 1, bp.sat, bp.lum);
     const opacity = Math.max(
       pf.opacityClampMin,
@@ -268,20 +275,20 @@ export function BackgroundLayer({
     tmpUp.current.crossVectors(tmpRight.current, tmpDir.current).normalize();
     const n = Math.min(bp.count, 2);
 
-    const noisePhase = v.clock * pf.noisePhaseSpeed * (pf.slowDriftScale ?? 1);
-    const isProcessing = v.currentMode === 'processing';
+    const noisePhase = (runtime.clock ?? 0) * pf.noisePhaseSpeed * (pf.slowDriftScale ?? 1);
+    const isProcessing = runtime.mode === 'processing';
     let targetIntensity = isProcessing
-      ? pf.intensityProcessingBase + v.activity * pf.intensityProcessingActivityGain
-      : pf.intensityIdleBase + v.activity * pf.intensityIdleActivityGain;
+      ? pf.intensityProcessingBase + (runtime.activity ?? 0) * pf.intensityProcessingActivityGain
+      : pf.intensityIdleBase + (runtime.activity ?? 0) * pf.intensityIdleActivityGain;
     targetIntensity += transient.intensity;
     const motion = v.scene?.motion;
     if (motion) {
       targetIntensity += motion.energy * 0.12;
     }
     const targetThreshold =
-      pf.thresholdBase + pf.thresholdAmp * Math.sin(v.clock * pf.thresholdHz);
+      pf.thresholdBase + pf.thresholdAmp * Math.sin((runtime.clock ?? 0) * pf.thresholdHz);
     const targetScale =
-      pf.halftoneScaleBase + pf.halftoneScaleAmp * Math.sin(v.clock * pf.halftoneScaleHz);
+      pf.halftoneScaleBase + pf.halftoneScaleAmp * Math.sin((runtime.clock ?? 0) * pf.halftoneScaleHz);
 
     // ~200ms smoothing to prevent one-frame pops on mode change
     const k = 1.0 - Math.exp(-Math.max(0, delta) / pf.smoothingSeconds);

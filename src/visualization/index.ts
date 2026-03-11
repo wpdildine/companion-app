@@ -7,6 +7,11 @@ export { validateSceneDescription } from './scene/validateSceneDescription';
 
 export { createDefaultVisualizationRef, TARGET_ACTIVITY_BY_MODE } from './engine/createDefaultRef';
 export { applySignalsToVisualization } from './engine/applySignalsToVisualization';
+export {
+  setVisualizationScene,
+  subscribeVisualizationScene,
+  updateVisualizationLayerDescriptors,
+} from './engine/sceneUpdates';
 export { triggerPulseAtCenter } from './engine/triggerPulse';
 export { validateVizState, type ValidationResult, type ValidateVizStateOptions } from './engine/validateVizState';
 export { withTouchStubs, type TouchCallbacks } from './interaction/touchHandlers';

@@ -14,7 +14,7 @@
  */
 
 import { Canvas } from '@react-three/fiber/native';
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { GestureResponderEvent, LayoutChangeEvent } from 'react-native';
 import { StyleSheet, View } from 'react-native';
 import * as THREE from 'three';
@@ -24,6 +24,7 @@ import {
 } from '../../interaction/touchHandlers';
 import { TouchRaycaster } from '../../interaction/TouchRaycaster';
 import type { VisualizationEngineRef } from '../../engine/types';
+import { subscribeVisualizationScene } from '../../engine/sceneUpdates';
 import { CameraOrbit } from './CameraOrbit';
 import {
   LAYER_REGISTRY,
@@ -81,6 +82,13 @@ export function VisualizationCanvasR3F({
   const longPressTriggered = useRef(false);
   const lastTap = useRef<{ x: number; y: number; t: number } | null>(null);
   const dragActive = useRef(false);
+  const [, setSceneRevision] = useState(0);
+
+  useEffect(() => {
+    return subscribeVisualizationScene(visualizationRef, () => {
+      setSceneRevision(revision => revision + 1);
+    });
+  }, [visualizationRef]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;

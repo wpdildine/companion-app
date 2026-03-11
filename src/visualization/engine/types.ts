@@ -116,6 +116,10 @@ export interface VisualizationEngineRef {
   touchFieldStrength: number;
   /** GL scene description; set at mount or when paletteId/vizIntensityProfile changes. All GL components read from this. */
   scene?: GLSceneDescription;
+  /** Explicit scene update counter for canvas rerender when scene or layer descriptors change. */
+  sceneRevision: number;
+  /** Subscribers notified when visualization scene helpers apply scene changes. */
+  sceneListeners: Set<() => void>;
   /** Zone currently under touch (for armed state). Set by interaction band. */
   zoneArmed: 'rules' | 'cards' | null;
   /** Organism signals (derived in EngineLoop). focusBias in [-1,1], touchPresence in [0,1]. */

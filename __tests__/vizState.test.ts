@@ -16,6 +16,8 @@ describe('createDefaultVisualizationRef', () => {
     expect(Array.isArray(ref.pulseTimes)).toBe(true);
     expect(ref.pulseTimes).toHaveLength(3);
     expect(ref.currentMode).toBe('idle');
+    expect(ref.sceneRevision).toBe(0);
+    expect(ref.sceneListeners).toBeInstanceOf(Set);
   });
 });
 
