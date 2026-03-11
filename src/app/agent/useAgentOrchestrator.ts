@@ -49,6 +49,10 @@ const POST_STOP_FLUSH_WINDOW_MS = 400;
 const IOS_STOP_GRACE_MS = 250;
 /** Min ms between partial_output emissions to request-debug (throttle). */
 const PARTIAL_EMIT_THROTTLE_MS = 400;
+/** Throttle setResponseText during streaming to reduce re-renders (plan: 100–200 ms). */
+const RESPONSE_TEXT_UPDATE_THROTTLE_MS = 150;
+/** Fixed fallback when nudged output is empty; orchestrator commits this before settlement. */
+const EMPTY_RESPONSE_FALLBACK_MESSAGE = 'No answer generated';
 const NATIVE_RESTART_GUARD_MS = 250;
 const ANDROID_TAIL_GRACE_MS = 200;
 /** Brief display of failed state before auto-return to idle (lifecycle timer owns failed → idle). */
@@ -277,6 +281,8 @@ export function useAgentOrchestrator(
   const firstChunkSentRef = useRef(false);
   /** Throttle partial_output: last time we emitted to request-debug sink. */
   const lastPartialEmitAtRef = useRef(0);
+  /** Last time we called setResponseText during streaming (throttle). */
+  const lastResponseTextUpdateAtRef = useRef(0);
   /** RequestId for the request whose response is currently playing (for tts_start/tts_end). */
   const playbackRequestIdRef = useRef<number | null>(null);
   const recordingSessionRef = useRef<string | null>(null);
@@ -1012,6 +1018,11 @@ export function useAgentOrchestrator(
     setValidationSummary(null);
     setMode('processing');
     setLifecycle('processing');
+    logInfo('ResponseSurface', 'response_surface_hidden_on_new_request', {
+      requestId: reqId,
+      lifecycle: 'processing',
+      reason: 'newRequestStart',
+    });
     setProcessingSubstate('retrieving');
     requestDebugSinkRef?.current?.({
       type: 'processing_substate',
@@ -1140,21 +1151,23 @@ export function useAgentOrchestrator(
           });
         },
         onPartial: (accumulatedText: string) => {
-          setResponseText(accumulatedText);
-          if (
+          const now = Date.now();
+          const isFirstChunk =
             !firstChunkSentRef.current &&
             reqId === activeRequestIdRef.current &&
-            accumulatedText.length > 0
-          ) {
+            accumulatedText.length > 0;
+          if (isFirstChunk) {
             firstChunkSentRef.current = true;
+            lastResponseTextUpdateAtRef.current = now;
+            setResponseText(accumulatedText);
             setProcessingSubstate('streaming');
             requestDebugSinkRef?.current?.({
               type: 'processing_substate',
               requestId: reqId,
               processingSubstate: 'streaming',
-              timestamp: Date.now(),
+              timestamp: now,
             });
-            const firstTokenAt = Date.now();
+            const firstTokenAt = now;
             requestDebugSinkRef?.current?.({
               type: 'first_token',
               requestId: reqId,
@@ -1162,9 +1175,25 @@ export function useAgentOrchestrator(
               timestamp: firstTokenAt,
             });
             logInfo('AgentOrchestrator', 'first token received', { requestId: reqId });
+            logInfo('ResponseSurface', 'response_surface_streaming_started', {
+              requestId: reqId,
+              lifecycle: 'processing',
+              processingSubstate: 'streaming',
+              partialChars: accumulatedText.length,
+            });
             listenersRef?.current?.onFirstToken?.();
+          } else {
+            if (now - lastResponseTextUpdateAtRef.current >= RESPONSE_TEXT_UPDATE_THROTTLE_MS) {
+              lastResponseTextUpdateAtRef.current = now;
+              setResponseText(accumulatedText);
+              logInfo('ResponseSurface', 'response_surface_partial_updated', {
+                requestId: reqId,
+                lifecycle: 'processing',
+                processingSubstate: 'streaming',
+                partialChars: accumulatedText.length,
+              });
+            }
           }
-          const now = Date.now();
           if (now - lastPartialEmitAtRef.current >= PARTIAL_EMIT_THROTTLE_MS) {
             lastPartialEmitAtRef.current = now;
             requestDebugSinkRef?.current?.({
@@ -1176,8 +1205,18 @@ export function useAgentOrchestrator(
           }
         },
       });
-      const nudged = result.nudged;
-      setResponseText(nudged);
+      const nudgedRaw = result.nudged;
+      const committedText =
+        nudgedRaw.trim().length > 0 ? nudgedRaw : EMPTY_RESPONSE_FALLBACK_MESSAGE;
+      const isEmptyOutput = nudgedRaw.trim().length === 0;
+      if (isEmptyOutput) {
+        logInfo('ResponseSurface', 'response_surface_empty_output', {
+          requestId: reqId,
+          lifecycle: 'processing',
+          disposition: 'empty',
+        });
+      }
+      setResponseText(committedText);
       setValidationSummary(result.validationSummary);
       if (!firstChunkSentRef.current && reqId === activeRequestIdRef.current) {
         logInfo('AgentOrchestrator', 'first token received', { requestId: reqId });
@@ -1187,21 +1226,21 @@ export function useAgentOrchestrator(
       requestDebugSinkRef?.current?.({
         type: 'partial_output',
         requestId: reqId,
-        accumulatedText: nudged,
+        accumulatedText: committedText,
         timestamp: generationEndedAt,
       });
       requestDebugSinkRef?.current?.({
         type: 'generation_end',
         requestId: reqId,
         generationEndedAt,
-        finalSettledOutput: nudged,
+        finalSettledOutput: committedText,
         validationSummary: result.validationSummary,
         timestamp: generationEndedAt,
       });
       logInfo('AgentOrchestrator', 'generation completed', { requestId: reqId });
       logInfo('AgentOrchestrator', 'result payload ready', {
         requestId: reqId,
-        responseChars: nudged.length,
+        responseChars: committedText.length,
         rulesCount: result.validationSummary.rules.length,
         cardsCount: result.validationSummary.cards.length,
       });
@@ -1210,18 +1249,39 @@ export function useAgentOrchestrator(
       if (reqId === activeRequestIdRef.current) {
         requestInFlightRef.current = false;
         setProcessingSubstate('settling');
+        const settledAt = Date.now();
         requestDebugSinkRef?.current?.({
           type: 'processing_substate',
           requestId: reqId,
           processingSubstate: 'settling',
-          timestamp: Date.now(),
+          timestamp: settledAt,
+        });
+        requestDebugSinkRef?.current?.({
+          type: 'response_settled',
+          requestId: reqId,
+          lifecycle: 'processing',
+          processingSubstate: 'settling',
+          committedChars: committedText.length,
+          rulesCount: result.validationSummary.rules.length,
+          cardsCount: result.validationSummary.cards.length,
+          finalSettledOutput: committedText,
+          validationSummary: result.validationSummary,
+          timestamp: settledAt,
+        });
+        logInfo('ResponseSurface', 'response_settled', {
+          requestId: reqId,
+          lifecycle: 'processing',
+          processingSubstate: 'settling',
+          committedChars: committedText.length,
+          rulesCount: result.validationSummary.rules.length,
+          cardsCount: result.validationSummary.cards.length,
         });
         requestDebugSinkRef?.current?.({
           type: 'request_complete',
           requestId: reqId,
           status: 'completed',
           completedAt: generationEndedAt,
-          timestamp: Date.now(),
+          timestamp: settledAt,
         });
         logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: reqId });
         setError(null);
@@ -1234,18 +1294,23 @@ export function useAgentOrchestrator(
         });
         setMode('idle');
         setLifecycle('idle');
-        if (nudged.trim().length > 0) {
+        if (committedText.length > 0 && !isEmptyOutput) {
           playbackRequestIdRef.current = reqId;
-          playTextRef.current?.(nudged).catch(() => {});
+          logInfo('ResponseSurface', 'response_surface_playback_bound_to_committed_response', {
+            requestId: reqId,
+            speakingBoundToCommittedResponse: true,
+            committedChars: committedText.length,
+          });
+          playTextRef.current?.(committedText).catch(() => {});
         }
-        return nudged;
+        return committedText;
       }
       setProcessingSubstate(null);
       logWarn('AgentOrchestrator', 'stale completion ignored (non-active request)', {
         requestId: reqId,
         activeRequestId: activeRequestIdRef.current,
       });
-      return nudged;
+      return committedText;
     } catch (e) {
       const msg = errorMessage(e);
       const code =
@@ -1349,9 +1414,10 @@ export function useAgentOrchestrator(
           }
         } finally {
           const ttsEndedAt = Date.now();
+          const reqIdForLog = playbackRequestIdRef.current;
           requestDebugSinkRef?.current?.({
             type: 'tts_end',
-            requestId: playbackRequestIdRef.current,
+            requestId: reqIdForLog,
             ttsEndedAt,
             timestamp: ttsEndedAt,
           });
@@ -1359,6 +1425,11 @@ export function useAgentOrchestrator(
           setProcessingSubstate(null);
           setMode('idle');
           setLifecycle('idle');
+          logInfo('ResponseSurface', 'response_surface_concealed_after_playback', {
+            requestId: reqIdForLog ?? undefined,
+            lifecycle: 'idle',
+            reason: 'playbackComplete',
+          });
           logInfo('AgentOrchestrator', 'playback completed');
           listenersRef?.current?.onPlaybackEnd?.();
         }
@@ -1391,6 +1462,11 @@ export function useAgentOrchestrator(
           setProcessingSubstate(null);
           setMode('idle');
           setLifecycle('idle');
+          logInfo('ResponseSurface', 'response_surface_concealed_after_playback', {
+            requestId: reqIdForTts ?? undefined,
+            lifecycle: 'idle',
+            reason: 'playbackComplete',
+          });
           logInfo('AgentOrchestrator', 'playback completed');
           listenersRef?.current?.onPlaybackEnd?.();
           try {

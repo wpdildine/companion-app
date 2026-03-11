@@ -9,5 +9,6 @@ import type { GLSceneTransientEffects } from '../formations';
 export function buildTransientEffects(): GLSceneTransientEffects {
   return {
     softFail: getTransientEffect('softFail') ?? null,
+    firstToken: getTransientEffect('firstToken') ?? null,
   };
 }

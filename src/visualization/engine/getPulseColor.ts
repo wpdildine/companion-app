@@ -45,6 +45,9 @@ export function getPulseColor(
     b = Math.min(1, b * 1.08);
   } else if (eventType === 'chunkAccepted') {
     b = Math.min(1, b * 1.05);
+  } else if (eventType === 'firstToken') {
+    g = Math.min(1, g * 1.06);
+    b = Math.min(1, b * 1.02);
   }
 
   if (mode === 'processing') {

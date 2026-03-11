@@ -63,6 +63,11 @@ export interface AgentOrchestratorState {
   error: string | null;
   voiceReady: boolean;
   transcribedText: string;
+  /**
+   * Single response state. During streaming (processingSubstate === 'streaming') holds partial
+   * accumulated text; at settlement holds final nudged text (or orchestrator-applied empty fallback).
+   * No separate partial/final slots; overlay reads this plus lifecycle/substate only.
+   */
   responseText: string | null;
   validationSummary: ValidationSummary | null;
   ioBlockedUntil?: number | null;

@@ -6,14 +6,17 @@
 import type { TransientVisualSignal } from '../../../engine/signals';
 import type { TransientEffectDefinition } from './types';
 import { SOFT_FAIL_EFFECT } from './softFail';
+import { FIRST_TOKEN_EFFECT } from './firstToken';
 
 export type { TransientEffectDefinition } from './types';
 export type { TransientModulation } from './types';
 export { ZERO_MODULATION } from './types';
 export { SOFT_FAIL_EFFECT } from './softFail';
+export { FIRST_TOKEN_EFFECT } from './firstToken';
 
 const TRANSIENT_EFFECTS: Partial<Record<TransientVisualSignal, TransientEffectDefinition>> = {
   softFail: SOFT_FAIL_EFFECT,
+  firstToken: FIRST_TOKEN_EFFECT,
 };
 
 /**

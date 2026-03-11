@@ -96,9 +96,9 @@ export function CardReferenceBlock({
     >
       {layout === 'stack' ? (
         <View style={styles.stackList}>
-          {cards.map(card => (
+          {cards.map((card, idx) => (
             <CardRefItem
-              key={card.id}
+              key={`${card.id}-${idx}`}
               card={card}
               compact={false}
               textColor={primaryText}
@@ -113,9 +113,9 @@ export function CardReferenceBlock({
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.stripContent}
         >
-          {cards.map(card => (
+          {cards.map((card, idx) => (
             <CardRefItem
-              key={card.id}
+              key={`${card.id}-${idx}`}
               card={card}
               compact
               textColor={primaryText}

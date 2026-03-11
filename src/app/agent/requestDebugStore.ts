@@ -114,6 +114,17 @@ function mergePayloadIntoSnapshot(
     if (type === 'processing_substate' && payload.processingSubstate !== undefined) {
       snapshot.processingSubstate = payload.processingSubstate as ProcessingSubstate | null;
     }
+    if (type === 'partial_output' && payload.accumulatedText !== undefined) {
+      snapshot.partialStream = payload.accumulatedText as string;
+    }
+    if (type === 'response_settled') {
+      if (payload.finalSettledOutput !== undefined) {
+        snapshot.finalSettledOutput = payload.finalSettledOutput as string | null;
+      }
+      if (payload.validationSummary !== undefined) {
+        snapshot.validationSummary = payload.validationSummary as ValidationSummary | null;
+      }
+    }
     for (const key of Object.keys(payload)) {
       if (skipKeys.has(key)) continue;
       const v = payload[key];

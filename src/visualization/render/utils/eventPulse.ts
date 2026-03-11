@@ -26,7 +26,11 @@ export function getEventPulse(
 
   const anchors = scene.pulseAnchors;
   let position: [number, number, number] = anchors.center;
-  if (v.lastEvent === 'tapCitation' || v.lastEvent === 'chunkAccepted') {
+  if (
+    v.lastEvent === 'tapCitation' ||
+    v.lastEvent === 'chunkAccepted' ||
+    v.lastEvent === 'firstToken'
+  ) {
     position = anchors.rules;
   } else if (v.lastEvent === 'tapCard') {
     position = anchors.cards;
@@ -44,6 +48,7 @@ export function getEventPulse(
     v.lastEvent === 'tapCitation' ||
     v.lastEvent === 'tapCard' ||
     v.lastEvent === 'chunkAccepted' ||
+    v.lastEvent === 'firstToken' ||
     v.lastEvent === 'warning'
   ) {
     color = getPulseColorWithHue(v.paletteId, v.hueShift, v.lastEvent, v.currentMode);

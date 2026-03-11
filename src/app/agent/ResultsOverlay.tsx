@@ -15,6 +15,7 @@ import {
   type SelectedRule,
 } from '../../components';
 import type { ValidationSummary } from '../../rag';
+import type { ProcessingSubstate } from './types';
 import type { VisualizationIntensity } from '../../visualization';
 import type { AiUiSignalsEvent } from '../../visualization';
 import type { VisualizationPanelRects } from '../../visualization';
@@ -36,13 +37,16 @@ export interface ResultsOverlayTheme {
 }
 
 export interface ResultsOverlayProps {
-  /** Response and validation from orchestrator */
+  /** Response and validation from orchestrator (overlay reads only; no phase inference) */
   responseText: string | null;
   validationSummary: ValidationSummary | null;
+  /** lifecycle === 'processing' */
+  isAsking: boolean;
+  /** Meaningful when isAsking; overlay may branch on this for loading vs content. */
+  processingSubstate: ProcessingSubstate | null;
   error: string | null;
   onClearError?: () => void;
-  isAsking: boolean;
-  /** Reveal state and handlers */
+  /** Reveal state and handlers (owned by composition; overlay is purely presentational) */
   revealedBlocks: ResultsOverlayRevealedBlocks;
   revealBlock: (key: keyof ResultsOverlayRevealedBlocks) => void;
   setRevealedBlocks: React.Dispatch<React.SetStateAction<ResultsOverlayRevealedBlocks>>;
@@ -138,12 +142,20 @@ const styles = StyleSheet.create({
   },
 });
 
+const PRE_STREAMING_SUBSTATES: Array<ProcessingSubstate | null> = [
+  'retrieving',
+  'preparingContext',
+  'loadingModel',
+  'awaitingFirstToken',
+];
+
 export function ResultsOverlay({
   responseText,
   validationSummary,
   error,
   onClearError,
   isAsking,
+  processingSubstate,
   revealedBlocks,
   revealBlock,
   setRevealedBlocks,
@@ -164,6 +176,10 @@ export function ResultsOverlay({
   showRevealChips = false,
   holdToSpeakSlot,
 }: ResultsOverlayProps) {
+  const showLoadingPlaceholder =
+    isAsking &&
+    PRE_STREAMING_SUBSTATES.includes(processingSubstate) &&
+    responseText == null;
   const {
     text: textColor,
     textMuted: mutedColor,
@@ -432,7 +448,7 @@ export function ResultsOverlay({
                     setRevealedBlocks(prev => ({ ...prev, answer: false }))
                   }
                 >
-                  {isAsking ? (
+                  {showLoadingPlaceholder ? (
                     <View style={styles.responseLoadingRow}>
                       <ActivityIndicator size="small" color={textColor} />
                       <Text

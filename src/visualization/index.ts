@@ -22,6 +22,7 @@ export type {
 } from './engine/types';
 
 export {
+  TRANSIENT_SIGNAL_FIRST_TOKEN,
   TRANSIENT_SIGNAL_SOFT_FAIL,
   VALID_TRANSIENT_SIGNALS,
   isTransientVisualSignal,

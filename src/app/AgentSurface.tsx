@@ -645,9 +645,22 @@ export default function AgentSurface() {
     [canSwipeContext, emitEvent],
   );
 
-  const revealBlock = useCallback((key: keyof ResultsOverlayRevealedBlocks) => {
-    setRevealedBlocks(prev => ({ ...prev, [key]: true }));
-  }, []);
+  const revealBlock = useCallback(
+    (key: keyof ResultsOverlayRevealedBlocks) => {
+      setRevealedBlocks(prev => ({ ...prev, [key]: true }));
+      const requestId =
+        requestDebugState.activeRequestId ??
+        (requestDebugState.recentRequestIds.length > 0
+          ? requestDebugState.recentRequestIds[requestDebugState.recentRequestIds.length - 1]
+          : null);
+      logInfo('ResponseSurface', 'response_surface_revealed_by_user', {
+        requestId: requestId ?? undefined,
+        lifecycle: orchState.lifecycle,
+        reason: 'userReveal',
+      });
+    },
+    [orchState.lifecycle, requestDebugState.activeRequestId, requestDebugState.recentRequestIds],
+  );
 
   const clearHoldInteractionState = useCallback(() => {
     clearRecordingTimeout();
@@ -689,6 +702,19 @@ export default function AgentSurface() {
     if (orchState.error == null) return;
     resetInteractionSurface();
   }, [orchState.error, resetInteractionSurface]);
+
+  const prevLifecycleRef = useRef(orchState.lifecycle);
+  useEffect(() => {
+    const prev = prevLifecycleRef.current;
+    const next = orchState.lifecycle;
+    prevLifecycleRef.current = next;
+    if (prev === 'speaking' && next === 'idle') {
+      setRevealedBlocks({ answer: false, cards: false, rules: false, sources: false });
+    }
+    if (prev !== 'processing' && next === 'processing') {
+      setRevealedBlocks({ answer: false, cards: false, rules: false, sources: false });
+    }
+  }, [orchState.lifecycle]);
 
   useEffect(() => {
     if (cardsCount === 0 || !revealedBlocks.cards) clearPanelRect('cards');
@@ -767,6 +793,7 @@ export default function AgentSurface() {
             error={orchState.lifecycle === 'error' ? orchState.error : null}
             onClearError={handleClearError}
             isAsking={isAsking}
+            processingSubstate={orchState.processingSubstate ?? null}
             revealedBlocks={revealedBlocks}
             revealBlock={revealBlock}
             setRevealedBlocks={setRevealedBlocks}

@@ -9,6 +9,7 @@ import { logInfo } from '../../shared/logging';
 import {
   applySignalsToVisualization,
   triggerPulseAtCenter,
+  TRANSIENT_SIGNAL_FIRST_TOKEN,
   TRANSIENT_SIGNAL_SOFT_FAIL,
 } from '../../visualization';
 import type { VisualizationEngineRef } from '../../visualization';
@@ -81,7 +82,10 @@ export function useVisualizationController(
       onRetrievalStart: () => {},
       onRetrievalEnd: () => {},
       onGenerationStart: () => {},
-      onFirstToken: () => {},
+      onFirstToken: () => {
+        logInfo('VisualizationController', 'emitted transient: firstToken');
+        emitEventRef.current(TRANSIENT_SIGNAL_FIRST_TOKEN);
+      },
       onGenerationEnd: () => {
         logInfo('VisualizationController', 'emitted event chunkAccepted');
         emitEventRef.current('chunkAccepted');

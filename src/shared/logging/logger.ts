@@ -15,6 +15,7 @@ export type LogScope =
   | 'AgentSurface'
   | 'VisualizationController'
   | 'ResultsOverlay'
+  | 'ResponseSurface'
   | 'VoiceScreen'
   | 'Runtime'
   | 'RAG'

@@ -418,6 +418,21 @@ export function validateSceneDescription(
       return false;
     }
   }
+  if (transientEffects.firstToken != null) {
+    const ft = transientEffects.firstToken;
+    const valid =
+      typeof ft.decayMs === 'number' &&
+      typeof ft.modulation?.hueShift === 'number' &&
+      typeof ft.modulation?.intensity === 'number' &&
+      typeof ft.modulation?.agitation === 'number' &&
+      typeof ft.modulation?.opacityBias === 'number';
+    if (!valid) {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[validateSceneDescription] scene.transientEffects.firstToken is invalid.');
+      }
+      return false;
+    }
+  }
   const rotPlanes = spineRot.planes;
   if (!Array.isArray(rotPlanes)) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
