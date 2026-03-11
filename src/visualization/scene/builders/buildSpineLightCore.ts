@@ -3,7 +3,7 @@
  * Builder owns all light-core values; renderer stays dumb and consumes scene.spineLightCore only.
  */
 
-import type { CanonicalSceneMode } from '../canonicalMode';
+import type { CanonicalSceneMode } from '../sceneMode';
 import { SPINE_ART_DIRECTION } from '../artDirection/spine';
 
 export type GLSceneSpineLightCore = {

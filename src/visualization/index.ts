@@ -2,29 +2,31 @@
  * Visualization public surface. Single entry for app/ui.
  */
 
-export { getSceneDescription, type GLSceneDescription, type GetSceneDescriptionOptions } from './scene/formations';
-export { validateSceneDescription } from './scene/validateSceneDescription';
+export { getSceneDescription, type GLSceneDescription, type GetSceneDescriptionOptions } from './scene/sceneFormations';
+export { validateSceneSpec } from './scene/validateSceneSpec';
 
-export { createDefaultVisualizationRef, TARGET_ACTIVITY_BY_MODE } from './engine/createDefaultRef';
-export { applySignalsToVisualization } from './engine/applySignalsToVisualization';
+export { createDefaultVisualizationRef, TARGET_ACTIVITY_BY_MODE } from './runtime/createDefaultRef';
+export { applyVisualizationSignals } from './runtime/applyVisualizationSignals';
 export {
   setVisualizationScene,
   subscribeVisualizationScene,
   updateVisualizationLayerDescriptors,
-} from './engine/sceneUpdates';
-export { triggerPulseAtCenter } from './engine/triggerPulse';
-export { validateVizState, type ValidationResult, type ValidateVizStateOptions } from './engine/validateVizState';
+} from './runtime/applySceneUpdates';
+export { triggerPulseAtCenter } from './runtime/triggerPulse';
+export { validateVizState, type ValidationResult, type ValidateVizStateOptions } from './runtime/validateVizState';
 export { withTouchStubs, type TouchCallbacks } from './interaction/touchHandlers';
 
 export type {
   VisualizationEngineRef,
   VisualizationMode,
   TouchNdc,
-  AiUiSignals,
-  AiUiSignalsEvent,
   VisualizationIntensity,
   VisualizationPanelRects,
-} from './engine/types';
+} from './runtime/runtimeTypes';
+export type {
+  VisualizationSignals,
+  VisualizationSignalEvent,
+} from './runtime/visualizationSignals';
 
 export {
   TRANSIENT_SIGNAL_FIRST_TOKEN,
@@ -32,7 +34,7 @@ export {
   VALID_TRANSIENT_SIGNALS,
   isTransientVisualSignal,
   type TransientVisualSignal,
-} from './engine/signals';
+} from './runtime/visualizationSignals';
 
 export { VisualizationCanvas } from './render/canvas/VisualizationCanvas';
 export { VisualizationSurface } from './render/canvas/VisualizationSurface';

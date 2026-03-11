@@ -3,9 +3,9 @@
  * Derives a pulse for lastEvent using scene anchors and transient modulation.
  */
 
-import type { VisualizationEngineRef } from '../../engine/types';
-import type { GLSceneDescription } from '../../scene/formations';
-import { getPulseColorWithHue } from '../../engine/getPulseColor';
+import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import type { GLSceneDescription } from '../../scene/sceneFormations';
+import { getPulseColorWithHue } from '../../runtime/getPulseColor';
 import { computeTransientModulation } from './transientModulation';
 
 const EVENT_PULSE_DECAY_MS = 900;

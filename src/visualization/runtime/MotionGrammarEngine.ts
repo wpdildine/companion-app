@@ -3,10 +3,10 @@
  * Consumes a motion grammar template; mutates scene.motion each frame. No per-frame allocations.
  */
 
-import type { CanonicalSceneMode } from '../scene/canonicalMode';
-import type { GLSceneMotion, GLSceneMotionPhase } from '../scene/formations';
+import type { CanonicalSceneMode } from '../scene/sceneMode';
+import type { GLSceneMotion, GLSceneMotionPhase } from '../scene/sceneFormations';
 import type { MotionGrammarTemplate, MotionSignals, MotionTargets } from '../scene/artDirection/motionGrammar/types';
-import type { VisualizationMode } from './types';
+import type { VisualizationMode } from './runtimeTypes';
 
 const DEBUG_MOTION_GRAMMAR =
   false;

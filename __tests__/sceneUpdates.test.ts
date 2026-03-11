@@ -1,10 +1,10 @@
-import { getSceneDescription } from '../src/visualization/scene/formations';
-import { createDefaultVisualizationRef } from '../src/visualization/engine/createDefaultRef';
+import { getSceneDescription } from '../src/visualization/scene/sceneFormations';
+import { createDefaultVisualizationRef } from '../src/visualization/runtime/createDefaultRef';
 import {
   setVisualizationScene,
   subscribeVisualizationScene,
   updateVisualizationLayerDescriptors,
-} from '../src/visualization/engine/sceneUpdates';
+} from '../src/visualization/runtime/applySceneUpdates';
 
 describe('sceneUpdates', () => {
   it('sets the scene and notifies subscribers', () => {

@@ -11,8 +11,8 @@ Extend the spine-style art-direction pattern so **scene is the only aesthetic so
 ## Current state (brief)
 
 - **spineArtDirection.ts** — Exports `SPINE_ART_DIRECTION` (envelope, visibility, composition, motion, halftoneProfiles, shards). Spine builder imports it; `buildSpineDescription()` is scene-driven.
-- **formations.ts** — `getSceneDescription()` builds zones, clusters, links, backgroundPlanes, spine. **Cluster/glyph** layout and colors come from hardcoded `clustersLayout` / `clustersStyle` (radius 1.15, sizeBaseRules, rulesRgb/cardsRgb from zonesStyle). **backgroundPlanes** is a minimal schema: count, opacityBase, opacitySecond, driftPxNorm, hue, sat, lum. **links**: edges + segmentsPerEdge (12).
-- **ContextGlyphs** — Reads `scene.clusters.nodes` for positions/sizes/colors; builds buffers from them. **Still has**: hardcoded uniforms (uBaseNodeSize 5.25, uPulseSpeed 4, uTouchRadius 3.6, uTouchStrength 2.8, uTouchMaxOffset 1.35), and decay phase/rate/depth from hardcoded seeds. No module-level FORMATION constants; visibility from engine ref (rulesClusterCount, cardsClusterCount).
+- **sceneFormations.ts** — `getSceneDescription()` builds zones, clusters, links, backgroundPlanes, spine. **Cluster/glyph** layout and colors come from hardcoded `clustersLayout` / `clustersStyle` (radius 1.15, sizeBaseRules, rulesRgb/cardsRgb from zonesStyle). **backgroundPlanes** is a minimal schema: count, opacityBase, opacitySecond, driftPxNorm, hue, sat, lum. **links**: edges + segmentsPerEdge (12).
+- **ContextGlyphs** — Reads `scene.clusters.nodes` for positions/sizes/colors; builds buffers from them. **Still has**: hardcoded uniforms (uBaseNodeSize 5.25, uPulseSpeed 4, uTouchRadius 3.6, uTouchStrength 2.8, uTouchMaxOffset 1.35), and decay phase/rate/depth from hardcoded seeds. No module-level FORMATION constants; visibility from runtime ref (rulesClusterCount, cardsClusterCount).
 - **PlaneLayerField** — Reads `scene.backgroundPlanes` for count, opacityBase/Second, hue/sat/lum. **Still has**: hardcoded z-depths (6.5, 6.7), scale multipliers (1.22, 1.6), targetIntensity/targetThreshold/targetScale formulas, panelOpacity factor 0.48, and inline shader constants (vignette 0.15/0.65, halftone 72/0.28, gridFreq 140). No mask/gradient grammar in scene.
 - **ContextLinks** — Reads `scene.links` (edges, segmentsPerEdge) and `scene.clusters.nodes`; already scene-driven for topology. No style object (opacity per mode, line width) in scene.
 
@@ -67,7 +67,7 @@ Include:
 
 ---
 
-## 2. Scene wiring (formations.ts)
+## 2. Scene wiring (sceneFormations.ts)
 
 - **Glyphs**  
   - Use **glyphArtDirection** to derive cluster layout (radius, zJitter, sizeBase/Jitter rules/cards) and colors (rulesRgb/cardsRgb from zones.style so one source of truth).  
@@ -119,14 +119,14 @@ Include:
 3. **Mode modulation** — idle/listening/processing/speaking produce visibly different background and glyph intensity/behavior as defined by artDirection.
 4. **Guardrails** — If scene is missing (or required sub-object missing), render layers **do not** silently fall back to hardcoded constants; they **return null** and emit a **dev error** message.
 5. **Performance** — No geometry regeneration every frame; useMemo keyed on scene node arrays (or stable scene refs); only uniforms/transforms updated per frame.
-6. **No interaction coupling** — TouchZones and interaction band do not own visuals; they only set engine ref fields. All visual reaction via engine ref + scene knobs.
+6. **No interaction coupling** — TouchZones and interaction band do not own visuals; they only set runtime ref fields. All visual reaction via runtime ref + scene knobs.
 
 ---
 
 ## 5. Deliverables
 
 - **New files:** glyphArtDirection.ts, backgroundArtDirection.ts, (optionally) linkArtDirection.ts.
-- **formations.ts** updated so getSceneDescription() (and any builders) use these art direction objects and the scene includes:
+- **sceneFormations.ts** updated so getSceneDescription() (and any builders) use these art direction objects and the scene includes:
   - glyphStyle (or extended clusters.style) for glyph shader/motion knobs,
   - extended backgroundPlanes (mask params, per-plane opacity/scale/z, state modulation),
   - (optional) links.style.

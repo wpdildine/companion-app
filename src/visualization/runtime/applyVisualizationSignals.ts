@@ -5,23 +5,28 @@
  */
 
 import type { RefObject } from 'react';
-import type { VisualizationEngineRef, VisualizationMode, AiUiSignals, VisualizationPanelRects } from './types';
+import type {
+  VisualizationEngineRef,
+  VisualizationMode,
+  VisualizationPanelRects,
+} from './runtimeTypes';
+import type { VisualizationSignals } from './visualizationSignals';
 import { TARGET_ACTIVITY_BY_MODE } from './createDefaultRef';
 
-const PHASE_TO_MODE: Record<AiUiSignals['phase'], VisualizationMode> = {
+const PHASE_TO_MODE: Record<VisualizationSignals['phase'], VisualizationMode> = {
   idle: 'idle',
   processing: 'processing',
   resolved: 'speaking',
 };
 
 /**
- * Writes signals to visualizationRef. Derives currentMode from phase.
+ * Writes visualization signals to visualizationRef. Derives currentMode from phase.
  * When signals.event is set, stores lastEvent and lastEventTime (using ref.clock).
  * Does not expose or accept render knobs (layerCount, driftPx, etc.) in the API.
  */
-export function applySignalsToVisualization(
+export function applyVisualizationSignals(
   visualizationRef: RefObject<VisualizationEngineRef | null>,
-  signals: Partial<AiUiSignals> & {
+  signals: Partial<VisualizationSignals> & {
     mode?: VisualizationMode;
     panelRects?: VisualizationPanelRects;
   },
@@ -30,9 +35,9 @@ export function applySignalsToVisualization(
   if (!v) return;
   const { panelRects, ...uiSignals } = signals;
   const mergedSignals = {
-    ...(v.signalsSnapshot ?? ({} as AiUiSignals)),
-    ...(uiSignals as Partial<AiUiSignals>),
-  } as AiUiSignals;
+    ...(v.signalsSnapshot ?? ({} as VisualizationSignals)),
+    ...(uiSignals as Partial<VisualizationSignals>),
+  } as VisualizationSignals;
   v.signalsSnapshot = mergedSignals;
 
   // Dev cycle owns mode when enabled in DevPanel; app signal pushes must not override it.

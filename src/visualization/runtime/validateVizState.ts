@@ -5,8 +5,8 @@
  * Usage: when validating state and scene is available, pass { maxPerCluster: scene.maxPerCluster } so validation matches the scene contract.
  */
 
-import type { VisualizationMode, VisualizationIntensity } from './types';
-import { VALID_TRANSIENT_SIGNALS } from './signals';
+import type { VisualizationMode, VisualizationIntensity } from './runtimeTypes';
+import { VALID_TRANSIENT_SIGNALS } from './visualizationSignals';
 
 const DEFAULT_MAX_PER_CLUSTER = 8;
 

@@ -1,6 +1,6 @@
 # Formations as GL Scene State (revised)
 
-Evolve [formations.ts](../src/visualization/scene/formations.ts) into the single source of truth for GL aesthetics and scene description. RN owns semantics and touch; GL owns physics and draw list. TouchZones (née ClusterTouchZones) is a dumb renderer; all style and zone policy live in formations / getSceneDescription().
+Evolve [sceneFormations.ts](../src/visualization/scene/sceneFormations.ts) into the single source of truth for GL aesthetics and scene description. RN owns semantics and touch; GL owns physics and draw list. TouchZones (née ClusterTouchZones) is a dumb renderer; all style and zone policy live in formations / getSceneDescription().
 
 ---
 
@@ -13,7 +13,7 @@ Evolve [formations.ts](../src/visualization/scene/formations.ts) into the single
 
 ## Single Aesthetic Source of Truth (contract)
 
-- **All visual constants** (colors, opacities, ratios, band top inset px, ring radii, edge color, plane count, drift amounts, link curvature, etc.) **must originate from getSceneDescription()** (or formations.ts) and **must not be hardcoded in render components**.
+- **All visual constants** (colors, opacities, ratios, band top inset px, ring radii, edge color, plane count, drift amounts, link curvature, etc.) **must originate from getSceneDescription()** (or sceneFormations.ts) and **must not be hardcoded in render components**.
 - **Render components** may:
   - Compute camera-facing placement from viewport (viewWidth, viewHeight, fov, aspect).
   - Apply scene-provided style and bounds.
@@ -30,18 +30,18 @@ This makes “edit aesthetics freely” enforceable: one file (formations / scen
 Pulses and zone rings must not drift relative to glyphs/links. Today:
 
 - Renderers use `buildTwoClusters()` for node positions (ContextGlyphs, ContextLinks).
-- EngineLoop uses `getTwoClusterCenters()` for pulse origins.
+- RuntimeLoop uses `getTwoClusterCenters()` for pulse origins.
 - ClusterTouchZones uses `getTwoClusterCenters()` for ring placement.
 
 **Rule:** There is **one** source of truth for anchors. Everything reads from **getSceneDescription()** (or the same shared formation instance). No component calls `getTwoClusterCenters()` or `buildTwoClusters()` directly for positions/anchors; they come from the scene description (e.g. `scene.clusterAnchors`, `scene.pulseAnchors`).
 
-- **EngineLoop**: Pulse origins come from `scene.pulseAnchors.rules` / `scene.pulseAnchors.cards` / `scene.pulseAnchors.center` (or equivalent). Stop calling `getTwoClusterCenters()` once scene exposes anchors.
+- **RuntimeLoop**: Pulse origins come from `scene.pulseAnchors.rules` / `scene.pulseAnchors.cards` / `scene.pulseAnchors.center` (or equivalent). Stop calling `getTwoClusterCenters()` once scene exposes anchors.
 - **TouchZones**: Ring positions from `scene.clusterAnchors` or `scene.pulseAnchors` (same values).
 - **ContextGlyphs / ContextLinks**: Node positions and topology from scene (cluster anchors + per-node layout derived from formation). Optional later; document as next consolidation milestone if not done in first pass.
 
 ---
 
-## getSceneDescription() shape (formations.ts or sceneDescription.ts)
+## getSceneDescription() shape (sceneFormations.ts or sceneDescription.ts)
 
 One function returns a single object. Suggested structure:
 
@@ -50,7 +50,7 @@ One function returns a single object. Suggested structure:
 | **zones.layout** | Ratios (leftRatio, centerRatio, rightRatio), bandTopInsetPx, dead-strip NDC threshold (e.g. ±0.12). |
 | **zones.style** | Colors (rules, cards, center), opacities (area base, center area, ring base, highlight), edge color (MESH_EDGE_COLOR), ring geometry (inner/outer radii, segments e.g. 0.95, 1.15, 48). |
 | **clusters** | Anchor positions (rules center, cards center) + max counts (8 each). **clusters.style** (optional): rules/cards colors, node size ranges, jitter params for glyphs. |
-| **pulseAnchors** | Same as cluster centers: rules, cards, center. EngineLoop and TouchZones read from here so pulses and rings stay aligned. |
+| **pulseAnchors** | Same as cluster centers: rules, cards, center. RuntimeLoop and TouchZones read from here so pulses and rings stay aligned. |
 | **backgroundPlanes.style** | Count (3–6), opacity by mode, drift ranges. |
 | **links.style** (optional, later) | Segments per edge, curvature intensity; topology and per-node style seeds derivable from scene so ContextLinks/ContextGlyphs don’t re-author aesthetics. |
 
@@ -96,7 +96,7 @@ Only the RN gesture layer (InteractionBand) writes `touchFieldActive`, `touchFie
 
 ## Zone state (inactive / armed / active)
 
-- **Engine ref:** Add `zoneArmed: 'rules' | 'cards' | null` (and optionally `zoneReleasedThisFrame`). InteractionBand sets zoneArmed from NDC (e.g. x &lt; -0.12 → rules, x &gt; 0.12 → cards); clears on touch end; on release in zone calls onClusterTap.
+- **Runtime ref:** Add `zoneArmed: 'rules' | 'cards' | null` (and optionally `zoneReleasedThisFrame`). InteractionBand sets zoneArmed from NDC (e.g. x &lt; -0.12 → rules, x &gt; 0.12 → cards); clears on touch end; on release in zone calls onClusterTap.
 - **TouchZones:** Reads zoneArmed and existing “highlighted” to drive visuals (inactive / armed / active) using **scene.style** only.
 - **Deterministic / testable:** Zone bounds and state derivable from scene + ref; DebugZoneOverlay can show same bounds and state.
 
@@ -117,7 +117,7 @@ Even if link visibility stays ref-driven (vizIntensity, confidence), **topology 
 |------|------|
 | 1 | Define getSceneDescription() and types: zones.layout, zones.style, clusterAnchors, pulseAnchors, backgroundPlanes.style, (optional) clusters.style, links.style. Implement by delegating to existing buildTwoClusters/getTwoClusterCenters internally. |
 | 2 | ClusterTouchZones: Remove all hardcoded constants; accept scene (or ref to scene snapshot); read layout + style from scene; keep only viewport math, camera-facing placement, armed/active mapping from ref. |
-| 3 | EngineLoop: Stop calling getTwoClusterCenters(); read pulse origins from scene.pulseAnchors (rules, cards, center). Ensure scene is available in the R3F tree (e.g. from ref or context). |
+| 3 | RuntimeLoop: Stop calling getTwoClusterCenters(); read pulse origins from scene.pulseAnchors (rules, cards, center). Ensure scene is available in the R3F tree (e.g. from ref or context). |
 | 4 | Add zoneArmed (and optionally zoneReleasedThisFrame) to VisualizationEngineRef; InteractionBand sets/clears zoneArmed; TouchZones reads it for armed state. |
 | 5 | VisualizationCanvasR3F: Stop writing touchField* so only RN band drives touch field. |
 | 6 | Mount PlaneLayerField (or background planes component) driven by scene.backgroundPlanes.style + ref. |

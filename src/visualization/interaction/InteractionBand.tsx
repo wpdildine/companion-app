@@ -18,7 +18,7 @@ import React, { useRef, useCallback, useEffect } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 import type { LayoutChangeEvent, GestureResponderEvent } from 'react-native';
 import type { RefObject } from 'react';
-import type { VisualizationEngineRef } from '../engine/types';
+import type { VisualizationEngineRef } from '../runtime/runtimeTypes';
 import { getZoneFromNdcX } from './zoneLayout';
 
 /** Canonical center-hold threshold: press in center for this long to start hold-to-speak. */

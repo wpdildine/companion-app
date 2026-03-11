@@ -7,7 +7,7 @@
 import { useFrame } from '@react-three/fiber/native';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import type { VisualizationEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { createBackPlaneMaterial } from '../../materials/backPlane/backPlaneMaterial';
 import { createBackPlaneGlitchMaterial } from '../../materials/backPlane/backPlaneGlitchMaterial';

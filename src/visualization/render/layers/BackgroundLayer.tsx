@@ -7,8 +7,8 @@
 import { useFrame } from '@react-three/fiber/native';
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { getLayerRuntimeInputs } from '../../engine/layerRuntimeInputs';
-import type { VisualizationEngineRef } from '../../engine/types';
+import { getLayerRuntimeInputs } from '../../runtime/runtimeLayerInputs';
+import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { createBackgroundDetailMaterial } from '../../materials/background/backgroundDetailMaterial';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';

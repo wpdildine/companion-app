@@ -6,7 +6,7 @@
 import { useFrame } from '@react-three/fiber/native';
 import { useRef } from 'react';
 import * as THREE from 'three';
-import type { VisualizationEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 

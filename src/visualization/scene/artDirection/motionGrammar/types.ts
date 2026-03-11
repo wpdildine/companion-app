@@ -3,7 +3,7 @@
  * Used by MotionGrammarEngine to convert discrete modes into continuous motion signals.
  */
 
-import type { CanonicalSceneMode } from '../../canonicalMode';
+import type { CanonicalSceneMode } from '../../sceneMode';
 
 /** Per-signal scalar set produced by the engine (all ∈ [0,1]). */
 export type MotionSignals = {

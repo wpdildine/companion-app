@@ -9,22 +9,22 @@ isProject: false
 
 ## Overview
 
-Implement Phase 3 "Alive Organism" touch response: add organism-derived signals (focusBias, touchPresence, focusZone) in EngineLoop, expose them via scene.organism, and wire subtle visual responses in light core (beam lean + mesh bend), halftone membrane, and glyph field—without changing tap/pulse semantics or adding per-frame allocations.
+Implement Phase 3 "Alive Organism" touch response: add organism-derived signals (focusBias, touchPresence, focusZone) in RuntimeLoop, expose them via scene.organism, and wire subtle visual responses in light core (beam lean + mesh bend), halftone membrane, and glyph field—without changing tap/pulse semantics or adding per-frame allocations.
 
 ---
 
 ## Architecture (unchanged)
 
 - **InteractionBand**: writes only `touchFieldActive`, `touchFieldNdc`, `touchFieldStrength`, `zoneArmed`.
-- **EngineLoop**: owns all derived/continuous values; produces organism signals and mutates `scene.organism` each frame (stub created once in getSceneDescription).
-- **Scene**: has `organism` block created once in getSceneDescription(); EngineLoop only mutates its properties.
+- **RuntimeLoop**: owns all derived/continuous values; produces organism signals and mutates `scene.organism` each frame (stub created once in getSceneDescription).
+- **Scene**: has `organism` block created once in getSceneDescription(); RuntimeLoop only mutates its properties.
 - **Render layers**: dumb—read only `scene.`; no timers, no input mapping.
 
 ---
 
 ## Step 0 — Organism signal contract
 
-**Location:** `src/visualization/engine/types.ts`, `src/visualization/engine/createDefaultRef.ts`, and **single canonical formula location** (e.g. `src/visualization/interaction/zoneLayout.ts` or a small `organismSignals.ts` in engine).
+**Location:** `src/visualization/runtime/types.ts`, `src/visualization/runtime/createDefaultRef.ts`, and **single canonical formula location** (e.g. `src/visualization/interaction/zoneLayout.ts` or a small `organismSignals.ts` in engine).
 
 - **Canonical focusBias formula (one place only):**
   - Define `FOCUS_RANGE_NDC = 0.5` (or similar) once—e.g. in `zoneLayout.ts` next to `NEUTRAL_HALF_WIDTH_NDC`, or in a dedicated organism constants module.
@@ -36,7 +36,7 @@ Implement Phase 3 "Alive Organism" touch response: add organism-derived signals 
 
 ---
 
-## Step 1 — EngineLoop: smooth and publish organism signals
+## Step 1 — RuntimeLoop: smooth and publish organism signals
 
 - **Named smoothing constants (for maintainability):** Define once (e.g. same place as `FOCUS_RANGE_NDC`):
   - `**TOUCH_PRESENCE_LAMBDA`_ — used in the same exponential smoothing style as existing `touchInfluence` (e.g. `k = 1 - exp(-TOUCH_PRESENCE_LAMBDA _ dt)`). Tune so release decays over ~200–600 ms.
@@ -49,9 +49,9 @@ Implement Phase 3 "Alive Organism" touch response: add organism-derived signals 
 
 ## Step 2 — Scene contract: `scene.organism` (Option B only)
 
-- **Option B:** `getSceneDescription()` creates the `organism` stub once with default values (e.g. presence 0, focusBias 0, ndc {0,0}, zone null, relax 1). EngineLoop **only mutates** that object’s properties each frame—no create-on-first-frame in EngineLoop, no branching.
+- **Option B:** `getSceneDescription()` creates the `organism` stub once with default values (e.g. presence 0, focusBias 0, ndc {0,0}, zone null, relax 1). RuntimeLoop **only mutates** that object’s properties each frame—no create-on-first-frame in RuntimeLoop, no branching.
 - Type: `GLSceneOrganism` with `presence`, `focusBias`, `ndc`, `zone`, optional `relax`.
-- **Validation (required):** In `validateSceneDescription`, when `scene.organism` is present: presence in [0,1], focusBias in [-1,1], ndc finite, zone in allowed set. Minimal but required.
+- **Validation (required):** In `validateSceneSpec`, when `scene.organism` is present: presence in [0,1], focusBias in [-1,1], ndc finite, zone in allowed set. Minimal but required.
 
 ---
 

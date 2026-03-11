@@ -6,9 +6,9 @@
 import { useFrame } from '@react-three/fiber/native';
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import type { VisualizationEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
-import type { CanonicalSceneMode } from '../../scene/canonicalMode';
+import type { CanonicalSceneMode } from '../../scene/sceneMode';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 import { computeTransientModulation, scaleModulation } from '../utils/transientModulation';
 

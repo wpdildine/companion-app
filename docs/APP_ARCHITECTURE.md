@@ -69,7 +69,7 @@ Recoverable attempt failures (e.g. no usable transcript) return to `idle` withou
 - Mapping lifecycle state to visualization mode (idle, listening, processing, speaking)
 - Mapping activity/groundedness/confidence into approved visualization signals (phase, retrievalDepth, cardRefsCount, etc.)
 - Reacting to orchestrator callbacks to trigger pulses (`triggerPulseAtCenter`) or semantic events (`chunkAccepted`, etc.)
-- Writing **only** through approved paths: the signal surface (e.g. `applySignalsToVisualization`)
+- Writing **only** through approved paths: the signal surface (e.g. `applyVisualizationSignals`)
 
 **Does not know:** Raw provider/runtime details, RAG internals, panel layout, or grounded results presentation.
 
@@ -159,11 +159,11 @@ Arbitration is a UI-layer decision; AgentSurface owns the `enabled` prop:
 - **Lifecycle === 'processing'** → InteractionBand **disabled**.
 - Otherwise InteractionBand **enabled**.
 
-When the band becomes disabled, InteractionBand clears ref fields so the engine does not retain phantom touch influence.
+When the band becomes disabled, InteractionBand clears ref fields so the runtime does not retain phantom touch influence.
 
 ### Zone layout: single source of truth
 
-Touch zone boundaries (rules / neutral / cards) are defined in **active-region NDC** in `src/visualization/interaction/zoneLayout.ts`. Scene layout ratios in `formations.ts` are derived from that constant so TouchZones overlays align with what InteractionBand treats as left/center/right.
+Touch zone boundaries (rules / neutral / cards) are defined in **active-region NDC** in `src/visualization/interaction/zoneLayout.ts`. Scene layout ratios in `sceneFormations.ts` are derived from that constant so TouchZones overlays align with what InteractionBand treats as left/center/right.
 
 **Invariant:** NDC for zone classification **MUST** be active-region NDC (from `toNdc(bandRect, canvasSize)` in InteractionBand), **not** screen NDC.
 
@@ -179,7 +179,7 @@ Canonical interaction behavior:
 - **Playback** — Double tap to play answer; single tap to cancel playback.
 - **Context exploration** — Swipe left/right reveals rules/cards panels only when relevant context exists; center release does nothing.
 
-## Engine Ref Contract (`VisualizationEngineRef`)
+## Runtime Ref Contract (`VisualizationEngineRef`)
 
 Key fields:
 
@@ -193,7 +193,7 @@ Key fields:
 Writer split:
 
 - App writes targets/events **only** through VisualizationController (and panel rects from AgentSurface/ResultsOverlay path).
-- EngineLoop writes continuous derived values (`clock`, eased activity, touch influence, world/view touch mapping).
+- RuntimeLoop writes continuous derived values (`clock`, eased activity, touch influence, world/view touch mapping).
 
 ## Phase 6 Manual Verification Logging
 
@@ -223,8 +223,8 @@ Logs are state-change and event-based only; no per-frame or render-loop logging.
 - Debug HUD panels: `src/app/agent/PipelineTelemetryPanel.tsx`, `src/app/agent/VizDebugPanel.tsx`
 - Visualization surface/canvas: `src/visualization/render/canvas/VisualizationSurface.tsx`, `VisualizationCanvas.tsx`, `VisualizationCanvasR3F.tsx`, `VisualizationCanvasFallback.tsx`
 - Visualization interaction: `src/visualization/interaction/InteractionBand.tsx`, `zoneLayout.ts`, `TouchRaycaster.tsx`, `touchHandlers.ts`
-- Scene/layers: `src/visualization/engine/EngineLoop.tsx`, `applySignalsToVisualization.ts`, `render/layers/ContextGlyphs.tsx`, `ContextLinks.tsx`, `TouchZones.tsx`, `CameraOrbit.tsx`, `PostFXPass.tsx`
-- Engine/types: `src/visualization/engine/types.ts`, `createDefaultRef.ts`, `src/visualization/scene/*`, `src/visualization/materials/*`, `src/visualization/utils/*`
+- Scene/layers: `src/visualization/runtime/RuntimeLoop.tsx`, `applyVisualizationSignals.ts`, `render/layers/ContextGlyphs.tsx`, `ContextLinks.tsx`, `TouchZones.tsx`, `CameraOrbit.tsx`, `PostFXPass.tsx`
+- Runtime/types: `src/visualization/runtime/runtimeTypes.ts`, `createDefaultRef.ts`, `src/visualization/scene/*`, `src/visualization/materials/*`, `src/visualization/utils/*`
 - RAG feature: `src/rag/*`
 - Pure utils: `src/utils/log.ts`
 

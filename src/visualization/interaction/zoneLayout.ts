@@ -18,7 +18,7 @@ export const FOCUS_RANGE_NDC = 0.5;
 export const BEAM_LEAN_MAX_NDC = 0.05;
 
 /**
- * Smoothing: exponential decay toward target. Same style as touchInfluence in EngineLoop.
+ * Smoothing: exponential decay toward target. Same style as touchInfluence in RuntimeLoop.
  * Tune TOUCH_PRESENCE_LAMBDA so release decays over ~200–600 ms (e.g. 4–8 at 60fps).
  */
 export const TOUCH_PRESENCE_LAMBDA = 6;

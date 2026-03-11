@@ -4,7 +4,7 @@
  */
 
 import { getTransientEffect } from '../artDirection/transientEffects';
-import type { GLSceneTransientEffects } from '../formations';
+import type { GLSceneTransientEffects } from '../sceneFormations';
 
 export function buildTransientEffects(): GLSceneTransientEffects {
   return {

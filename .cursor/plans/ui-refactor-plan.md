@@ -12,7 +12,7 @@
 
 ---
 
-> **Current repo reality:** Canonical structure is `src/visualization/` with engine/, scene/, render/, interaction/, materials/. Components: VisualizationCanvas, VisualizationCanvasR3F, VisualizationCanvasFallback, InteractionBand, etc. Public API: `src/visualization/index.ts`. This plan was written when the folder was `src/nodeMap/`; treat nodeMap references in this doc as historical (now visualization).
+> **Current repo reality:** Canonical structure is `src/visualization/` with runtime/, scene/, render/, interaction/, materials/. Components: VisualizationCanvas, VisualizationCanvasR3F, VisualizationCanvasFallback, InteractionBand, etc. Public API: `src/visualization/index.ts`. This plan was written when the folder was `src/nodeMap/`; treat nodeMap references in this doc as historical (now visualization).
 
 ---
 
@@ -30,7 +30,7 @@
 ---
 
 **Boundary (architectural ownership):**  
-Visualization is a **pure visualization layer**. It does not own app state or voice lifecycle. It consumes **theme** (injected), **engine ref**, and **optional callbacks**. No theme import inside shaders or formation files.
+Visualization is a **pure visualization layer**. It does not own app state or voice lifecycle. It consumes **theme** (injected), **runtime ref**, and **optional callbacks**. No theme import inside shaders or formation files.
 
 **Projection surface contract:**
 - Canvas is a projection surface that visually aligns to RN panels.
@@ -47,7 +47,7 @@ Visualization is a **pure visualization layer**. It does not own app state or vo
 - **Skia:** Not used in this project. Do not introduce Skia; remove any references if present elsewhere.
 - **Theme at runtime:** Theme is **immutable at runtime**. It is recomputed only when `isDark` changes. DevPanel overrides affect **viz palette only**, not the RN base theme (so dev sliders do not change RN text color).
 - **Utils:** Code in `src/utils/` must be **pure or side-effect isolated**. No React imports, no theme imports. Prevents utils from becoming a junk drawer.
-- **Engine ref ownership:** Fields in the engine ref are categorized as **Targets (App-owned)** vs **Derived (EngineLoop-owned)**. App writes targets; EngineLoop writes derived/continuous values only.
+- **Runtime ref ownership:** Fields in the runtime ref are categorized as **Targets (App-owned)** vs **Derived (RuntimeLoop-owned)**. App writes targets; RuntimeLoop writes derived/continuous values only.
 
 ---
 
@@ -99,7 +99,7 @@ __tests__/
 
 - **Theme returns pure values.** `getTheme(isDark)` returns a plain object: RN tokens (hex strings) and **primitive viz data** (e.g. `canvasBackground: string`, `paletteA: [number, number, number]`, `paletteB`, `nodePalette: [number, number, number][]`). No functions, no refs.
 - **Visualization consumes only primitive palette arrays.** App (or whoever owns theme) calls `getTheme(isDark)`, then passes **only the needed primitives** into Visualization: e.g. `canvasBackground`, `paletteA`, `paletteB`, `nodePalette`. Visualization **never imports theme**. Theme is **injected**, not globally referenced.
-- **Shaders and formation files:** Never import theme. They receive palette/color data as props or uniforms (primitive arrays/numbers). So: no `import { getTheme } from '../../theme'` inside `starfieldData.ts`, `formations.ts`, or any file under `shaders/`.
+- **Shaders and formation files:** Never import theme. They receive palette/color data as props or uniforms (primitive arrays/numbers). So: no `import { getTheme } from '../../theme'` inside `starfieldData.ts`, `sceneFormations.ts`, or any file under `shaders/`.
 
 This avoids circular dependency risk and keeps the viz layer decoupled from the theme module.
 
@@ -108,22 +108,22 @@ This avoids circular dependency risk and keeps the viz layer decoupled from the 
 ## 3. VisualizationCanvasFallback vs VisualizationCanvasR3F: avoid duplication
 
 - **Do not duplicate:** palette wiring, touch API mapping, or engine loop logic between R3F and Fallback.
-- **Shared EngineLoop:** Keep a single engine loop concept (e.g. clock, activity easing, touchInfluence). R3F uses it in `useFrame`; Fallback can use the same ref and a JS-driven tick or requestAnimationFrame if needed.
-- **Renderer as strategy:** Where possible, pass a “renderer” implementation (R3F scene vs 2D fallback) so that palette wiring, touch API, and engine ref integration live in one place and are shared. Both paths consume the same engine ref and the same injected theme primitives (e.g. `canvasBackground`, palette arrays).
+- **Shared RuntimeLoop:** Keep a single engine loop concept (e.g. clock, activity easing, touchInfluence). R3F uses it in `useFrame`; Fallback can use the same ref and a JS-driven tick or requestAnimationFrame if needed.
+- **Renderer as strategy:** Where possible, pass a “renderer” implementation (R3F scene vs 2D fallback) so that palette wiring, touch API, and runtime ref integration live in one place and are shared. Both paths consume the same runtime ref and the same injected theme primitives (e.g. `canvasBackground`, palette arrays).
 - **Fallback must render a minimal field; never return an empty View.** If fallback is blank, people "fix" it by stacking overlays again.
 
 This keeps one source of truth for how the viz reacts to engine state and theme.
 
 ---
 
-## 4. EngineLoop scope: avoid responsibility creep
+## 4. RuntimeLoop scope: avoid responsibility creep
 
-**Single-direction rule:** Fields in the engine ref are categorized as **Targets (App-owned)** vs **Derived (EngineLoop-owned)**. That separation prevents "who owns this field?" bugs.
+**Single-direction rule:** Fields in the runtime ref are categorized as **Targets (App-owned)** vs **Derived (RuntimeLoop-owned)**. That separation prevents "who owns this field?" bugs.
 
-- **App writes targets only:** e.g. `targetActivity`, `touchActive`, `touchWorld`, `paletteId`, viz toggles; and **pulse slot start** when triggering: `pulseTimes[i] = now`, `pulsePositions[i] = …`, `pulseColors[i] = …`, `lastPulseIndex = …`. App/voice layer owns mode, transcripts, and RAG; they set targets on the ref. **submittedText snapshot / requestId are app-owned (not in engine ref)** — do not put text or request state into the ref.
-- **EngineLoop writes derived/continuous only:** e.g. `activity` (eased toward targetActivity), `touchInfluence` (eased toward touch state), **clock/uTime** (used by shaders to compute pulse decay from `pulseTimes`; decay stays in shader math, not a derived field in the ref). EngineLoop must **not** mutate pulse slot arrays (positions/times/colors); it only updates uTime. It does **not** write targets and does **not** know about transcripts, RAG, logging policy, or permission state.
+- **App writes targets only:** e.g. `targetActivity`, `touchActive`, `touchWorld`, `paletteId`, viz toggles; and **pulse slot start** when triggering: `pulseTimes[i] = now`, `pulsePositions[i] = …`, `pulseColors[i] = …`, `lastPulseIndex = …`. App/voice layer owns mode, transcripts, and RAG; they set targets on the ref. **submittedText snapshot / requestId are app-owned (not in runtime ref)** — do not put text or request state into the ref.
+- **RuntimeLoop writes derived/continuous only:** e.g. `activity` (eased toward targetActivity), `touchInfluence` (eased toward touch state), **clock/uTime** (used by shaders to compute pulse decay from `pulseTimes`; decay stays in shader math, not a derived field in the ref). RuntimeLoop must **not** mutate pulse slot arrays (positions/times/colors); it only updates uTime. It does **not** write targets and does **not** know about transcripts, RAG, logging policy, or permission state.
 
-If EngineLoop stays **pure (math + ref mutation on derived fields only)**, it stays healthy.
+If RuntimeLoop stays **pure (math + ref mutation on derived fields only)**, it stays healthy.
 
 ---
 
@@ -172,9 +172,9 @@ If EngineLoop stays **pure (math + ref mutation on derived fields only)**, it st
 
 ## 10. README update
 
-- **Project structure:** Document `src/theme/` (pure values, injected into RN and nodeMap), `src/ui/`, `src/nodeMap/` (pure viz; consumes injected theme primitives + engine ref + callbacks), `src/rag/`, `src/utils/` (pure/side-effect isolated; no React/theme).
+- **Project structure:** Document `src/theme/` (pure values, injected into RN and nodeMap), `src/ui/`, `src/nodeMap/` (pure viz; consumes injected theme primitives + runtime ref + callbacks), `src/rag/`, `src/utils/` (pure/side-effect isolated; no React/theme).
 - **Boundary:** Short note that Visualization is a pure visualization layer and does not own app state or voice lifecycle.
-- **Refactor summary:** Single theme (RN + viz primitives), theme immutable at runtime (isDark only; DevPanel = viz only), unified touch API with stubs, shared engine/strategy for R3F vs Fallback, logging tests for mode and pulse.
+- **Refactor summary:** Single theme (RN + viz primitives), theme immutable at runtime (isDark only; DevPanel = viz only), unified touch API with stubs, shared runtime/strategy for R3F vs Fallback, logging tests for mode and pulse.
 - **Step 4 (Modify your app):** Point to `src/theme`, `src/ui`, `src/nodeMap` for where to add features. Mention Skia is not used.
 
 ---
@@ -462,7 +462,7 @@ That makes it obvious what is "pickable," and you'll immediately see if rects ar
 
 1. **Folder structure** – Create `src/theme/`, `src/ui/`, `src/utils/`; add theme (pure), touchHandlers, log, validateVizState. Ensure no theme import in nodeMap data/shaders.
 2. **Theme module** – Implement getTheme(isDark) returning pure values only. Wire App and DevPanel to theme; inject primitives into Visualization (canvas background, palette arrays). DevPanel overrides only viz palette.
-3. **Shared engine / renderer strategy** – Clarify shared EngineLoop and single place for palette/touch/engine wiring; Fallback and R3F use same contract. Keep EngineLoop pure (math + ref mutation only; no transcripts, RAG, logging, or permission state).
+3. **Shared engine / renderer strategy** – Clarify shared RuntimeLoop and single place for palette/touch/engine wiring; Fallback and R3F use same contract. Keep RuntimeLoop pure (math + ref mutation only; no transcripts, RAG, logging, or permission state).
 4. **Touch API + stubs** – In nodeMap; double-tap and drag in VisualizationCanvasR3F. Document that touch may move to an interaction layer later.
 5. **Extract UI components** – Move views into src/ui/; slim App.tsx.
 6. **State validation + tests** – validateVizState, theme tests, vizState tests, touch tests, **log tests** (mode + sessionId, pulse + slot index).

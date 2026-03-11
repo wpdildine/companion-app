@@ -1,6 +1,6 @@
 /**
  * Shared transient effect definition types. Modulation shape is authored here
- * and interpreted in render layers (not engine/runtime).
+ * and interpreted in render layers (not runtime/runtime).
  */
 
 export interface TransientModulation {

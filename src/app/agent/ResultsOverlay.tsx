@@ -17,7 +17,7 @@ import {
 import type { ValidationSummary } from '../../rag';
 import type { ProcessingSubstate } from './types';
 import type { VisualizationIntensity } from '../../visualization';
-import type { AiUiSignalsEvent } from '../../visualization';
+import type { VisualizationSignalEvent } from '../../visualization';
 import type { VisualizationPanelRects } from '../../visualization';
 
 export interface ResultsOverlayRevealedBlocks {
@@ -56,12 +56,12 @@ export interface ResultsOverlayProps {
     rect: { x: number; y: number; w: number; h: number },
   ) => void;
   clearPanelRect: (key: keyof VisualizationPanelRects) => void;
-  /** Theme and viz primitives (from theme + engine ref) */
+  /** Theme and viz primitives (from theme + runtime ref) */
   theme: ResultsOverlayTheme;
   intensity: VisualizationIntensity;
   reduceMotion: boolean;
   /** Semantic events for visualization (tapCard, tapCitation) */
-  emitEvent: (event: AiUiSignalsEvent) => void;
+  emitEvent: (event: VisualizationSignalEvent) => void;
   /** When true, show content stack and use dummy data when provided */
   showContentPanels: boolean;
   canRevealPanels: boolean;

@@ -28,7 +28,7 @@ import {
 } from '../visualization';
 import type {
   VisualizationPanelRects,
-  AiUiSignalsEvent,
+  VisualizationSignalEvent,
 } from '../visualization';
 import { TRANSIENT_SIGNAL_SOFT_FAIL } from '../visualization';
 import { useVisualizationSignals } from './hooks/useVisualizationSignals';
@@ -271,7 +271,7 @@ export default function AgentSurface() {
         confidence: 0.82,
         retrievalDepth: 3,
         cardRefsCount: 2,
-        event: null as AiUiSignalsEvent,
+        event: null as VisualizationSignalEvent,
       };
       if (debugEnabled) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars -- omit phase for debug

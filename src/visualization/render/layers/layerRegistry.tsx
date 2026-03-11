@@ -5,7 +5,7 @@
 
 import React from 'react';
 import type { RefObject } from 'react';
-import type { VisualizationEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import { BackgroundLayer } from './BackgroundLayer';
 import { BackPlaneLayer } from './BackPlaneLayer';
 import { SpineLightCoreLayer } from './SpineLightCoreLayer';

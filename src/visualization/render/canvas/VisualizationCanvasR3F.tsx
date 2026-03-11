@@ -23,15 +23,15 @@ import {
   type TouchCallbacks,
 } from '../../interaction/touchHandlers';
 import { TouchRaycaster } from '../../interaction/TouchRaycaster';
-import type { VisualizationEngineRef } from '../../engine/types';
-import { subscribeVisualizationScene } from '../../engine/sceneUpdates';
+import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { subscribeVisualizationScene } from '../../runtime/applySceneUpdates';
 import { CameraOrbit } from './CameraOrbit';
 import {
   LAYER_REGISTRY,
   DEFAULT_LAYER_DESCRIPTORS,
   isMountIdInRegistry,
 } from '../layers/layerRegistry';
-import { EngineLoop } from '../../engine/EngineLoop';
+import { RuntimeLoop } from '../../runtime/RuntimeLoop';
 import { PostFXPass } from './PostFXPass';
 
 const TAP_MAX_MS = 300;
@@ -244,7 +244,7 @@ export function VisualizationCanvasR3F({
               />
             ) : null;
           })}
-        <EngineLoop visualizationRef={visualizationRef} />
+        <RuntimeLoop visualizationRef={visualizationRef} />
         <TouchRaycaster visualizationRef={visualizationRef} />
         <CameraOrbit visualizationRef={visualizationRef} />
         <PostFXPass visualizationRef={visualizationRef} />

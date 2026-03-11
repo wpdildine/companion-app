@@ -2,7 +2,7 @@
 
 ## Overview
 
-Pure refactor: rename `src/nodeMap` to `src/visualization` and restructure into `engine/`, `scene/`, `render/`, `interaction/`, `materials/`, `utils/` per the move map. No logic changes; fix all imports and add a single public entry. Optional renames (NodeMap* → Visualization*) after build is green.
+Pure refactor: rename `src/nodeMap` to `src/visualization` and restructure into `runtime/`, `scene/`, `render/`, `interaction/`, `materials/`, `utils/` per the move map. No logic changes; fix all imports and add a single public entry. Optional renames (NodeMap* → Visualization*) after build is green.
 
 ---
 
@@ -19,8 +19,8 @@ Dev tools must not mix with runtime render layers.
 
 ```
 scene/
-  formations.ts
-  validateSceneDescription.ts
+  sceneFormations.ts
+  validateSceneSpec.ts
   builders/
     spine.ts
   artDirection/
@@ -50,7 +50,7 @@ interaction/
 
 - **33 files** under `src/nodeMap`: components, helpers/formations, interaction, materials, shaders, types.
 - **External import sites:** `src/app/VoiceScreen.tsx`, `src/app/hooks/useAiVizBridge.ts`, `src/ui/DevScreen.tsx`, `src/ui/DebugZoneOverlay.tsx`, `src/utils/validateVizState.ts`.
-- **Important:** `validateVizState` lives in **`src/utils/validateVizState.ts`**, not in nodeMap. Move it to **`src/visualization/engine/validateVizState.ts`**.
+- **Important:** `validateVizState` lives in **`src/utils/validateVizState.ts`**, not in nodeMap. Move it to **`src/visualization/runtime/validateVizState.ts`**.
 
 ---
 
@@ -59,18 +59,18 @@ interaction/
 ```
 src/
   visualization/
-    engine/
+    runtime/
       types.ts
       createDefaultRef.ts
-      EngineLoop.tsx
+      RuntimeLoop.tsx
       validateVizState.ts
       applySignalsToNodeMap.ts
       triggerPulse.ts
       getPulseColor.ts
 
     scene/
-      formations.ts
-      validateSceneDescription.ts
+      sceneFormations.ts
+      validateSceneSpec.ts
       builders/
         spine.ts
       artDirection/
@@ -130,16 +130,16 @@ src/
 | From | To |
 |------|----|
 | **Engine** | |
-| `src/nodeMap/types.ts` | `src/visualization/engine/types.ts` |
-| Extract from types.ts | `src/visualization/engine/createDefaultRef.ts` (`createDefaultNodeMapRef`, `TARGET_ACTIVITY_BY_MODE`) |
-| `src/nodeMap/components/EngineLoop.tsx` | `src/visualization/engine/EngineLoop.tsx` |
-| `src/utils/validateVizState.ts` | `src/visualization/engine/validateVizState.ts` |
-| `src/nodeMap/helpers/applySignalsToNodeMap.ts` | `src/visualization/engine/applySignalsToNodeMap.ts` |
-| `src/nodeMap/helpers/triggerPulse.ts` | `src/visualization/engine/triggerPulse.ts` |
-| `src/nodeMap/helpers/getPulseColor.ts` | `src/visualization/engine/getPulseColor.ts` |
+| `src/nodeMap/types.ts` | `src/visualization/runtime/types.ts` |
+| Extract from types.ts | `src/visualization/runtime/createDefaultRef.ts` (`createDefaultNodeMapRef`, `TARGET_ACTIVITY_BY_MODE`) |
+| `src/nodeMap/components/RuntimeLoop.tsx` | `src/visualization/runtime/RuntimeLoop.tsx` |
+| `src/utils/validateVizState.ts` | `src/visualization/runtime/validateVizState.ts` |
+| `src/nodeMap/helpers/applySignalsToNodeMap.ts` | `src/visualization/runtime/applySignalsToNodeMap.ts` |
+| `src/nodeMap/helpers/triggerPulse.ts` | `src/visualization/runtime/triggerPulse.ts` |
+| `src/nodeMap/helpers/getPulseColor.ts` | `src/visualization/runtime/getPulseColor.ts` |
 | **Scene** | |
-| `src/nodeMap/helpers/formations.ts` | `src/visualization/scene/formations.ts` |
-| `src/nodeMap/helpers/validateSceneDescription.ts` | `src/visualization/scene/validateSceneDescription.ts` |
+| `src/nodeMap/helpers/sceneFormations.ts` | `src/visualization/scene/sceneFormations.ts` |
+| `src/nodeMap/helpers/validateSceneSpec.ts` | `src/visualization/scene/validateSceneSpec.ts` |
 | `src/nodeMap/helpers/formations/spineArtDirection.ts` | `src/visualization/scene/artDirection/spineArtDirection.ts` |
 | `src/nodeMap/helpers/formations/spine.ts` | `src/visualization/scene/builders/spine.ts` |
 | **Render** | |
@@ -182,7 +182,7 @@ src/
 ### Step 1 — Create new folders only
 
 - Create `src/visualization/` and all subfolders:
-  - `engine/`
+  - `runtime/`
   - `scene/`, `scene/builders/`, `scene/artDirection/`
   - `render/`, `render/canvas/`, `render/layers/`, `render/dev/`
   - `interaction/`
@@ -206,21 +206,21 @@ src/
   - Canvas-related → `render/canvas/` (NodeMapCanvasR3F, NodeMapCanvas, NodeMapSurface, Fallback, CameraOrbit, CameraSync, PostFXPass, shaderDebugFlags).
   - Layer components → `render/layers/` (Spine, PlaneLayerField, ContextGlyphs, ContextLinks, TouchZones).
   - DevPanel → `render/dev/DevPanel.tsx`.
-  - EngineLoop → `engine/EngineLoop.tsx` (can be done in same batch or with engine step).
+  - RuntimeLoop → `runtime/RuntimeLoop.tsx` (can be done in same batch or with engine step).
 - Fix all imports (internal and from app/ui).
 - **Build.** Ensure green.
 
 ### Step 4 — Move engine, scene, interaction
 
-- Move engine: types, createDefaultRef (extract from types), EngineLoop if not done, validateVizState from utils, applySignalsToNodeMap, triggerPulse, getPulseColor.
-- Move scene: formations.ts, validateSceneDescription.ts, builders/spine.ts, artDirection/spineArtDirection.ts.
+- Move engine: types, createDefaultRef (extract from types), RuntimeLoop if not done, validateVizState from utils, applySignalsToNodeMap, triggerPulse, getPulseColor.
+- Move scene: sceneFormations.ts, validateSceneSpec.ts, builders/spine.ts, artDirection/spineArtDirection.ts.
 - Move interaction: NodeMapInteractionBand → InteractionBand, TouchRaycaster, touchHandlers; ensure zoneMath.ts and gestureMath.ts exist (empty or stubbed).
 - Fix all imports. Remove `src/nodeMap` and `src/utils/validateVizState.ts`.
 - **Build.** Ensure green.
 
 ### Step 5 — Public entry and renames
 
-- Add `src/visualization/index.ts` with the public surface (getSceneDescription, validateSceneDescription, createDefaultRef / createDefaultNodeMapRef, VisualizationCanvasR3F or NodeMapCanvasR3F, engine ref type, NodeMapCanvas, NodeMapSurface, InteractionBand, DevPanel, triggerPulseAtCenter, applySignalsToNodeMap, withTouchStubs, TouchCallbacks).
+- Add `src/visualization/index.ts` with the public surface (getSceneDescription, validateSceneSpec, createDefaultRef / createDefaultNodeMapRef, VisualizationCanvasR3F or NodeMapCanvasR3F, runtime ref type, NodeMapCanvas, NodeMapSurface, InteractionBand, DevPanel, triggerPulseAtCenter, applySignalsToNodeMap, withTouchStubs, TouchCallbacks).
 - Point app, ui, and utils imports to `../visualization` or `../visualization/engine` as appropriate.
 - Apply renames: **NodeMapCanvasR3F** → **VisualizationCanvasR3F**, **NodeMapInteractionBand** → **InteractionBand**; optionally **NodeMapEngineRef** → **VisualizationEngineRef**, **createDefaultNodeMapRef** → **createDefaultRef**.
 - **Build and test.** Green.
@@ -238,10 +238,10 @@ src/
 
 ## Refactor rules (for README / ARCHITECTURE in visualization)
 
-1. **Scene is the only aesthetic source** — Layout/colors/motion in `scene/formations.ts` and `scene/artDirection/*` (and materials). Renderers do not define default look constants.
+1. **Scene is the only aesthetic source** — Layout/colors/motion in `scene/sceneFormations.ts` and `scene/artDirection/*` (and materials). Renderers do not define default look constants.
 2. **Render layers are dumb** — `render/layers/*` read `ref.current.scene`, update uniforms/transforms; no layout/color/motion constants. (Optional later: move scene→mesh logic into `render/adapters/`.)
-3. **Interaction never owns visuals** — `interaction/*`: touch capture, mapping to engine ref, tap vs drag; zone/hit and gesture math in zoneMath.ts / gestureMath.ts.
-4. **Engine owns time and state** — State transitions, ramps, smoothing in `engine/*`.
+3. **Interaction never owns visuals** — `interaction/*`: touch capture, mapping to runtime ref, tap vs drag; zone/hit and gesture math in zoneMath.ts / gestureMath.ts.
+4. **Engine owns time and state** — State transitions, ramps, smoothing in `runtime/*`.
 5. **Dev is separate** — Dev tools live under `render/dev/`, not mixed with runtime layers.
 
 ---
@@ -249,7 +249,7 @@ src/
 ## Summary of changes from original plan
 
 - **DevPanel** → `render/dev/DevPanel.tsx`.
-- **Scene** → `scene/builders/spine.ts` (and `scene/formations.ts`, `scene/artDirection/*`).
+- **Scene** → `scene/builders/spine.ts` (and `scene/sceneFormations.ts`, `scene/artDirection/*`).
 - **Interaction** → add empty `zoneMath.ts` and `gestureMath.ts` in Step 1 or early.
 - **Utils** → `utils/colors.ts`, `utils/math.ts`, `utils/rng.ts` (stubs or moved from existing).
-- **Execution** → Step 1: folders only. Step 2: materials first, fix imports, build. Step 3: render components, fix imports, build. Then engine/scene/interaction, index, renames, docs, and optional adapters extraction.
+- **Execution** → Step 1: folders only. Step 2: materials first, fix imports, build. Step 3: render components, fix imports, build. Then runtime/scene/interaction, index, renames, docs, and optional adapters extraction.

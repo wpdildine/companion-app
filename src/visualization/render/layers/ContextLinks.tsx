@@ -10,8 +10,8 @@ import {
   connectionVertex,
   connectionFragment,
 } from '../../materials/links/connections';
-import { getLayerRuntimeInputs } from '../../engine/layerRuntimeInputs';
-import type { VisualizationEngineRef } from '../../engine/types';
+import { getLayerRuntimeInputs } from '../../runtime/runtimeLayerInputs';
+import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';

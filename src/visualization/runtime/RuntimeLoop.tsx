@@ -1,14 +1,14 @@
 /**
- * Render-loop only: smooth activity and touchInfluence from engine ref. No React state.
+ * Render-loop only: smooth activity and touchInfluence from runtime ref. No React state.
  * Touch field (viz band) drives touchWorld + touchInfluence when touchFieldActive and !reduceMotion.
  * Organism signals (focusBias, touchPresence, focusZone) derived here; scene.organism mutated each frame.
- * Event-driven pulses are handled in render layers; engine only maintains event identity + timing.
+ * Event-driven pulses are handled in render layers; runtime only maintains event identity + timing.
  */
 
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
-import type { VisualizationEngineRef, VisualizationMode } from './types';
+import type { VisualizationEngineRef, VisualizationMode } from './runtimeTypes';
 import { getPulseColorWithHue } from './getPulseColor';
 import { TARGET_ACTIVITY_BY_MODE } from './createDefaultRef';
 import {
@@ -88,7 +88,7 @@ function applyDevCycleState(v: VisualizationEngineRef, mode: VisualizationMode):
   }
 }
 
-export function EngineLoop({ visualizationRef }: { visualizationRef: React.RefObject<VisualizationEngineRef | null> }) {
+export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefObject<VisualizationEngineRef | null> }) {
   const didLog = useRef(false);
   const touchNdcVec = useRef(new THREE.Vector2());
   const raycaster = useRef(new THREE.Raycaster());
@@ -137,7 +137,7 @@ export function EngineLoop({ visualizationRef }: { visualizationRef: React.RefOb
       v.debugLastPulseAtMs = now;
     }
 
-    // Dev cycle ownership lives in EngineLoop so mode writes and mode reads share the same runtime.
+    // Dev cycle ownership lives in RuntimeLoop so mode writes and mode reads share the same runtime.
     if (v.canonicalCycleOn && v.stateCycleOn) {
       // Canonical cycle has priority.
       v.stateCycleOn = false;
@@ -198,7 +198,7 @@ export function EngineLoop({ visualizationRef }: { visualizationRef: React.RefOb
     prevCanonicalOnRef.current = v.canonicalCycleOn;
     if (DEBUG_TOUCH_FIELD && v.touchFieldActive && now - touchLogAt.current > 400) {
       touchLogAt.current = now;
-      console.log('[Viz] EngineLoop touchField', { touchFieldNdc: v.touchFieldNdc, touchWorld: v.touchWorld, touchInfluence: v.touchInfluence.toFixed(3), reduceMotion: v.reduceMotion });
+      console.log('[Viz] RuntimeLoop touchField', { touchFieldNdc: v.touchFieldNdc, touchWorld: v.touchWorld, touchInfluence: v.touchInfluence.toFixed(3), reduceMotion: v.reduceMotion });
     }
     const dt = Math.min(delta, DT_CAP);
     const lambda = v.targetActivity > v.activity ? v.lambdaUp : v.lambdaDown;
@@ -279,7 +279,7 @@ export function EngineLoop({ visualizationRef }: { visualizationRef: React.RefOb
         const marker = `${v.currentMode}->${canonicalMode}`;
         if (marker !== modeLogRef.current) {
           modeLogRef.current = marker;
-          console.log('[MotionGrammar] EngineLoop mode input', {
+          console.log('[MotionGrammar] RuntimeLoop mode input', {
             modeRaw: v.currentMode,
             modeCanonical: canonicalMode,
           });

@@ -10,8 +10,8 @@
 import { useFrame, useThree } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { useRef } from 'react';
-import type { VisualizationEngineRef } from '../engine/types';
-import { getPulseColorWithHue } from '../engine/getPulseColor';
+import type { VisualizationEngineRef } from '../runtime/runtimeTypes';
+import { getPulseColorWithHue } from '../runtime/getPulseColor';
 
 export function TouchRaycaster({
   visualizationRef,

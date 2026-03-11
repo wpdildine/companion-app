@@ -3,8 +3,8 @@
  * Uses event identity + timing + scene transient definitions to derive modulation.
  */
 
-import type { VisualizationEngineRef } from '../../engine/types';
-import type { GLSceneTransientEffects } from '../../scene/formations';
+import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import type { GLSceneTransientEffects } from '../../scene/sceneFormations';
 import type { TransientModulation } from '../../scene/artDirection/transientEffects';
 import { ZERO_MODULATION } from '../../scene/artDirection/transientEffects';
 

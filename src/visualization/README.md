@@ -7,7 +7,7 @@ Visualization is a pure render subsystem. It exposes one public API:
 
 1. **Scene contract owns aesthetics**
 - Layout, colors, motion defaults, and draw-order policy live in:
-  - `scene/formations.ts`
+  - `scene/sceneFormations.ts`
   - `scene/artDirection/*`
   - `scene/builders/*`
 
@@ -16,7 +16,7 @@ Visualization is a pure render subsystem. It exposes one public API:
 Transient effects are data-driven; render layers respond to **shared modulation channels** derived from event identity + timing.
 
 1. **Orchestrator/Controller** owns semantic event emission (what happened, when). It emits transient event identity only (e.g. via `emitEvent`).
-2. **Engine / shared runtime** carries event identity + timing (`lastEvent`, `lastEventTime`) only.
+2. **Visualization runtime** carries event identity + timing (`lastEvent`, `lastEventTime`) only.
 3. **Shared effect definitions** live in `scene/artDirection/transientEffects/`. Each effect is data-only: decayMs and modulation peak values. No runtime logic in these files.
 4. **Render-side helpers** derive modulation from event identity + timing + shared effect definitions.
 5. **Render layers** consume only the derived modulation channels plus layer-scoped **response tuning** from their presets (e.g. `modulationWeights`, `modulationTintColor` on the light-core preset). Render-side helpers may interpret event identity for pulse routing, but render layers should not embed event-specific branching.
@@ -35,11 +35,11 @@ Transient effects are data-driven; render layers respond to **shared modulation 
 - `render/layers/*` only consume scene/ref data, place meshes, and update uniforms.
 - No aesthetic constants in render layers.
 
-5. **Engine owns runtime state/time**
-- `engine/*` owns mode transitions, ramps, smoothing, pulse state, touch influence state.
+5. **Runtime owns state/time**
+- `runtime/*` owns mode transitions, ramps, smoothing, pulse state, touch influence state.
 
 6. **Interaction owns input mapping**
-- `interaction/*` captures gestures/taps and writes engine ref fields.
+- `interaction/*` captures gestures/taps and writes runtime ref fields.
 - Interaction does not own visual styling.
 - Semantic split:
   - `InteractionBand` owns continuous touch field + release-based rules/cards commit.
@@ -58,16 +58,16 @@ Transient effects are data-driven; render layers respond to **shared modulation 
 
 ## Motion grammar
 
-- Runtime engine: `engine/MotionGrammarEngine.ts`
+- Runtime engine: `runtime/MotionGrammarEngine.ts`
 - Active template: `scene/artDirection/motionGrammar/organismGrammar.ts` (barrel in `motionGrammar/index.ts`)
-- Tick owner: `engine/EngineLoop.tsx` (runs after organism derivation; mutates existing `scene.motion` object only)
-- Validation: `scene/validateSceneDescription.ts` enforces finite ranges and valid phase.
+- Tick owner: `runtime/RuntimeLoop.tsx` (runs after organism derivation; mutates existing `scene.motion` object only)
+- Validation: `scene/validateSceneSpec.ts` enforces finite ranges and valid phase.
 
 Tuning rule: adjust behavior in `scene/artDirection/motionGrammar/*` first; render layers should consume `scene.motion` and avoid hardcoded choreography constants.
 
 ## Directory map
 
-- `engine/` — ref contract, state transforms, pulse plumbing, validation
+- `runtime/` — ref contract, state transforms, pulse plumbing, validation
 - `scene/` — contract assembly + builders + art direction
 - `scene/artDirection/transientEffects/` — shared transient effect definitions (data-driven; one file per effect)
 - `render/canvas/` — canvas host, post-FX, camera sync/orbit
@@ -81,4 +81,4 @@ Tuning rule: adjust behavior in `scene/artDirection/motionGrammar/*` first; rend
 
 - Keep app/screen state out of visualization.
 - Keep theme imports out of visualization scene/render logic; consume injected values only.
-- Add new scene fields in `formations.ts` + `validateSceneDescription.ts` together.
+- Add new scene fields in `sceneFormations.ts` + `validateSceneSpec.ts` together.

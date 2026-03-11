@@ -33,7 +33,7 @@ export const VIZ_CANVAS_BACKGROUND = '#0a0612';
 export const VIZ_PALETTE_A: [number, number, number] = [0.35, 0.55, 1.0];
 export const VIZ_PALETTE_B: [number, number, number] = [0.95, 0.35, 0.85];
 
-/** Viz: node layer colors (RGB 0–1). Match formations.ts PALETTE. */
+/** Viz: node layer colors (RGB 0–1). Match sceneFormations.ts PALETTE. */
 export const VIZ_NODE_PALETTE: [number, number, number][] = [
   [0.4, 0.2, 0.8],
   [0.5, 0.25, 0.85],

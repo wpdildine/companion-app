@@ -69,13 +69,13 @@ Transient signals travel alongside the visualization mode.
 
 **Requirement:** A **single shared transient signal definition module** (e.g. defining a type such as `TransientVisualSignal`). Transient signal names must **not** be scattered as raw string literals across controller, engine, or render files.
 
-- **New file:** e.g. `src/visualization/engine/signals.ts` (or `src/visualization/types/signals.ts`). This module is the **source of truth** for:
+- **New file:** e.g. `src/visualization/runtime/signals.ts` (or `src/visualization/types/signals.ts`). This module is the **source of truth** for:
   - controller emission
   - visualization typing
   - validation
   - pulse/event mapping
 - **Contents:** Transient signal type union (e.g. `TransientVisualSignal` with at least `'softFail'`); optional helper guards/constants. Minimal and typed. Do **not** design a large framework.
-- **Consumers:** use the shared module only—no raw literals. Controller, engine types, validateVizState, getPulseColor, EngineLoop all reference the shared definition.
+- **Consumers:** use the shared module only—no raw literals. Controller, engine types, validateVizState, getPulseColor, RuntimeLoop all reference the shared definition.
 
 ---
 
@@ -88,8 +88,8 @@ Transient signals travel alongside the visualization mode.
 
 ## 5. Visualization engine
 
-- **Files:** [src/visualization/engine/types.ts](src/visualization/engine/types.ts), [getPulseColor.ts](src/visualization/engine/getPulseColor.ts), [validateVizState.ts](src/visualization/engine/validateVizState.ts), [EngineLoop.tsx](src/visualization/engine/EngineLoop.tsx)
-- Engine accepts the transient signal from the shared type; renders center pulse / red shift / agitation; decay is automatic. Use shared module for typing and branching—no ad hoc string literals. getPulseColor and validateVizState take valid transient signals from the shared module. EngineLoop branches on signal using the shared type.
+- **Files:** [src/visualization/runtime/types.ts](src/visualization/runtime/types.ts), [getPulseColor.ts](src/visualization/runtime/getPulseColor.ts), [validateVizState.ts](src/visualization/runtime/validateVizState.ts), [RuntimeLoop.tsx](src/visualization/runtime/RuntimeLoop.tsx)
+- Engine accepts the transient signal from the shared type; renders center pulse / red shift / agitation; decay is automatic. Use shared module for typing and branching—no ad hoc string literals. getPulseColor and validateVizState take valid transient signals from the shared module. RuntimeLoop branches on signal using the shared type.
 
 ---
 

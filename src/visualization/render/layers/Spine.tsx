@@ -1,6 +1,6 @@
 /**
  * Spine planes: 5-plane AI channel. Dumb renderer: all layout and style from
- * visualizationRef.current.scene.spine (visualization engine ref); spread interpolation uses scene transition/easing only.
+ * visualizationRef.current.scene.spine (visualization runtime ref); spread interpolation uses scene transition/easing only.
  * Same envelope convention as TouchZones (active region NDC, centerY = 0 = center of active region).
  */
 
@@ -18,8 +18,8 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import type { CanonicalSpineMode } from '../../scene/builders/spine';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
-import { validateSceneDescription } from '../../scene/validateSceneDescription';
-import type { VisualizationEngineRef } from '../../engine/types';
+import { validateSceneSpec } from '../../scene/validateSceneSpec';
+import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import { createOpacityPlaneMaterial } from '../../materials/spine/opacityPlaneMaterial';
 import { createHalftoneMaterial } from '../../materials/halftone/halftonePlaneMaterial';
 import { HALFTONE_VERTEX } from '../../materials/halftone/halftone.vert';
@@ -739,7 +739,7 @@ export function Spine({
   });
 
   const scene = visualizationRef.current?.scene;
-  if (!validateSceneDescription(scene)) {
+  if (!validateSceneSpec(scene)) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.warn(
         '[Spine] Not mounting: scene or scene.spine invalid. Ensure visualizationRef.current.scene = getSceneDescription() at viz mount (e.g. VoiceScreen).',

@@ -1,10 +1,13 @@
 /**
- * Visualization engine: state ref shape and mode type.
- * Discrete mode in React; continuous animation in render loop via this ref.
+ * Visualization runtime: mutable ref shape and mode type.
+ * Discrete mode is written by React; continuous animation advances in the runtime loop.
  */
 
-import type { GLSceneDescription } from '../scene/formations';
-import type { TransientVisualSignal } from './signals';
+import type { GLSceneDescription } from '../scene/sceneFormations';
+import type {
+  VisualizationSignalEvent,
+  VisualizationSignals,
+} from './visualizationSignals';
 
 export type VisualizationMode =
   | 'idle'
@@ -13,24 +16,6 @@ export type VisualizationMode =
   | 'speaking'
   | 'touched'
   | 'released';
-
-/** UI-semantic signals for the visualization layer only. Not render params. */
-export type AiUiSignalsEvent =
-  | 'tapCitation'
-  | 'chunkAccepted'
-  | 'warning'
-  | 'tapCard'
-  | TransientVisualSignal
-  | null;
-
-export type AiUiSignals = {
-  phase: 'idle' | 'processing' | 'resolved';
-  grounded: boolean;
-  confidence: number; // 0..1
-  retrievalDepth: number; // count of selected rule snippets
-  cardRefsCount: number; // count of referenced cards
-  event?: AiUiSignalsEvent;
-};
 
 export interface TouchNdc {
   x: number;
@@ -96,14 +81,14 @@ export interface VisualizationEngineRef {
   /** Reduce motion (accessibility). */
   reduceMotion: boolean;
   /** Last semantic event (for pulse/ripple). */
-  lastEvent: AiUiSignalsEvent;
+  lastEvent: VisualizationSignalEvent;
   /** Time of last event (clock or elapsed). */
   lastEventTime: number;
   /** Optional snapshot for debug. */
-  signalsSnapshot?: AiUiSignals;
+  signalsSnapshot?: VisualizationSignals;
   /** Panel rects in viewport-relative screen px (account for scroll before writing). VisualizationSurface provides viewport size; GL converts to normalized. */
   panelRects?: VisualizationPanelRects;
-  /** Derived in applySignalsToVisualization from signals (not in signals API). */
+  /** Derived in applyVisualizationSignals from signals (not in signals API). */
   rulesClusterCount: number;
   cardsClusterCount: number;
   layerCount: number;
@@ -122,7 +107,7 @@ export interface VisualizationEngineRef {
   sceneListeners: Set<() => void>;
   /** Zone currently under touch (for armed state). Set by interaction band. */
   zoneArmed: 'rules' | 'cards' | null;
-  /** Organism signals (derived in EngineLoop). focusBias in [-1,1], touchPresence in [0,1]. */
+  /** Organism signals (derived in RuntimeLoop). focusBias in [-1,1], touchPresence in [0,1]. */
   focusBias: number;
   touchPresence: number;
   /** Smoothed NDC; single object mutated each frame (no alloc). */
@@ -141,7 +126,7 @@ export interface VisualizationEngineRef {
   canonicalCycleOn: boolean;
   canonicalCycleTimerId: ReturnType<typeof setInterval> | null;
   canonicalCycleIdx: number;
-  /** Dev: persistent debug pulse loop toggle (engine-owned; continues when DevPanel is closed). */
+  /** Dev: persistent debug pulse loop toggle (runtime-owned; continues when DevPanel is closed). */
   debugPulseLoopOn: boolean;
   debugPulseIntervalMs: number;
   debugLastPulseAtMs: number;

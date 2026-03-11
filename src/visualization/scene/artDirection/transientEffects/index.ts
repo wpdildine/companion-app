@@ -3,7 +3,7 @@
  * Render layers derive modulation from event identity + timing + these definitions.
  */
 
-import type { TransientVisualSignal } from '../../../engine/signals';
+import type { TransientVisualSignal } from '../../../runtime/visualizationSignals';
 import type { TransientEffectDefinition } from './types';
 import { SOFT_FAIL_EFFECT } from './softFail';
 import { FIRST_TOKEN_EFFECT } from './firstToken';

@@ -1,6 +1,6 @@
 /**
  * Spine scene description: 5-plane AI channel, envelope, spread/halftone profiles.
- * Built here; composed by formations.ts getSceneDescription(). Canonical modes only.
+ * Built here; composed by sceneFormations.ts getSceneDescription(). Canonical modes only.
  */
 import { SPINE_ART_DIRECTION } from '../artDirection/spine';
 

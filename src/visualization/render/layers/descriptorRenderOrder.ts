@@ -1,5 +1,5 @@
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
-import type { GLSceneDescription, GLSceneLayerId } from '../../scene/formations';
+import type { GLSceneDescription, GLSceneLayerId } from '../../scene/sceneFormations';
 
 export function getDescriptorRenderOrderBase(
   scene: GLSceneDescription | undefined,

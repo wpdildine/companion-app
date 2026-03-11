@@ -3,8 +3,8 @@
  * RGB 0..1. Does not import theme; receives paletteId and optional hueShift.
  */
 
-import type { VisualizationMode } from './types';
-import type { TransientVisualSignal } from './signals';
+import type { VisualizationMode } from './runtimeTypes';
+import type { TransientVisualSignal } from './visualizationSignals';
 
 export type PulseEventType =
   | 'tap'

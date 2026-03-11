@@ -1,5 +1,5 @@
 /**
- * Developer controls: palette, easing, viz toggles. Writes only into engine ref.
+ * Developer controls: palette, easing, viz toggles. Writes only into runtime ref.
  * Gate: long-press on status header in VoiceScreen sets devEnabled.
  */
 
@@ -14,9 +14,15 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   type VisualizationEngineRef,
   type VisualizationMode,
-} from '../../engine/types';
-import { TARGET_ACTIVITY_BY_MODE } from '../../engine/createDefaultRef';
-import { triggerPulseAtCenter } from '../../engine/triggerPulse';
+} from '../../runtime/runtimeTypes';
+import { TARGET_ACTIVITY_BY_MODE } from '../../runtime/createDefaultRef';
+import { updateVisualizationLayerDescriptors } from '../../runtime/applySceneUpdates';
+import { triggerPulseAtCenter } from '../../runtime/triggerPulse';
+import {
+  VISUALIZATION_MOUNT_IDS,
+  getDefaultLayerDescriptors,
+  type VisualizationMountId,
+} from '../../scene/layerDescriptor';
 
 /** Minimal theme for DevPanel; injected by App (no theme import in nodeMap). */
 export type DevPanelTheme = {
@@ -182,7 +188,7 @@ export function DevPanel({
     if (!viz) return;
     viz.stateCycleOn = !viz.stateCycleOn;
     if (viz.stateCycleOn) {
-      // EngineLoop owns cycle stepping; DevPanel only toggles flags.
+      // RuntimeLoop owns cycle stepping; DevPanel only toggles flags.
       viz.canonicalCycleOn = false;
       viz.modePinActive = false;
       viz.modePin = null;
@@ -201,7 +207,7 @@ export function DevPanel({
     if (!viz) return;
     viz.canonicalCycleOn = !viz.canonicalCycleOn;
     if (viz.canonicalCycleOn) {
-      // EngineLoop owns cycle stepping; DevPanel only toggles flags.
+      // RuntimeLoop owns cycle stepping; DevPanel only toggles flags.
       viz.stateCycleOn = false;
       viz.modePinActive = false;
       viz.modePin = null;
@@ -224,6 +230,10 @@ export function DevPanel({
 
   const v = visualizationRef.current;
   if (!v) return null;
+  const layerDescriptors =
+    v.scene?.layerDescriptors ?? getDefaultLayerDescriptors();
+  const isLayerEnabled = (id: VisualizationMountId) =>
+    layerDescriptors.find(d => d.id === id)?.enabled !== false;
 
   const wrapperStyle =
     variant === 'overlay' ? [StyleSheet.absoluteFill, styles.overlay] : [styles.inlineWrap];
@@ -358,6 +368,34 @@ export function DevPanel({
               </Text>
             </Pressable>
           </View>
+          <Text style={[styles.section, { color: muted }]}>Layers</Text>
+          {VISUALIZATION_MOUNT_IDS.map(id => (
+            <View key={id} style={styles.row}>
+              <Text style={{ color: textColor }}>{id}</Text>
+              <Pressable
+                onPress={() => {
+                  const nextEnabled = !isLayerEnabled(id);
+                  updateVisualizationLayerDescriptors(visualizationRef, current => {
+                    const source =
+                      current.length > 0 ? current : getDefaultLayerDescriptors();
+                    let found = false;
+                    const next = source.map(d => {
+                      if (d.id !== id) return d;
+                      found = true;
+                      return { ...d, enabled: nextEnabled };
+                    });
+                    if (found) return next;
+                    return [...next, { id, enabled: nextEnabled }];
+                  });
+                  setUiVersion(u => u + 1);
+                }}
+              >
+                <Text style={{ color: muted }}>
+                  {isLayerEnabled(id) ? 'ON' : 'OFF'}
+                </Text>
+              </Pressable>
+            </View>
+          ))}
 
           <Text style={[styles.section, { color: muted }]}>State tests</Text>
           <View style={[styles.row, styles.currentStateRow]}>

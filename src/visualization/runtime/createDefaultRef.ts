@@ -1,8 +1,8 @@
 /**
- * Factory for the visualization engine ref. Single place for default values.
+ * Factory for the visualization runtime ref. Single place for default values.
  */
 
-import type { VisualizationEngineRef, VisualizationMode } from './types';
+import type { VisualizationEngineRef, VisualizationMode } from './runtimeTypes';
 
 const SENTINEL_FAR = 1e6;
 

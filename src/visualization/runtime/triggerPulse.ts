@@ -4,7 +4,7 @@
  */
 
 import type { RefObject } from 'react';
-import type { VisualizationEngineRef } from './types';
+import type { VisualizationEngineRef } from './runtimeTypes';
 import { getPulseColorWithHue } from './getPulseColor';
 
 export function triggerPulseAtCenter(

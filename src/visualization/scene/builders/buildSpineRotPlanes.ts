@@ -1,10 +1,10 @@
 /**
  * Spine rot layer: static rotated planes in overlay space.
- * Built here; composed by formations.ts getSceneDescription().
+ * Built here; composed by sceneFormations.ts getSceneDescription().
  * Builder owns Z + all layout; renderer reads scene.spineRot only.
  */
 
-import type { CanonicalSceneMode } from '../canonicalMode';
+import type { CanonicalSceneMode } from '../sceneMode';
 import { SPINE_ART_DIRECTION } from '../artDirection/spine';
 
 export type SpineRotPlane = {

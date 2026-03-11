@@ -4,8 +4,16 @@
  * Configuration only; consumed by MotionGrammarEngine.
  */
 
-import type { CanonicalSceneMode } from '../../canonicalMode';
-import type { MotionGrammarTemplate, MotionTargets, MotionEasing, MotionBreath, MotionTouchCoupling, MotionSleepCoupling, MotionBeats } from './types';
+import type { CanonicalSceneMode } from '../../sceneMode';
+import type {
+  MotionGrammarTemplate,
+  MotionTargets,
+  MotionEasing,
+  MotionBreath,
+  MotionTouchCoupling,
+  MotionSleepCoupling,
+  MotionBeats,
+} from './types';
 
 function defaultTargets(overrides: Partial<MotionTargets> = {}): MotionTargets {
   return {

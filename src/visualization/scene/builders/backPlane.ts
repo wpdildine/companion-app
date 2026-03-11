@@ -1,6 +1,6 @@
-import type { GLSceneBackPlane } from '../formations';
+import type { GLSceneBackPlane } from '../sceneFormations';
 import type { GLSceneSpine } from './spine';
-import type { GLSceneBackgroundPlanes } from '../formations';
+import type { GLSceneBackgroundPlanes } from '../sceneFormations';
 import { BACK_PLANE_ART_DIRECTION } from '../artDirection/backPlaneArtDirection';
 
 /**

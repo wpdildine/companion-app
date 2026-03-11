@@ -4,7 +4,7 @@
 
 import { useFrame, useThree } from '@react-three/fiber/native';
 import { useRef } from 'react';
-import type { VisualizationEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 
 const RADIUS = 13.5;
 

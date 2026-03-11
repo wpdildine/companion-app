@@ -5,7 +5,7 @@
  */
 
 import type { RefObject } from 'react';
-import type { VisualizationEngineRef } from './types';
+import type { VisualizationEngineRef } from './runtimeTypes';
 
 /** Projected ref-owned runtime channels only. All optional when ref is missing. */
 export interface LayerRuntimeInputs {

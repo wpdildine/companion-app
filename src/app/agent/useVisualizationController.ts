@@ -1,7 +1,7 @@
 /**
  * VisualizationController: translation layer from normalized agent state to visualization.
  * Maps AgentOrchestrator state into visualization signals; reacts to lifecycle callbacks for pulses/events.
- * Writes only through useVisualizationSignals / applySignalsToVisualization. Provider-agnostic.
+ * Writes only through useVisualizationSignals / applyVisualizationSignals. Provider-agnostic.
  */
 
 import { useEffect, useRef, type RefObject } from 'react';
@@ -34,7 +34,7 @@ function lifecycleToMode(
 }
 
 export interface UseVisualizationControllerOptions {
-  /** When true, do not push mode/phase so DevPanel/EngineLoop own mode. */
+  /** When true, do not push mode/phase so DevPanel/RuntimeLoop own mode. */
   debugEnabled?: boolean;
   /** When true, always push dummy signals (instrument-panel verification). */
   debugScenario?: boolean;

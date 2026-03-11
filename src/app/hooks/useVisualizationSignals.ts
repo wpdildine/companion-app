@@ -1,19 +1,19 @@
 /**
  * Hook: single place for App to push VisualizationSignals and events to the visualization ref.
- * Exposes setSignals and emitEvent; all writes go through applySignalsToVisualization.
+ * Exposes setSignals and emitEvent; all writes go through applyVisualizationSignals.
  */
 
 import { useCallback, type RefObject } from 'react';
-import { applySignalsToVisualization } from '../../visualization';
+import { applyVisualizationSignals } from '../../visualization';
 import type {
   VisualizationEngineRef,
   VisualizationMode,
-  AiUiSignals,
-  AiUiSignalsEvent,
+  VisualizationSignals,
+  VisualizationSignalEvent,
   VisualizationPanelRects,
 } from '../../visualization';
 
-type VisualizationSignalInput = Partial<AiUiSignals> & {
+type VisualizationSignalInput = Partial<VisualizationSignals> & {
   mode?: VisualizationMode;
   panelRects?: VisualizationPanelRects;
 };
@@ -23,15 +23,15 @@ export function useVisualizationSignals(
 ) {
   const setSignals = useCallback(
     (signals: VisualizationSignalInput) => {
-      applySignalsToVisualization(visualizationRef, signals);
+      applyVisualizationSignals(visualizationRef, signals);
     },
     [visualizationRef],
   );
 
   const emitEvent = useCallback(
-    (eventType: AiUiSignalsEvent) => {
+    (eventType: VisualizationSignalEvent) => {
       if (eventType == null) return;
-      applySignalsToVisualization(visualizationRef, { event: eventType });
+      applyVisualizationSignals(visualizationRef, { event: eventType });
     },
     [visualizationRef],
   );

@@ -1,5 +1,5 @@
 import { BACKGROUND_FIELD_ART_DIRECTION } from '../artDirection/backgroundFieldArtDirection';
-import type { GLScenePlaneField } from '../formations';
+import type { GLScenePlaneField } from '../sceneFormations';
 
 /**
  * Build scene descriptor for background field from art direction.

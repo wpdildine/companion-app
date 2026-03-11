@@ -2,8 +2,8 @@
  * Node map state: createDefaultVisualizationRef and validateVizState.
  */
 
-import { createDefaultVisualizationRef } from '../src/visualization/engine/createDefaultRef';
-import { validateVizState } from '../src/visualization/engine/validateVizState';
+import { createDefaultVisualizationRef } from '../src/visualization/runtime/createDefaultRef';
+import { validateVizState } from '../src/visualization/runtime/validateVizState';
 
 describe('createDefaultVisualizationRef', () => {
   it('returns object with required fields', () => {

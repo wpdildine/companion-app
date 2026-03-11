@@ -7,7 +7,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { TouchCallbacks } from '../../interaction/touchHandlers';
-import type { VisualizationEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import { VisualizationCanvas } from './VisualizationCanvas';
 
 export type VisualizationSurfaceProps = {

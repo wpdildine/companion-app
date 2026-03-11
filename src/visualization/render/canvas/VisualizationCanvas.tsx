@@ -5,7 +5,7 @@
 
 import React, { Component, useEffect, useState } from 'react';
 import { NativeModules, Platform } from 'react-native';
-import type { VisualizationEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { TouchCallbacks } from '../../interaction/touchHandlers';
 import { VisualizationCanvasFallback } from './VisualizationCanvasFallback';
 

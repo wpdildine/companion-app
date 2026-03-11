@@ -1,10 +1,10 @@
 /**
- * Scene contract validation. Separate from engine/validateVizState (engine ref).
+ * Scene contract validation. Separate from runtime/validateVizState (runtime ref).
  * Used by Spine (and optionally at scene assignment) to dev-assert scene shape.
  */
 
-import type { GLSceneDescription } from './formations';
-import { GL_SCENE_LAYER_KEYS } from './formations';
+import type { GLSceneDescription } from './sceneFormations';
+import { GL_SCENE_LAYER_KEYS } from './sceneFormations';
 import { VISUALIZATION_MOUNT_IDS } from './layerDescriptor';
 
 const CANONICAL_KEYS = ['idle', 'listening', 'processing', 'speaking'] as const;
@@ -13,21 +13,21 @@ const CANONICAL_KEYS = ['idle', 'listening', 'processing', 'speaking'] as const;
  * Returns true if scene has valid spine and required canonical profile keys.
  * In __DEV__, logs and returns false when invalid.
  */
-export function validateSceneDescription(
+export function validateSceneSpec(
   scene: GLSceneDescription | undefined,
 ): boolean {
   if (!scene) return false;
   const spine = scene.spine;
   if (!spine) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.spine is missing.');
+      console.error('[validateSceneSpec] scene.spine is missing.');
     }
     return false;
   }
   if (spine.planeCount !== 5) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error(
-        '[validateSceneDescription] scene.spine.planeCount must be 5, got',
+        '[validateSceneSpec] scene.spine.planeCount must be 5, got',
         spine.planeCount,
       );
     }
@@ -37,7 +37,7 @@ export function validateSceneDescription(
   if (!Array.isArray(planes) || planes.length !== spine.planeCount) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error(
-        '[validateSceneDescription] scene.spine.planes must be array of length planeCount.',
+        '[validateSceneSpec] scene.spine.planes must be array of length planeCount.',
       );
     }
     return false;
@@ -45,7 +45,7 @@ export function validateSceneDescription(
   for (let i = 0; i < planes.length; i++) {
     if (planes[i] == null || typeof (planes[i] as { z?: number }).z !== 'number') {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        console.error('[validateSceneDescription] scene.spine.planes[].z must be number.');
+        console.error('[validateSceneSpec] scene.spine.planes[].z must be number.');
       }
       return false;
     }
@@ -53,7 +53,7 @@ export function validateSceneDescription(
   const env = spine.envelopeNdc;
   if (!env || typeof env.width !== 'number' || typeof env.height !== 'number' || typeof env.centerY !== 'number') {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.spine.envelopeNdc (width, height, centerY) is missing or invalid.');
+      console.error('[validateSceneSpec] scene.spine.envelopeNdc (width, height, centerY) is missing or invalid.');
     }
     return false;
   }
@@ -77,7 +77,7 @@ export function validateSceneDescription(
   if (!styleArraysValid) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error(
-        '[validateSceneDescription] scene.spine.style plane arrays must exist and match planeCount.',
+        '[validateSceneSpec] scene.spine.style plane arrays must exist and match planeCount.',
       );
     }
     return false;
@@ -137,7 +137,7 @@ export function validateSceneDescription(
   if (!numericStyleValid) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error(
-        '[validateSceneDescription] scene.spine.style numeric fields are missing or invalid.',
+        '[validateSceneSpec] scene.spine.style numeric fields are missing or invalid.',
       );
     }
     return false;
@@ -146,7 +146,7 @@ export function validateSceneDescription(
     if (!spine.spreadProfiles[key] || !spine.halftoneProfiles[key]) {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
         console.error(
-          '[validateSceneDescription] scene.spine.spreadProfiles and halftoneProfiles must have keys: idle, listening, processing, speaking. Missing:',
+          '[validateSceneSpec] scene.spine.spreadProfiles and halftoneProfiles must have keys: idle, listening, processing, speaking. Missing:',
           key,
         );
       }
@@ -158,7 +158,7 @@ export function validateSceneDescription(
     const shard = shards[s];
     if (shard && typeof shard.z !== 'number') {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        console.error('[validateSceneDescription] scene.spine.shards[].z must be number.');
+        console.error('[validateSceneSpec] scene.spine.shards[].z must be number.');
       }
       return false;
     }
@@ -169,7 +169,7 @@ export function validateSceneDescription(
     ) {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
         console.error(
-          '[validateSceneDescription] scene.spine.shards[].zOffset must be in [-2.5, 2.5], got',
+          '[validateSceneSpec] scene.spine.shards[].zOffset must be in [-2.5, 2.5], got',
           shard.zOffset,
           'at index',
           s,
@@ -180,7 +180,7 @@ export function validateSceneDescription(
   }
   if (!scene.layers) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.layers is missing.');
+      console.error('[validateSceneSpec] scene.layers is missing.');
     }
     return false;
   }
@@ -189,7 +189,7 @@ export function validateSceneDescription(
     if (!section || typeof section.renderOrderBase !== 'number') {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
         console.error(
-          '[validateSceneDescription] scene.layers must have each key with renderOrderBase number. Missing or invalid:',
+          '[validateSceneSpec] scene.layers must have each key with renderOrderBase number. Missing or invalid:',
           key,
         );
       }
@@ -199,7 +199,7 @@ export function validateSceneDescription(
   if (scene.layerDescriptors != null) {
     if (!Array.isArray(scene.layerDescriptors)) {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        console.error('[validateSceneDescription] scene.layerDescriptors must be an array.');
+        console.error('[validateSceneSpec] scene.layerDescriptors must be an array.');
       }
       return false;
     }
@@ -207,33 +207,33 @@ export function validateSceneDescription(
       const d = scene.layerDescriptors[i];
       if (!d || typeof d.id !== 'string') {
         if (typeof __DEV__ !== 'undefined' && __DEV__) {
-          console.error('[validateSceneDescription] scene.layerDescriptors[].id must be a string (VisualizationMountId).', i);
+          console.error('[validateSceneSpec] scene.layerDescriptors[].id must be a string (VisualizationMountId).', i);
         }
         return false;
       }
       if (!VISUALIZATION_MOUNT_IDS.includes(d.id as (typeof VISUALIZATION_MOUNT_IDS)[number])) {
         if (typeof __DEV__ !== 'undefined' && __DEV__) {
-          console.error('[validateSceneDescription] scene.layerDescriptors[].id must be a valid VisualizationMountId.', d.id);
+          console.error('[validateSceneSpec] scene.layerDescriptors[].id must be a valid VisualizationMountId.', d.id);
         }
         return false;
       }
       if (d.enabled !== undefined && typeof d.enabled !== 'boolean') {
         if (typeof __DEV__ !== 'undefined' && __DEV__) {
-          console.error('[validateSceneDescription] scene.layerDescriptors[].enabled must be boolean if present.', i);
+          console.error('[validateSceneSpec] scene.layerDescriptors[].enabled must be boolean if present.', i);
         }
         return false;
       }
       if (d.sceneLayerKeys != null) {
         if (!Array.isArray(d.sceneLayerKeys)) {
           if (typeof __DEV__ !== 'undefined' && __DEV__) {
-            console.error('[validateSceneDescription] scene.layerDescriptors[].sceneLayerKeys must be an array if present.', i);
+            console.error('[validateSceneSpec] scene.layerDescriptors[].sceneLayerKeys must be an array if present.', i);
           }
           return false;
         }
         for (const key of d.sceneLayerKeys) {
           if (!(key in scene.layers)) {
             if (typeof __DEV__ !== 'undefined' && __DEV__) {
-              console.error('[validateSceneDescription] scene.layerDescriptors[].sceneLayerKeys must only contain keys that exist in scene.layers.', key);
+              console.error('[validateSceneSpec] scene.layerDescriptors[].sceneLayerKeys must only contain keys that exist in scene.layers.', key);
             }
             return false;
           }
@@ -245,7 +245,7 @@ export function validateSceneDescription(
   if (!bp || !Array.isArray(bp.planes) || bp.planes.length !== bp.count) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error(
-        '[validateSceneDescription] scene.backgroundPlanes.planes must be array of length backgroundPlanes.count.',
+        '[validateSceneSpec] scene.backgroundPlanes.planes must be array of length backgroundPlanes.count.',
       );
     }
     return false;
@@ -254,7 +254,7 @@ export function validateSceneDescription(
     const p = bp.planes[i];
     if (p == null || typeof p.z !== 'number') {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        console.error('[validateSceneDescription] scene.backgroundPlanes.planes[].z must be number.');
+        console.error('[validateSceneSpec] scene.backgroundPlanes.planes[].z must be number.');
       }
       return false;
     }
@@ -262,13 +262,13 @@ export function validateSceneDescription(
   const backPlane = scene.backPlane;
   if (!backPlane || typeof backPlane.count !== 'number' || backPlane.count < 0) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.backPlane is missing or backPlane.count is invalid.');
+      console.error('[validateSceneSpec] scene.backPlane is missing or backPlane.count is invalid.');
     }
     return false;
   }
   if (!Array.isArray(backPlane.planes) || backPlane.planes.length !== backPlane.count) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.backPlane.planes must be array of length backPlane.count.');
+      console.error('[validateSceneSpec] scene.backPlane.planes must be array of length backPlane.count.');
     }
     return false;
   }
@@ -276,21 +276,21 @@ export function validateSceneDescription(
     const p = backPlane.planes[i];
     if (p == null || typeof p.z !== 'number' || typeof p.opacityBase !== 'number') {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        console.error('[validateSceneDescription] scene.backPlane.planes[] must have z and opacityBase.');
+        console.error('[validateSceneSpec] scene.backPlane.planes[] must have z and opacityBase.');
       }
       return false;
     }
   }
   if (!scene.presets) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.presets is missing.');
+      console.error('[validateSceneSpec] scene.presets is missing.');
     }
     return false;
   }
   for (const key of CANONICAL_KEYS) {
     if (!(key in scene.presets)) {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        console.error('[validateSceneDescription] scene.presets must have key:', key);
+        console.error('[validateSceneSpec] scene.presets must have key:', key);
       }
       return false;
     }
@@ -312,7 +312,7 @@ export function validateSceneDescription(
   }
   if (!scene.touch) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.touch is missing.');
+      console.error('[validateSceneSpec] scene.touch is missing.');
     }
     return false;
   }
@@ -333,14 +333,14 @@ export function validateSceneDescription(
       typeof t.zones.center?.record === 'boolean');
   if (!zonesValid) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.touch.zones (left/right/center.strength) invalid.');
+      console.error('[validateSceneSpec] scene.touch.zones (left/right/center.strength) invalid.');
     }
     return false;
   }
   if (!centerRecordValid) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error(
-        '[validateSceneDescription] scene.touch.zones.center.record must be boolean when present.',
+        '[validateSceneSpec] scene.touch.zones.center.record must be boolean when present.',
       );
     }
     return false;
@@ -352,7 +352,7 @@ export function validateSceneDescription(
     typeof t.feedback?.spring === 'number';
   if (!feedbackValid) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.touch.feedback invalid.');
+      console.error('[validateSceneSpec] scene.touch.feedback invalid.');
     }
     return false;
   }
@@ -362,14 +362,14 @@ export function validateSceneDescription(
     typeof t.glyphResponse?.parallaxBoost === 'number';
   if (!glyphRespValid) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.touch.glyphResponse invalid.');
+      console.error('[validateSceneSpec] scene.touch.glyphResponse invalid.');
     }
     return false;
   }
   const spineLightCore = scene.spineLightCore;
   if (!spineLightCore) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.spineLightCore is missing.');
+      console.error('[validateSceneSpec] scene.spineLightCore is missing.');
     }
     return false;
   }
@@ -395,7 +395,7 @@ export function validateSceneDescription(
   ) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error(
-        '[validateSceneDescription] scene.spineLightCore fields (enabled/color/orbColor/opacityBase/widthScale/heightScale/zOffset/blend) are invalid.',
+        '[validateSceneSpec] scene.spineLightCore fields (enabled/color/orbColor/opacityBase/widthScale/heightScale/zOffset/blend) are invalid.',
       );
     }
     return false;
@@ -405,13 +405,13 @@ export function validateSceneDescription(
     const warpScale = spineLightCore.warpScaleByMode?.[key];
     if (typeof opacity !== 'number') {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        console.error('[validateSceneDescription] scene.spineLightCore.opacityByMode is invalid for key:', key);
+        console.error('[validateSceneSpec] scene.spineLightCore.opacityByMode is invalid for key:', key);
       }
       return false;
     }
     if (typeof warpScale !== 'number') {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        console.error('[validateSceneDescription] scene.spineLightCore.warpScaleByMode is invalid for key:', key);
+        console.error('[validateSceneSpec] scene.spineLightCore.warpScaleByMode is invalid for key:', key);
       }
       return false;
     }
@@ -425,27 +425,27 @@ export function validateSceneDescription(
     typeof mw.opacityBias !== 'number'
   ) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.spineLightCore.modulationWeights is invalid.');
+      console.error('[validateSceneSpec] scene.spineLightCore.modulationWeights is invalid.');
     }
     return false;
   }
   if (typeof spineLightCore.modulationTintColor !== 'string') {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.spineLightCore.modulationTintColor must be a string.');
+      console.error('[validateSceneSpec] scene.spineLightCore.modulationTintColor must be a string.');
     }
     return false;
   }
   const spineRot = scene.spineRot;
   if (!spineRot) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.spineRot is missing.');
+      console.error('[validateSceneSpec] scene.spineRot is missing.');
     }
     return false;
   }
   const transientEffects = scene.transientEffects;
   if (!transientEffects) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.transientEffects is missing.');
+      console.error('[validateSceneSpec] scene.transientEffects is missing.');
     }
     return false;
   }
@@ -459,7 +459,7 @@ export function validateSceneDescription(
       typeof sf.modulation?.opacityBias === 'number';
     if (!valid) {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        console.error('[validateSceneDescription] scene.transientEffects.softFail is invalid.');
+        console.error('[validateSceneSpec] scene.transientEffects.softFail is invalid.');
       }
       return false;
     }
@@ -474,7 +474,7 @@ export function validateSceneDescription(
       typeof ft.modulation?.opacityBias === 'number';
     if (!valid) {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        console.error('[validateSceneDescription] scene.transientEffects.firstToken is invalid.');
+        console.error('[validateSceneSpec] scene.transientEffects.firstToken is invalid.');
       }
       return false;
     }
@@ -482,7 +482,7 @@ export function validateSceneDescription(
   const rotPlanes = spineRot.planes;
   if (!Array.isArray(rotPlanes)) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.spineRot.planes must be an array.');
+      console.error('[validateSceneSpec] scene.spineRot.planes must be an array.');
     }
     return false;
   }
@@ -492,7 +492,7 @@ export function validateSceneDescription(
     if (p == null || typeof p.z !== 'number' || typeof p.rotationZ !== 'number' ||
         typeof p.scaleX !== 'number' || typeof p.scaleY !== 'number') {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        console.error('[validateSceneDescription] scene.spineRot.planes[] must have z, rotationZ, scaleX, scaleY.');
+        console.error('[validateSceneSpec] scene.spineRot.planes[] must have z, rotationZ, scaleX, scaleY.');
       }
       return false;
     }
@@ -500,7 +500,7 @@ export function validateSceneDescription(
   const planeCountByMode = spineRot.planeCountByMode;
   if (!planeCountByMode || typeof planeCountByMode !== 'object') {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.spineRot.planeCountByMode is missing.');
+      console.error('[validateSceneSpec] scene.spineRot.planeCountByMode is missing.');
     }
     return false;
   }
@@ -509,7 +509,7 @@ export function validateSceneDescription(
     if (typeof count !== 'number' || count < 0 || count > maxPlanes) {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
         console.error(
-          '[validateSceneDescription] scene.spineRot.planeCountByMode must have 0 <= count <= planes.length for each mode.',
+          '[validateSceneSpec] scene.spineRot.planeCountByMode must have 0 <= count <= planes.length for each mode.',
         );
       }
       return false;
@@ -517,14 +517,14 @@ export function validateSceneDescription(
   }
   if (typeof spineRot.opacityBase !== 'number') {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.spineRot.opacityBase must be a number.');
+      console.error('[validateSceneSpec] scene.spineRot.opacityBase must be a number.');
     }
     return false;
   }
   const organism = scene.organism;
   if (!organism || typeof organism !== 'object') {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.organism is missing.');
+      console.error('[validateSceneSpec] scene.organism is missing.');
     }
     return false;
   }
@@ -535,7 +535,7 @@ export function validateSceneDescription(
     !Number.isFinite(organism.presence)
   ) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.organism.presence must be in [0,1] and finite.');
+      console.error('[validateSceneSpec] scene.organism.presence must be in [0,1] and finite.');
     }
     return false;
   }
@@ -546,7 +546,7 @@ export function validateSceneDescription(
     !Number.isFinite(organism.focusBias)
   ) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.organism.focusBias must be in [-1,1] and finite.');
+      console.error('[validateSceneSpec] scene.organism.focusBias must be in [-1,1] and finite.');
     }
     return false;
   }
@@ -559,14 +559,14 @@ export function validateSceneDescription(
     !Number.isFinite(ond.y)
   ) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.organism.ndc must be { x, y } with finite numbers.');
+      console.error('[validateSceneSpec] scene.organism.ndc must be { x, y } with finite numbers.');
     }
     return false;
   }
   const validZone: (string | null)[] = [null, 'rules', 'neutral', 'cards'];
   if (organism.zone != null && !validZone.includes(organism.zone)) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
-      console.error('[validateSceneDescription] scene.organism.zone must be null, "rules", "neutral", or "cards".');
+      console.error('[validateSceneSpec] scene.organism.zone must be null, "rules", "neutral", or "cards".');
     }
     return false;
   }
@@ -579,7 +579,7 @@ export function validateSceneDescription(
       const v = motion[key];
       if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 1) {
         if (typeof __DEV__ !== 'undefined' && __DEV__) {
-          console.error('[validateSceneDescription] scene.motion.' + key + ' must be finite number in [0,1].');
+          console.error('[validateSceneSpec] scene.motion.' + key + ' must be finite number in [0,1].');
         }
         return false;
       }
@@ -587,14 +587,14 @@ export function validateSceneDescription(
     const validPhase = ['enter', 'hold', 'exit'];
     if (!validPhase.includes(motion.phase)) {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        console.error('[validateSceneDescription] scene.motion.phase must be enter, hold, or exit.');
+        console.error('[validateSceneSpec] scene.motion.phase must be enter, hold, or exit.');
       }
       return false;
     }
     const pt = motion.phaseT;
     if (typeof pt !== 'number' || !Number.isFinite(pt) || pt < 0 || pt > 1) {
       if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        console.error('[validateSceneDescription] scene.motion.phaseT must be finite number in [0,1].');
+        console.error('[validateSceneSpec] scene.motion.phaseT must be finite number in [0,1].');
       }
       return false;
     }

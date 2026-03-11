@@ -6,7 +6,7 @@ Single source of truth for spine art-direction knobs:
 - Renderer: `src/visualization/render/layers/Spine.tsx`, `SpineLightCoreLayer.tsx`, `SpineRotLayer.tsx` (consume scene; do not define art-direction defaults).
 
 Render-order contract (current):
-- Draw order comes from `scene.layers` in `src/visualization/scene/formations.ts`
+- Draw order comes from `scene.layers` in `src/visualization/scene/sceneFormations.ts`
 - Spine sections:
   - `layers.spineLightCore.renderOrderBase`
   - `layers.spineBase.renderOrderBase`

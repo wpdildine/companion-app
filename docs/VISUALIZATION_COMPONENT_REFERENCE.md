@@ -6,13 +6,13 @@ Reference for the `src/visualization/` layer: components, ownership boundaries, 
 
 Visualization is a pure visualization subsystem.
 
-- It consumes injected theme primitives and a mutable engine ref.
+- It consumes injected theme primitives and a mutable runtime ref.
 - It does not own app state, voice lifecycle, navigation, or RAG decisions.
-- React writes targets/events into the engine ref; render loop computes continuous visual state.
+- React writes targets/events into the runtime ref; render loop computes continuous visual state.
 
 ### GL state and scene description
 
-- **Scene at runtime:** `getSceneDescription()` (scene/formations) is computed at viz ref init and stored on `visualizationRef.current.scene`. Render layers consume that scene contract directly.
+- **Scene at runtime:** `getSceneDescription()` (scene/sceneFormations) is computed at viz ref init and stored on `visualizationRef.current.scene`. Render layers consume that scene contract directly.
 - **Single aesthetic source:** All visual constants (zone colors, opacities, ratios, ring radii, edge color, etc.) live in formations / `getSceneDescription()`. Render components do viewport math and camera-facing placement only; they do not define style or zone policy. Missing scene values are a bug (no fallback constants).
 - **Layer contract:** draw order is owned by `scene.layers.*.renderOrderBase`; builders supply final primitive Z values (renderers do not recompute Z layouts).
 - **Preset/touch contract:** `scene.presets` is schema-level mode override data (not renderer-owned logic); `scene.touch` is validated touch-art direction state.
@@ -23,7 +23,7 @@ Visualization is a pure visualization subsystem.
 ```text
 src/visualization/
 ├── index.ts
-├── engine/
+├── runtime/
 ├── scene/
 ├── render/
 │   ├── canvas/
@@ -42,10 +42,10 @@ src/visualization/
 - `InteractionBand`
 - `DevPanel`
 - `triggerPulseAtCenter`
-- `applySignalsToVisualization`
+- `applyVisualizationSignals`
 - `createDefaultVisualizationRef`
 - `getSceneDescription`
-- `validateSceneDescription`
+- `validateSceneSpec`
 - `TARGET_ACTIVITY_BY_MODE`
 - `withTouchStubs`
 - `validateVizState`
@@ -62,7 +62,7 @@ src/visualization/
 
 ### Scene (R3F)
 
-- `EngineLoop` (engine/): advances clock; eases activity/touch influence; resolves touch field NDC to world/view.
+- `RuntimeLoop` (runtime/): advances clock; eases activity/touch influence; resolves touch field NDC to world/view.
 - `TouchRaycaster` (interaction/): resolves `pendingTapNdc` into pulse position.
 - `CameraOrbit` (render/canvas/): camera placement/orbit state.
 - `ContextGlyphs` (render/layers/): point clusters (rules/cards).
@@ -87,17 +87,17 @@ src/visualization/
   - touch cancel => clear only; no semantic callback
   - short tap in canvas => pulse-only path (`pendingTapNdc` -> `TouchRaycaster`)
 
-## Engine Ref (`engine/types.ts`)
+## Runtime Ref (`runtime/runtimeTypes.ts`)
 
-- Factory: `createDefaultVisualizationRef()` (engine/createDefaultRef.ts)
+- Factory: `createDefaultVisualizationRef()` (runtime/createDefaultRef.ts)
 - Mode type: `VisualizationMode`
-- Signal type: `AiUiSignals`
+- Signal type: `VisualizationSignals`
 - Ref type: `VisualizationEngineRef`
 
 Ownership model:
 
 - App writes targets/events (`targetActivity`, semantic events, toggles, etc.).
-- EngineLoop writes derived/continuous values (`clock`, eased activity, touch influence, derived touch positions, organism signals).
+- RuntimeLoop writes derived/continuous values (`clock`, eased activity, touch influence, derived touch positions, organism signals).
 
 ## Phase 3: Organism signals
 
@@ -105,8 +105,8 @@ Touch produces a continuous “alive” response (beam lean, bend, halftone tens
 
 **Where they live**
 
-- **Ref (engine):** `focusBias`, `touchPresence`, `touchPresenceNdc`, `focusZone`. Written only in EngineLoop.
-- **Scene:** `scene.organism` — stub created once in `getSceneDescription()`; EngineLoop mutates its properties each frame (`presence`, `focusBias`, `ndc`, `zone`, `relax`, optional `shardBias`).
+- **Ref (runtime):** `focusBias`, `touchPresence`, `touchPresenceNdc`, `focusZone`. Written only in RuntimeLoop.
+- **Scene:** `scene.organism` — stub created once in `getSceneDescription()`; RuntimeLoop mutates its properties each frame (`presence`, `focusBias`, `ndc`, `zone`, `relax`, optional `shardBias`).
 - **Constants:** `FOCUS_RANGE_NDC`, `TOUCH_PRESENCE_LAMBDA`, `TOUCH_NDC_LAMBDA`, and `computeFocusBias()` live in `interaction/zoneLayout.ts`.
 
 **Tuning knobs**
@@ -132,10 +132,10 @@ Three systems provide environmental layering so the spine feels embedded in spac
 
 ## Helpers
 
-- `engine/applySignalsToVisualization.ts`: semantic signal -> engine targets/derived visual knobs.
-- `engine/triggerPulse.ts`: event pulse injection.
-- `scene/formations.ts`: cluster/build geometry helpers.
-- `engine/getPulseColor.ts`: pulse color mapping.
+- `runtime/applyVisualizationSignals.ts`: semantic signal -> runtime targets/derived visual knobs.
+- `runtime/triggerPulse.ts`: event pulse injection.
+- `scene/sceneFormations.ts`: cluster/build geometry helpers.
+- `runtime/getPulseColor.ts`: pulse color mapping.
 
 ## Touch Ownership Contract
 

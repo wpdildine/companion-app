@@ -1,5 +1,5 @@
 import { CONTEXT_GLYPHS_ART_DIRECTION } from '../artDirection/contextGlyphsArtDirection';
-import type { GLSceneContextGlyphs } from '../formations';
+import type { GLSceneContextGlyphs } from '../sceneFormations';
 
 /**
  * Build scene descriptor for ContextGlyphs from art direction.

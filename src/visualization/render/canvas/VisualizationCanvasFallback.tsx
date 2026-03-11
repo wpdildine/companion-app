@@ -6,7 +6,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
-import type { VisualizationEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 
 const DEFAULT_FALLBACK_BG = '#000000';
 const NODE_COUNT = 72;

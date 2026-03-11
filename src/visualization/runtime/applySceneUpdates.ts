@@ -1,7 +1,7 @@
 import type { RefObject } from 'react';
-import type { GLSceneDescription } from '../scene/formations';
+import type { GLSceneDescription } from '../scene/sceneFormations';
 import type { LayerDescriptor } from '../scene/layerDescriptor';
-import type { VisualizationEngineRef } from './types';
+import type { VisualizationEngineRef } from './runtimeTypes';
 
 type SceneListener = () => void;
 

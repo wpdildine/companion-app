@@ -11,7 +11,7 @@
  *   (e.g. builders/spine, artDirection) and have this file compose them.
  */
 
-import type { CanonicalSceneMode } from './canonicalMode';
+import type { CanonicalSceneMode } from './sceneMode';
 import type { GLSceneLayerId } from './glSceneLayerKeys';
 import { getDefaultLayerDescriptors, type LayerDescriptor } from './layerDescriptor';
 import type { GLSceneSpineRot } from './builders/buildSpineRotPlanes';
@@ -332,7 +332,7 @@ export type { GLSceneSpine } from './builders/spine';
 export type { GLSceneSpineRot } from './builders/buildSpineRotPlanes';
 export type { GLSceneSpineLightCore } from './builders/buildSpineLightCore';
 
-export type { CanonicalSceneMode } from './canonicalMode';
+export type { CanonicalSceneMode } from './sceneMode';
 
 /** Optional overrides per mode; multiply/offset base art direction. Schema-only; renderers must not read yet. */
 export type GLSceneBackgroundPresetOverrides = {
@@ -378,7 +378,7 @@ export type GLSceneTouchGlyphResponse = {
   parallaxBoost: number;
 };
 
-/** Organism signals: EngineLoop mutates this object each frame; getSceneDescription creates the stub once. */
+/** Organism signals: RuntimeLoop mutates this object each frame; getSceneDescription creates the stub once. */
 export type GLSceneOrganism = {
   presence: number;
   focusBias: number;
@@ -449,7 +449,7 @@ export type GLSceneDescription = {
     feedback: GLSceneTouchFeedback;
     glyphResponse: GLSceneTouchGlyphResponse;
   };
-  /** Organism signals; stub created here, EngineLoop mutates each frame. */
+  /** Organism signals; stub created here, RuntimeLoop mutates each frame. */
   organism: GLSceneOrganism;
   /** Motion grammar signals; stub created here, MotionGrammarEngine mutates each frame. */
   motion: GLSceneMotion;

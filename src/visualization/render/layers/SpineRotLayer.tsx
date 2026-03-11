@@ -7,11 +7,11 @@
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
-import type { VisualizationEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { createBasicPlaneMaterial } from '../../materials/basicPlaneMaterial';
 import { createHalftoneMaterial } from '../../materials/halftone/halftonePlaneMaterial';
-import type { CanonicalSceneMode } from '../../scene/canonicalMode';
+import type { CanonicalSceneMode } from '../../scene/sceneMode';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 
 function toCanonicalMode(mode: string): CanonicalSceneMode {

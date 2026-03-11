@@ -1,5 +1,5 @@
 import { CONTEXT_LINKS_ART_DIRECTION } from '../artDirection/contextLinksArtDirection';
-import type { GLSceneContextLinks } from '../formations';
+import type { GLSceneContextLinks } from '../sceneFormations';
 
 /**
  * Build scene descriptor for ContextLinks from art direction.

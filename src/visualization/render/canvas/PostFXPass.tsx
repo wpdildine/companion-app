@@ -1,7 +1,7 @@
 import { useFrame, useThree } from '@react-three/fiber/native';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import type { VisualizationEngineRef } from '../../engine/types';
+import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import { SHADER_DEBUG_FLAGS } from './shaderDebugFlags';
 
 /** Set to false to re-enable vignette / grain / chromatic (cinematic). */

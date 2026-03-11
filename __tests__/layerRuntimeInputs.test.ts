@@ -1,5 +1,5 @@
-import { createDefaultVisualizationRef } from '../src/visualization/engine/createDefaultRef';
-import { getLayerRuntimeInputs } from '../src/visualization/engine/layerRuntimeInputs';
+import { createDefaultVisualizationRef } from '../src/visualization/runtime/createDefaultRef';
+import { getLayerRuntimeInputs } from '../src/visualization/runtime/runtimeLayerInputs';
 
 describe('getLayerRuntimeInputs', () => {
   it('projects canonical ref state into a shared read surface', () => {

@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import type { VisualizationPanelRects } from '../../engine/types';
+import type { VisualizationPanelRects } from '../../runtime/runtimeTypes';
 
 const ZONE_COLORS: Record<string, string> = {
   answer: '#22c55e',
