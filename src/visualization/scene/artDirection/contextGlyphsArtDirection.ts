@@ -4,7 +4,7 @@
  * Phase 5: back vs front stratum (softer/diffuse vs more legible).
  */
 export const CONTEXT_GLYPHS_ART_DIRECTION = {
-  baseNodeSize: 7.5,
+  baseNodeSize: 5,
   pulseSpeed: 4,
   touchRadius: 3.6,
   touchStrength: 2.8,
