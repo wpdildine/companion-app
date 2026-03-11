@@ -1026,9 +1026,13 @@ export function useAgentOrchestrator(
     // Request becomes real (request_start = request accepted = processing start) only when both guards pass and requestId is assigned.
     // Current runtime policy: no queueing; no automatic cancel; no automatic supersession; new input during processing/speaking is denied.
     // Cancel/supersession is contract-defined but implementation-deferred; all callbacks must guard with activeRequestIdRef === reqId before mutating state.
-    // Guard points: onRetrievalComplete, onModelLoadStart, onGenerationStart, onValidationStart, onPartial; after ragAsk return; in catch before request_failed and lifecycle update.
+    // Guard points (activeRequestIdRef.current === reqId before mutating): onRetrievalComplete, onModelLoadStart, onGenerationStart, onValidationStart, onPartial; after ragAsk return (stale check); in catch before request_failed and lifecycle update.
     // ---
     // Canonical path: normalize → retrieval → context → payload → inference (stream) → settle → cards/rules update → speak → idle.
+    if (modeRef.current === 'speaking' || lifecycleRef.current === 'speaking') {
+      logWarn('AgentOrchestrator', 'submit blocked because playback is active');
+      return null;
+    }
     if (requestInFlightRef.current) {
       logWarn('AgentOrchestrator', 'submit blocked because active request exists');
       return null;
@@ -1420,7 +1424,7 @@ export function useAgentOrchestrator(
           failureReason: failureReasonLabel,
           status: 'failed',
           completedAt: failedAt,
-          lifecycle: 'idle',
+          lifecycle: 'error',
           timestamp: failedAt,
         });
         activeRequestIdRef.current = 0;
@@ -1597,6 +1601,8 @@ export function useAgentOrchestrator(
           setMode('idle');
           setLifecycle('error');
           logError('Playback', 'tts playback failed', { message, textChars: normalized.length });
+          // TTS error before tts_end: we do not emit request_complete. request_complete is only emitted
+          // after tts_end (via pendingPlaybackCompleteRef effect). Playback failure leaves lifecycle 'error' for user recovery.
         }
       }
     },

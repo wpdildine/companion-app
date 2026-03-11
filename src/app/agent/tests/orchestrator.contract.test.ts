@@ -1,8 +1,8 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { useAgentOrchestrator } from '../useAgentOrchestrator';
-import type { AgentOrchestratorActions, AgentOrchestratorState } from '../useAgentOrchestrator';
-import type { AgentOrchestratorListeners } from '../types';
+import type { AgentOrchestratorActions } from '../useAgentOrchestrator';
+import type { AgentOrchestratorListeners, AgentOrchestratorState } from '../types';
 import Voice from '@react-native-voice/voice';
 import * as rag from '../../../rag';
 
@@ -75,6 +75,7 @@ jest.mock('../../../rag', () => ({
 type ContractEvent =
   | { type: 'lifecycle'; value: string }
   | { type: 'request_start'; requestId: number }
+  | { type: 'request_failed'; requestId: number; lifecycle?: string }
   | { type: 'request_complete'; requestId: number }
   | { type: 'response_settled'; requestId: number }
   | { type: 'tts_start'; requestId: number }
@@ -88,7 +89,7 @@ function createEventRecorder() {
   };
 }
 
-const flushPromises = () => new Promise(resolve => setImmediate(resolve));
+const flushPromises = () => new Promise<void>(resolve => setImmediate(() => resolve()));
 
 const mockAskResult = () => ({
   raw: 'Hello there',
@@ -108,15 +109,25 @@ type Harness = {
 
 function createHarness(recorder: ReturnType<typeof createEventRecorder>): Harness {
   const listenersRef = React.createRef<AgentOrchestratorListeners | null>();
-  const requestDebugSinkRef = React.createRef<((payload: { type: string; requestId?: number | null }) => void) | null>();
+  const requestDebugSinkRef = React.createRef<((payload: {
+    type: string;
+    requestId?: number | null;
+    lifecycle?: string;
+  }) => void) | null>();
   let currentState: AgentOrchestratorState | null = null;
   let currentActions: AgentOrchestratorActions | null = null;
 
-  const recordDebugEvent = (payload: { type: string; requestId?: number | null }) => {
+  const recordDebugEvent = (payload: {
+    type: string;
+    requestId?: number | null;
+    lifecycle?: string;
+  }) => {
     const requestId = payload.requestId;
     if (typeof requestId !== 'number') return;
     if (payload.type === 'request_start') {
       recorder.record({ type: 'request_start', requestId });
+    } else if (payload.type === 'request_failed') {
+      recorder.record({ type: 'request_failed', requestId, lifecycle: payload.lifecycle });
     } else if (payload.type === 'response_settled') {
       recorder.record({ type: 'response_settled', requestId });
     } else if (payload.type === 'tts_start') {
@@ -157,7 +168,7 @@ function createHarness(recorder: ReturnType<typeof createEventRecorder>): Harnes
 
   return {
     actions: currentActions,
-    getState: () => currentState,
+    getState: (): AgentOrchestratorState => currentState!,
     unmount: () => {
       act(() => {
         renderer!.unmount();
@@ -248,7 +259,7 @@ describe('AgentOrchestrator contract events', () => {
 
     await act(async () => {
       await harness.actions.stopListening();
-      await new Promise(resolve => setTimeout(resolve, 700));
+      await new Promise<void>(resolve => setTimeout(() => resolve(), 700));
     });
 
     const { events } = recorder;
@@ -315,6 +326,119 @@ describe('AgentOrchestrator contract events', () => {
     expect(hasTtsStart).toBe(false);
     expect(hasRequestComplete).toBe(false);
     expect(harness.getState().lifecycle).toBe('idle');
+
+    harness.unmount();
+  });
+
+  it('submit denied while processing', async () => {
+    const recorder = createEventRecorder();
+    const harness = createHarness(recorder);
+
+    let resolveAsk: ((value: ReturnType<typeof mockAskResult>) => void) | null = null;
+    (rag.ask as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          resolveAsk = resolve;
+        }),
+    );
+
+    await emitFinalTranscript(harness, 'Hello there');
+
+    await act(async () => {
+      void harness.actions.submit();
+      await flushPromises();
+    });
+
+    const requestStartCountAfterFirst = recorder.events.filter(
+      e => e.type === 'request_start',
+    ).length;
+    expect(requestStartCountAfterFirst).toBe(1);
+    expect(harness.getState().lifecycle).toBe('processing');
+
+    let secondSubmitResult: string | null | undefined;
+    await act(async () => {
+      secondSubmitResult = await harness.actions.submit();
+      await flushPromises();
+    });
+
+    expect(secondSubmitResult).toBe(null);
+    const requestStartCountAfterSecond = recorder.events.filter(
+      e => e.type === 'request_start',
+    ).length;
+    expect(requestStartCountAfterSecond).toBe(1);
+
+    await act(async () => {
+      resolveAsk?.(mockAskResult());
+      await flushPromises();
+      await flushPromises();
+    });
+
+    harness.unmount();
+  });
+
+  it('submit denied while speaking', async () => {
+    const recorder = createEventRecorder();
+    const harness = createHarness(recorder);
+    const piperTts = require('piper-tts').default as { speak: jest.Mock };
+    piperTts.speak.mockImplementationOnce(() => new Promise<void>(() => {}));
+
+    await emitFinalTranscript(harness, 'Hello there');
+
+    await act(async () => {
+      await harness.actions.submit();
+      await flushPromises();
+      await flushPromises();
+    });
+
+    expect(harness.getState().lifecycle).toBe('speaking');
+    const requestStartCountAfterFirst = recorder.events.filter(
+      e => e.type === 'request_start',
+    ).length;
+    expect(requestStartCountAfterFirst).toBe(1);
+
+    let secondSubmitResult: string | null | undefined;
+    await act(async () => {
+      secondSubmitResult = await harness.actions.submit();
+      await flushPromises();
+    });
+
+    expect(secondSubmitResult).toBe(null);
+    const requestStartCountAfterSecond = recorder.events.filter(
+      e => e.type === 'request_start',
+    ).length;
+    expect(requestStartCountAfterSecond).toBe(1);
+
+    harness.unmount();
+  });
+
+  it('request_failed emits lifecycle error payload', async () => {
+    const recorder = createEventRecorder();
+    const harness = createHarness(recorder);
+    (rag.ask as jest.Mock).mockRejectedValueOnce(new Error('boom'));
+
+    await emitFinalTranscript(harness, 'Hello there');
+
+    await act(async () => {
+      await harness.actions.submit();
+      await flushPromises();
+      await flushPromises();
+    });
+
+    const failedEvent = recorder.events.find(
+      (e): e is Extract<ContractEvent, { type: 'request_failed' }> =>
+        e.type === 'request_failed',
+    );
+    expect(failedEvent).toBeDefined();
+    expect(failedEvent?.lifecycle).toBe('error');
+    expect(
+      recorder.events.some(event => event.type === 'response_settled'),
+    ).toBe(false);
+    expect(
+      recorder.events.some(event => event.type === 'request_complete'),
+    ).toBe(false);
+    expect(
+      recorder.events.some(event => event.type === 'tts_start'),
+    ).toBe(false);
 
     harness.unmount();
   });

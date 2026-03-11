@@ -231,3 +231,5 @@ Logs are state-change and event-based only; no per-frame or render-loop logging.
 ## Known In-Progress Areas
 
 - Panel gesture system from the refactor plan (header drag/snap/dismiss/restore + arbitration) is not fully implemented as a dedicated `src/screens/voice` gesture layer.
+
+**Plan D (Final Integration Pass):** Verified integration boundaries for acceptance → processing → settlement → playback → completion, telemetry ordering, and denial/stale-callback behavior; see `.cursor/plans/final_integration_pass.plan.md`.
