@@ -7,6 +7,8 @@ import { useFrame } from '@react-three/fiber/native';
 import { useRef } from 'react';
 import * as THREE from 'three';
 import type { VisualizationEngineRef } from '../../engine/types';
+import type { LayerDescriptor } from '../../scene/layerDescriptor';
+import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 
 const planeEdgesGeometry = new THREE.EdgesGeometry(
   new THREE.PlaneGeometry(1, 1),
@@ -14,8 +16,10 @@ const planeEdgesGeometry = new THREE.EdgesGeometry(
 
 export function TouchZones({
   visualizationRef,
+  descriptor,
 }: {
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
+  descriptor?: LayerDescriptor;
 }) {
   const areaGroupRef = useRef<THREE.Group>(null);
   const rulesAreaRef = useRef<THREE.Mesh>(null);
@@ -128,7 +132,12 @@ export function TouchZones({
   if (!scene) return null;
 
   const { style } = scene.zones;
-  const debugOverlayBase = scene.layers?.debugOverlay?.renderOrderBase ?? 4000;
+  const debugOverlayBase = getDescriptorRenderOrderBase(
+    scene,
+    descriptor,
+    'debugOverlay',
+    4000,
+  );
   const zoneIndexRules = 0;
   const zoneIndexCenter = 1;
   const zoneIndexCards = 2;

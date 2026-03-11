@@ -17,12 +17,14 @@ import { useFrame } from '@react-three/fiber/native';
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import type { CanonicalSpineMode } from '../../scene/builders/spine';
+import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { validateSceneDescription } from '../../scene/validateSceneDescription';
 import type { VisualizationEngineRef } from '../../engine/types';
 import { createOpacityPlaneMaterial } from '../../materials/spine/opacityPlaneMaterial';
 import { createHalftoneMaterial } from '../../materials/halftone/halftonePlaneMaterial';
 import { HALFTONE_VERTEX } from '../../materials/halftone/halftone.vert';
 import { HALFTONE_FRAGMENT } from '../../materials/halftone/halftone.frag';
+import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 
 /**
  * Map engine currentMode to canonical spine mode. Transient touch modes are
@@ -82,9 +84,11 @@ function getApertureSlideByMode(mode: CanonicalSpineMode): number {
  */
 export function Spine({
   visualizationRef,
+  descriptor,
   children,
 }: {
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
+  descriptor?: LayerDescriptor;
   children?: React.ReactNode;
 }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -748,8 +752,18 @@ export function Spine({
   while (planeMaterialsRef.current.length < spine.planeCount) {
     planeMaterialsRef.current.push(createOpacityPlaneMaterial());
   }
-  const spineBaseRo = layers.spineBase.renderOrderBase;
-  const spineShardsRo = layers.spineShards.renderOrderBase;
+  const spineBaseRo = getDescriptorRenderOrderBase(
+    scene,
+    descriptor,
+    'spineBase',
+    layers.spineBase.renderOrderBase,
+  );
+  const spineShardsRo = getDescriptorRenderOrderBase(
+    scene,
+    descriptor,
+    'spineShards',
+    layers.spineShards.renderOrderBase,
+  );
   const edgeMeshRoOffset = spineBaseRo + spine.planeCount;
 
   const blending = THREE.NormalBlending;

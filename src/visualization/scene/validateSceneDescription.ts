@@ -5,6 +5,7 @@
 
 import type { GLSceneDescription } from './formations';
 import { GL_SCENE_LAYER_KEYS } from './formations';
+import { VISUALIZATION_MOUNT_IDS } from './layerDescriptor';
 
 const CANONICAL_KEYS = ['idle', 'listening', 'processing', 'speaking'] as const;
 
@@ -193,6 +194,51 @@ export function validateSceneDescription(
         );
       }
       return false;
+    }
+  }
+  if (scene.layerDescriptors != null) {
+    if (!Array.isArray(scene.layerDescriptors)) {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[validateSceneDescription] scene.layerDescriptors must be an array.');
+      }
+      return false;
+    }
+    for (let i = 0; i < scene.layerDescriptors.length; i++) {
+      const d = scene.layerDescriptors[i];
+      if (!d || typeof d.id !== 'string') {
+        if (typeof __DEV__ !== 'undefined' && __DEV__) {
+          console.error('[validateSceneDescription] scene.layerDescriptors[].id must be a string (VisualizationMountId).', i);
+        }
+        return false;
+      }
+      if (!VISUALIZATION_MOUNT_IDS.includes(d.id as (typeof VISUALIZATION_MOUNT_IDS)[number])) {
+        if (typeof __DEV__ !== 'undefined' && __DEV__) {
+          console.error('[validateSceneDescription] scene.layerDescriptors[].id must be a valid VisualizationMountId.', d.id);
+        }
+        return false;
+      }
+      if (d.enabled !== undefined && typeof d.enabled !== 'boolean') {
+        if (typeof __DEV__ !== 'undefined' && __DEV__) {
+          console.error('[validateSceneDescription] scene.layerDescriptors[].enabled must be boolean if present.', i);
+        }
+        return false;
+      }
+      if (d.sceneLayerKeys != null) {
+        if (!Array.isArray(d.sceneLayerKeys)) {
+          if (typeof __DEV__ !== 'undefined' && __DEV__) {
+            console.error('[validateSceneDescription] scene.layerDescriptors[].sceneLayerKeys must be an array if present.', i);
+          }
+          return false;
+        }
+        for (const key of d.sceneLayerKeys) {
+          if (!(key in scene.layers)) {
+            if (typeof __DEV__ !== 'undefined' && __DEV__) {
+              console.error('[validateSceneDescription] scene.layerDescriptors[].sceneLayerKeys must only contain keys that exist in scene.layers.', key);
+            }
+            return false;
+          }
+        }
+      }
     }
   }
   const bp = scene.backgroundPlanes;

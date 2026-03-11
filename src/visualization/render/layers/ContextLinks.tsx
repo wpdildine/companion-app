@@ -11,7 +11,9 @@ import {
   connectionFragment,
 } from '../../materials/links/connections';
 import type { VisualizationEngineRef } from '../../engine/types';
+import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
+import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 import { getEventPulse, injectEventPulse } from '../utils/eventPulse';
 import { logInfo } from '../../../shared/logging';
 
@@ -58,8 +60,10 @@ const EMPTY_EDGES: SceneEdge[] = [];
 
 export function ContextLinks({
   visualizationRef,
+  descriptor,
 }: {
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
+  descriptor?: LayerDescriptor;
 }) {
   const materialRefs = useRef<Array<THREE.ShaderMaterial | null>>([]);
   const loggedGateRef = useRef(false);
@@ -394,7 +398,12 @@ export function ContextLinks({
   }
 
   const scene = visualizationRef.current?.scene;
-  const linksRenderOrderBase = scene?.layers?.links?.renderOrderBase ?? 3200;
+  const linksRenderOrderBase = getDescriptorRenderOrderBase(
+    scene,
+    descriptor,
+    'links',
+    3200,
+  );
 
   return (
     <>

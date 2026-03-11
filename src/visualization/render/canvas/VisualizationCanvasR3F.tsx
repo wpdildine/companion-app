@@ -25,14 +25,11 @@ import {
 import { TouchRaycaster } from '../../interaction/TouchRaycaster';
 import type { VisualizationEngineRef } from '../../engine/types';
 import { CameraOrbit } from './CameraOrbit';
-import { ContextGlyphs } from '../layers/ContextGlyphs';
-import { ContextLinks } from '../layers/ContextLinks';
-import { BackPlaneLayer } from '../layers/BackPlaneLayer';
-import { BackgroundLayer } from '../layers/BackgroundLayer';
-import { Spine } from '../layers/Spine';
-import { SpineLightCoreLayer } from '../layers/SpineLightCoreLayer';
-import { SpineRotLayer } from '../layers/SpineRotLayer';
-import { TouchZones } from '../layers/TouchZones';
+import {
+  LAYER_REGISTRY,
+  DEFAULT_LAYER_DESCRIPTORS,
+  isMountIdInRegistry,
+} from '../layers/layerRegistry';
 import { EngineLoop } from '../../engine/EngineLoop';
 import { PostFXPass } from './PostFXPass';
 
@@ -224,18 +221,24 @@ export function VisualizationCanvasR3F({
         }}
       >
         <color attach="background" args={[canvasBackground]} />
-        <BackgroundLayer visualizationRef={visualizationRef} />
-        <BackPlaneLayer visualizationRef={visualizationRef} />
-        <SpineLightCoreLayer visualizationRef={visualizationRef} />
-        <Spine visualizationRef={visualizationRef}>
-          <SpineRotLayer visualizationRef={visualizationRef} />
-        </Spine>
+        {(visualizationRef.current?.scene?.layerDescriptors ??
+          DEFAULT_LAYER_DESCRIPTORS)
+          .filter(
+            d => d.enabled !== false && isMountIdInRegistry(d.id),
+          )
+          .map(d => {
+            const Comp = LAYER_REGISTRY[d.id];
+            return Comp ? (
+              <Comp
+                key={d.id}
+                visualizationRef={visualizationRef}
+                descriptor={d}
+              />
+            ) : null;
+          })}
         <EngineLoop visualizationRef={visualizationRef} />
         <TouchRaycaster visualizationRef={visualizationRef} />
         <CameraOrbit visualizationRef={visualizationRef} />
-        <ContextLinks visualizationRef={visualizationRef} />
-        <ContextGlyphs visualizationRef={visualizationRef} />
-        <TouchZones visualizationRef={visualizationRef} />
         <PostFXPass visualizationRef={visualizationRef} />
       </Canvas>
     </View>

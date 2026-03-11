@@ -12,6 +12,8 @@
  */
 
 import type { CanonicalSceneMode } from './canonicalMode';
+import type { GLSceneLayerId } from './glSceneLayerKeys';
+import { getDefaultLayerDescriptors, type LayerDescriptor } from './layerDescriptor';
 import type { GLSceneSpineRot } from './builders/buildSpineRotPlanes';
 import type { GLSceneSpineLightCore } from './builders/buildSpineLightCore';
 import { NEUTRAL_HALF_WIDTH_NDC } from '../interaction/zoneLayout';
@@ -239,22 +241,8 @@ export type GLSceneBackPlane = {
 /** Draw-order section: renderOrderBase only; Z comes from builders. */
 export type GLSceneLayerSection = { renderOrderBase: number };
 
-export const GL_SCENE_LAYER_KEYS = [
-  'background',
-  'backPlane',
-  'spineLightCore',
-  'spineBase',
-  'spineShards',
-  'glyphsBack',
-  'links',
-  'glyphsFront',
-  'spineRot',
-  'debugOverlay',
-] as const;
-export type GLSceneLayers = Record<
-  (typeof GL_SCENE_LAYER_KEYS)[number],
-  GLSceneLayerSection
->;
+export { GL_SCENE_LAYER_KEYS, type GLSceneLayerId } from './glSceneLayerKeys';
+export type GLSceneLayers = Record<GLSceneLayerId, GLSceneLayerSection>;
 
 export type GLSceneContextGlyphs = {
   baseNodeSize: number;
@@ -453,6 +441,8 @@ export type GLSceneDescription = {
   spineLightCore: GLSceneSpineLightCore;
   spineRot: GLSceneSpineRot;
   layers: GLSceneLayers;
+  /** Ordered list of mount descriptors; id = mount slot, sceneLayerKeys = scene.layers key(s) for render order. */
+  layerDescriptors: LayerDescriptor[];
   presets: GLScenePresets;
   touch: {
     zones: GLSceneTouchZones;
@@ -670,6 +660,7 @@ export function getSceneDescription(
       spineRot: { renderOrderBase: 3600 },
       debugOverlay: { renderOrderBase: 4000 },
     },
+    layerDescriptors: getDefaultLayerDescriptors(),
     presets: buildScenePresets(),
     touch: {
       zones: {

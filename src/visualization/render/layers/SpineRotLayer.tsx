@@ -8,9 +8,11 @@ import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import type { VisualizationEngineRef } from '../../engine/types';
+import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { createBasicPlaneMaterial } from '../../materials/basicPlaneMaterial';
 import { createHalftoneMaterial } from '../../materials/halftone/halftonePlaneMaterial';
 import type { CanonicalSceneMode } from '../../scene/canonicalMode';
+import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 
 function toCanonicalMode(mode: string): CanonicalSceneMode {
   switch (mode) {
@@ -30,8 +32,10 @@ function toCanonicalMode(mode: string): CanonicalSceneMode {
 
 export function SpineRotLayer({
   visualizationRef,
+  descriptor,
 }: {
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
+  descriptor?: LayerDescriptor;
 }) {
   const meshRefs = useRef<(THREE.Mesh | null)[]>([]);
   const ghostMatsRef = useRef<THREE.MeshBasicMaterial[]>([]);
@@ -56,7 +60,12 @@ export function SpineRotLayer({
 
     const modeNow = toCanonicalMode(v?.currentMode ?? 'idle');
     const visibleCount = spineRotNow.planeCountByMode[modeNow] ?? 0;
-    const spineRotRo = layersNow.spineRot.renderOrderBase;
+    const spineRotRo = getDescriptorRenderOrderBase(
+      sceneNow,
+      descriptor,
+      'spineRot',
+      layersNow.spineRot.renderOrderBase,
+    );
     const opacityBase = spineRotNow.opacityBase;
     const halftoneProfile = spineNow.halftoneProfiles[modeNow];
     const resX = Math.max(1, state.size.width * (state.gl.getPixelRatio?.() ?? 1));
@@ -100,7 +109,12 @@ export function SpineRotLayer({
   const countForMode = spineRot.planeCountByMode[canonical] ?? 0;
   if (planes.length === 0 || countForMode === 0) return null;
 
-  const spineRotRo = layers.spineRot.renderOrderBase;
+  const spineRotRo = getDescriptorRenderOrderBase(
+    scene,
+    descriptor,
+    'spineRot',
+    layers.spineRot.renderOrderBase,
+  );
   const ghostMats = ghostMatsRef.current;
 
   return (

@@ -8,8 +8,10 @@ import { useFrame } from '@react-three/fiber/native';
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { VisualizationEngineRef } from '../../engine/types';
+import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { createBackgroundDetailMaterial } from '../../materials/background/backgroundDetailMaterial';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
+import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 import { computeTransientModulation, scaleModulation } from '../utils/transientModulation';
 
 // ---- Plane 1: base (gradient + vignette + low-freq noise) ----
@@ -98,8 +100,10 @@ function getViewSizeAtPos(
 
 export function BackgroundLayer({
   visualizationRef,
+  descriptor,
 }: {
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
+  descriptor?: LayerDescriptor;
 }) {
   const g1 = useRef<THREE.Mesh>(null);
   const g2 = useRef<THREE.Mesh>(null);
@@ -445,7 +449,12 @@ export function BackgroundLayer({
   }
 
   const color = new THREE.Color().setHSL(bp.hue, bp.sat, bp.lum);
-  const backgroundRenderOrderBase = layers.background.renderOrderBase;
+  const backgroundRenderOrderBase = getDescriptorRenderOrderBase(
+    scene,
+    descriptor,
+    'background',
+    layers.background.renderOrderBase,
+  );
 
   return (
     <>

@@ -7,7 +7,9 @@ import { useFrame } from '@react-three/fiber/native';
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { VisualizationEngineRef } from '../../engine/types';
+import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import type { CanonicalSceneMode } from '../../scene/canonicalMode';
+import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 import { computeTransientModulation, scaleModulation } from '../utils/transientModulation';
 
 function toCanonicalMode(mode: string): CanonicalSceneMode {
@@ -28,8 +30,10 @@ function toCanonicalMode(mode: string): CanonicalSceneMode {
 
 export function SpineLightCoreLayer({
   visualizationRef,
+  descriptor,
 }: {
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
+  descriptor?: LayerDescriptor;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const cameraPosRef = useRef(new THREE.Vector3());
@@ -188,7 +192,12 @@ export function SpineLightCoreLayer({
       envelopeHeightWorld * lightCore.heightScale,
       1,
     );
-    mesh.renderOrder = layers.spineLightCore.renderOrderBase;
+    mesh.renderOrder = getDescriptorRenderOrderBase(
+      v.scene,
+      descriptor,
+      'spineLightCore',
+      layers.spineLightCore.renderOrderBase,
+    );
 
     const mode = toCanonicalMode(v.currentMode);
     const mod = scaleModulation(

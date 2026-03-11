@@ -8,8 +8,10 @@ import { useFrame } from '@react-three/fiber/native';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { VisualizationEngineRef } from '../../engine/types';
+import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { createBackPlaneMaterial } from '../../materials/backPlane/backPlaneMaterial';
 import { createBackPlaneGlitchMaterial } from '../../materials/backPlane/backPlaneGlitchMaterial';
+import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 
 function getViewSizeAtDistance(
   camera: THREE.Camera,
@@ -29,8 +31,10 @@ function getViewSizeAtDistance(
 
 export function BackPlaneLayer({
   visualizationRef,
+  descriptor,
 }: {
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
+  descriptor?: LayerDescriptor;
 }) {
   const meshRefs = useRef<(THREE.Mesh | null)[]>([]);
   const tmpCamPos = useRef(new THREE.Vector3());
@@ -68,7 +72,12 @@ export function BackPlaneLayer({
     if (!v?.scene?.backPlane?.planes.length) return;
     const bp = v.scene.backPlane;
     const layers = v.scene.layers;
-    const backPlaneRo = layers?.backPlane?.renderOrderBase ?? 1250;
+    const backPlaneRo = getDescriptorRenderOrderBase(
+      v.scene,
+      descriptor,
+      'backPlane',
+      1250,
+    );
     const camera = state.camera;
     sizeRef.current.width = state.viewport.width;
     sizeRef.current.height = state.viewport.height;
@@ -144,7 +153,12 @@ export function BackPlaneLayer({
   const layers = scene?.layers;
   if (!bp || bp.count === 0 || !layers?.backPlane) return null;
 
-  const backPlaneRo = layers.backPlane.renderOrderBase;
+  const backPlaneRo = getDescriptorRenderOrderBase(
+    visualizationRef.current?.scene,
+    descriptor,
+    'backPlane',
+    layers.backPlane.renderOrderBase,
+  );
   colorRef.current.setHSL(0.6, 0.35, 0.52);
 
   return (

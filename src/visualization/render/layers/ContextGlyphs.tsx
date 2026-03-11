@@ -9,7 +9,9 @@ import * as THREE from 'three';
 import { nodeVertex, nodeFragment } from '../../materials/glyphs/nodes';
 import { logInfo } from '../../../shared/logging';
 import type { VisualizationEngineRef } from '../../engine/types';
+import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
+import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 import { getEventPulse, injectEventPulse } from '../utils/eventPulse';
 
 type GlyphBuffers = {
@@ -90,7 +92,13 @@ function buildGlyphBuffers(
   };
 }
 
-export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.RefObject<VisualizationEngineRef | null> }) {
+export function ContextGlyphs({
+  visualizationRef,
+  descriptor,
+}: {
+  visualizationRef: React.RefObject<VisualizationEngineRef | null>;
+  descriptor?: LayerDescriptor;
+}) {
   const scene = visualizationRef.current?.scene;
   const glyphsScene = scene?.contextGlyphs;
   const nodes = useMemo(
@@ -384,8 +392,18 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
   }
 
   const layers = scene?.layers;
-  const glyphsBackRo = layers?.glyphsBack?.renderOrderBase ?? 1500;
-  const glyphsFrontRo = layers?.glyphsFront?.renderOrderBase ?? 3500;
+  const glyphsBackRo = getDescriptorRenderOrderBase(
+    scene,
+    descriptor,
+    'glyphsBack',
+    1500,
+  );
+  const glyphsFrontRo = getDescriptorRenderOrderBase(
+    scene,
+    descriptor,
+    'glyphsFront',
+    3500,
+  );
 
   return (
     <>
