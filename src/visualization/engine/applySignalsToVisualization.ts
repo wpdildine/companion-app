@@ -42,13 +42,11 @@ export function applySignalsToVisualization(
     v.currentMode = mode;
     const target = TARGET_ACTIVITY_BY_MODE[mode];
     v.targetActivity = target;
-    v.activity = target;
   } else if (!devModeOwned && signals.phase != null) {
     const mode = PHASE_TO_MODE[signals.phase];
     v.currentMode = mode;
     const target = TARGET_ACTIVITY_BY_MODE[mode];
     v.targetActivity = target;
-    v.activity = target;
   }
 
   if (signals.event != null) {

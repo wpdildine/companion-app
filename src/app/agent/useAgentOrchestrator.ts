@@ -313,6 +313,7 @@ export function useAgentOrchestrator(
   const playTextRef = useRef<(text: string) => Promise<void>>(null);
   const ioBlockedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPlaybackCompleteRef = useRef<{ requestId: number; endedAt: number } | null>(null);
+  const prevLifecycleRef = useRef<AgentLifecycleState>(lifecycle);
   modeRef.current = mode;
   lifecycleRef.current = lifecycle;
 
@@ -1007,6 +1008,15 @@ export function useAgentOrchestrator(
     setResponseText(null);
     setValidationSummary(null);
     setMode('processing');
+    {
+      const prev = prevLifecycleRef.current;
+      if (prev !== 'processing') {
+        logLifecycle('AgentOrchestrator', `lifecycle transition ${prev} -> processing`, {
+          requestId: reqId,
+        });
+        prevLifecycleRef.current = 'processing';
+      }
+    }
     setLifecycle('processing');
     logInfo('ResponseSurface', 'response_surface_hidden_on_new_request', {
       requestId: reqId,
@@ -1334,6 +1344,7 @@ export function useAgentOrchestrator(
             lifecycle: 'idle',
             timestamp: completedAt,
           });
+          activeRequestIdRef.current = 0;
           setAudioState('idleReady', { reason: 'requestComplete' });
           logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: reqId });
         }
@@ -1365,6 +1376,7 @@ export function useAgentOrchestrator(
           lifecycle: 'error',
           timestamp: failedAt,
         });
+        activeRequestIdRef.current = 0;
         logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: reqId });
         setResponseText(null);
         setValidationSummary(null);
@@ -1657,12 +1669,20 @@ export function useAgentOrchestrator(
     }
   }, [voiceReady]);
 
-  const prevLifecycleRef = useRef<AgentLifecycleState>(lifecycle);
   useEffect(() => {
     const prev = prevLifecycleRef.current;
     if (prev !== lifecycle) {
       const details: { requestId?: number } = {};
-      if (requestIdRef.current > 0) details.requestId = requestIdRef.current;
+      const activeRequestId = activeRequestIdRef.current;
+      const requestScopedTransition =
+        prev === 'processing' ||
+        lifecycle === 'processing' ||
+        prev === 'speaking' ||
+        lifecycle === 'speaking' ||
+        requestInFlightRef.current;
+      if (activeRequestId > 0 && requestScopedTransition) {
+        details.requestId = activeRequestId;
+      }
       logLifecycle('AgentOrchestrator', `lifecycle transition ${prev} -> ${lifecycle}`, details);
       prevLifecycleRef.current = lifecycle;
     }
@@ -1685,6 +1705,7 @@ export function useAgentOrchestrator(
       requestId: pending.requestId,
       lifecycle: 'idle',
     });
+    activeRequestIdRef.current = 0;
     logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: pending.requestId });
     logInfo('ResponseSurface', 'response_surface_concealed_after_playback', {
       requestId: pending.requestId,
