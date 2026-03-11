@@ -6,7 +6,7 @@
 
 import React, { useMemo } from 'react';
 import { Dimensions, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import type { RequestDebugState, RequestDebugSnapshot, RequestDebugEvent } from './requestDebugTypes';
+import type { RequestDebugState, RequestDebugEvent } from './requestDebugTypes';
 
 const PANEL_WIDTH = 360;
 const TRUNCATE_PREVIEW = 200;

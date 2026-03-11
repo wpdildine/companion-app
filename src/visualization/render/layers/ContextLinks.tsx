@@ -61,8 +61,8 @@ export function ContextLinks({
 }: {
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
 }) {
-  return null;
   const materialRefs = useRef<Array<THREE.ShaderMaterial | null>>([]);
+  const loggedGateRef = useRef(false);
   const linksScene = visualizationRef.current?.scene?.contextLinks;
 
   const gate = useMemo(() => {
@@ -375,7 +375,6 @@ export function ContextLinks({
     typeof __DEV__ !== 'undefined' &&
     __DEV__ &&
     true;
-  const loggedGateRef = useRef(false);
   if (!loggedGateRef.current) {
     loggedGateRef.current = true;
     logInfo('Visualization', 'ContextLinks render gate', {

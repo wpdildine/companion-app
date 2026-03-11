@@ -6,7 +6,6 @@
 
 import type { PackFileReader } from './types';
 import type { IndexMeta } from './types';
-import type { RetrievalHit } from './types';
 import { ragError } from './errors';
 
 /** Decode one little-endian float16 at index i in u16 to float. Keeps vectors in f16 to avoid ~22s full decode. */

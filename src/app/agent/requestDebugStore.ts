@@ -194,11 +194,6 @@ const snapshotsById = new Map<number, RequestDebugSnapshot>();
 const events: RequestDebugEvent[] = [];
 let lastRagInitTrace: Record<string, unknown> | null = null;
 
-function isRetained(requestId: number): boolean {
-  if (activeRequestId === requestId) return true;
-  return recentRequestIds.includes(requestId);
-}
-
 function trimRetention(): void {
   while (recentRequestIds.length > REQUEST_DEBUG_RECENT_MAX) {
     const dropped = recentRequestIds.shift();

@@ -13,7 +13,7 @@ export type AgentLifecycleState =
   | 'speaking'
   | 'error';
 
-/** Processing substate: meaningful only when lifecycle === 'processing'; otherwise null. */
+/** Processing substate: meaningful only when lifecycle === 'processing'; otherwise null. 'fallback' is reserved for explicit fallback paths only; main pipeline never sets it unless such a path is implemented. */
 export type ProcessingSubstate =
   | 'retrieving'
   | 'preparingContext'

@@ -126,6 +126,10 @@ Do not put transient event logic into art-direction files. Per-layer render file
 - **Recoverable failure (idle)** — Empty or no-usable transcript at settlement returns lifecycle to `idle` (not `error`). Stop finalization and cleanup run promptly. A transient soft-fail visual (red pulse) is emitted; no persistent error panel. The user can retry immediately.
 - **Interaction arbitration** — One interaction owner wins by priority: debug > overlay > holdToSpeak > swipeContext > playbackTap > none. Swipe reveals rules/cards only when valid current context exists; hold is blocked when a request is active or overlay/debug owns.
 
+## Fallback policy
+
+Fallback is **reserved in the type system and policy only**; there is no fallback implementation in the current pipeline. `processingSubstate` includes `'fallback'` for future use; the main pipeline never sets it. **Non-triggers (fallback must NOT activate for):** empty/weak transcript, recoverable denials, slow generation without an explicit timeout, weak retrieval, answer-quality heuristics, or generic failures. **Trigger candidates (implementation deferred):** model load failure (e.g. E_MODEL_PATH), inference failure only if product explicitly prefers a fixed-message path over request_failed for that error class, or explicit user/debug action. **If implemented later:** fallback is a branch within the same request (lifecycle stays processing); it may emit response_settled then request_complete; terminal failure remains request_failed unless a dedicated fallback branch is added for a specific trigger.
+
 ## Touch Path
 
 When in user mode and no content panels are visible:

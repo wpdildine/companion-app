@@ -7,7 +7,6 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { logInfo } from '../../shared/logging';
 import {
-  applySignalsToVisualization,
   triggerPulseAtCenter,
   TRANSIENT_SIGNAL_FIRST_TOKEN,
   TRANSIENT_SIGNAL_SOFT_FAIL,
@@ -58,13 +57,13 @@ export function useVisualizationController(
   setSignalsRef.current = setSignals;
   emitEventRef.current = emitEvent;
 
-  const dummySignals = {
+  const dummySignalsRef = useRef({
     phase: 'resolved' as const,
     grounded: true,
     confidence: 0.82,
     retrievalDepth: 3,
     cardRefsCount: 2,
-  };
+  });
 
   // Populate listeners so orchestrator can drive pulses and semantic events
   useEffect(() => {
@@ -114,15 +113,19 @@ export function useVisualizationController(
     if (debugScenario) {
       const withOptionalMode = <T extends object>(payload: T): T => {
         if (debugEnabled) {
-          const { mode: _m, phase: _p, ...rest } = payload as T & {
-            mode?: string;
-            phase?: string;
+          const stripped = {
+            ...(payload as T & {
+              mode?: string;
+              phase?: string;
+            }),
           };
-          return rest as T;
+          delete stripped.mode;
+          delete stripped.phase;
+          return stripped as T;
         }
         return payload as T;
       };
-      setSignals(withOptionalMode(dummySignals));
+      setSignals(withOptionalMode(dummySignalsRef.current));
       return;
     }
 
@@ -155,11 +158,15 @@ export function useVisualizationController(
 
     const withOptionalMode = <T extends object>(payload: T): T => {
       if (debugEnabled) {
-        const { mode: _m, phase: _p, ...rest } = payload as T & {
-          mode?: string;
-          phase?: string;
+        const stripped = {
+          ...(payload as T & {
+            mode?: string;
+            phase?: string;
+          }),
         };
-        return rest as T;
+        delete stripped.mode;
+        delete stripped.phase;
+        return stripped as T;
       }
       return { ...payload, mode } as T;
     };

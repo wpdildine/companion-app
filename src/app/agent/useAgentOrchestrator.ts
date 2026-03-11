@@ -51,7 +51,7 @@ const IOS_STOP_GRACE_MS = 250;
 const PARTIAL_EMIT_THROTTLE_MS = 400;
 /** Throttle setResponseText during streaming to reduce re-renders (plan: 100–200 ms). */
 const RESPONSE_TEXT_UPDATE_THROTTLE_MS = 150;
-/** Fixed fallback when nudged output is empty; orchestrator commits this before settlement. */
+/** Settlement-time empty-output handling only; orchestrator commits this before settlement. Not the processingSubstate 'fallback' branch. */
 const EMPTY_RESPONSE_FALLBACK_MESSAGE = 'No answer generated';
 const NATIVE_RESTART_GUARD_MS = 250;
 const ANDROID_TAIL_GRACE_MS = 200;
@@ -361,7 +361,7 @@ export function useAgentOrchestrator(
         timestamp: Date.now(),
       });
     },
-    [listenersRef],
+    [listenersRef, requestDebugSinkRef],
   );
 
   const setAudioState = useCallback(
@@ -698,7 +698,14 @@ export function useAgentOrchestrator(
         finalizeStop(reason, recordingSessionId);
       }
     },
-    [finalizeTranscriptFromPartial, finalizeStop, listenersRef, updateTranscript],
+    [
+      emitRecoverableFailure,
+      finalizeTranscriptFromPartial,
+      finalizeStop,
+      listenersRef,
+      setAudioState,
+      updateTranscript,
+    ],
   );
 
   const stopListening = useCallback(async () => {
@@ -772,7 +779,7 @@ export function useAgentOrchestrator(
       finalizeTimerRef.current = null;
       finalizeStop('stopListening', recordingSessionId);
     }, 300);
-  }, [finalizeStop]);
+  }, [finalizeStop, setAudioState]);
 
   const stopListeningAndRequestSubmit = useCallback(async () => {
     const recordingSessionId = recordingSessionRef.current ?? undefined;
@@ -859,7 +866,7 @@ export function useAgentOrchestrator(
         resolveSettlement('flushWindowExpired', sessionId);
       }
     }, POST_STOP_FLUSH_WINDOW_MS);
-  }, [resolveSettlement]);
+  }, [resolveSettlement, setAudioState]);
 
   const startListening = useCallback(
     async (fresh = false): Promise<{ ok: boolean; reason?: string }> => {
@@ -1001,7 +1008,7 @@ export function useAgentOrchestrator(
         return { ok: false, reason: 'startFailed' };
       }
     },
-    [applyIoBlock, clearIoBlock, lifecycle, mode, playListenIn, updateTranscript],
+    [applyIoBlock, clearIoBlock, mode, playListenIn, setAudioState, updateTranscript],
   );
 
   useEffect(() => {
@@ -1394,6 +1401,7 @@ export function useAgentOrchestrator(
       }
       return committedText;
     } catch (e) {
+      // Fallback policy: reserved. Non-triggers: empty/weak transcript, recoverable denials, slow gen, weak retrieval, quality heuristics. If implemented, only from explicit triggers (e.g. E_MODEL_PATH or user/debug).
       const msg = errorMessage(e);
       const code =
         e && typeof e === 'object' && 'code' in e ? (e as { code: string }).code : '';
@@ -1447,7 +1455,7 @@ export function useAgentOrchestrator(
       });
       return null;
     }
-  }, [listenersRef]);
+  }, [listenersRef, requestDebugSinkRef, setAudioState]);
 
   const playText = useCallback(
     async (text: string) => {
@@ -1592,7 +1600,7 @@ export function useAgentOrchestrator(
         }
       }
     },
-    [piperAvailable, listenersRef],
+    [piperAvailable, listenersRef, requestDebugSinkRef, setAudioState],
   );
 
   playTextRef.current = playText;
@@ -1618,13 +1626,13 @@ export function useAgentOrchestrator(
     setTimeout(() => {
       playbackInterruptedRef.current = false;
     }, 120);
-  }, [listenersRef, responseText]);
+  }, [listenersRef]);
 
   const clearError = useCallback(() => {
     setError(null);
     setProcessingSubstate(null);
     setLifecycle('idle');
-  }, [responseText]);
+  }, []);
 
   const recoverFromRequestFailure = useCallback(() => {
     logInfo('AgentOrchestrator', 'failed request recovery started');
@@ -2010,6 +2018,7 @@ export function useAgentOrchestrator(
     };
   }, [
     voiceReady,
+    emitRecoverableFailure,
     playListenIn,
     playListenOut,
     playError,
@@ -2018,6 +2027,7 @@ export function useAgentOrchestrator(
     finalizeTranscriptFromPartial,
     finalizeStop,
     resolveSettlement,
+    setAudioState,
     stopListeningAndRequestSubmit,
   ]);
 

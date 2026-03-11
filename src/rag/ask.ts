@@ -439,7 +439,6 @@ export async function runRagFlow(
           }
         }
       } catch (e) {
-        const err = e as { code?: string; message?: string };
         const msg = e instanceof Error ? e.message : String(e);
         const isBundleLoadError = msg
           .toLowerCase()

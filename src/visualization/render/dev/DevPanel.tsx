@@ -215,14 +215,15 @@ export function DevPanel({
     setUiVersion(u => u + 1);
   }, [visualizationRef, applyState]);
 
-  const v = visualizationRef.current;
-  if (!v) return null;
-
   useEffect(() => {
-    if (!v.stateCycleOn && !v.canonicalCycleOn) return;
+    const viz = visualizationRef.current;
+    if (!viz?.stateCycleOn && !viz?.canonicalCycleOn) return;
     const id = setInterval(() => setUiVersion(u => u + 1), 200);
     return () => clearInterval(id);
-  }, [v.stateCycleOn, v.canonicalCycleOn]);
+  }, [visualizationRef]);
+
+  const v = visualizationRef.current;
+  if (!v) return null;
 
   const wrapperStyle =
     variant === 'overlay' ? [StyleSheet.absoluteFill, styles.overlay] : [styles.inlineWrap];

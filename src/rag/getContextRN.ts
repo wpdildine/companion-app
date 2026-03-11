@@ -26,7 +26,6 @@ import { openCardsDb, openRulesDb, type DbRow } from './packDbRN';
 import type { PackFileReader } from './types';
 import { RAG_CONFIG } from './config';
 
-const SCORE_SCALE = 1_000_000;
 const SECTION_702 = 702;
 const MIN_TOKEN_LENGTH = 3;
 
@@ -40,12 +39,6 @@ interface DbRule {
 export interface GetContextRNResult {
   bundle: ContextBundle;
   final_context_bundle_canonical: string;
-}
-
-function join(packRoot: string, rel: string): string {
-  const root = packRoot.replace(/\/+$/, '');
-  const path = rel.replace(/^\/+/, '');
-  return path ? `${root}/${path}` : root;
 }
 
 function overlapScore(

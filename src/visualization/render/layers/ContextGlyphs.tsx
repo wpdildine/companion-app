@@ -3,7 +3,7 @@
  * All positions and colors from visualizationRef.current.scene.clusters.nodes (no fallback constants).
  */
 
-import { useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { nodeVertex, nodeFragment } from '../../materials/glyphs/nodes';
@@ -91,7 +91,6 @@ function buildGlyphBuffers(
 }
 
 export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.RefObject<VisualizationEngineRef | null> }) {
-  return null;
   const scene = visualizationRef.current?.scene;
   const glyphsScene = scene?.contextGlyphs;
   const nodes = useMemo(
@@ -174,54 +173,57 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
   const motionGainBack = glyphsScene?.motionGainBack ?? 0.7;
   const motionGainFront = glyphsScene?.motionGainFront ?? 0.95;
 
-  const makeUniforms = (uOpacityScale: number, uScale: number, uGlyphMotionGain: number) => ({
-    uTime: { value: 0 },
-    uActivity: { value: 0.1 },
-    uMode: { value: 0 },
-    uBaseNodeSize: { value: glyphsScene?.baseNodeSize ?? 5.25 },
-    uPulseSpeed: { value: glyphsScene?.pulseSpeed ?? 4 },
-    uPulsePositions: {
-      value: [
-        new THREE.Vector3(1e6, 1e6, 1e6),
-        new THREE.Vector3(1e6, 1e6, 1e6),
-        new THREE.Vector3(1e6, 1e6, 1e6),
-      ],
-    },
-    uPulseTimes: { value: new Float32Array([-1e3, -1e3, -1e3]) },
-    uPulseColors: {
-      value: [
-        new THREE.Vector3(1, 1, 1),
-        new THREE.Vector3(1, 1, 1),
-        new THREE.Vector3(1, 1, 1),
-      ],
-    },
-    uTouchWorld: { value: new THREE.Vector3(1e6, 1e6, 1e6) },
-    uTouchInfluence: { value: 0 },
-    uModelMatrix: { value: new THREE.Matrix4() },
-    uViewMatrix: { value: new THREE.Matrix4() },
-    uProjectionMatrix: { value: new THREE.Matrix4() },
-    uTouchRadius: { value: glyphsScene?.touchRadius ?? 3.6 },
-    uTouchStrength: { value: glyphsScene?.touchStrength ?? 2.8 },
-    uTouchMaxOffset: { value: glyphsScene?.touchMaxOffset ?? 1.35 },
-    uFocusBias: { value: 0 },
-    uMotionOpenness: { value: 0 },
-    uMotionAttention: { value: 0 },
-    uMotionSettle: { value: 0 },
-    uMotionMicro: { value: 0 },
-    uMotionAxisX: { value: 1 },
-    uMotionAxisY: { value: 1 },
-    uGlyphMotionGain: { value: uGlyphMotionGain },
-    uOpacityScale: { value: uOpacityScale },
-    uScale: { value: uScale },
-  });
+  const makeUniforms = useCallback(
+    (uOpacityScale: number, uScale: number, uGlyphMotionGain: number) => ({
+      uTime: { value: 0 },
+      uActivity: { value: 0.1 },
+      uMode: { value: 0 },
+      uBaseNodeSize: { value: glyphsScene?.baseNodeSize ?? 5.25 },
+      uPulseSpeed: { value: glyphsScene?.pulseSpeed ?? 4 },
+      uPulsePositions: {
+        value: [
+          new THREE.Vector3(1e6, 1e6, 1e6),
+          new THREE.Vector3(1e6, 1e6, 1e6),
+          new THREE.Vector3(1e6, 1e6, 1e6),
+        ],
+      },
+      uPulseTimes: { value: new Float32Array([-1e3, -1e3, -1e3]) },
+      uPulseColors: {
+        value: [
+          new THREE.Vector3(1, 1, 1),
+          new THREE.Vector3(1, 1, 1),
+          new THREE.Vector3(1, 1, 1),
+        ],
+      },
+      uTouchWorld: { value: new THREE.Vector3(1e6, 1e6, 1e6) },
+      uTouchInfluence: { value: 0 },
+      uModelMatrix: { value: new THREE.Matrix4() },
+      uViewMatrix: { value: new THREE.Matrix4() },
+      uProjectionMatrix: { value: new THREE.Matrix4() },
+      uTouchRadius: { value: glyphsScene?.touchRadius ?? 3.6 },
+      uTouchStrength: { value: glyphsScene?.touchStrength ?? 2.8 },
+      uTouchMaxOffset: { value: glyphsScene?.touchMaxOffset ?? 1.35 },
+      uFocusBias: { value: 0 },
+      uMotionOpenness: { value: 0 },
+      uMotionAttention: { value: 0 },
+      uMotionSettle: { value: 0 },
+      uMotionMicro: { value: 0 },
+      uMotionAxisX: { value: 1 },
+      uMotionAxisY: { value: 1 },
+      uGlyphMotionGain: { value: uGlyphMotionGain },
+      uOpacityScale: { value: uOpacityScale },
+      uScale: { value: uScale },
+    }),
+    [glyphsScene],
+  );
 
   const backUniforms = useMemo(
     () => makeUniforms(opacityScaleBack, scaleBack, motionGainBack),
-    [glyphsScene, opacityScaleBack, scaleBack, motionGainBack],
+    [opacityScaleBack, scaleBack, motionGainBack, makeUniforms],
   );
   const frontUniforms = useMemo(
     () => makeUniforms(opacityScaleFront, scaleFront, motionGainFront),
-    [glyphsScene, opacityScaleFront, scaleFront, motionGainFront],
+    [opacityScaleFront, scaleFront, motionGainFront, makeUniforms],
   );
 
   const loggedRef = useRef(false);
@@ -355,7 +357,7 @@ export function ContextGlyphs({ visualizationRef }: { visualizationRef: React.Re
       { ref: backRef.current, u: backUniforms },
       { ref: frontRef.current, u: frontUniforms },
     ];
-    for (const { ref: mesh, u } of meshes) {
+    for (const { ref: mesh } of meshes) {
       if (!mesh) continue;
       mesh.rotation.set(0, 0, 0);
       const mat = mesh.material as THREE.ShaderMaterial;
