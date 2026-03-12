@@ -12,7 +12,10 @@ import { logInfo } from '../../shared/logging/logger';
 import type { VisualizationEngineRef, VisualizationMode } from './runtimeTypes';
 import { getPulseColorWithHue } from './getPulseColor';
 import { TARGET_ACTIVITY_BY_MODE } from './createDefaultRef';
-import { toCanonicalVisualizationMode } from './modeTransition';
+import {
+  getModeTransitionState,
+  toCanonicalVisualizationMode,
+} from './modeTransition';
 import {
   TOUCH_PRESENCE_LAMBDA,
   TOUCH_NDC_LAMBDA,
@@ -45,7 +48,7 @@ const DEBUG_MOTION_GRAMMAR =
 const DEBUG_TOUCH_FIELD = false;
 // Toggle this to prove consumers are responding to motion, independent of choreography.
 const DEBUG_FORCE_MOTION_BY_MODE = false;
-const MODE_TRANSITION_MS = 320;
+const MODE_TRANSITION_MS = 500;
 
 function seeded01(i: number, seed: number): number {
   return Math.abs(Math.sin(i * seed)) % 1;
@@ -202,7 +205,7 @@ export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefO
       v.modeTransitionFrom = transitionTarget;
       v.modeTransitionTo = canonicalMode;
       v.modeTransitionT = 0;
-      v.displayMode = v.modeTransitionFrom;
+      v.displayMode = v.currentMode;
       const transitionKey = `${v.modeTransitionFrom}->${v.modeTransitionTo}`;
       if (lastLoggedTransitionRef.current !== transitionKey) {
         lastLoggedTransitionRef.current = transitionKey;
@@ -218,7 +221,7 @@ export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefO
       }
     } else if (v.modeTransitionT < 1) {
       v.modeTransitionT = Math.min(1, v.modeTransitionT + dtMs / MODE_TRANSITION_MS);
-      v.displayMode = v.modeTransitionFrom;
+      v.displayMode = v.currentMode;
       if (v.modeTransitionT >= 1) {
         v.modeTransitionFrom = canonicalMode;
         v.modeTransitionTo = canonicalMode;
@@ -310,6 +313,7 @@ export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefO
     }
 
     if (v.scene?.motion) {
+      const transition = getModeTransitionState(v);
       if (DEBUG_MOTION_GRAMMAR) {
         const marker = `${v.currentMode}->${canonicalMode}`;
         if (marker !== modeLogRef.current) {
@@ -323,7 +327,10 @@ export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefO
       }
       motionGrammar.tick(dtMs, {
         dtMs,
-        mode: v.displayMode,
+        mode: v.currentMode,
+        transitionFrom: transition.from,
+        transitionTo: transition.to,
+        transitionT: transition.t,
         touchPresence: v.scene.organism?.presence ?? 0,
         focusBias: v.scene.organism?.focusBias ?? 0,
         activity: v.activity,

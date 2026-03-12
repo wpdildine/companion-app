@@ -7,12 +7,16 @@ import type { CanonicalSceneMode } from '../scene/sceneMode';
 import type { GLSceneMotion, GLSceneMotionPhase } from '../scene/sceneFormations';
 import type { MotionGrammarTemplate, MotionSignals, MotionTargets } from '../scene/artDirection/motionGrammar/types';
 import type { VisualizationMode } from './runtimeTypes';
+import type { CanonicalVisualizationMode } from './modeTransition';
 
 const DEBUG_MOTION_GRAMMAR =
   false;
 
 export type MotionGrammarInputs = {
   mode: VisualizationMode;
+  transitionFrom?: CanonicalVisualizationMode;
+  transitionTo?: CanonicalVisualizationMode;
+  transitionT?: number;
   dtMs: number;
   touchPresence: number;
   focusBias: number;
@@ -100,6 +104,24 @@ function createSignals(): MotionSignals {
   };
 }
 
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+function writeBlendedTargets(
+  out: MotionTargets,
+  from: MotionTargets,
+  to: MotionTargets,
+  t: number,
+): void {
+  out.energy = lerp(from.energy, to.energy, t);
+  out.tension = lerp(from.tension, to.tension, t);
+  out.openness = lerp(from.openness, to.openness, t);
+  out.settle = lerp(from.settle, to.settle, t);
+  out.attention = lerp(from.attention, to.attention, t);
+  out.microMotion = lerp(from.microMotion, to.microMotion, t);
+}
+
 export function createMotionGrammarEngine(template: MotionGrammarTemplate): {
   tick: (dtMs: number, inputs: MotionGrammarInputs, motionOut: GLSceneMotion) => void;
 } {
@@ -121,8 +143,12 @@ export function createMotionGrammarEngine(template: MotionGrammarTemplate): {
   function tick(dtMs: number, inputs: MotionGrammarInputs, motionOut: GLSceneMotion): void {
     const dtSec = Math.min(dtMs / 1000, 0.1);
     const canonical = toCanonicalMode(inputs.mode);
+    const transitionFrom = inputs.transitionFrom ?? canonical;
+    const transitionTo = inputs.transitionTo ?? canonical;
+    const transitionT = clamp01(inputs.transitionT ?? 1);
+    const transitionActive = transitionFrom !== transitionTo && transitionT < 1;
 
-    if (canonical !== currentMode && canonical !== nextMode) {
+    if (!transitionActive && canonical !== currentMode && canonical !== nextMode) {
       if (DEBUG_MOTION_GRAMMAR) {
         console.log('[MotionGrammar] mode change detected', {
           from: currentMode,
@@ -142,7 +168,7 @@ export function createMotionGrammarEngine(template: MotionGrammarTemplate): {
     const releaseMs = enterBeats?.releaseMs ?? 160;
     const overshoot = enterBeats?.overshoot ?? 0;
     const enterTotalMs = Math.max(1, attackMs + holdMs + releaseMs);
-    if (phase === 'enter' && phaseElapsedMs >= enterTotalMs) {
+    if (!transitionActive && phase === 'enter' && phaseElapsedMs >= enterTotalMs) {
       phase = 'hold';
       currentMode = nextMode;
       phaseElapsedMs = 0;
@@ -153,17 +179,26 @@ export function createMotionGrammarEngine(template: MotionGrammarTemplate): {
         });
       }
     }
-    const modeTargets = template.targetsByMode[nextMode];
-    writeDesiredFromEnvelope(
-      signalsDesired,
-      modeTargets,
-      phase,
-      phaseElapsedMs,
-      attackMs,
-      holdMs,
-      releaseMs,
-      overshoot,
-    );
+    if (transitionActive) {
+      writeBlendedTargets(
+        signalsDesired,
+        template.targetsByMode[transitionFrom],
+        template.targetsByMode[transitionTo],
+        transitionT,
+      );
+    } else {
+      const modeTargets = template.targetsByMode[nextMode];
+      writeDesiredFromEnvelope(
+        signalsDesired,
+        modeTargets,
+        phase,
+        phaseElapsedMs,
+        attackMs,
+        holdMs,
+        releaseMs,
+        overshoot,
+      );
+    }
 
     const ease = (current: number, desired: number, key: keyof MotionTargets): number => {
       const e = template.easing[key];
@@ -180,9 +215,17 @@ export function createMotionGrammarEngine(template: MotionGrammarTemplate): {
     signalsCurrent.microMotion = ease(signalsCurrent.microMotion, signalsDesired.microMotion, 'microMotion');
 
     const breath = template.breath;
-    const amp = breath.ampByMode[nextMode];
-    const hz = breath.hzByMode[nextMode];
-    const breathBias = breath.biasByMode?.[nextMode] ?? 0.5;
+    const amp = transitionActive
+      ? lerp(breath.ampByMode[transitionFrom], breath.ampByMode[transitionTo], transitionT)
+      : breath.ampByMode[nextMode];
+    const hz = transitionActive
+      ? lerp(breath.hzByMode[transitionFrom], breath.hzByMode[transitionTo], transitionT)
+      : breath.hzByMode[nextMode];
+    const fromBias = breath.biasByMode?.[transitionFrom] ?? 0.5;
+    const toBias = breath.biasByMode?.[transitionTo] ?? 0.5;
+    const breathBias = transitionActive
+      ? lerp(fromBias, toBias, transitionT)
+      : breath.biasByMode?.[nextMode] ?? 0.5;
     breathPhase += (dtMs / 1000) * hz * 2 * Math.PI;
     const t = breathPhase % (2 * Math.PI);
     let wave = 0.5 + 0.5 * Math.sin(t);
@@ -210,9 +253,11 @@ export function createMotionGrammarEngine(template: MotionGrammarTemplate): {
     motionOut.breath = clamp01(signalsCurrent.breath * sleepMult);
     motionOut.attention = clamp01(signalsCurrent.attention * sleepMult);
     motionOut.microMotion = clamp01(signalsCurrent.microMotion * sleepMult);
-    motionOut.phase = phase;
+    motionOut.phase = transitionActive ? 'enter' : phase;
     motionOut.phaseT =
-      phase === 'enter'
+      transitionActive
+        ? transitionT
+        : phase === 'enter'
         ? Math.min(1, phaseElapsedMs / enterTotalMs)
         : 1;
   }

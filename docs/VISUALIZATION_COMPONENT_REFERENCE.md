@@ -62,13 +62,13 @@ src/visualization/
 
 ### Scene (R3F)
 
-- `RuntimeLoop` (runtime/): advances clock; eases activity/touch influence; resolves touch field NDC to world/view.
+- `RuntimeLoop` (runtime/): advances clock; eases activity/touch influence; resolves touch field NDC to world/view; owns the shared visualization mode transition state used by motion/runtime consumers.
 - `TouchRaycaster` (interaction/): resolves `pendingTapNdc` into pulse position.
 - `CameraOrbit` (render/canvas/): camera placement/orbit state.
 - `ContextGlyphs` (render/layers/): point clusters (rules/cards).
 - `ContextLinks` (render/layers/): links between cluster nodes.
 - `TouchZones` (render/layers/): dumb renderer; reads layout/style from `visualizationRef.current.scene` only. Ring outlines at cluster anchors; camera-facing zone planes (rules / center / cards) when `showTouchZones` is enabled in the ref. No hardcoded colors, ratios, or opacities.
-- `Spine` (render/layers/): 5-plane spine + shard field + center halftone membrane; consumes builder-supplied `scene.spine`. Renders `SpineRotLayer` as child (same overlay group). Halftone targeting is plane-scoped: default is center plane only; `spineUseHalftonePlanes` adds halftone accents on center + `planeAccent` planes (not global-all planes).
+- `Spine` (render/layers/): 5-plane spine + shard field + center halftone membrane; consumes builder-supplied `scene.spine`. Renders `SpineRotLayer` as child (same overlay group). Halftone targeting is plane-scoped: default is center plane only; `spineUseHalftonePlanes` adds halftone accents on center + `planeAccent` planes (not global-all planes). Spread/aperture/profile-facing motion now derives from the shared runtime transition rather than a separate layer-local mode ramp.
 - `SpineRotLayer` (render/layers/): rotational planes in overlay space; consumes `scene.spineRot` and `scene.layers.spineRot`; rendered under the same group as Spine (no duplicate camera-facing transform). Returns null when `planeCountByMode` for current mode is 0.
 - `BackgroundLayer` (`render/layers/BackgroundLayer.tsx`): background drift planes + panel projection planes; consumes `scene.backgroundPlanes`, `scene.layers`, and `scene.planeField`.
 - `PostFXPass` (render/canvas/): optional post effects.
@@ -98,6 +98,21 @@ Ownership model:
 
 - App writes targets/events (`targetActivity`, semantic events, toggles, etc.).
 - RuntimeLoop writes derived/continuous values (`clock`, eased activity, touch influence, derived touch positions, organism signals).
+- RuntimeLoop also owns transition-aware visualization runtime state: requested mode (`currentMode`), display-facing read mode (`displayMode`), and shared handoff state (`modeTransitionFrom`, `modeTransitionTo`, `modeTransitionT`).
+
+### Shared mode transitions
+
+Visualization mode transitions are standardized through runtime-owned transition state.
+
+- `currentMode` = requested visualization mode written from app semantics.
+- `modeTransitionFrom` / `modeTransitionTo` / `modeTransitionT` = shared canonical handoff state.
+- `displayMode` = runtime-facing read mode for discrete consumers that still need a mode value.
+
+Rules:
+
+- Shared consumers should interpolate from the runtime transition state when possible.
+- Render layers must not invent independent mode-transition state machines.
+- Local smoothing is acceptable only as render-time derivation from the runtime transition boundary, not as a second semantic source.
 
 ## Phase 3: Organism signals
 

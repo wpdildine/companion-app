@@ -19,7 +19,7 @@ export function triggerPulseAtCenter(
     v.paletteId,
     v.hueShift,
     'chunkAccepted',
-    v.displayMode,
+    v.currentMode,
   );
   v.lastPulseIndex = (v.lastPulseIndex + 1) % 3;
 }

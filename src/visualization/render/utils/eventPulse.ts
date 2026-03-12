@@ -43,7 +43,7 @@ export function getEventPulse(
     scene.transientEffects,
   );
   const baseHueShift = v.hueShift + modulation.hueShift;
-  let color = getPulseColorWithHue(v.paletteId, baseHueShift, null, v.displayMode);
+  let color = getPulseColorWithHue(v.paletteId, baseHueShift, null, v.currentMode);
   if (
     v.lastEvent === 'tapCitation' ||
     v.lastEvent === 'tapCard' ||
@@ -51,7 +51,7 @@ export function getEventPulse(
     v.lastEvent === 'firstToken' ||
     v.lastEvent === 'warning'
   ) {
-    color = getPulseColorWithHue(v.paletteId, v.hueShift, v.lastEvent, v.displayMode);
+    color = getPulseColorWithHue(v.paletteId, v.hueShift, v.lastEvent, v.currentMode);
   } else if (modulation.intensity > 0) {
     color = [
       Math.min(1, color[0] * (1 + modulation.intensity)),

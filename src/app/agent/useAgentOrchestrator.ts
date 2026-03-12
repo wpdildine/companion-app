@@ -1516,7 +1516,7 @@ export function useAgentOrchestrator(
           timestamp: ttsStartedAt,
           lifecycle: 'speaking',
         });
-        logInfo('AgentOrchestrator', 'playback started');
+        logInfo('AgentOrchestrator', 'playback started', { provider: 'piper' });
         listenersRef?.current?.onPlaybackStart?.();
         try {
           await PiperTts.speak(normalized);
@@ -1605,7 +1605,7 @@ export function useAgentOrchestrator(
           timestamp: ttsStartedAt,
           lifecycle: 'speaking',
         });
-        logInfo('AgentOrchestrator', 'playback started');
+        logInfo('AgentOrchestrator', 'playback started', { provider: 'react-native-tts' });
         listenersRef?.current?.onPlaybackStart?.();
         Tts.speak(normalized);
       } catch (e) {

@@ -50,7 +50,7 @@ export function TouchRaycaster({
         v.paletteId,
         v.hueShift,
         'tap',
-        v.displayMode,
+        v.currentMode,
       );
       v.lastPulseIndex = (v.lastPulseIndex + 1) % 3;
     }

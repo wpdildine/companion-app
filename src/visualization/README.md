@@ -37,6 +37,12 @@ Transient effects are data-driven; render layers respond to **shared modulation 
 
 5. **Runtime owns state/time**
 - `runtime/*` owns mode transitions, ramps, smoothing, pulse state, touch influence state.
+- The runtime ref now carries both the requested visualization mode (`currentMode`) and
+  transition state (`modeTransitionFrom`, `modeTransitionTo`, `modeTransitionT`).
+- Shared transition-aware consumers should derive continuous values from that transition
+  state rather than inventing layer-local mode ramps.
+- `displayMode` exists only as a runtime-facing read surface for discrete consumers that
+  still need a display-oriented mode value; it must not become a second semantic state machine.
 
 6. **Interaction owns input mapping**
 - `interaction/*` captures gestures/taps and writes runtime ref fields.
@@ -62,6 +68,9 @@ Transient effects are data-driven; render layers respond to **shared modulation 
 - Active template: `scene/artDirection/motionGrammar/organismGrammar.ts` (barrel in `motionGrammar/index.ts`)
 - Tick owner: `runtime/RuntimeLoop.tsx` (runs after organism derivation; mutates existing `scene.motion` object only)
 - Validation: `scene/validateSceneSpec.ts` enforces finite ranges and valid phase.
+- Motion grammar consumes the shared runtime transition state; `processing -> speaking`
+  and similar handoffs should blend through the runtime-owned transition rather than
+  waiting in one mode and snapping at settlement.
 
 Tuning rule: adjust behavior in `scene/artDirection/motionGrammar/*` first; render layers should consume `scene.motion` and avoid hardcoded choreography constants.
 

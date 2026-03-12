@@ -342,7 +342,8 @@ export function ContextGlyphs({
     for (const u of [backUniforms, frontUniforms]) {
       u.uTime.value += delta;
       u.uActivity.value = runtime.activity ?? 0;
-      u.uMode.value = MODE_TO_ID[(runtime.mode ?? 'idle') as keyof typeof MODE_TO_ID] ?? 0;
+      u.uMode.value =
+        MODE_TO_ID[(runtime.displayMode ?? runtime.mode ?? 'idle') as keyof typeof MODE_TO_ID] ?? 0;
       u.uPulsePositions.value[0].set(pulsePositions[0][0], pulsePositions[0][1], pulsePositions[0][2]);
       u.uPulsePositions.value[1].set(pulsePositions[1][0], pulsePositions[1][1], pulsePositions[1][2]);
       u.uPulsePositions.value[2].set(pulsePositions[2][0], pulsePositions[2][1], pulsePositions[2][2]);

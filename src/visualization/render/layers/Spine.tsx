@@ -20,7 +20,11 @@ import type { CanonicalSpineMode } from '../../scene/builders/spine';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { validateSceneSpec } from '../../scene/validateSceneSpec';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
-import { interpolateModeValue } from '../../runtime/modeTransition';
+import {
+  easeModeTransition,
+  getModeTransitionState,
+  interpolateModeValue,
+} from '../../runtime/modeTransition';
 import { createOpacityPlaneMaterial } from '../../materials/spine/opacityPlaneMaterial';
 import { createHalftoneMaterial } from '../../materials/halftone/halftonePlaneMaterial';
 import { HALFTONE_VERTEX } from '../../materials/halftone/halftone.vert';
@@ -45,22 +49,6 @@ function toCanonicalMode(mode: string): CanonicalSpineMode {
     default:
       return 'idle';
   }
-}
-
-function easeInOutCubic(t: number): number {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-}
-
-function easeCubic(t: number): number {
-  return t * t * t;
-}
-
-function applyEasing(
-  t: number,
-  easing: 'cubic' | 'inOutCubic' | undefined,
-): number {
-  if (easing === 'inOutCubic') return easeInOutCubic(t);
-  return easeCubic(t);
 }
 
 function getApertureSlideByMode(mode: CanonicalSpineMode): number {
@@ -162,20 +150,6 @@ export function Spine({
   const cameraRightRef = useRef(new THREE.Vector3());
   const whiteColorRef = useRef(new THREE.Color('#ffffff'));
   const edgeGlowTargetColorRef = useRef(new THREE.Color());
-  const rampRef = useRef(0);
-  const currentSpreadRef = useRef({
-    verticalSpread: 1,
-    bandWidth: 1,
-    depthSpread: 1,
-  });
-  const prevSpreadRef = useRef({
-    verticalSpread: 1,
-    bandWidth: 1,
-    depthSpread: 1,
-  });
-  const prevApertureRef = useRef(0);
-  const currentApertureRef = useRef(0);
-  const lastCanonicalModeRef = useRef<CanonicalSpineMode>('idle');
   const smoothPlaneOpacityRef = useRef<number[]>(Array(5).fill(0));
   const smoothPlaneIntensityRef = useRef<number[]>(Array(5).fill(0));
   const smoothShardOpacityRef = useRef<number[]>([]);
@@ -216,15 +190,25 @@ export function Spine({
     const viewWidth = viewHeight * aspect;
     const activeHeight = viewHeight * activeHeightRatio;
 
-    const canonicalMode = toCanonicalMode(v.currentMode);
-    if (canonicalMode !== lastCanonicalModeRef.current) {
-      prevSpreadRef.current = { ...currentSpreadRef.current };
-      prevApertureRef.current = currentApertureRef.current;
-      lastCanonicalModeRef.current = canonicalMode;
-      // Always restart ramp on mode change (prevents one-frame pops/flicker).
-      rampRef.current = 0;
-    }
-    const targetProfile = spine.spreadProfiles[canonicalMode];
+    const transition = getModeTransitionState(v);
+    const easedTransitionT = easeModeTransition(transition.t);
+    const fromProfile = spine.spreadProfiles[transition.from];
+    const toProfile = spine.spreadProfiles[transition.to];
+    const spread = {
+      verticalSpread:
+        fromProfile.verticalSpread +
+        (toProfile.verticalSpread - fromProfile.verticalSpread) * easedTransitionT,
+      bandWidth:
+        fromProfile.bandWidth +
+        (toProfile.bandWidth - fromProfile.bandWidth) * easedTransitionT,
+      depthSpread:
+        fromProfile.depthSpread +
+        (toProfile.depthSpread - fromProfile.depthSpread) * easedTransitionT,
+    };
+    const apertureSlide =
+      getApertureSlideByMode(transition.from) +
+      (getApertureSlideByMode(transition.to) - getApertureSlideByMode(transition.from)) *
+        easedTransitionT;
     const halftoneProfile = {
       intensity: interpolateModeValue(v, {
         idle: spine.halftoneProfiles.idle.intensity,
@@ -239,40 +223,16 @@ export function Spine({
         speaking: spine.halftoneProfiles.speaking.density,
       }),
     };
-    const rampingDown =
-      targetProfile.verticalSpread <= prevSpreadRef.current.verticalSpread;
-    const transitionMs = rampingDown
-      ? spine.transitionMsOut
-      : spine.transitionMsIn;
-    const deltaRamp = (delta * 1000) / Math.max(1, transitionMs);
-    rampRef.current = Math.min(1, rampRef.current + deltaRamp);
-    const eased = applyEasing(rampRef.current, spine.easing);
-    const prev = prevSpreadRef.current;
-    currentSpreadRef.current = {
-      verticalSpread:
-        prev.verticalSpread +
-        (targetProfile.verticalSpread - prev.verticalSpread) * eased,
-      bandWidth:
-        prev.bandWidth + (targetProfile.bandWidth - prev.bandWidth) * eased,
-      depthSpread:
-        prev.depthSpread +
-        (targetProfile.depthSpread - prev.depthSpread) * eased,
-    };
-    const targetApertureSlide = getApertureSlideByMode(canonicalMode);
-    currentApertureRef.current =
-      prevApertureRef.current +
-      (targetApertureSlide - prevApertureRef.current) * eased;
-
-    const spread = currentSpreadRef.current;
     const processingMotionBoost = spine.style.processingMotionBoost ?? 1;
     const processingExtraOverlap = spine.style.processingExtraOverlap ?? 0;
+    const processingHeightBoost = spine.style.processingHeightBoost ?? 1;
     const processingEdgeBoost = spine.style.processingEdgeBoost ?? 1;
     const perPlaneDriftScale = spine.style.perPlaneDriftScale ?? 0;
     const perPlaneDriftPhaseStep = spine.style.perPlaneDriftPhaseStep ?? 0;
 
     // Keep envelope size stable across states; state expression comes from aperture slide, not zoom.
-    const effectiveVerticalSpread = 1;
-    const effectiveBandWidth = 1;
+    const effectiveVerticalSpread = spread.verticalSpread;
+    const effectiveBandWidth = spread.bandWidth;
     const processingBlend = interpolateModeValue(v, {
       idle: 0,
       listening: 0,
@@ -409,7 +369,8 @@ export function Spine({
       if (!mesh) continue;
       const widthScale = spine.style.planeWidthScale[i] ?? 1;
       const baseHeightScale = spine.style.planeHeightScale?.[i] ?? 1;
-      const heightScale = baseHeightScale;
+      const heightScale =
+        baseHeightScale * (1 + (processingHeightBoost - 1) * processingBlend);
       const offsetX = spine.style.planeOffsetX[i] ?? 0;
       const opacityScale = spine.style.planeOpacityScale[i] ?? 1;
       const offsetY = (spine.style.planeOffsetY?.[i] ?? 0) * unitHeight;
@@ -421,7 +382,7 @@ export function Spine({
         Math.sign(relativeToCenter) *
         Math.abs(relativeToCenter) *
         apertureStride *
-        currentApertureRef.current;
+        apertureSlide;
       const apertureShiftEffective =
         apertureShift * axisY * planeDeformGain * planeBendGain;
 
@@ -662,20 +623,22 @@ export function Spine({
     const motionMicro = motion?.microMotion ?? 0;
     const motionMicroForShards = motionMicro * shardDriftGain;
     const shardBaseWidthScale = spine.style.shardWidthScale ?? 0.28;
-    const visibleShardCount =
-      Math.round(
-        interpolateModeValue(v, {
-          idle: spine.shardCountByMode?.idle ?? shards.length,
-          listening: spine.shardCountByMode?.listening ?? shards.length,
-          processing: spine.shardCountByMode?.processing ?? shards.length,
-          speaking: spine.shardCountByMode?.speaking ?? shards.length,
-        }),
-      );
+    const visibleShardCount = interpolateModeValue(v, {
+      idle: spine.shardCountByMode?.idle ?? shards.length,
+      listening: spine.shardCountByMode?.listening ?? shards.length,
+      processing: spine.shardCountByMode?.processing ?? shards.length,
+      speaking: spine.shardCountByMode?.speaking ?? shards.length,
+    });
     for (let s = 0; s < shards.length; s++) {
       const mesh = shardRefs.current[s];
       const shard = shards[s];
       if (!mesh || !shard) continue;
-      mesh.visible = s < visibleShardCount;
+      const shardVisibility = THREE.MathUtils.clamp(
+        visibleShardCount - s,
+        0,
+        1,
+      );
+      mesh.visible = shardVisibility > 0.001;
       if (!mesh.visible) continue;
       const shardRate = driftRate * (shard.driftRateScale ?? 1);
       const shardDriftScale =
@@ -717,6 +680,7 @@ export function Spine({
         const targetShardOpacity =
           spine.style.opacity *
           shard.opacityScale *
+          shardVisibility *
           dynamicOpacityBoost *
           spine.style.shardOpacityScale *
           0.92 *
