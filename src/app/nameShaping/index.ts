@@ -31,3 +31,6 @@ export {
   scoreSignatureMatch,
 } from './resolveProperNounBySignature';
 export type { ScoreResult } from './resolveProperNounBySignature';
+
+export { useNameShapingState } from './useNameShapingState';
+export type { NameShapingActions } from './useNameShapingState';
