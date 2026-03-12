@@ -71,6 +71,12 @@ export interface VisualizationEngineRef {
   autoRotSpeedZ: number;
   /** Current app mode so render layers can map state-specific effects. */
   currentMode: VisualizationMode;
+  /** Transition-aware display mode for discrete visual consumers. */
+  displayMode: VisualizationMode;
+  /** Runtime-owned canonical mode handoff for smoothing render-layer state changes. */
+  modeTransitionFrom: VisualizationMode;
+  modeTransitionTo: VisualizationMode;
+  modeTransitionT: number;
   /** Post FX controls. */
   postFxEnabled: boolean;
   postFxVignette: number;

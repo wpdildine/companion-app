@@ -14,6 +14,7 @@ import { createBackgroundDetailMaterial } from '../../materials/background/backg
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 import { computeTransientModulation, scaleModulation } from '../utils/transientModulation';
+import { interpolateModeValue } from '../../runtime/modeTransition';
 
 // ---- Plane 1: base (gradient + vignette + low-freq noise) ----
 const BASE_PLANE_VERTEX = `
@@ -212,8 +213,9 @@ export function BackgroundLayer({
     const v = visualizationRef.current;
     if (!v) return;
     const runtime = getLayerRuntimeInputs(v);
-    const bp = v.scene?.backgroundPlanes;
-    const pf = v.scene?.planeField;
+    const scene = v.scene;
+    const bp = scene?.backgroundPlanes;
+    const pf = scene?.planeField;
     const show = v.vizIntensity !== 'off';
     if (!show) {
       if (g1.current) g1.current.visible = false;
@@ -245,7 +247,7 @@ export function BackgroundLayer({
         runtime.lastEvent ?? null,
         runtime.lastEventTime ?? 0,
         runtime.clock ?? 0,
-        scene.transientEffects,
+        scene?.transientEffects,
       ),
       pf.modulationWeights,
     );
@@ -276,10 +278,19 @@ export function BackgroundLayer({
     const n = Math.min(bp.count, 2);
 
     const noisePhase = (runtime.clock ?? 0) * pf.noisePhaseSpeed * (pf.slowDriftScale ?? 1);
-    const isProcessing = runtime.mode === 'processing';
-    let targetIntensity = isProcessing
-      ? pf.intensityProcessingBase + (runtime.activity ?? 0) * pf.intensityProcessingActivityGain
-      : pf.intensityIdleBase + (runtime.activity ?? 0) * pf.intensityIdleActivityGain;
+    const processingBlend = interpolateModeValue(v, {
+      idle: 0,
+      listening: 0,
+      processing: 1,
+      speaking: 0,
+    });
+    const idleIntensity =
+      pf.intensityIdleBase + (runtime.activity ?? 0) * pf.intensityIdleActivityGain;
+    const processingIntensity =
+      pf.intensityProcessingBase +
+      (runtime.activity ?? 0) * pf.intensityProcessingActivityGain;
+    let targetIntensity =
+      idleIntensity + (processingIntensity - idleIntensity) * processingBlend;
     targetIntensity += transient.intensity;
     const motion = v.scene?.motion;
     if (motion) {

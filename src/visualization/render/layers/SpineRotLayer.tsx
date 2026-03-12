@@ -11,24 +11,8 @@ import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { createBasicPlaneMaterial } from '../../materials/basicPlaneMaterial';
 import { createHalftoneMaterial } from '../../materials/halftone/halftonePlaneMaterial';
-import type { CanonicalSceneMode } from '../../scene/sceneMode';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
-
-function toCanonicalMode(mode: string): CanonicalSceneMode {
-  switch (mode) {
-    case 'idle':
-    case 'listening':
-    case 'processing':
-    case 'speaking':
-      return mode;
-    case 'touched':
-      return 'listening';
-    case 'released':
-      return 'speaking';
-    default:
-      return 'idle';
-  }
-}
+import { interpolateModeValue } from '../../runtime/modeTransition';
 
 export function SpineRotLayer({
   visualizationRef,
@@ -56,10 +40,14 @@ export function SpineRotLayer({
     const spineRotNow = sceneNow?.spineRot;
     const layersNow = sceneNow?.layers;
     const spineNow = sceneNow?.spine;
-    if (!spineRotNow || !layersNow || !spineNow) return;
+    if (!v || !spineRotNow || !layersNow || !spineNow) return;
 
-    const modeNow = toCanonicalMode(v?.currentMode ?? 'idle');
-    const visibleCount = spineRotNow.planeCountByMode[modeNow] ?? 0;
+    const processingVisibleCount = interpolateModeValue(v, {
+      idle: spineRotNow.planeCountByMode.idle ?? 0,
+      listening: spineRotNow.planeCountByMode.listening ?? 0,
+      processing: spineRotNow.planeCountByMode.processing ?? 0,
+      speaking: spineRotNow.planeCountByMode.speaking ?? 0,
+    });
     const spineRotRo = getDescriptorRenderOrderBase(
       sceneNow,
       descriptor,
@@ -67,7 +55,18 @@ export function SpineRotLayer({
       layersNow.spineRot.renderOrderBase,
     );
     const opacityBase = spineRotNow.opacityBase;
-    const halftoneProfile = spineNow.halftoneProfiles[modeNow];
+    const halftoneIntensity = interpolateModeValue(v, {
+      idle: spineNow.halftoneProfiles.idle.intensity,
+      listening: spineNow.halftoneProfiles.listening.intensity,
+      processing: spineNow.halftoneProfiles.processing.intensity,
+      speaking: spineNow.halftoneProfiles.speaking.intensity,
+    });
+    const halftoneDensity = interpolateModeValue(v, {
+      idle: spineNow.halftoneProfiles.idle.density,
+      listening: spineNow.halftoneProfiles.listening.density,
+      processing: spineNow.halftoneProfiles.processing.density,
+      speaking: spineNow.halftoneProfiles.speaking.density,
+    });
     const resX = Math.max(1, state.size.width * (state.gl.getPixelRatio?.() ?? 1));
     const resY = Math.max(1, state.size.height * (state.gl.getPixelRatio?.() ?? 1));
 
@@ -75,7 +74,12 @@ export function SpineRotLayer({
       const mesh = meshRefs.current[i];
       const plane = spineRotNow.planes[i];
       if (!mesh || !plane) continue;
-      mesh.visible = i < visibleCount;
+      const visibilityWeight = THREE.MathUtils.clamp(
+        processingVisibleCount - i,
+        0,
+        1,
+      );
+      mesh.visible = visibilityWeight > 0.001;
       if (!mesh.visible) continue;
 
       mesh.position.set(0, 0, plane.z);
@@ -85,9 +89,10 @@ export function SpineRotLayer({
 
       if (plane.useHalftone && halftoneMat) {
         halftoneMat.uniforms.uColor.value.set(plane.color);
-        halftoneMat.uniforms.uOpacity.value = plane.opacityScale * opacityBase;
-        halftoneMat.uniforms.uIntensity.value = halftoneProfile.intensity;
-        halftoneMat.uniforms.uDensity.value = halftoneProfile.density;
+        halftoneMat.uniforms.uOpacity.value =
+          plane.opacityScale * opacityBase * visibilityWeight;
+        halftoneMat.uniforms.uIntensity.value = halftoneIntensity;
+        halftoneMat.uniforms.uDensity.value = halftoneDensity;
         halftoneMat.uniforms.uTime.value = v?.clock ?? 0;
         halftoneMat.uniforms.uResolution.value.set(resX, resY);
         halftoneMat.uniforms.uPlanePhase.value = i * 1.1;
@@ -97,7 +102,7 @@ export function SpineRotLayer({
         const mat = ghostMatsRef.current[i];
         if (!mat) continue;
         mat.color.set(plane.color);
-        mat.opacity = plane.opacityScale * opacityBase;
+        mat.opacity = plane.opacityScale * opacityBase * visibilityWeight;
       }
     }
   });
@@ -105,9 +110,7 @@ export function SpineRotLayer({
   const spineRot = scene?.spineRot;
   const layers = scene?.layers;
   if (!spineRot || !layers) return null;
-  const canonical = toCanonicalMode(visualizationRef.current?.currentMode ?? 'idle');
-  const countForMode = spineRot.planeCountByMode[canonical] ?? 0;
-  if (planes.length === 0 || countForMode === 0) return null;
+  if (planes.length === 0) return null;
 
   const spineRotRo = getDescriptorRenderOrderBase(
     scene,
@@ -129,7 +132,7 @@ export function SpineRotLayer({
               meshRefs.current[i] = el;
             }}
             renderOrder={spineRotRo + i}
-            visible={i < countForMode}
+            visible={false}
           >
             <planeGeometry args={[1, 1]} />
             <primitive object={mat} attach="material" />

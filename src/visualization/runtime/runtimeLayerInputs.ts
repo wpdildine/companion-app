@@ -11,6 +11,10 @@ import type { VisualizationEngineRef } from './runtimeTypes';
 export interface LayerRuntimeInputs {
   activity?: number;
   mode?: VisualizationEngineRef['currentMode'];
+  displayMode?: VisualizationEngineRef['displayMode'];
+  modeTransitionFrom?: VisualizationEngineRef['modeTransitionFrom'];
+  modeTransitionTo?: VisualizationEngineRef['modeTransitionTo'];
+  modeTransitionT?: VisualizationEngineRef['modeTransitionT'];
   clock?: number;
   lastEvent?: VisualizationEngineRef['lastEvent'];
   lastEventTime?: number;
@@ -36,6 +40,10 @@ export function getLayerRuntimeInputs(
   return {
     activity: v.activity,
     mode: v.currentMode,
+    displayMode: v.displayMode,
+    modeTransitionFrom: v.modeTransitionFrom,
+    modeTransitionTo: v.modeTransitionTo,
+    modeTransitionT: v.modeTransitionT,
     clock: v.clock,
     lastEvent: v.lastEvent,
     lastEventTime: v.lastEventTime,

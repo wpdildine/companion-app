@@ -8,25 +8,9 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
-import type { CanonicalSceneMode } from '../../scene/sceneMode';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 import { computeTransientModulation, scaleModulation } from '../utils/transientModulation';
-
-function toCanonicalMode(mode: string): CanonicalSceneMode {
-  switch (mode) {
-    case 'idle':
-    case 'listening':
-    case 'processing':
-    case 'speaking':
-      return mode;
-    case 'touched':
-      return 'listening';
-    case 'released':
-      return 'speaking';
-    default:
-      return 'idle';
-  }
-}
+import { interpolateModeValue } from '../../runtime/modeTransition';
 
 export function SpineLightCoreLayer({
   visualizationRef,
@@ -199,7 +183,6 @@ export function SpineLightCoreLayer({
       layers.spineLightCore.renderOrderBase,
     );
 
-    const mode = toCanonicalMode(v.currentMode);
     const mod = scaleModulation(
       computeTransientModulation(v.lastEvent, v.lastEventTime, v.clock, scene.transientEffects),
       lightCore.modulationWeights,
@@ -219,7 +202,13 @@ export function SpineLightCoreLayer({
     const motionAttention = motion?.attention ?? 0;
     const motionMicro = motion?.microMotion ?? 0;
     const motionBreath = motion?.breath ?? 0.5;
-    const baseOpacity = lightCore.opacityBase * (lightCore.opacityByMode[mode] ?? 1);
+    const opacityByMode = interpolateModeValue(v, {
+      idle: lightCore.opacityByMode.idle ?? 1,
+      listening: lightCore.opacityByMode.listening ?? 1,
+      processing: lightCore.opacityByMode.processing ?? 1,
+      speaking: lightCore.opacityByMode.speaking ?? 1,
+    });
+    const baseOpacity = lightCore.opacityBase * opacityByMode;
     const organism = scene.organism;
     const presenceOpacityBoost = organism && !v.reduceMotion ? 1 + organism.presence * 0.08 : 1;
     const motionOpacityBoost =
@@ -232,9 +221,20 @@ export function SpineLightCoreLayer({
       1,
       Math.max(0, baseOpacity * presenceOpacityBoost * motionOpacityBoost * transientOpacityBoost),
     );
-    const warpScale = lightCore.warpScaleByMode[mode] ?? 1;
+    const warpScale = interpolateModeValue(v, {
+      idle: lightCore.warpScaleByMode.idle ?? 1,
+      listening: lightCore.warpScaleByMode.listening ?? 1,
+      processing: lightCore.warpScaleByMode.processing ?? 1,
+      speaking: lightCore.warpScaleByMode.speaking ?? 1,
+    });
     const motionScale = v.reduceMotion ? 0 : warpScale;
-    const activityBoost = 1 + (mode === 'processing' ? v.activity * 0.35 : 0);
+    const processingBlend = interpolateModeValue(v, {
+      idle: 0,
+      listening: 0,
+      processing: 1,
+      speaking: 0,
+    });
+    const activityBoost = 1 + processingBlend * v.activity * 0.35;
     const motionWarpBoost =
       1 +
       motionEnergy * 0.65 +
@@ -245,14 +245,13 @@ export function SpineLightCoreLayer({
     mat.uniforms.uWarpFreq.value = lightCore.warpFreq;
     const transientWarpBoost = 1 + mod.agitation;
     mat.uniforms.uWarpAmpX.value =
-      mode === 'processing'
-        ? 0
-        : lightCore.warpAmpX *
-          motionScale *
-          activityBoost *
-          motionWarpBoost *
-          settleDamp *
-          transientWarpBoost;
+      lightCore.warpAmpX *
+      motionScale *
+      activityBoost *
+      motionWarpBoost *
+      settleDamp *
+      transientWarpBoost *
+      (1 - processingBlend);
     mat.uniforms.uWarpAmpY.value =
       lightCore.warpAmpY *
       motionScale *

@@ -5,6 +5,7 @@
  */
 
 import type { RefObject } from 'react';
+import { logInfo } from '../../shared/logging/logger';
 import type {
   VisualizationEngineRef,
   VisualizationMode,
@@ -42,6 +43,8 @@ export function applyVisualizationSignals(
 
   // Dev cycle owns mode when enabled in DevPanel; app signal pushes must not override it.
   const devModeOwned = v.stateCycleOn || v.canonicalCycleOn || v.modePinActive;
+  const prevMode = v.currentMode;
+  const prevTargetActivity = v.targetActivity;
   if (!devModeOwned && signals.mode != null) {
     const mode = signals.mode;
     v.currentMode = mode;
@@ -52,6 +55,17 @@ export function applyVisualizationSignals(
     v.currentMode = mode;
     const target = TARGET_ACTIVITY_BY_MODE[mode];
     v.targetActivity = target;
+  }
+  if (!devModeOwned && prevMode !== v.currentMode) {
+    logInfo('VisualizationRuntime', 'signal-applied mode update', {
+      source: signals.mode != null ? 'mode' : 'phase',
+      phase: signals.phase ?? null,
+      fromMode: prevMode,
+      toMode: v.currentMode,
+      displayMode: v.displayMode,
+      fromTargetActivity: prevTargetActivity,
+      toTargetActivity: v.targetActivity,
+    });
   }
 
   if (signals.event != null) {

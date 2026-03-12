@@ -20,6 +20,7 @@ import type { CanonicalSpineMode } from '../../scene/builders/spine';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { validateSceneSpec } from '../../scene/validateSceneSpec';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { interpolateModeValue } from '../../runtime/modeTransition';
 import { createOpacityPlaneMaterial } from '../../materials/spine/opacityPlaneMaterial';
 import { createHalftoneMaterial } from '../../materials/halftone/halftonePlaneMaterial';
 import { HALFTONE_VERTEX } from '../../materials/halftone/halftone.vert';
@@ -224,7 +225,20 @@ export function Spine({
       rampRef.current = 0;
     }
     const targetProfile = spine.spreadProfiles[canonicalMode];
-    const halftoneProfile = spine.halftoneProfiles[canonicalMode];
+    const halftoneProfile = {
+      intensity: interpolateModeValue(v, {
+        idle: spine.halftoneProfiles.idle.intensity,
+        listening: spine.halftoneProfiles.listening.intensity,
+        processing: spine.halftoneProfiles.processing.intensity,
+        speaking: spine.halftoneProfiles.speaking.intensity,
+      }),
+      density: interpolateModeValue(v, {
+        idle: spine.halftoneProfiles.idle.density,
+        listening: spine.halftoneProfiles.listening.density,
+        processing: spine.halftoneProfiles.processing.density,
+        speaking: spine.halftoneProfiles.speaking.density,
+      }),
+    };
     const rampingDown =
       targetProfile.verticalSpread <= prevSpreadRef.current.verticalSpread;
     const transitionMs = rampingDown
@@ -259,7 +273,12 @@ export function Spine({
     // Keep envelope size stable across states; state expression comes from aperture slide, not zoom.
     const effectiveVerticalSpread = 1;
     const effectiveBandWidth = 1;
-    const isProcessing = canonicalMode === 'processing';
+    const processingBlend = interpolateModeValue(v, {
+      idle: 0,
+      listening: 0,
+      processing: 1,
+      speaking: 0,
+    });
     const processingOverflow = 1;
     const viewW = viewWidth;
     const actH = activeHeight;
@@ -308,18 +327,19 @@ export function Spine({
       }
     }
 
-    let driftFactor = 0;
-    if (!v.reduceMotion) {
-      if (canonicalMode === 'idle') driftFactor = 1;
-      else if (canonicalMode === 'listening') driftFactor = 1.25;
-      else if (canonicalMode === 'processing') driftFactor = 1.35;
-      else if (canonicalMode === 'speaking') driftFactor = 0.8;
-    }
+    const driftFactor = v.reduceMotion
+      ? 0
+      : interpolateModeValue(v, {
+          idle: 1,
+          listening: 1.25,
+          processing: 1.35,
+          speaking: 0.8,
+        });
     const driftRate =
       spine.style.driftHz *
-      (isProcessing
-        ? spine.style.processingOverflowBoost * processingMotionBoost
-        : 1);
+      (1 +
+        (spine.style.processingOverflowBoost * processingMotionBoost - 1) *
+          processingBlend);
     const driftX =
       envelopeWidthWorld *
       spine.style.driftAmpX *
@@ -332,7 +352,9 @@ export function Spine({
       Math.cos(v.clock * driftRate * 1.7 * 2 * Math.PI);
     const driftXEffective = driftX * axisX * planeDeformGain;
     const driftYEffective = driftY * axisY * planeDeformGain;
-    const lockedDriftX = isProcessing && !axisDebugOn ? 0 : driftXEffective;
+    const lockedDriftX = axisDebugOn
+      ? driftXEffective
+      : driftXEffective * (1 - processingBlend);
 
     groupRef.current.position
       .copy(cameraPosRef.current)
@@ -352,8 +374,7 @@ export function Spine({
     if (smoothPlaneIntensityRef.current.length < planeCount) {
       smoothPlaneIntensityRef.current.length = planeCount;
     }
-    const gap =
-      spine.style.planeGap + (isProcessing ? processingExtraOverlap : 0);
+    const gap = spine.style.planeGap + processingExtraOverlap * processingBlend;
     const unitHeight =
       envelopeHeightWorld / (planeCount + gap * (planeCount - 1));
     const totalHeight = unitHeight * (planeCount + gap * (planeCount - 1));
@@ -407,13 +428,12 @@ export function Spine({
       const perPlanePhase = i * perPlaneDriftPhaseStep;
       const scale = perPlaneDriftScale;
       const perPlaneX =
-        isProcessing
-          ? 0
-          : envelopeWidthWorld *
-            spine.style.driftAmpX *
-            driftFactor *
-            scale *
-            Math.sin(v.clock * driftRate * 2 * Math.PI + perPlanePhase);
+        envelopeWidthWorld *
+        spine.style.driftAmpX *
+        driftFactor *
+        scale *
+        Math.sin(v.clock * driftRate * 2 * Math.PI + perPlanePhase) *
+        (1 - processingBlend);
       const perPlaneY =
         envelopeHeightWorld *
         spine.style.driftAmpY *
@@ -581,7 +601,12 @@ export function Spine({
         const lightCore = scene?.spineLightCore;
         const lightCoreOpacity = lightCore?.enabled
           ? lightCore.opacityBase *
-            (lightCore.opacityByMode?.[canonicalMode] ?? 1)
+            interpolateModeValue(v, {
+              idle: lightCore.opacityByMode?.idle ?? 1,
+              listening: lightCore.opacityByMode?.listening ?? 1,
+              processing: lightCore.opacityByMode?.processing ?? 1,
+              speaking: lightCore.opacityByMode?.speaking ?? 1,
+            })
           : 1;
         const beamVis = THREE.MathUtils.clamp(
           beamVisBase * lightCoreOpacity,
@@ -610,7 +635,8 @@ export function Spine({
     }
 
     const edgeBandWidth =
-      spine.style.edgeBandWidth * (isProcessing ? processingEdgeBoost : 1);
+      spine.style.edgeBandWidth *
+      (1 + (processingEdgeBoost - 1) * processingBlend);
     const edgeWidth = envelopeWidthWorld * edgeBandWidth;
     const edgeHeight = envelopeHeightWorld;
     const edgeOffset = envelopeWidthWorld * 0.5 - edgeWidth * 0.5;
@@ -637,7 +663,14 @@ export function Spine({
     const motionMicroForShards = motionMicro * shardDriftGain;
     const shardBaseWidthScale = spine.style.shardWidthScale ?? 0.28;
     const visibleShardCount =
-      spine.shardCountByMode?.[canonicalMode] ?? shards.length;
+      Math.round(
+        interpolateModeValue(v, {
+          idle: spine.shardCountByMode?.idle ?? shards.length,
+          listening: spine.shardCountByMode?.listening ?? shards.length,
+          processing: spine.shardCountByMode?.processing ?? shards.length,
+          speaking: spine.shardCountByMode?.speaking ?? shards.length,
+        }),
+      );
     for (let s = 0; s < shards.length; s++) {
       const mesh = shardRefs.current[s];
       const shard = shards[s];
@@ -651,13 +684,12 @@ export function Spine({
         (1 + motionEnergy * 0.55 + motionMicroForShards * 0.28) *
         (1 - motionSettle * 0.35);
       const shardDriftX = !v.reduceMotion
-        ? isProcessing && !axisDebugOn
-          ? 0
-          : envelopeWidthWorld *
-            spine.style.driftAmpX *
-            driftFactor *
-            shardDriftScale *
-            Math.sin(v.clock * shardRate * 2 * Math.PI + shard.driftPhase)
+        ? envelopeWidthWorld *
+          spine.style.driftAmpX *
+          driftFactor *
+          shardDriftScale *
+          Math.sin(v.clock * shardRate * 2 * Math.PI + shard.driftPhase) *
+          (axisDebugOn ? 1 : 1 - processingBlend)
         : 0;
       const shardDriftY = !v.reduceMotion
         ? envelopeHeightWorld *

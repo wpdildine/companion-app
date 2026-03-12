@@ -52,6 +52,10 @@ export function createDefaultVisualizationRef(): VisualizationEngineRef {
     autoRotSpeedZ:
       (Math.random() * 0.04 + 0.02) * (Math.random() > 0.5 ? 1 : -1),
     currentMode: 'idle',
+    displayMode: 'idle',
+    modeTransitionFrom: 'idle',
+    modeTransitionTo: 'idle',
+    modeTransitionT: 1,
     postFxEnabled: true,
     postFxVignette: 0.22,
     postFxChromatic: 0.0002,

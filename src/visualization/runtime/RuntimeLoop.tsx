@@ -8,9 +8,11 @@
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
+import { logInfo } from '../../shared/logging/logger';
 import type { VisualizationEngineRef, VisualizationMode } from './runtimeTypes';
 import { getPulseColorWithHue } from './getPulseColor';
 import { TARGET_ACTIVITY_BY_MODE } from './createDefaultRef';
+import { toCanonicalVisualizationMode } from './modeTransition';
 import {
   TOUCH_PRESENCE_LAMBDA,
   TOUCH_NDC_LAMBDA,
@@ -43,6 +45,7 @@ const DEBUG_MOTION_GRAMMAR =
 const DEBUG_TOUCH_FIELD = false;
 // Toggle this to prove consumers are responding to motion, independent of choreography.
 const DEBUG_FORCE_MOTION_BY_MODE = false;
+const MODE_TRANSITION_MS = 320;
 
 function seeded01(i: number, seed: number): number {
   return Math.abs(Math.sin(i * seed)) % 1;
@@ -61,23 +64,12 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 }
 
 function toCanonicalMotionMode(mode: string): 'idle' | 'listening' | 'processing' | 'speaking' {
-  switch (mode) {
-    case 'idle':
-    case 'listening':
-    case 'processing':
-    case 'speaking':
-      return mode;
-    case 'touched':
-      return 'listening';
-    case 'released':
-      return 'speaking';
-    default:
-      return 'idle';
-  }
+  return toCanonicalVisualizationMode(mode);
 }
 
 function applyDevCycleState(v: VisualizationEngineRef, mode: VisualizationMode): void {
   v.currentMode = mode;
+  v.displayMode = mode;
   v.targetActivity = TARGET_ACTIVITY_BY_MODE[mode];
   if (mode === 'touched') {
     v.touchActive = true;
@@ -108,6 +100,8 @@ export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefO
   const prevCycleOnRef = useRef(false);
   const prevCanonicalOnRef = useRef(false);
   const baseClusterPositionsRef = useRef<Array<[number, number, number]> | null>(null);
+  const lastLoggedTransitionRef = useRef('');
+  const lastSettledTransitionRef = useRef('');
   const motionGrammarRef = useRef<ReturnType<typeof createMotionGrammarEngine> | null>(null);
   if (!motionGrammarRef.current) {
     motionGrammarRef.current = createMotionGrammarEngine(MOTION_GRAMMAR);
@@ -201,6 +195,49 @@ export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefO
       console.log('[Viz] RuntimeLoop touchField', { touchFieldNdc: v.touchFieldNdc, touchWorld: v.touchWorld, touchInfluence: v.touchInfluence.toFixed(3), reduceMotion: v.reduceMotion });
     }
     const dt = Math.min(delta, DT_CAP);
+    const dtMs = dt * 1000;
+    const canonicalMode = toCanonicalMotionMode(v.currentMode);
+    const transitionTarget = toCanonicalVisualizationMode(v.modeTransitionTo);
+    if (canonicalMode !== transitionTarget) {
+      v.modeTransitionFrom = transitionTarget;
+      v.modeTransitionTo = canonicalMode;
+      v.modeTransitionT = 0;
+      v.displayMode = v.modeTransitionFrom;
+      const transitionKey = `${v.modeTransitionFrom}->${v.modeTransitionTo}`;
+      if (lastLoggedTransitionRef.current !== transitionKey) {
+        lastLoggedTransitionRef.current = transitionKey;
+        lastSettledTransitionRef.current = '';
+        logInfo('VisualizationRuntime', 'mode transition started', {
+          fromMode: v.modeTransitionFrom,
+          toMode: v.modeTransitionTo,
+          currentMode: v.currentMode,
+          displayMode: v.displayMode,
+          activity: Number(v.activity.toFixed(3)),
+          targetActivity: Number(v.targetActivity.toFixed(3)),
+        });
+      }
+    } else if (v.modeTransitionT < 1) {
+      v.modeTransitionT = Math.min(1, v.modeTransitionT + dtMs / MODE_TRANSITION_MS);
+      v.displayMode = v.modeTransitionFrom;
+      if (v.modeTransitionT >= 1) {
+        v.modeTransitionFrom = canonicalMode;
+        v.modeTransitionTo = canonicalMode;
+        v.displayMode = v.currentMode;
+        const settledKey = `${canonicalMode}@settled`;
+        if (lastSettledTransitionRef.current !== settledKey) {
+          lastSettledTransitionRef.current = settledKey;
+          logInfo('VisualizationRuntime', 'mode transition settled', {
+            mode: canonicalMode,
+            displayMode: v.displayMode,
+            activity: Number(v.activity.toFixed(3)),
+            targetActivity: Number(v.targetActivity.toFixed(3)),
+          });
+        }
+      }
+    } else {
+      v.displayMode = v.currentMode;
+    }
+
     const lambda = v.targetActivity > v.activity ? v.lambdaUp : v.lambdaDown;
     const k = 1 - Math.exp(-lambda * dt);
     v.activity = v.activity + (v.targetActivity - v.activity) * k;
@@ -273,21 +310,20 @@ export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefO
     }
 
     if (v.scene?.motion) {
-      const dtMs = Math.min(delta, DT_CAP) * 1000;
-      const canonicalMode = toCanonicalMotionMode(v.currentMode);
       if (DEBUG_MOTION_GRAMMAR) {
         const marker = `${v.currentMode}->${canonicalMode}`;
         if (marker !== modeLogRef.current) {
           modeLogRef.current = marker;
           console.log('[MotionGrammar] RuntimeLoop mode input', {
             modeRaw: v.currentMode,
+            displayMode: v.displayMode,
             modeCanonical: canonicalMode,
           });
         }
       }
       motionGrammar.tick(dtMs, {
         dtMs,
-        mode: v.currentMode,
+        mode: v.displayMode,
         touchPresence: v.scene.organism?.presence ?? 0,
         focusBias: v.scene.organism?.focusBias ?? 0,
         activity: v.activity,
@@ -323,6 +359,7 @@ export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefO
           motionLogAt.current = nowMs;
           console.log('[MotionGrammar] scene.motion snapshot', {
             modeRaw: v.currentMode,
+            displayMode: v.displayMode,
             phase: v.scene.motion.phase,
             phaseT: Number(v.scene.motion.phaseT.toFixed(3)),
             energy: Number(v.scene.motion.energy.toFixed(3)),
