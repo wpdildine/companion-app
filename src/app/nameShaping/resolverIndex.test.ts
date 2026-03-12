@@ -137,22 +137,23 @@ describe('buildResolverIndex', () => {
     const index = await buildResolverIndex(reader, 'cards/name_lookup.jsonl');
 
     const all = index.getAllIndexedCards();
-    expect(Object.isFrozen(all)).toBe(true);
+    expect(Object.isFrozen(all)).toBe(false);
+    expect(Object.isFrozen(all[0]!)).toBe(true);
+    expect(Object.isFrozen(all[0]!.baseNameSignature)).toBe(true);
+    expect(Object.isFrozen(all[0]!.fullNameSignature)).toBe(true);
 
     const candidates = index.getCandidatesBySignature(
       buildCardNameSignature('Atraxa').baseNameSignature
     );
-    expect(Object.isFrozen(candidates)).toBe(true);
+    expect(Object.isFrozen(candidates)).toBe(false);
+    expect(candidates).not.toBe(all);
+
+    const originalDisplayName = all[0]!.displayName;
+    (all[0] as ResolverIndexEntry).displayName = 'Injected';
+    expect(all[0]!.displayName).toBe(originalDisplayName);
 
     expect(() => {
-      (all as ResolverIndexEntry[]).push({
-        cardId: 'x',
-        displayName: 'Injected',
-        normalizedName: 'injected',
-        baseName: 'injected',
-        fullNameSignature: [],
-        baseNameSignature: [],
-      });
+      (all[0]!.baseNameSignature as string[]).push('BREAK');
     }).toThrow();
   });
 

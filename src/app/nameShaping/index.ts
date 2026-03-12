@@ -25,3 +25,9 @@ export type { CardNameSignatureResult } from './buildCardNameSignature';
 
 export { buildResolverIndex } from './resolverIndex';
 export type { ResolverIndexReader } from './resolverIndex';
+
+export {
+  resolveProperNounBySignature,
+  scoreSignatureMatch,
+} from './resolveProperNounBySignature';
+export type { ScoreResult } from './resolveProperNounBySignature';

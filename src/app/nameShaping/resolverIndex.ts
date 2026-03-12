@@ -31,6 +31,20 @@ function signatureToKey(sig: NormalizedNameShapingSignature): string {
   return JSON.stringify(sig);
 }
 
+function freezeSignature(
+  signature: NormalizedNameShapingSignature
+): NormalizedNameShapingSignature {
+  return Object.freeze([...signature]);
+}
+
+function freezeEntry(entry: ResolverIndexEntry): ResolverIndexEntry {
+  return Object.freeze({
+    ...entry,
+    fullNameSignature: freezeSignature(entry.fullNameSignature),
+    baseNameSignature: freezeSignature(entry.baseNameSignature),
+  });
+}
+
 /**
  * Parse name_lookup.jsonl into cardId/displayName rows.
  * Skip empty lines and JSON parse failures; do not attempt recovery/coercion.
@@ -85,14 +99,14 @@ export async function buildResolverIndex(
 
   for (const { cardId, displayName } of nameRows) {
     const sigResult = buildCardNameSignature(displayName);
-    const entry: ResolverIndexEntry = {
+    const entry = freezeEntry({
       cardId,
       displayName,
       normalizedName: sigResult.normalizedName,
       baseName: sigResult.baseName,
       fullNameSignature: sigResult.fullNameSignature,
       baseNameSignature: sigResult.baseNameSignature,
-    };
+    });
     allEntries.push(entry);
 
     const baseKey = signatureToKey(sigResult.baseNameSignature);
@@ -121,11 +135,12 @@ export async function buildResolverIndex(
   const index: ResolverIndex = {
     getCandidatesBySignature(signature: NormalizedNameShapingSignature): readonly ResolverIndexEntry[] {
       const key = signatureToKey(signature);
-      return readonlyByBaseKey.get(key) ?? [];
+      const entries = readonlyByBaseKey.get(key);
+      return entries ? [...entries] : [];
     },
 
     getAllIndexedCards(): readonly ResolverIndexEntry[] {
-      return readonlyAllEntries;
+      return [...readonlyAllEntries];
     },
 
     getIndexStats(): { entryCount: number; uniqueBaseSignatures: number } {
