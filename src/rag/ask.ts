@@ -3,7 +3,7 @@
  * Supports either on-device llama.rn (GGUF paths) or Ollama HTTP API.
  */
 
-import { logError, logInfo } from '../shared/logging';
+import { logError, logInfo, logWarn } from '../shared/logging';
 import { RAG_CONFIG } from './config';
 import { ragError } from './errors';
 import { loadChunksForRows, loadVectors, searchL2 } from './retrieval';
@@ -522,8 +522,9 @@ export async function runRagFlow(
         }
       }
       if (!bundleText?.trim()) {
-        logError('RAG', 'deterministic context returned empty bundle', {
+        logWarn('RAG', 'deterministic context returned empty bundle', {
           questionChars: question.length,
+          questionPreview: question.length <= 80 ? question : `${question.slice(0, 77)}...`,
           packRootPresent: !!packRoot,
         });
         throw ragError(

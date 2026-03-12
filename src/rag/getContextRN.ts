@@ -25,6 +25,7 @@ import {
 import { openCardsDb, openRulesDb, type DbRow } from './packDbRN';
 import type { PackFileReader } from './types';
 import { RAG_CONFIG } from './config';
+import { logInfo, logWarn } from '../shared/logging/logger';
 
 const SECTION_702 = 702;
 const MIN_TOKEN_LENGTH = 3;
@@ -139,6 +140,12 @@ function isBasicLandTypeChangeText(text: string): boolean {
   );
 }
 
+function previewQuery(text: string): string {
+  const normalized = text.trim().replace(/\s+/g, ' ');
+  if (normalized.length <= 80) return normalized;
+  return `${normalized.slice(0, 77)}...`;
+}
+
 export async function getContextRN(
   queryText: string,
   packRoot: string,
@@ -171,6 +178,18 @@ export async function getContextRN(
   try {
     const analysis = analyzeQuery(queryText, routerMap, spec);
     const normalized = analysis.q_norm.trim();
+    logInfo('RAG', 'getContextRN analysis', {
+      queryChars: queryText.length,
+      queryPreview: previewQuery(queryText),
+      normalizedChars: normalized.length,
+      normalizedQuery: normalized,
+      tokensNorm: analysis.tokens_norm,
+      whatDoesNameNorm: analysis.what_does_name_norm,
+      looksLikeCardQuery: analysis.looks_like_card_query,
+      looksLikeCardReason: analysis.looks_like_card_reason,
+      conceptKeys: analysis.concept_keys,
+      abilityKeys: analysis.ability_keys,
+    });
     const stopwordsList = getStopwords(routerMap) || ['the', 'a', 'of'];
     const stopwords = new Set(stopwordsList);
     const thresholds = getResolverThresholds(routerMap);
@@ -234,6 +253,16 @@ export async function getContextRN(
     const plan = route(analysis, routerMap, cardKeywords, spec);
     const sectionsConsidered = plan.section_intents.map(([s]) => s);
     const sectionsSelected = [...new Set(sectionsConsidered)];
+    logInfo('RAG', 'getContextRN routing summary', {
+      resolvedCards: resolvedCards.map(card => String((card as { name?: string }).name ?? '')),
+      cardKeywordCount: cardKeywords.length,
+      keywordCount: keywords.length,
+      sectionsConsidered,
+      sectionsSelected,
+      routeReasons: plan.reasons,
+      hardIncludes: plan.hard_includes,
+      conceptDefaultRuleIds: plan.concept_default_rule_ids,
+    });
 
     const keywordAbilitiesMap = getKeywordAbilities(routerMap);
     const definitionsMap = getDefinitions(routerMap);
@@ -369,6 +398,18 @@ export async function getContextRN(
     }
     const rawBundle = parts.join('\n\n');
     const canonicalBundle = canonicalizeBundle(rawBundle);
+    if (!canonicalBundle.trim()) {
+      logWarn('RAG', 'getContextRN assembled empty bundle', {
+        queryPreview: previewQuery(queryText),
+        normalizedQuery: normalized,
+        resolvedCards: resolvedCards.map(card => String((card as { name?: string }).name ?? '')),
+        sectionsConsidered,
+        sectionsSelected,
+        finalCardsCount: inclCards.length,
+        finalRulesCount: inclRules.length,
+        routeReasons: plan.reasons,
+      });
+    }
 
     const routingTrace: RoutingTrace = {
       sections_considered: sectionsConsidered,

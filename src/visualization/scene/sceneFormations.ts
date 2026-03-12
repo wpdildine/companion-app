@@ -416,6 +416,7 @@ export type GLSceneTransientEffect = {
 
 export type GLSceneTransientEffects = {
   softFail: GLSceneTransientEffect | null;
+  terminalFail: GLSceneTransientEffect | null;
   firstToken: GLSceneTransientEffect | null;
 };
 

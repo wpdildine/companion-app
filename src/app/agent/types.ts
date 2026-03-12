@@ -56,7 +56,8 @@ export interface AgentOrchestratorListeners {
   onComplete?: () => void;
   /** Recoverable rejection/failure that returns cleanly to idle; maps to transient softFail. */
   onRecoverableFailure?: (reason: string, details?: Record<string, unknown>) => void;
-  onError?: () => void;
+  /** Terminal request or fatal speech failure. Visualization may project a distinct transient from details only; orchestrator still owns semantics. */
+  onError?: (reason?: string, details?: Record<string, unknown>) => void;
 }
 
 /** State emitted by AgentOrchestrator. Single source of truth for agent runtime. */

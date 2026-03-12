@@ -10,6 +10,7 @@ import {
   triggerPulseAtCenter,
   TRANSIENT_SIGNAL_FIRST_TOKEN,
   TRANSIENT_SIGNAL_SOFT_FAIL,
+  TRANSIENT_SIGNAL_TERMINAL_FAIL,
 } from '../../visualization';
 import type { VisualizationEngineRef } from '../../visualization';
 import { useVisualizationSignals } from '../hooks/useVisualizationSignals';
@@ -97,7 +98,15 @@ export function useVisualizationController(
         });
         emitEventRef.current(TRANSIENT_SIGNAL_SOFT_FAIL);
       },
-      onError: () => {},
+      onError: (reason, details) => {
+        if (details?.transientEvent === 'terminalFail') {
+          logInfo('VisualizationController', 'emitted transient: terminalFail', {
+            reason,
+            ...(details ?? {}),
+          });
+          emitEventRef.current(TRANSIENT_SIGNAL_TERMINAL_FAIL);
+        }
+      },
     };
     return () => {
       listenersRef.current = null;

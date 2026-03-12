@@ -334,8 +334,8 @@ export default function AgentSurface() {
           releaseGraceTimerRef.current = null;
         }
       },
-      onError: () => {
-        current.onError?.();
+      onError: (reason, details) => {
+        current.onError?.(reason, details);
         clearRecordingTimeout();
         if (releaseGraceTimerRef.current) {
           clearTimeout(releaseGraceTimerRef.current);

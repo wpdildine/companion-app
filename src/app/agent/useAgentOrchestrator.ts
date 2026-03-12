@@ -21,6 +21,10 @@ import {
   type ValidationSummary,
 } from '../../rag';
 import { logInfo, logLifecycle, logWarn, logError } from '../../shared/logging';
+import {
+  classifyRecoverableFailure,
+  classifyTerminalFailure,
+} from './failureClassification';
 import type {
   AgentLifecycleState,
   AgentOrchestratorListeners,
@@ -91,6 +95,19 @@ function normalizeTranscript(text: string): string {
   return text.trim().replace(/\s+/g, ' ');
 }
 
+function transcriptTrace(text: string): {
+  chars: number;
+  text: string;
+  preview: string;
+} {
+  const normalized = normalizeTranscript(text);
+  return {
+    chars: normalized.length,
+    text: normalized,
+    preview: transcriptPreview(normalized),
+  };
+}
+
 function summarizeValidationSummary(validationSummary: ValidationSummary): {
   cards: string[];
   rules: string[];
@@ -100,25 +117,6 @@ function summarizeValidationSummary(validationSummary: ValidationSummary): {
     rules: validationSummary.rules.map(rule => rule.canonical ?? rule.raw),
   };
 }
-
-/** Map RAG/orchestrator error codes to canonical failureReason for telemetry (terminal request failure). */
-const ERROR_CODE_TO_FAILURE_REASON: Record<string, string> = {
-  E_RETRIEVAL: 'retrieval',
-  E_NOT_INITIALIZED: 'retrieval',
-  E_EMBED: 'retrieval',
-  E_EMBED_MISMATCH: 'retrieval',
-  E_DETERMINISTIC_ONLY: 'retrieval',
-  E_MODEL_PATH: 'modelLoad',
-  E_COMPLETION: 'inference',
-  E_OLLAMA: 'inference',
-  E_PACK_LOAD: 'retrieval',
-  E_PACK_SCHEMA: 'retrieval',
-  E_INDEX_META: 'retrieval',
-  E_VALIDATE_CAPABILITY: 'retrieval',
-  E_VALIDATE_SCHEMA: 'retrieval',
-  E_RETRIEVAL_FORMAT: 'retrieval',
-  E_COUNTS_MISMATCH: 'retrieval',
-};
 
 function isRecognizerReentrancyError(message: string): boolean {
   return message.toLowerCase().includes('already started');
@@ -362,12 +360,19 @@ export function useAgentOrchestrator(
   }, [listenersRef]);
   const emitRecoverableFailure = useCallback(
     (reason: string, details?: Record<string, unknown>) => {
-      listenersRef?.current?.onRecoverableFailure?.(reason, details);
+      const classification = classifyRecoverableFailure(reason);
+      listenersRef?.current?.onRecoverableFailure?.(classification.kind, {
+        ...details,
+        stage: classification.stage,
+        recoverability: classification.recoverability,
+        transientEvent: classification.transientEvent,
+        telemetryReason: classification.telemetryReason,
+      });
       const requestId = activeRequestIdRef.current;
       requestDebugSinkRef?.current?.({
         type: 'recoverable_failure',
         requestId: requestId !== 0 ? requestId : null,
-        reason,
+        reason: classification.telemetryReason,
         timestamp: Date.now(),
       });
     },
@@ -534,6 +539,8 @@ export function useAgentOrchestrator(
             recordingSessionId,
             graceMs: ANDROID_TAIL_GRACE_MS,
             candidateChars: bestByLength.length,
+            candidateTranscriptText: bestByLength,
+            candidateTranscriptPreview: transcriptPreview(bestByLength),
           });
           return;
         }
@@ -578,6 +585,19 @@ export function useAgentOrchestrator(
           capturedFinalCandidate.length >= capturedPartialNorm.length
             ? capturedFinalCandidate
             : capturedPartialNorm;
+        logInfo('AgentOrchestrator', 'settlement candidate comparison', {
+          recordingSessionId,
+          reason,
+          finalCandidateChars: capturedFinalCandidate.length,
+          finalCandidateText: capturedFinalCandidate,
+          finalCandidatePreview: transcriptPreview(capturedFinalCandidate),
+          partialCandidateChars: capturedPartialNorm.length,
+          partialCandidateText: capturedPartialNorm,
+          partialCandidatePreview: transcriptPreview(capturedPartialNorm),
+          chosenCandidateChars: bestByLength.length,
+          chosenCandidateText: bestByLength,
+          chosenCandidatePreview: transcriptPreview(bestByLength),
+        });
         if (bestByLength) {
           updateTranscript(bestByLength);
         } else {
@@ -626,6 +646,19 @@ export function useAgentOrchestrator(
           recordingSessionId,
           hadFinal: !!capturedFinalCandidate,
           hadPartial: !!capturedPartialNorm,
+        });
+        logInfo('AgentOrchestrator', 'settlement candidate comparison', {
+          recordingSessionId,
+          reason,
+          finalCandidateChars: capturedFinalCandidate.length,
+          finalCandidateText: capturedFinalCandidate,
+          finalCandidatePreview: transcriptPreview(capturedFinalCandidate),
+          partialCandidateChars: capturedPartialNorm.length,
+          partialCandidateText: capturedPartialNorm,
+          partialCandidatePreview: transcriptPreview(capturedPartialNorm),
+          chosenCandidateChars: bestByLength.length,
+          chosenCandidateText: bestByLength,
+          chosenCandidatePreview: transcriptPreview(bestByLength),
         });
         if (bestByLength) {
           updateTranscript(bestByLength);
@@ -1049,6 +1082,14 @@ export function useAgentOrchestrator(
     }
     // Normalize input (canonical step: trim + collapse whitespace).
     // Canonical normalize step for accepted transcript before RAG submit.
+    logInfo('AgentOrchestrator', 'submit candidate snapshot', {
+      transcriptChars: transcribedTextRef.current.length,
+      transcriptText: transcribedTextRef.current,
+      transcriptPreview: transcriptPreview(transcribedTextRef.current),
+      partialChars: partialTranscriptRef.current.length,
+      partialText: partialTranscriptRef.current,
+      partialPreview: transcriptPreview(partialTranscriptRef.current),
+    });
     const question = normalizeTranscript(transcribedTextRef.current);
     if (!question) {
       logWarn('AgentOrchestrator', 'submit skipped: empty transcript', {
@@ -1424,8 +1465,8 @@ export function useAgentOrchestrator(
       const msg = errorMessage(e);
       const code =
         e && typeof e === 'object' && 'code' in e ? (e as { code: string }).code : '';
-      const failureReasonLabel =
-        code && ERROR_CODE_TO_FAILURE_REASON[code] ? ERROR_CODE_TO_FAILURE_REASON[code] : 'request';
+      const failureClassification = classifyTerminalFailure(e);
+      const failureReasonLabel = failureClassification.telemetryReason;
       let displayMsg = code ? `[${code}] ${msg}` : msg;
       if (code === 'E_MODEL_PATH' && Platform.OS === 'android') {
         displayMsg += ` Put the chat GGUF in the app's files/models/ folder (filename: ${CHAT_MODEL_FILENAME}).`;
@@ -1458,11 +1499,32 @@ export function useAgentOrchestrator(
         setMode('idle');
         setLifecycle('idle');
         setAudioState('idleReady', { reason: 'requestFailed' });
-        logError('AgentOrchestrator', 'request failed (terminal request failure; returning to idle)', {
+        listenersRef?.current?.onError?.(failureClassification.kind, {
+          stage: failureClassification.stage,
+          recoverability: failureClassification.recoverability,
+          transientEvent: failureClassification.transientEvent,
+          telemetryReason: failureClassification.telemetryReason,
+        });
+        const requestFailurePayload = {
           requestId: reqId,
           message: displayMsg,
+          failureKind: failureClassification.kind,
+          failureStage: failureClassification.stage,
           failureReason: failureReasonLabel,
-        });
+        };
+        if (failureClassification.kind === 'retrieval_empty_bundle') {
+          logWarn(
+            'AgentOrchestrator',
+            'request failed (terminal request failure; returning to idle)',
+            requestFailurePayload,
+          );
+        } else {
+          logError(
+            'AgentOrchestrator',
+            'request failed (terminal request failure; returning to idle)',
+            requestFailurePayload,
+          );
+        }
         return null;
       }
       previousCommittedResponseRef.current = null;
@@ -1833,6 +1895,18 @@ export function useAgentOrchestrator(
       partialTranscriptRef.current = '';
       updateTranscript(combined);
       const normalizedCombined = normalizeTranscript(combined);
+      logInfo('AgentOrchestrator', 'speech final accepted', {
+        recordingSessionId: sessionId,
+        rawFinalChars: next.length,
+        rawFinalText: next,
+        rawFinalPreview: transcriptPreview(next),
+        committedPrefixChars: committed.length,
+        committedPrefixText: committed,
+        committedPrefixPreview: transcriptPreview(committed),
+        combinedChars: normalizedCombined.length,
+        combinedTranscriptText: normalizedCombined,
+        combinedTranscriptPreview: transcriptPreview(normalizedCombined),
+      });
       if (!firstFinalAtRef.current) {
         firstFinalAtRef.current = Date.now();
         logInfo('AgentOrchestrator', 'first final received', {
@@ -1850,7 +1924,18 @@ export function useAgentOrchestrator(
         !settlementResolvedRef.current
       ) {
         const currentCandidate = finalCandidateTextRef.current ?? '';
-        if (normalizedCombined.length >= currentCandidate.length) {
+        const shouldReplaceCandidate = normalizedCombined.length >= currentCandidate.length;
+        logInfo('AgentOrchestrator', 'final candidate evaluation', {
+          recordingSessionId: sessionId,
+          currentCandidateChars: currentCandidate.length,
+          currentCandidateText: currentCandidate,
+          currentCandidatePreview: transcriptPreview(currentCandidate),
+          incomingCandidateChars: normalizedCombined.length,
+          incomingCandidateText: normalizedCombined,
+          incomingCandidatePreview: transcriptPreview(normalizedCombined),
+          accepted: shouldReplaceCandidate,
+        });
+        if (shouldReplaceCandidate) {
           finalCandidateTextRef.current = normalizedCombined;
           finalCandidateSessionIdRef.current = sessionId ?? null;
         }
@@ -1904,6 +1989,15 @@ export function useAgentOrchestrator(
       }
       lastPartialNormalizedRef.current = normalizedPartial;
       partialTranscriptRef.current = partial;
+      logInfo('AgentOrchestrator', 'speech partial accepted', {
+        recordingSessionId: sessionId,
+        rawPartialChars: partial.length,
+        rawPartialText: partial,
+        rawPartialPreview: transcriptPreview(partial),
+        normalizedPartialChars: normalizedPartial.length,
+        normalizedPartialText: normalizedPartial,
+        normalizedPartialPreview: transcriptPreview(normalizedPartial),
+      });
       listenersRef?.current?.onTranscriptUpdate?.();
     };
     V.onSpeechError = e => {
@@ -2027,6 +2121,7 @@ export function useAgentOrchestrator(
           if (recordingSessionRef.current !== pendingSubmitSessionIdRef.current) return;
           const currentTranscript = normalizeTranscript(transcribedTextRef.current);
           const finalCandidate = finalCandidateTextRef.current ?? '';
+          const partialCandidate = transcriptTrace(partialTranscriptRef.current);
           logInfo('AgentOrchestrator', 'quiet window settling current transcript', {
             recordingSessionId: sessionIdForQuiet,
             currentTranscriptChars: currentTranscript.length,
@@ -2035,6 +2130,9 @@ export function useAgentOrchestrator(
             finalCandidateChars: finalCandidate.length,
             finalCandidateTranscriptText: finalCandidate,
             finalCandidateTranscriptPreview: transcriptPreview(finalCandidate),
+            partialCandidateChars: partialCandidate.chars,
+            partialCandidateText: partialCandidate.text,
+            partialCandidatePreview: partialCandidate.preview,
           });
           resolveSettlement('quietWindowExpired', sessionIdForQuiet);
         }, POST_SPEECH_END_QUIET_WINDOW_MS);

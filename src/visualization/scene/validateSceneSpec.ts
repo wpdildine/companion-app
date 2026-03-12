@@ -464,6 +464,21 @@ export function validateSceneSpec(
       return false;
     }
   }
+  if (transientEffects.terminalFail != null) {
+    const tf = transientEffects.terminalFail;
+    const valid =
+      typeof tf.decayMs === 'number' &&
+      typeof tf.modulation?.hueShift === 'number' &&
+      typeof tf.modulation?.intensity === 'number' &&
+      typeof tf.modulation?.agitation === 'number' &&
+      typeof tf.modulation?.opacityBias === 'number';
+    if (!valid) {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[validateSceneSpec] scene.transientEffects.terminalFail is invalid.');
+      }
+      return false;
+    }
+  }
   if (transientEffects.firstToken != null) {
     const ft = transientEffects.firstToken;
     const valid =

@@ -18,6 +18,8 @@ export function computeTransientModulation(
   const effect =
     eventId === 'softFail'
       ? effects.softFail
+      : eventId === 'terminalFail'
+        ? effects.terminalFail
       : eventId === 'firstToken'
         ? effects.firstToken
         : null;
