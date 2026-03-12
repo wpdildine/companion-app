@@ -34,8 +34,8 @@ export function getDefaultLayerDescriptors(): LayerDescriptor[] {
     { id: 'backPlane', sceneLayerKeys: ['backPlane'] },
     { id: 'spineLightCore', sceneLayerKeys: ['spineLightCore'] },
     { id: 'spine', sceneLayerKeys: ['spineBase', 'spineShards', 'spineRot'] },
-    { id: 'contextLinks', sceneLayerKeys: ['links'] },
-    { id: 'contextGlyphs', sceneLayerKeys: ['glyphsBack', 'glyphsFront'] },
+    { id: 'contextLinks', enabled: false, sceneLayerKeys: ['links'] },
+    { id: 'contextGlyphs', enabled: false, sceneLayerKeys: ['glyphsBack', 'glyphsFront'] },
     { id: 'touchZones', sceneLayerKeys: ['debugOverlay'] },
   ];
 }

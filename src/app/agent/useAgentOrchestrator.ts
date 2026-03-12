@@ -91,6 +91,16 @@ function normalizeTranscript(text: string): string {
   return text.trim().replace(/\s+/g, ' ');
 }
 
+function summarizeValidationSummary(validationSummary: ValidationSummary): {
+  cards: string[];
+  rules: string[];
+} {
+  return {
+    cards: validationSummary.cards.map(card => card.canonical ?? card.raw),
+    rules: validationSummary.rules.map(rule => rule.canonical ?? rule.raw),
+  };
+}
+
 /** Map RAG/orchestrator error codes to canonical failureReason for telemetry (terminal request failure). */
 const ERROR_CODE_TO_FAILURE_REASON: Record<string, string> = {
   E_RETRIEVAL: 'retrieval',
@@ -1369,6 +1379,11 @@ export function useAgentOrchestrator(
         rulesCount: result.validationSummary.rules.length,
         cardsCount: result.validationSummary.cards.length,
       });
+      logInfo('ResponseSurface', 'response_settled_payload', {
+        requestId: reqId,
+        committedResponseText: committedText,
+        ...summarizeValidationSummary(result.validationSummary),
+      });
       setError(null);
       setProcessingSubstate(null);
       requestDebugSinkRef?.current?.({
@@ -1703,7 +1718,16 @@ export function useAgentOrchestrator(
     return () => {
       const V = voiceRef.current;
       if (V) {
-        V.destroy().then(() => V.removeAllListeners());
+        try {
+          V.onSpeechResults = null;
+          V.onSpeechPartialResults = null;
+          V.onSpeechError = null;
+          V.onSpeechEnd = null;
+          V.removeAllListeners();
+        } catch {
+          /* ignore */
+        }
+        Promise.resolve(V.destroy()).catch(() => {});
         voiceRef.current = null;
       }
     };

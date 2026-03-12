@@ -20,6 +20,11 @@ export interface RunRagFlowResult {
   contextText?: string;
   /** Intent label used by runtime post-processing (defaults to unknown). */
   intent?: string;
+  /** Selected retrieval/context objects that should be available to the settled result surface. */
+  contextSelection?: {
+    cards: Array<{ name: string; doc_id?: string; oracleText?: string }>;
+    rules: Array<{ rule_id: string; title?: string; excerpt?: string }>;
+  };
 }
 
 let embedContext: import('llama.rn').LlamaContext | null = null;
@@ -224,6 +229,36 @@ function generationTelemetryParams(): Record<string, unknown> {
 const PROMPT_PREVIEW_MAX = 200;
 const BUNDLE_PREVIEW_MAX = 200;
 
+function toContextSelection(
+  bundle:
+    | {
+        cards?: Array<{ name?: string; oracle_id?: string }>;
+        rules?: Array<{ rule_id?: string }>;
+      }
+    | null
+    | undefined,
+): RunRagFlowResult['contextSelection'] | undefined {
+  if (!bundle) return undefined;
+  const cards =
+    bundle.cards
+      ?.map(card => ({
+        name: card.name?.trim() ?? '',
+        doc_id: card.oracle_id?.trim() || undefined,
+        oracleText: card.oracle_text?.trim() || undefined,
+      }))
+      .filter(card => card.name.length > 0) ?? [];
+  const rules =
+    bundle.rules
+      ?.map(rule => ({
+        rule_id: rule.rule_id?.trim() ?? '',
+        title: rule.rule_id?.trim() || undefined,
+        excerpt: rule.text?.trim() || undefined,
+      }))
+      .filter(rule => rule.rule_id.length > 0) ?? [];
+  if (cards.length === 0 && rules.length === 0) return undefined;
+  return { cards, rules };
+}
+
 export async function runRagFlow(
   packState: PackState,
   params: RagInitParams,
@@ -384,6 +419,7 @@ export async function runRagFlow(
       let bundleCardsCount: number | undefined;
       let bundleId: string | undefined;
       let ruleSetId: string | undefined;
+      let contextSelection: RunRagFlowResult['contextSelection'];
       logInfo('RAG', 'deterministic context requested', {
         packRootPresent: !!packRoot,
         readerPresent: !!reader,
@@ -398,6 +434,7 @@ export async function runRagFlow(
           const result = await getContextRN(question, packRoot, reader);
           mark('getContext end');
           bundleText = result.final_context_bundle_canonical ?? '';
+          contextSelection = toContextSelection(result.bundle);
           if (result?.bundle) {
             bundleRulesCount = Array.isArray(result.bundle.rules) ? result.bundle.rules.length : undefined;
             bundleCardsCount = Array.isArray(result.bundle.cards) ? result.bundle.cards.length : undefined;
@@ -428,6 +465,12 @@ export async function runRagFlow(
             const bundle = (result as { bundle?: { rules?: unknown[]; cards?: unknown[]; bundle_id?: string; rule_set_id?: string } })
               ?.bundle;
             if (bundle) {
+              contextSelection = toContextSelection(
+                bundle as {
+                  cards?: Array<{ name?: string; oracle_id?: string }>;
+                  rules?: Array<{ rule_id?: string }>;
+                },
+              );
               bundleRulesCount = Array.isArray(bundle.rules) ? bundle.rules.length : undefined;
               bundleCardsCount = Array.isArray(bundle.cards) ? bundle.cards.length : undefined;
               bundleId = bundle.bundle_id;
@@ -628,7 +671,12 @@ export async function runRagFlow(
           generationTimeMs: Date.now() - completionStartedAt,
         });
       }
-      return { raw, contextText: bundleText, intent: 'unknown' };
+      return {
+        raw,
+        contextText: bundleText,
+        intent: 'unknown',
+        contextSelection,
+      };
     }
     if (!params.embedModelPath?.trim() || !params.chatModelPath?.trim()) {
       throw ragError(

@@ -29,6 +29,16 @@ const distIndexTarget = path.join(
   'dist',
   'index.js'
 );
+const iosVoiceTarget = path.join(
+  __dirname,
+  '..',
+  'node_modules',
+  '@react-native-voice',
+  'voice',
+  'ios',
+  'Voice',
+  'Voice.m'
+);
 
 if (!fs.existsSync(target)) {
   console.warn('[patch-voice] build.gradle not found, skipping.');
@@ -107,4 +117,44 @@ if (patchedSrcIndex || patchedDistIndex) {
   );
 } else {
   console.log('[patch-voice] module resolution already patched or files not found.');
+}
+
+if (fs.existsSync(iosVoiceTarget)) {
+  const iosContent = fs.readFileSync(iosVoiceTarget, 'utf8');
+  const invalidRestore = `    // Reset back to the previous category
+    if ([self isHeadsetPluggedIn] || [self isHeadSetBluetooth]) {
+        [self.audioSession setCategory:self.priorAudioCategory withOptions:AVAudioSessionCategoryOptionAllowBluetooth error: nil];
+    } else {
+        [self.audioSession setCategory:self.priorAudioCategory withOptions:AVAudioSessionCategoryOptionDefaultToSpeaker error: nil];
+    }`;
+  const safeRestore = `    // Restore the prior category without forcing route-only options that are
+    // invalid for categories such as Playback or Ambient.
+    [self.audioSession setCategory:self.priorAudioCategory error:nil];`;
+  if (iosContent.includes(safeRestore)) {
+    console.log('[patch-voice] iOS audio session restore already patched.');
+  } else if (iosContent.includes(invalidRestore)) {
+    fs.writeFileSync(iosVoiceTarget, iosContent.replace(invalidRestore, safeRestore));
+    console.log('[patch-voice] patched iOS audio session restore in Voice.m');
+  } else {
+    console.log('[patch-voice] iOS Voice.m restore block not found; skipping.');
+  }
+
+  const inactiveReset = `    // Deactivate before restoring the prior category to avoid property writes
+    // against an active PlayAndRecord session during teardown.
+    [self.audioSession setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];`;
+  const commentedReset = `    // Set audio session to inactive and notify other sessions
+    // [self.audioSession setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error: nil];`;
+  if (iosContent.includes(inactiveReset)) {
+    console.log('[patch-voice] iOS audio session deactivate-before-restore already patched.');
+  } else if (iosContent.includes(commentedReset)) {
+    fs.writeFileSync(
+      iosVoiceTarget,
+      fs.readFileSync(iosVoiceTarget, 'utf8').replace(commentedReset, inactiveReset)
+    );
+    console.log('[patch-voice] patched iOS audio session deactivate-before-restore in Voice.m');
+  } else {
+    console.log('[patch-voice] iOS Voice.m deactivate-before-restore block not found; skipping.');
+  }
+} else {
+  console.log('[patch-voice] iOS Voice.m not found, skipping.');
 }

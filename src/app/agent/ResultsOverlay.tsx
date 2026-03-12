@@ -149,6 +149,28 @@ const PRE_STREAMING_SUBSTATES: Array<ProcessingSubstate | null> = [
   'awaitingFirstToken',
 ];
 
+function mergeCardReferences(cards: CardRef[]): CardRef[] {
+  const merged = new Map<string, CardRef>();
+  for (const card of cards) {
+    const key = (card.name || card.id).trim().toLowerCase();
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, card);
+      continue;
+    }
+    merged.set(key, {
+      ...existing,
+      id: existing.id || card.id,
+      imageUri: existing.imageUri ?? card.imageUri,
+      imageUrl: existing.imageUrl ?? card.imageUrl,
+      typeLine: existing.typeLine ?? card.typeLine,
+      manaCost: existing.manaCost ?? card.manaCost,
+      oracle: existing.oracle ?? card.oracle,
+    });
+  }
+  return Array.from(merged.values());
+}
+
 export function ResultsOverlay({
   responseText,
   validationSummary,
@@ -191,17 +213,20 @@ export function ResultsOverlay({
 
   const cards = debugScenario
     ? dummyCards
-    : validationSummary?.cards?.map(c => ({
-        id: c.doc_id ?? c.raw,
-        name: c.canonical ?? c.raw,
-        imageUri: undefined,
-      })) ?? stubCards;
+    : mergeCardReferences(
+        validationSummary?.cards?.map(c => ({
+          id: c.doc_id ?? c.raw,
+          name: c.canonical ?? c.raw,
+          imageUri: undefined,
+          oracle: c.oracleText,
+        })) ?? stubCards,
+      );
   const rules = debugScenario
     ? dummyRules
     : validationSummary?.rules?.map(r => ({
         id: r.canonical ?? r.raw,
-        title: r.raw,
-        excerpt: r.raw.length > 160 ? r.raw.slice(0, 160) + '...' : r.raw,
+        title: r.title ?? r.canonical ?? r.raw,
+        excerpt: r.excerpt ?? r.raw,
         used: r.status === 'valid',
       })) ?? stubRules;
   const cardsCount = cards.length;

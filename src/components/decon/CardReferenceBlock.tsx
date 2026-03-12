@@ -16,6 +16,8 @@ import {
 } from 'react-native';
 import { DeconPanel, type DeconPanelIntensity } from './DeconPanel';
 
+const CARD_BACK_IMAGE = require('../../../assets/images/card_back.png');
+
 export type CardRef = {
   id: string;
   name: string;
@@ -49,9 +51,13 @@ export type CardReferenceBlockProps = {
 };
 
 const UNIT = 8;
-const TILE_WIDTH = 176;
+const TILE_WIDTH = 116;
 /** Real card size 63 × 88 mm; use for placeholder when image is missing. */
 const CARD_ASPECT_RATIO = 63 / 88;
+const COMPACT_CARD_IMAGE_HEIGHT = 72;
+const COMPACT_CARD_IMAGE_WIDTH = COMPACT_CARD_IMAGE_HEIGHT * CARD_ASPECT_RATIO;
+const STACK_CARD_IMAGE_HEIGHT = 88;
+const STACK_CARD_IMAGE_WIDTH = STACK_CARD_IMAGE_HEIGHT * CARD_ASPECT_RATIO;
 
 export function CardReferenceBlock({
   cards,
@@ -144,8 +150,7 @@ function CardRefItem({
 }) {
   const [expanded, setExpanded] = useState(false);
   const imageUri = card.imageUri ?? card.imageUrl ?? null;
-  const hasLocalImage = !!imageUri && !/^https?:\/\//i.test(imageUri);
-  const initial = card.name.trim().charAt(0).toUpperCase() || '?';
+  const imageSource = imageUri ? { uri: imageUri } : CARD_BACK_IMAGE;
 
   return (
     <Pressable
@@ -159,20 +164,11 @@ function CardRefItem({
         <Text style={[styles.referencedTagText, { color: mutedColor }]}>Referenced</Text>
       </View>
       <View style={[styles.cardImageWrap, !compact && styles.cardImageWrapStack]}>
-        {hasLocalImage ? (
-          <Image
-            source={{ uri: imageUri! }}
-            style={styles.cardImage}
-            resizeMode="cover"
-          />
-        ) : (
-          <View style={[styles.cardImage, styles.placeholderGlyph]}>
-            <View style={styles.placeholderShape} />
-            <Text style={[styles.placeholderInitial, { color: mutedColor }]}>
-              {initial}
-            </Text>
-          </View>
-        )}
+        <Image
+          source={imageSource}
+          style={[styles.cardImage, compact ? styles.cardImageCompact : styles.cardImageStack]}
+          resizeMode="contain"
+        />
       </View>
       <View style={[styles.textBlock, !compact && styles.textBlockStack]}>
         <View style={styles.nameRow}>
@@ -229,33 +225,23 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   cardImage: {
-    width: '100%',
     aspectRatio: CARD_ASPECT_RATIO,
     borderRadius: 10,
   },
-  placeholderGlyph: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  cardImageCompact: {
+    width: COMPACT_CARD_IMAGE_WIDTH,
+    height: COMPACT_CARD_IMAGE_HEIGHT,
   },
-  placeholderShape: {
-    width: 36,
-    height: 36 / CARD_ASPECT_RATIO,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
-    marginBottom: 8,
-  },
-  placeholderInitial: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '600',
+  cardImageStack: {
+    width: STACK_CARD_IMAGE_WIDTH,
+    height: STACK_CARD_IMAGE_HEIGHT,
   },
   cardImageWrap: {
     width: '100%',
+    alignItems: 'center',
   },
   cardImageWrapStack: {
-    width: 84,
+    width: STACK_CARD_IMAGE_WIDTH,
     flexShrink: 0,
   },
   textBlock: {

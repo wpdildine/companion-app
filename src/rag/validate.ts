@@ -10,9 +10,16 @@ export interface ValidationSummary {
     raw: string;
     canonical?: string;
     doc_id?: string;
+    oracleText?: string;
     status: 'in_pack' | 'alias' | 'unknown';
   }[];
-  rules: { raw: string; canonical?: string; status: 'valid' | 'invalid' }[];
+  rules: {
+    raw: string;
+    canonical?: string;
+    title?: string;
+    excerpt?: string;
+    status: 'valid' | 'invalid';
+  }[];
   stats: {
     cardHitRate: number;
     ruleHitRate: number;
@@ -221,13 +228,20 @@ export async function nudgeResponse(
   }
 
   const summary: ValidationSummary = {
-    cards: allCards.map((c) => ({
+    cards: cardsSummary.map((c) => ({
       raw: c.raw,
       canonical: 'canonical' in c ? c.canonical : undefined,
       doc_id: 'doc_id' in c ? c.doc_id : undefined,
+      oracleText: undefined,
       status: c.status,
     })),
-    rules: rulesSummary.map((r) => ({ raw: r.raw, status: r.status })),
+    rules: rulesSummary.map((r) => ({
+      raw: r.raw,
+      canonical: undefined,
+      title: undefined,
+      excerpt: undefined,
+      status: r.status,
+    })),
     stats: {
       cardHitRate,
       ruleHitRate,
@@ -238,4 +252,3 @@ export async function nudgeResponse(
 
   return { nudgedText, summary };
 }
-

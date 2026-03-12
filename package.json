@@ -18,7 +18,7 @@
     "runtime:update": "node scripts/update-runtime.js",
     "lint": "eslint .",
     "test": "jest",
-    "postinstall": "node scripts/sync-piper-tts-codegen.js && node scripts/patch-react-native-voice-android.js"
+    "postinstall": "node scripts/sync-piper-tts-codegen.js && node scripts/patch-react-native-voice.js && node scripts/patch-react-native-quick-sqlite.js"
   },
   "dependencies": {
     "@react-native-community/slider": "^5.1.2",

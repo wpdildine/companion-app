@@ -131,6 +131,14 @@ function generalTokens(normalized: string, stopwords: Set<string>): string[] {
     .filter(t => t.length >= MIN_TOKEN_LENGTH && !stopwords.has(t));
 }
 
+function isBasicLandTypeChangeText(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  return (
+    /(?:^|\s)is a (plains|island|swamp|mountain|forest)\.?$/.test(normalized) ||
+    /(?:^|\s)are (plains|islands|swamps|mountains|forests)\.?$/.test(normalized)
+  );
+}
+
 export async function getContextRN(
   queryText: string,
   packRoot: string,
@@ -322,6 +330,22 @@ export async function getContextRN(
     const finalSupportRules = deduped.filter(
       r => !defIdsSet.has(r.rule_id!) && !mechIdsSet.has(r.rule_id!),
     );
+
+    if (
+      resolvedCards.some(card =>
+        isBasicLandTypeChangeText(
+          String((card as { oracle_text?: string }).oracle_text ?? ''),
+        ),
+      ) &&
+      !finalDefRules.some(rule => rule.rule_id === '305.7') &&
+      !finalMechRules.some(rule => rule.rule_id === '305.7') &&
+      !finalSupportRules.some(rule => rule.rule_id === '305.7')
+    ) {
+      const landSubtypeRule = rulesDb.ruleById('305.7');
+      if (landSubtypeRule) {
+        finalSupportRules.unshift(landSubtypeRule as DbRule);
+      }
+    }
 
     const cardContextsForAssemble = resolvedCards.map(c => ({
       oracle_id: (c as { oracle_id?: string }).oracle_id ?? '',

@@ -45,7 +45,13 @@ function main() {
   }
 
   console.log('[apply-native-overrides] Re-applying Android voice patch...');
-  execSync('node scripts/patch-react-native-voice-android.js', {
+  execSync('node scripts/patch-react-native-voice.js', {
+    cwd: ROOT,
+    stdio: 'inherit',
+  });
+
+  console.log('[apply-native-overrides] Re-applying Quick SQLite patch...');
+  execSync('node scripts/patch-react-native-quick-sqlite.js', {
     cwd: ROOT,
     stdio: 'inherit',
   });
@@ -54,4 +60,3 @@ function main() {
 }
 
 main();
-

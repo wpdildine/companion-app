@@ -14,6 +14,21 @@ let buffer: NormalizedDiagnosticEvent[] = [];
 let bufferSize = DEFAULT_BUFFER_SIZE;
 let installed = false;
 const unsubscribes: Array<() => void> = [];
+const GLOBAL_DIAGNOSTICS_KEY = '__COMPANION_PLUGIN_DIAGNOSTICS__';
+
+type DiagnosticsGlobalState = {
+  installed: boolean;
+  uninstall?: () => void;
+};
+
+function getGlobalDiagnosticsState(): DiagnosticsGlobalState | null {
+  if (typeof globalThis === 'undefined') return null;
+  const host = globalThis as typeof globalThis & {
+    __COMPANION_PLUGIN_DIAGNOSTICS__?: DiagnosticsGlobalState;
+  };
+  host[GLOBAL_DIAGNOSTICS_KEY] = host[GLOBAL_DIAGNOSTICS_KEY] ?? { installed: false };
+  return host[GLOBAL_DIAGNOSTICS_KEY] ?? null;
+}
 
 function normalize(source: string, event: PluginEventPayload): NormalizedDiagnosticEvent {
   return {
@@ -61,10 +76,15 @@ function subscribeToPiperTts(): void {
  * Safe to call multiple times; subsequent calls no-op.
  */
 export function install(options?: { bufferSize?: number }): void {
-  if (installed) return;
+  const globalState = getGlobalDiagnosticsState();
+  if (installed || globalState?.installed) return;
   installed = true;
   bufferSize = options?.bufferSize ?? DEFAULT_BUFFER_SIZE;
   buffer = [];
+  if (globalState) {
+    globalState.installed = true;
+    globalState.uninstall = uninstall;
+  }
 
   subscribeToPiperTts();
   // Add more plugins here as they expose subscribe(callback).
@@ -78,6 +98,11 @@ export function uninstall(): void {
   unsubscribes.length = 0;
   buffer = [];
   installed = false;
+  const globalState = getGlobalDiagnosticsState();
+  if (globalState) {
+    globalState.installed = false;
+    globalState.uninstall = uninstall;
+  }
 }
 
 /**

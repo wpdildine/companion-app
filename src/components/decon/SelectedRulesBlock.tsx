@@ -114,7 +114,7 @@ export function SelectedRulesBlock({
                   </View>
                 ) : null}
               </View>
-              <Text style={[styles.excerpt, { color: primaryText }]} numberOfLines={6}>
+              <Text style={[styles.excerpt, { color: primaryText }]}>
                 {rule.excerpt}
               </Text>
               {why.length > 0 ? (
