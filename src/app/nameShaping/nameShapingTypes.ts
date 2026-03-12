@@ -20,6 +20,33 @@ export interface NameShapingRawToken {
  */
 export type NormalizedNameShapingSignature = readonly NameShapingSelector[];
 
+/**
+ * One stored entry in the proper-noun resolver index.
+ * Symmetrical with buildCardNameSignature result; baseName supports resolver/debug (e.g. "Urza" vs "Urza's Tower").
+ */
+export interface ResolverIndexEntry {
+  cardId: string;
+  displayName: string;
+  normalizedName: string;
+  baseName: string;
+  fullNameSignature: NormalizedNameShapingSignature;
+  baseNameSignature: NormalizedNameShapingSignature;
+}
+
+/** Read-only query surface for the resolver index. Base-signature lookup only in Executable 3. */
+export interface ResolverIndex {
+  getCandidatesBySignature(signature: NormalizedNameShapingSignature): readonly ResolverIndexEntry[];
+  getAllIndexedCards(): readonly ResolverIndexEntry[];
+  getIndexStats(): { entryCount: number; uniqueBaseSignatures: number };
+  getDebugSample(limit?: number): ReadonlyArray<{
+    displayName: string;
+    normalizedName: string;
+    baseName: string;
+    baseNameSignature: NormalizedNameShapingSignature;
+    cardId?: string;
+  }>;
+}
+
 /** One candidate from the proper-name resolver. */
 export interface NameShapingResolverCandidate {
   cardId: string;

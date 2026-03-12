@@ -13,10 +13,15 @@ export type {
 } from './nameShapingConstants';
 export type {
   NameShapingRawToken,
+  NormalizedNameShapingSignature,
+  ResolverIndex,
+  ResolverIndexEntry,
   NameShapingResolverCandidate,
   NameShapingState,
-  NormalizedNameShapingSignature,
 } from './nameShapingTypes';
 
 export { buildCardNameSignature } from './buildCardNameSignature';
 export type { CardNameSignatureResult } from './buildCardNameSignature';
+
+export { buildResolverIndex } from './resolverIndex';
+export type { ResolverIndexReader } from './resolverIndex';
