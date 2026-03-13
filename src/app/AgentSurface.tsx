@@ -45,7 +45,11 @@ import {
   type RequestDebugState,
 } from './agent';
 import { copyBundlePackToDocuments } from '../rag';
-import { useNameShapingState, useSpineNameShapingCapture } from './nameShaping';
+import {
+  useNameShapingController,
+  useNameShapingState,
+  useSpineNameShapingCapture,
+} from './nameShaping';
 
 /** Set true to enable NameShaping touch-to-selector capture for device testing; band then suppresses hold-to-speak and cluster release. */
 const NAME_SHAPING_CAPTURE_DEBUG = true;
@@ -197,6 +201,7 @@ export default function AgentSurface() {
   });
 
   const { state: nameShapingState, actions: nameShapingActions } = useNameShapingState();
+  useNameShapingController(nameShapingState, nameShapingActions, null);
   const { capture: nameShapingCapture } = useSpineNameShapingCapture(
     nameShapingState.enabled,
     nameShapingActions,
