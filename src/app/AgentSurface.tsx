@@ -222,6 +222,7 @@ export default function AgentSurface() {
   const { capture: nameShapingCapture } = useSpineNameShapingCapture(
     nameShapingState.enabled,
     nameShapingActions,
+    { emitOnTouchStart: true },
   );
   useEffect(() => {
     let cancelled = false;

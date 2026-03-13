@@ -16,6 +16,9 @@ export interface NameShapingCaptureHandlers {
   onTouchCancel: () => void;
 }
 
+export interface UseSpineNameShapingCaptureOptions {
+  emitOnTouchStart?: boolean;
+}
 
 function noopStart(_ndc: [number, number]) {}
 function noopMove(_ndc: [number, number]) {}
@@ -32,8 +35,10 @@ function noopCancel() {}
 export function useSpineNameShapingCapture(
   enabled: boolean,
   actions: NameShapingActions,
+  options: UseSpineNameShapingCaptureOptions = {},
 ): { capture: NameShapingCaptureHandlers } {
   const lastSelectorRef = useRef<ReturnType<typeof getSelectorFromNdc>>(null);
+  const emitOnTouchStart = options.emitOnTouchStart ?? false;
 
   const onTouchStart = useCallback(
     (ndc: [number, number]) => {
@@ -41,9 +46,13 @@ export function useSpineNameShapingCapture(
       const selector = getSelectorFromNdc(ndc[0], ndc[1]);
       lastSelectorRef.current = selector;
       actions.setActiveSelector(selector);
+      if (emitOnTouchStart && selector !== null) {
+        actions.appendEmittedToken({ selector, timestamp: Date.now() });
+        logInfo('NameShapingCapture', 'touch start emitted', { selector });
+      }
       logInfo('NameShapingCapture', 'touch start', { selector });
     },
-    [enabled, actions],
+    [enabled, actions, emitOnTouchStart],
   );
 
   const onTouchMove = useCallback(

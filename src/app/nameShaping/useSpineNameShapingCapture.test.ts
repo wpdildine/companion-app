@@ -30,11 +30,15 @@ function createMockActions(): NameShapingActions & { calls: { setActiveSelector:
 function Harness({
   enabled,
   actions,
+  emitOnTouchStart = false,
 }: {
   enabled: boolean;
   actions: NameShapingActions;
+  emitOnTouchStart?: boolean;
 }) {
-  const { capture } = useSpineNameShapingCapture(enabled, actions);
+  const { capture } = useSpineNameShapingCapture(enabled, actions, {
+    emitOnTouchStart,
+  });
   (globalThis as { __capture?: ReturnType<typeof useSpineNameShapingCapture>['capture'] }).__capture = capture;
   return null;
 }
@@ -117,6 +121,26 @@ describe('useSpineNameShapingCapture', () => {
     expect(actions.calls.appendEmittedToken).toHaveLength(0);
   });
 
+  it('when emitOnTouchStart is enabled, touch start in a selector lane emits once', () => {
+    const actions = createMockActions();
+    act(() => {
+      TestRenderer.create(
+        React.createElement(Harness, {
+          enabled: true,
+          actions,
+          emitOnTouchStart: true,
+        }),
+      );
+    });
+    const capture = getCapture();
+    act(() => {
+      capture!.onTouchStart([0, 0.9]);
+    });
+    expect(actions.calls.setActiveSelector).toContain('BRIGHT');
+    expect(actions.calls.appendEmittedToken).toHaveLength(1);
+    expect(actions.calls.appendEmittedToken[0]).toMatchObject({ selector: 'BRIGHT' });
+  });
+
   it('moving within a selector region does not emit, crossing vertical regions emits once', () => {
     const actions = createMockActions();
     act(() => {
@@ -139,6 +163,26 @@ describe('useSpineNameShapingCapture', () => {
       capture!.onTouchMove([0, 0.5]);
     });
     expect(actions.calls.appendEmittedToken).toHaveLength(1);
+  });
+
+  it('when emitOnTouchStart is enabled, staying in the same region after touch start does not duplicate', () => {
+    const actions = createMockActions();
+    act(() => {
+      TestRenderer.create(
+        React.createElement(Harness, {
+          enabled: true,
+          actions,
+          emitOnTouchStart: true,
+        }),
+      );
+    });
+    const capture = getCapture();
+    act(() => {
+      capture!.onTouchStart([0, 0.9]);
+      capture!.onTouchMove([0, 0.82]);
+    });
+    expect(actions.calls.appendEmittedToken).toHaveLength(1);
+    expect(actions.calls.appendEmittedToken[0]).toMatchObject({ selector: 'BRIGHT' });
   });
 
   it('moving through the center voice lane clears active selector without emitting', () => {
