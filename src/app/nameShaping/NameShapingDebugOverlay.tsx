@@ -9,7 +9,11 @@ import { logInfo } from '../../shared/logging';
 import type { NameShapingActions } from './useNameShapingState';
 import type { NameShapingState } from './nameShapingTypes';
 import { buildCardNameSignature } from './buildCardNameSignature';
-import { SELECTOR_ORDER, SELECTOR_METADATA } from './nameShapingConstants';
+import {
+  SELECTOR_METADATA,
+  SELECTOR_ORDER,
+  type NameShapingSelector,
+} from './nameShapingConstants';
 
 const fontMono = Platform.select({ ios: 'Menlo', android: 'monospace' });
 
@@ -100,6 +104,35 @@ export function NameShapingDebugOverlay({
     logInfo('AgentSurface', 'NameShaping cleared from Viz debug panel');
   };
 
+  const handleAppendSelector = (selector: NameShapingSelector) => {
+    actions.appendEmittedToken({
+      selector,
+      timestamp: Date.now(),
+    });
+    logInfo('AgentSurface', 'NameShaping appended selector from Viz debug panel', {
+      selector,
+    });
+  };
+
+  const handleAppendBreak = () => {
+    actions.commitBreak();
+    logInfo('AgentSurface', 'NameShaping appended BREAK from Viz debug panel');
+  };
+
+  const handleSelectCandidate = (index: number) => {
+    const candidate = state.resolverCandidates[index] ?? null;
+    actions.setSelectedCandidate(candidate);
+    logInfo('AgentSurface', 'NameShaping candidate selected from Viz debug panel', {
+      cardId: candidate?.cardId,
+      displayName: candidate?.displayName,
+      score: candidate?.score,
+    });
+  };
+
+  const handleSelectTopCandidate = () => {
+    handleSelectCandidate(0);
+  };
+
   return (
     <View style={styles.wrap}>
       <SectionTitle theme={theme} title="Controls" />
@@ -112,6 +145,33 @@ export function NameShapingDebugOverlay({
         </Pressable>
         <Pressable style={[styles.btn, styles.btnClear]} onPress={handleClear}>
           <Text style={styles.btnText}>Clear</Text>
+        </Pressable>
+      </View>
+      <View style={styles.buttonRow}>
+        {SELECTOR_ORDER.filter((selector) => selector !== 'BREAK').map((selector) => (
+          <Pressable
+            key={selector}
+            style={[styles.btn, styles.btnSelector]}
+            onPress={() => handleAppendSelector(selector)}
+          >
+            <Text style={styles.btnText}>{selector}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <View style={styles.buttonRow}>
+        <Pressable style={[styles.btn, styles.btnBreak]} onPress={handleAppendBreak}>
+          <Text style={styles.btnText}>Append BREAK</Text>
+        </Pressable>
+        <Pressable
+          style={[
+            styles.btn,
+            styles.btnSelect,
+            state.resolverCandidates.length === 0 && styles.btnDisabled,
+          ]}
+          onPress={handleSelectTopCandidate}
+          disabled={state.resolverCandidates.length === 0}
+        >
+          <Text style={styles.btnText}>Select top</Text>
         </Pressable>
       </View>
       <Pressable
@@ -172,14 +232,24 @@ export function NameShapingDebugOverlay({
             </Text>
           ) : (
             state.resolverCandidates.map((c, i) => (
-              <Text
+              <Pressable
                 key={`${c.cardId}-${i}`}
-                style={[styles.candidateRow, { color: theme.text }]}
-                numberOfLines={1}
+                style={[
+                  styles.candidateChip,
+                  { borderColor: theme.textMuted },
+                  state.selectedCandidate?.cardId === c.cardId &&
+                    styles.candidateChipSelected,
+                ]}
+                onPress={() => handleSelectCandidate(i)}
               >
-                {c.displayName} (score: {c.score})
-                {c.matchReason != null ? ` — ${c.matchReason}` : ''}
-              </Text>
+                <Text
+                  style={[styles.candidateRow, { color: theme.text }]}
+                  numberOfLines={1}
+                >
+                  {c.displayName} (score: {c.score})
+                  {c.matchReason != null ? ` — ${c.matchReason}` : ''}
+                </Text>
+              </Pressable>
             ))
           )}
           <Row
@@ -274,12 +344,26 @@ const styles = StyleSheet.create({
   btnEnable: { backgroundColor: '#238636' },
   btnDisable: { backgroundColor: '#da3633' },
   btnClear: { backgroundColor: '#6e7681' },
+  btnSelector: { backgroundColor: '#30363d' },
+  btnBreak: { backgroundColor: '#8957e5' },
+  btnSelect: { backgroundColor: '#9a6700' },
+  btnDisabled: { opacity: 0.45 },
   btnText: { color: '#fff', fontSize: 12, fontFamily: fontMono, fontWeight: '600' },
   pipelineToggle: { paddingVertical: 4, marginBottom: 4 },
   pipelineToggleText: { fontSize: 12, fontFamily: fontMono },
   legendRow: { fontSize: 11, fontFamily: fontMono, lineHeight: 14, marginBottom: 2 },
   legendLabel: {},
   placeholder: { fontSize: 12, fontFamily: fontMono, marginBottom: 4 },
+  candidateChip: {
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    marginBottom: 4,
+  },
+  candidateChipSelected: {
+    backgroundColor: 'rgba(31, 111, 235, 0.18)',
+  },
   candidateRow: { fontSize: 12, fontFamily: fontMono, lineHeight: 16, marginBottom: 2 },
   hint: { fontSize: 11, fontFamily: fontMono, marginBottom: 4 },
   input: {

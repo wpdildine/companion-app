@@ -44,12 +44,21 @@ import {
   type ResultsOverlayRevealedBlocks,
   type RequestDebugState,
 } from './agent';
-import { copyBundlePackToDocuments } from '../rag';
 import {
+  createBundlePackReader,
+  createDocumentsPackReader,
+  copyBundlePackToDocuments,
+  getFileReader,
+  getContentPackPathInDocuments,
+  getPackState,
+} from '../rag';
+import {
+  buildResolverIndex,
   useNameShapingController,
   useNameShapingState,
   useSpineNameShapingCapture,
   NameShapingTouchGuideOverlay,
+  type ResolverIndex,
 } from './nameShaping';
 
 /** Set true to show NameShaping debug affordances by default; enabling capture remains manual in the Viz debug panel. */
@@ -202,11 +211,134 @@ export default function AgentSurface() {
   });
 
   const { state: nameShapingState, actions: nameShapingActions } = useNameShapingState();
-  useNameShapingController(nameShapingState, nameShapingActions, null);
+  const [nameShapingResolverIndex, setNameShapingResolverIndex] =
+    useState<ResolverIndex | null>(null);
+  const nameShapingResolverIndexLoadingRef = useRef(false);
+  useNameShapingController(
+    nameShapingState,
+    nameShapingActions,
+    nameShapingResolverIndex,
+  );
   const { capture: nameShapingCapture } = useSpineNameShapingCapture(
     nameShapingState.enabled,
     nameShapingActions,
   );
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadNameShapingResolverIndex = async () => {
+      if (!nameShapingState.enabled) return;
+      if (nameShapingResolverIndex != null) return;
+      if (nameShapingResolverIndexLoadingRef.current) return;
+
+      nameShapingResolverIndexLoadingRef.current = true;
+
+      const existingPackState = getPackState();
+      const existingFileReader = getFileReader();
+      let nameLookupPath =
+        existingPackState?.validate.cardsNameLookupPath ?? 'cards/name_lookup.jsonl';
+      let fileReader = existingFileReader;
+
+      if (!fileReader) {
+        let packRoot = '';
+        try {
+          packRoot = await copyBundlePackToDocuments();
+        } catch (error) {
+          logInfo('AgentSurface', 'NameShaping resolver pack copy skipped, falling back', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          packRoot = (await getContentPackPathInDocuments()) ?? '';
+        }
+        fileReader =
+          (packRoot ? createDocumentsPackReader(packRoot) : null) ??
+          createBundlePackReader();
+      }
+
+      if (!fileReader) {
+        if (!cancelled) {
+          logInfo('AgentSurface', 'NameShaping resolver index unavailable: no pack reader');
+        }
+        nameShapingResolverIndexLoadingRef.current = false;
+        return;
+      }
+
+      try {
+        const resolverIndex = await buildResolverIndex(
+          fileReader,
+          nameLookupPath,
+        );
+        if (cancelled) return;
+        setNameShapingResolverIndex(resolverIndex);
+        const stats = resolverIndex.getIndexStats();
+        logInfo('AgentSurface', 'NameShaping resolver index loaded', {
+          entryCount: stats.entryCount,
+          uniqueBaseSignatures: stats.uniqueBaseSignatures,
+          nameLookupPath,
+        });
+      } catch (error) {
+        if (cancelled) return;
+        logInfo('AgentSurface', 'NameShaping resolver index failed to load', {
+          nameLookupPath,
+          error:
+            error instanceof Error ? error.message : 'unknown resolver index load error',
+        });
+      } finally {
+        nameShapingResolverIndexLoadingRef.current = false;
+      }
+    };
+
+    void loadNameShapingResolverIndex();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [nameShapingState.enabled, nameShapingResolverIndex]);
+  useEffect(() => {
+    if (!nameShapingState.enabled) return;
+    logInfo('AgentSurface', 'NameShaping raw sequence updated', {
+      count: nameShapingState.rawEmittedSequence.length,
+      rawSequence: nameShapingState.rawEmittedSequence.map((token) => token.selector),
+    });
+  }, [nameShapingState.enabled, nameShapingState.rawEmittedSequence]);
+  useEffect(() => {
+    if (!nameShapingState.enabled) return;
+    logInfo('AgentSurface', 'NameShaping normalized signature updated', {
+      count: nameShapingState.normalizedSignature.length,
+      normalizedSignature: [...nameShapingState.normalizedSignature],
+    });
+  }, [nameShapingState.enabled, nameShapingState.normalizedSignature]);
+  useEffect(() => {
+    if (!nameShapingState.enabled) return;
+    logInfo('AgentSurface', 'NameShaping resolver candidates updated', {
+      hasResolverIndex: nameShapingResolverIndex !== null,
+      count: nameShapingState.resolverCandidates.length,
+      candidates: nameShapingState.resolverCandidates.map((candidate) => ({
+        cardId: candidate.cardId,
+        displayName: candidate.displayName,
+        score: candidate.score,
+      })),
+    });
+  }, [
+    nameShapingState.enabled,
+    nameShapingState.resolverCandidates,
+    nameShapingResolverIndex,
+  ]);
+  useEffect(() => {
+    if (
+      !nameShapingState.enabled ||
+      nameShapingState.normalizedSignature.length === 0 ||
+      nameShapingResolverIndex !== null
+    ) {
+      return;
+    }
+    logInfo('AgentSurface', 'NameShaping normalized signature has no resolver index yet', {
+      normalizedSignature: [...nameShapingState.normalizedSignature],
+    });
+  }, [
+    nameShapingState.enabled,
+    nameShapingState.normalizedSignature,
+    nameShapingResolverIndex,
+  ]);
   useEffect(() => {
     const viz = visualizationRef.current;
     if (!viz) return;
@@ -405,7 +537,7 @@ export default function AgentSurface() {
   const canRevealPanels = DEBUG_SCENARIO || hasResultContext || hasReferenceStubs;
   const isAsking = orchState.lifecycle === 'processing';
   const interactionBandEnabled =
-    (!debugEnabled || nameShapingState.enabled) &&
+    !debugEnabled &&
     !anyPanelVisible &&
     orchState.lifecycle !== 'processing';
   const canHoldToSpeak = !isAsking && !anyPanelVisible && !debugEnabled;
@@ -860,7 +992,9 @@ export default function AgentSurface() {
         onClusterRelease={handleClusterTap}
         onCenterHoldStart={!debugEnabled ? handleCenterHoldStart : undefined}
         onCenterHoldEnd={!debugEnabled ? handleCenterHoldEnd : undefined}
-        nameShapingCapture={nameShapingState.enabled ? nameShapingCapture : undefined}
+        nameShapingCapture={
+          nameShapingState.enabled && !debugEnabled ? nameShapingCapture : undefined
+        }
         enabled={interactionBandEnabled}
         blocked={orchState.ioBlockedUntil != null}
         blockedUntil={orchState.ioBlockedUntil ?? null}

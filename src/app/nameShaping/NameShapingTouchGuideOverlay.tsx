@@ -1,10 +1,13 @@
 import React from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
+  SELECTOR_METADATA,
+  type NameShapingSelector,
+} from './nameShapingConstants';
+import {
   NAME_SHAPING_OVERLAY_REGIONS,
   type NameShapingOverlayRegion,
 } from './nameShapingTouchRegions';
-import { SELECTOR_METADATA, type NameShapingSelector } from './nameShapingConstants';
 
 const SELECTOR_COLORS: Record<NameShapingSelector, string> = {
   BRIGHT: '#f59e0b',
@@ -20,8 +23,19 @@ function getRegionLabel(region: NameShapingOverlayRegion): string {
   return SELECTOR_METADATA[region.selector!].displayLabel.toUpperCase();
 }
 
+function getRegionLetterGroups(region: NameShapingOverlayRegion): string {
+  if (region.kind === 'voice') return 'hold to speak';
+  const description = SELECTOR_METADATA[region.selector!].debugDescription;
+  const marker = 'Typical letter groups:';
+  const markerIndex = description.indexOf(marker);
+  if (markerIndex < 0) return '';
+  return description.slice(markerIndex + marker.length).trim();
+}
+
 function getRegionColor(region: NameShapingOverlayRegion): string {
-  return region.kind === 'voice' ? '#f8fafc' : SELECTOR_COLORS[region.selector!];
+  return region.kind === 'voice'
+    ? '#f8fafc'
+    : SELECTOR_COLORS[region.selector!];
 }
 
 export type NameShapingTouchGuideOverlayProps = {
@@ -43,12 +57,11 @@ export function NameShapingTouchGuideOverlay({
   return (
     <View pointerEvents="none" style={styles.overlay}>
       {NAME_SHAPING_OVERLAY_REGIONS.map((region, index) => {
-        const left = ((region.startNdcX + 1) * 0.5) * width;
-        const right = ((region.endNdcX + 1) * 0.5) * width;
-        const top =
-          bandTopInsetPx + ((1 - region.endNdcY) * 0.5) * activeHeight;
+        const left = (region.startNdcX + 1) * 0.5 * width;
+        const right = (region.endNdcX + 1) * 0.5 * width;
+        const top = bandTopInsetPx + (1 - region.endNdcY) * 0.5 * activeHeight;
         const bottom =
-          bandTopInsetPx + ((1 - region.startNdcY) * 0.5) * activeHeight;
+          bandTopInsetPx + (1 - region.startNdcY) * 0.5 * activeHeight;
         const regionWidth = Math.max(0, right - left);
         const regionHeight = Math.max(0, bottom - top);
         const color = getRegionColor(region);
@@ -66,27 +79,57 @@ export function NameShapingTouchGuideOverlay({
               },
             ]}
           >
-            <View
-              style={[
-                styles.labelChip,
-                region.kind === 'voice' ? styles.voiceChip : styles.selectorChip,
-                {
-                  borderColor: color,
-                  shadowColor: color,
-                },
-              ]}
-            >
-              <Text
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.7}
+            <View style={styles.labelRow}>
+              <View
                 style={[
-                  styles.labelText,
-                  { color: region.kind === 'voice' ? '#0f172a' : color },
+                  styles.sideChip,
+                  styles.leftChip,
+                  region.kind === 'voice'
+                    ? styles.voiceChip
+                    : styles.selectorChip,
+                  {
+                    borderColor: color,
+                    shadowColor: color,
+                  },
                 ]}
               >
-                {getRegionLabel(region)}
-              </Text>
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                  style={[
+                    styles.leftLabelText,
+                    { color: region.kind === 'voice' ? '#0f172a' : color },
+                  ]}
+                >
+                  {getRegionLabel(region)}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.sideChip,
+                  styles.rightChip,
+                  region.kind === 'voice'
+                    ? styles.voiceChip
+                    : styles.selectorChip,
+                  {
+                    borderColor: color,
+                    shadowColor: color,
+                  },
+                ]}
+              >
+                <Text
+                  numberOfLines={2}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.65}
+                  style={[
+                    styles.rightLabelText,
+                    { color: region.kind === 'voice' ? '#0f172a' : color },
+                  ]}
+                >
+                  {getRegionLetterGroups(region)}
+                </Text>
+              </View>
             </View>
           </View>
         );
@@ -105,17 +148,32 @@ const styles = StyleSheet.create({
     position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'visible',
   },
-  labelChip: {
-    minWidth: 76,
-    maxWidth: '88%',
+  labelRow: {
+    position: 'absolute',
+    width: 300,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  sideChip: {
+    width: 120,
+    height: 48,
     paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 999,
+    paddingHorizontal: 8,
+    borderRadius: 10,
     borderWidth: 1,
     shadowOpacity: 0.28,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 0 },
+  },
+  leftChip: {
+    alignItems: 'flex-start',
+  },
+  rightChip: {
+    alignItems: 'flex-end',
   },
   selectorChip: {
     backgroundColor: 'rgba(15, 23, 42, 0.84)',
@@ -123,10 +181,18 @@ const styles = StyleSheet.create({
   voiceChip: {
     backgroundColor: 'rgba(248, 250, 252, 0.9)',
   },
-  labelText: {
+  leftLabelText: {
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.6,
-    textAlign: 'center',
+    textAlign: 'left',
+    width: '100%',
+  },
+  rightLabelText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textAlign: 'right',
+    width: '100%',
   },
 });
