@@ -1,6 +1,10 @@
 /**
  * Name Shaping: canonical vocabulary, types, and runtime state shape.
  * Later executables (overlay, resolver, input capture) import from here as shared truth.
+ *
+ * Invariant: Touch/layout modules here are lightweight and must not trigger full RAG or
+ * pack initialization. Resolver index is built separately when needed; layout refactors
+ * must not eagerly load it.
  */
 
 export {

@@ -11,7 +11,9 @@ import {
   NAME_SHAPING_OVERLAY_REGIONS,
   type NameShapingOverlayRegion,
 } from '../../../app/nameShaping/nameShapingTouchRegions';
+import { ndcRegionToRenderDescriptor } from '../../../app/nameShaping/nameShapingLayoutTransforms';
 import type { NameShapingSelector } from '../../../app/nameShaping/nameShapingConstants';
+import { getActiveBandVerticalEnvelope } from '../../interaction/activeBandEnvelope';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
@@ -46,19 +48,22 @@ function buildNameShapingSegments(
   regions: readonly NameShapingOverlayRegion[],
   opacity: number,
 ): OverlaySegment[] {
-  return regions.map(region => ({
-    widthRatio: (region.endNdcX - region.startNdcX) * 0.5,
-    heightRatio: (region.endNdcY - region.startNdcY) * 0.5,
-    centerNdcX: (region.startNdcX + region.endNdcX) * 0.5,
-    centerNdcY: (region.startNdcY + region.endNdcY) * 0.5,
-    color:
-      region.kind === 'voice'
-        ? '#f8fafc'
-        : NAME_SHAPING_SELECTOR_COLORS[region.selector!],
-    opacity: region.kind === 'voice' ? 0.24 : 0.34,
-    buttonInsetRatio: region.kind === 'voice' ? 0.84 : 0.9,
-    edgeOpacity: region.kind === 'voice' ? 0.65 : 1,
-  }));
+  return regions.map(region => {
+    const descriptor = ndcRegionToRenderDescriptor(region);
+    return {
+      widthRatio: descriptor.widthRatio,
+      heightRatio: descriptor.heightRatio,
+      centerNdcX: descriptor.centerNdcX,
+      centerNdcY: descriptor.centerNdcY,
+      color:
+        region.kind === 'voice'
+          ? '#f8fafc'
+          : NAME_SHAPING_SELECTOR_COLORS[region.selector!],
+      opacity: region.kind === 'voice' ? 0.24 : 0.34,
+      buttonInsetRatio: region.kind === 'voice' ? 0.84 : 0.9,
+      edgeOpacity: region.kind === 'voice' ? 0.65 : 1,
+    };
+  });
 }
 
 export function TouchZones({
@@ -100,12 +105,8 @@ export function TouchZones({
     areaGroupRef.current.visible = areaVisible;
     if (!areaVisible) return;
 
-    const bandTopInsetPx = layout.bandTopInsetPx;
-    const activeHeightRatio = Math.max(
-      0,
-      Math.min(1, (h - bandTopInsetPx) / h),
-    );
-    const centerNdcY = -(bandTopInsetPx / h);
+    const envelope = getActiveBandVerticalEnvelope(layout.bandTopInsetPx, h);
+    const { activeHeightRatio, centerNdcY } = envelope;
 
     const cam = state.camera as THREE.PerspectiveCamera;
     const fovDeg = typeof cam.fov === 'number' ? cam.fov : 60;

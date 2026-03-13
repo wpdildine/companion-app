@@ -8,6 +8,8 @@ import {
   NAME_SHAPING_OVERLAY_REGIONS,
   type NameShapingOverlayRegion,
 } from './nameShapingTouchRegions';
+import { getActiveBandVerticalEnvelope } from '../../visualization/interaction/activeBandEnvelope';
+import { ndcRegionToScreenRect } from './nameShapingLayoutTransforms';
 
 const SELECTOR_COLORS: Record<NameShapingSelector, string> = {
   BRIGHT: '#f59e0b',
@@ -51,19 +53,19 @@ export function NameShapingTouchGuideOverlay({
 
   if (!visible || width <= 0 || height <= 0) return null;
 
-  const activeHeight = Math.max(0, height - bandTopInsetPx);
-  if (activeHeight <= 0) return null;
+  const verticalEnvelope = getActiveBandVerticalEnvelope(bandTopInsetPx, height);
+  if (verticalEnvelope.activeHeightPx <= 0) return null;
+
+  const envelope = {
+    widthPx: width,
+    activeHeightPx: verticalEnvelope.activeHeightPx,
+    topOffsetPx: verticalEnvelope.topOffsetPx,
+  };
 
   return (
     <View pointerEvents="none" style={styles.overlay}>
       {NAME_SHAPING_OVERLAY_REGIONS.map((region, index) => {
-        const left = (region.startNdcX + 1) * 0.5 * width;
-        const right = (region.endNdcX + 1) * 0.5 * width;
-        const top = bandTopInsetPx + (1 - region.endNdcY) * 0.5 * activeHeight;
-        const bottom =
-          bandTopInsetPx + (1 - region.startNdcY) * 0.5 * activeHeight;
-        const regionWidth = Math.max(0, right - left);
-        const regionHeight = Math.max(0, bottom - top);
+        const rect = ndcRegionToScreenRect(region, envelope);
         const color = getRegionColor(region);
 
         return (
@@ -72,10 +74,10 @@ export function NameShapingTouchGuideOverlay({
             style={[
               styles.regionWrap,
               {
-                left,
-                top,
-                width: regionWidth,
-                height: regionHeight,
+                left: rect.left,
+                top: rect.top,
+                width: rect.width,
+                height: rect.height,
               },
             ]}
           >

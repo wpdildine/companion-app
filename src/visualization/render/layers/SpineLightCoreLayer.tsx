@@ -8,6 +8,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
+import { getActiveBandVerticalEnvelope } from '../../interaction/activeBandEnvelope';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 import { computeTransientModulation, scaleModulation } from '../utils/transientModulation';
 import { interpolateModeValue } from '../../runtime/modeTransition';
@@ -136,12 +137,10 @@ export function SpineLightCoreLayer({
     if (!(w > 0 && h > 0)) return;
 
     const { layout } = scene.zones;
-    const bandTopInsetPx = layout.bandTopInsetPx;
-    const activeHeightRatio = Math.max(
-      0,
-      Math.min(1, (h - bandTopInsetPx) / h),
+    const { activeHeightRatio, centerNdcY } = getActiveBandVerticalEnvelope(
+      layout.bandTopInsetPx,
+      h,
     );
-    const centerNdcY = -(bandTopInsetPx / h);
 
     const cam = state.camera as THREE.PerspectiveCamera;
     const fovDeg = typeof cam.fov === 'number' ? cam.fov : 60;

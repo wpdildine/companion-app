@@ -12,12 +12,16 @@
  * 3) cancel     => clear state, no semantic callback
  *
  * This separates "physical response while touching" from "discrete action on release."
+ *
+ * Invariant: Native touch remains the authoritative input path. No layout or refactor
+ * should move primary touch semantics to GL/raycast; this band is the single touch owner.
  */
 
 import React, { useRef, useCallback, useEffect } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 import type { LayoutChangeEvent, GestureResponderEvent } from 'react-native';
 import type { RefObject } from 'react';
+import { isCenterHoldEligible } from '../../app/nameShaping/nameShapingInteractionRouting';
 import { isVoiceLaneNdc } from '../../app/nameShaping/nameShapingTouchRegions';
 import type { VisualizationEngineRef } from '../runtime/runtimeTypes';
 import { getZoneFromNdcX } from './zoneLayout';
@@ -162,10 +166,13 @@ export function InteractionBand({
         v.touchFieldStrength = 1;
         setZoneArmedFromNdc(v, ndc);
         const zone = getZoneFromNdcX(ndc[0]);
-        const inVoiceLane =
-          nameShapingCapture != null && bandNdc != null
-            ? isVoiceLaneNdc(bandNdc[0], bandNdc[1])
-            : zone === null;
+        const inVoiceLaneFromLayout =
+          bandNdc != null ? isVoiceLaneNdc(bandNdc[0], bandNdc[1]) : false;
+        const inVoiceLane = isCenterHoldEligible(
+          nameShapingCapture != null,
+          inVoiceLaneFromLayout,
+          zone,
+        );
         if (inVoiceLane) {
           centerHoldTimerRef.current = setTimeout(() => {
             centerHoldTimerRef.current = null;
@@ -197,10 +204,13 @@ export function InteractionBand({
         const movedPx = start
           ? Math.hypot(locationX - start.x, locationY - start.y)
           : 0;
-        const inVoiceLane =
-          nameShapingCapture != null && bandNdc != null
-            ? isVoiceLaneNdc(bandNdc[0], bandNdc[1])
-            : zone === null;
+        const inVoiceLaneFromLayout =
+          bandNdc != null ? isVoiceLaneNdc(bandNdc[0], bandNdc[1]) : false;
+        const inVoiceLane = isCenterHoldEligible(
+          nameShapingCapture != null,
+          inVoiceLaneFromLayout,
+          zone,
+        );
         if (
           centerHoldTimerRef.current &&
           (!inVoiceLane || movedPx > CENTER_HOLD_MOVE_CANCEL_PX)

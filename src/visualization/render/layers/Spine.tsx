@@ -29,6 +29,7 @@ import { createOpacityPlaneMaterial } from '../../materials/spine/opacityPlaneMa
 import { createHalftoneMaterial } from '../../materials/halftone/halftonePlaneMaterial';
 import { HALFTONE_VERTEX } from '../../materials/halftone/halftone.vert';
 import { HALFTONE_FRAGMENT } from '../../materials/halftone/halftone.frag';
+import { getActiveBandVerticalEnvelope } from '../../interaction/activeBandEnvelope';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 
 /**
@@ -174,12 +175,10 @@ export function Spine({
     if (!hasSize) return;
 
     const { layout } = scene.zones;
-    const bandTopInsetPx = layout.bandTopInsetPx;
-    const activeHeightRatio = Math.max(
-      0,
-      Math.min(1, (h - bandTopInsetPx) / h),
+    const { activeHeightRatio, centerNdcY } = getActiveBandVerticalEnvelope(
+      layout.bandTopInsetPx,
+      h,
     );
-    const centerNdcY = -(bandTopInsetPx / h);
 
     const cam = state.camera as THREE.PerspectiveCamera;
     const fovDeg = typeof cam.fov === 'number' ? cam.fov : 60;

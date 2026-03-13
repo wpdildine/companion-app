@@ -1,32 +1,21 @@
 /**
- * Name Shaping: canonical spine-local touch region map for debug capture.
- *
- * Coordinates are interaction-band-local NDC in [-1, 1]:
- * - x = horizontal position inside the active band
- * - y = vertical position inside the active band (top = 1, bottom = -1)
- *
- * The corrected physical model is a single spine-centered vertical strip:
- * - one narrow spine-width capture strip
- * - six selector segments arranged vertically along the spine
- * - one reserved center voice segment inside that same strip
+ * Name Shaping: semantic interpreter over the Name Shaping layout.
+ * Maps band-local NDC points to region/selector/voice using layout metadata only.
+ * Does not own layout constants; consumes nameShapingTouchLayout.
  */
 
 import type { NameShapingSelector } from './nameShapingConstants';
+import { isInsideCenterStrip } from '../../visualization/interaction/spineTouchSurfaceLayout';
+import {
+  getVoiceRegion,
+  NAME_SHAPING_LAYOUT_REGIONS,
+  type NameShapingLayoutRegion,
+} from './nameShapingTouchLayout';
 
 const NDC_MIN = -1;
 const NDC_MAX = 1;
 
-/**
- * Match the rendered spine envelope width so the overlay feels like a vertical
- * spine stack instead of screen columns.
- */
-export const NAME_SHAPING_SPINE_STRIP_HALF_WIDTH = 0.145;
-
-/**
- * Seven stacked spine-local segments: three above voice, voice, three below.
- */
-const SEGMENT_HEIGHT = (NDC_MAX - NDC_MIN) / 7;
-
+/** Legacy type for overlay/debug consumers; derived from layout. */
 export interface NameShapingVerticalSegment {
   selector: NameShapingSelector | null;
   kind: 'selector' | 'voice';
@@ -34,6 +23,7 @@ export interface NameShapingVerticalSegment {
   endNdcY: number;
 }
 
+/** Legacy type for overlay/debug consumers; derived from layout. */
 export interface NameShapingOverlayRegion {
   selector: NameShapingSelector | null;
   kind: 'selector' | 'voice';
@@ -43,55 +33,39 @@ export interface NameShapingOverlayRegion {
   endNdcY: number;
 }
 
-export const NAME_SHAPING_VERTICAL_SEGMENTS: readonly NameShapingVerticalSegment[] = [
-  { selector: 'BRIGHT', kind: 'selector', startNdcY: 1 - SEGMENT_HEIGHT, endNdcY: 1 },
-  { selector: 'ROUND', kind: 'selector', startNdcY: 1 - SEGMENT_HEIGHT * 2, endNdcY: 1 - SEGMENT_HEIGHT },
-  { selector: 'LIQUID', kind: 'selector', startNdcY: 1 - SEGMENT_HEIGHT * 3, endNdcY: 1 - SEGMENT_HEIGHT * 2 },
-  { selector: null, kind: 'voice', startNdcY: 1 - SEGMENT_HEIGHT * 4, endNdcY: 1 - SEGMENT_HEIGHT * 3 },
-  { selector: 'SOFT', kind: 'selector', startNdcY: 1 - SEGMENT_HEIGHT * 5, endNdcY: 1 - SEGMENT_HEIGHT * 4 },
-  { selector: 'HARD', kind: 'selector', startNdcY: 1 - SEGMENT_HEIGHT * 6, endNdcY: 1 - SEGMENT_HEIGHT * 5 },
-  { selector: 'BREAK', kind: 'selector', startNdcY: -1, endNdcY: 1 - SEGMENT_HEIGHT * 6 },
-];
+/** Derived from layout for backward compatibility. Do not use for new logic; use NAME_SHAPING_LAYOUT_REGIONS. */
+export const NAME_SHAPING_VERTICAL_SEGMENTS: readonly NameShapingVerticalSegment[] =
+  NAME_SHAPING_LAYOUT_REGIONS.map(r => ({
+    selector: r.selector,
+    kind: r.kind,
+    startNdcY: r.startNdcY,
+    endNdcY: r.endNdcY,
+  }));
 
+/** Derived from layout for overlay/TouchZones. Same 7 regions, stable order. */
 export const NAME_SHAPING_OVERLAY_REGIONS: readonly NameShapingOverlayRegion[] =
-  NAME_SHAPING_VERTICAL_SEGMENTS.map(segment => ({
-    selector: segment.selector,
-    kind: segment.kind,
-    startNdcX: -NAME_SHAPING_SPINE_STRIP_HALF_WIDTH,
-    endNdcX: NAME_SHAPING_SPINE_STRIP_HALF_WIDTH,
-    startNdcY: segment.startNdcY,
-    endNdcY: segment.endNdcY,
+  NAME_SHAPING_LAYOUT_REGIONS.map(r => ({
+    selector: r.selector,
+    kind: r.kind,
+    startNdcX: r.startNdcX,
+    endNdcX: r.endNdcX,
+    startNdcY: r.startNdcY,
+    endNdcY: r.endNdcY,
   }));
 
 function isInsideRange(value: number, start: number, end: number): boolean {
   return value >= start && value <= end;
 }
 
-function isInsideSpineStrip(ndcX: number): boolean {
-  return isInsideRange(
-    ndcX,
-    -NAME_SHAPING_SPINE_STRIP_HALF_WIDTH,
-    NAME_SHAPING_SPINE_STRIP_HALF_WIDTH,
-  );
-}
-
-export function isVoiceLaneNdc(ndcX: number, ndcY: number): boolean {
-  const voiceSegment = NAME_SHAPING_VERTICAL_SEGMENTS[3];
-  return (
-    isInsideSpineStrip(ndcX) &&
-    isInsideRange(ndcY, voiceSegment.startNdcY, voiceSegment.endNdcY)
-  );
-}
-
 /**
- * Map interaction-band-local NDC to the active selector in the spine-centered
- * vertical strip. Returns null outside the strip and in the reserved voice
- * segment.
+ * Returns the matching Name Shaping layout region for a band-local NDC point.
+ * Membership is exact: if the point is not inside a defined region, returns null.
  */
-export function getSelectorFromNdc(
+export function getNameShapingRegionAtNdc(
   ndcX: number,
   ndcY: number,
-): NameShapingSelector | null {
+  regions: readonly NameShapingLayoutRegion[] = NAME_SHAPING_LAYOUT_REGIONS,
+): NameShapingLayoutRegion | null {
   if (
     ndcX < NDC_MIN ||
     ndcX > NDC_MAX ||
@@ -100,15 +74,38 @@ export function getSelectorFromNdc(
   ) {
     return null;
   }
-  if (!isInsideSpineStrip(ndcX)) return null;
+  if (!isInsideCenterStrip(ndcX, ndcY)) return null;
 
-  for (let index = 0; index < NAME_SHAPING_VERTICAL_SEGMENTS.length; index += 1) {
-    const segment = NAME_SHAPING_VERTICAL_SEGMENTS[index];
-    const isLastSegment = index === NAME_SHAPING_VERTICAL_SEGMENTS.length - 1;
-    if (ndcY > segment.startNdcY || isLastSegment) {
-      return segment.kind === 'voice' ? null : segment.selector;
+  for (const region of regions) {
+    const inX = isInsideRange(ndcX, region.startNdcX, region.endNdcX);
+    const inY = isInsideRange(ndcY, region.startNdcY, region.endNdcY);
+    if (inX && inY) {
+      return region;
     }
   }
 
   return null;
+}
+
+/**
+ * True if (ndcX, ndcY) is inside the voice region. Uses layout metadata (voice region), not y-order.
+ */
+export function isVoiceLaneNdc(ndcX: number, ndcY: number): boolean {
+  const region = getNameShapingRegionAtNdc(ndcX, ndcY);
+  if (!region) return false;
+  const voiceRegion = getVoiceRegion();
+  return region.id === voiceRegion.id && region.kind === 'voice';
+}
+
+/**
+ * Map band-local NDC to the active selector. Uses layout region metadata (selector/kind), not y-order.
+ * Returns null outside the center strip and in the voice region.
+ */
+export function getSelectorFromNdc(
+  ndcX: number,
+  ndcY: number,
+): NameShapingSelector | null {
+  const region = getNameShapingRegionAtNdc(ndcX, ndcY);
+  if (!region || region.kind === 'voice') return null;
+  return region.selector;
 }

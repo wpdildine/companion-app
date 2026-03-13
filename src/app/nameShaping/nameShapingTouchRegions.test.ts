@@ -4,10 +4,12 @@
 
 import {
   getSelectorFromNdc,
+  getNameShapingRegionAtNdc,
   isVoiceLaneNdc,
   NAME_SHAPING_OVERLAY_REGIONS,
   NAME_SHAPING_VERTICAL_SEGMENTS,
 } from './nameShapingTouchRegions';
+import { getVoiceRegion, type NameShapingLayoutRegion } from './nameShapingTouchLayout';
 
 describe('getSelectorFromNdc', () => {
   it('returns null when touch is outside the active band range', () => {
@@ -51,5 +53,44 @@ describe('getSelectorFromNdc', () => {
       selector: null,
       kind: 'voice',
     });
+  });
+
+  it('edge boundaries between selectors resolve to one region', () => {
+    expect(getSelectorFromNdc(0, 1)).toBe('BRIGHT');
+    expect(getSelectorFromNdc(0, -1)).toBe('BREAK');
+  });
+
+  it('isVoiceLaneNdc uses layout voice region metadata', () => {
+    const voiceRegion = getVoiceRegion();
+    const voiceMidY = (voiceRegion.startNdcY + voiceRegion.endNdcY) * 0.5;
+    expect(isVoiceLaneNdc(0, voiceMidY)).toBe(true);
+    expect(isVoiceLaneNdc(0.1, 0)).toBe(true);
+    expect(isVoiceLaneNdc(0, 0.9)).toBe(false);
+    expect(isVoiceLaneNdc(0, -0.9)).toBe(false);
+  });
+
+  it('returns null for unmatched points inside the center strip when regions do not cover the strip fully', () => {
+    const gappedRegions: readonly NameShapingLayoutRegion[] = [
+      {
+        id: 'BRIGHT',
+        selector: 'BRIGHT',
+        kind: 'selector',
+        startNdcX: -0.145,
+        endNdcX: 0.145,
+        startNdcY: 0.3,
+        endNdcY: 1,
+      },
+      {
+        id: 'voice',
+        selector: null,
+        kind: 'voice',
+        startNdcX: -0.145,
+        endNdcX: 0.145,
+        startNdcY: -1,
+        endNdcY: -0.3,
+      },
+    ];
+
+    expect(getNameShapingRegionAtNdc(0, 0, gappedRegions)).toBeNull();
   });
 });
