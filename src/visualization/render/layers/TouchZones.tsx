@@ -20,7 +20,7 @@ const planeEdgesGeometry = new THREE.EdgesGeometry(
   new THREE.PlaneGeometry(1, 1),
 );
 
-const MAX_ZONE_COUNT = 13;
+const MAX_ZONE_COUNT = NAME_SHAPING_OVERLAY_REGIONS.length;
 
 const NAME_SHAPING_SELECTOR_COLORS: Record<NameShapingSelector, string> = {
   BRIGHT: '#f59e0b',
@@ -38,6 +38,8 @@ type OverlaySegment = {
   centerNdcY: number;
   color: string;
   opacity: number;
+  buttonInsetRatio: number;
+  edgeOpacity: number;
 };
 
 function buildNameShapingSegments(
@@ -53,7 +55,9 @@ function buildNameShapingSegments(
       region.kind === 'voice'
         ? '#f8fafc'
         : NAME_SHAPING_SELECTOR_COLORS[region.selector!],
-    opacity: region.kind === 'voice' ? opacity * 0.75 : opacity,
+    opacity: region.kind === 'voice' ? 0.24 : 0.34,
+    buttonInsetRatio: region.kind === 'voice' ? 0.84 : 0.9,
+    edgeOpacity: region.kind === 'voice' ? 0.65 : 1,
   }));
 }
 
@@ -66,6 +70,7 @@ export function TouchZones({
 }) {
   const areaGroupRef = useRef<THREE.Group>(null);
   const zoneAreaRefs = useRef<Array<THREE.Mesh | null>>([]);
+  const zoneButtonRefs = useRef<Array<THREE.Mesh | null>>([]);
   const zoneEdgeRefs = useRef<Array<THREE.LineSegments | null>>([]);
   const cameraPosRef = useRef(new THREE.Vector3());
   const cameraDirRef = useRef(new THREE.Vector3());
@@ -118,6 +123,8 @@ export function TouchZones({
         centerNdcY: 0,
         color: style.rulesColor,
         opacity: style.areaPlaneOpacityRules,
+        buttonInsetRatio: 0.9,
+        edgeOpacity: 1,
       },
       {
         widthRatio: layout.centerRatio,
@@ -126,6 +133,8 @@ export function TouchZones({
         centerNdcY: 0,
         color: style.centerColor,
         opacity: style.areaPlaneOpacityCenter,
+        buttonInsetRatio: 0.9,
+        edgeOpacity: 1,
       },
       {
         widthRatio: layout.rightRatio,
@@ -134,6 +143,8 @@ export function TouchZones({
         centerNdcY: 0,
         color: style.cardsColor,
         opacity: style.areaPlaneOpacityCards,
+        buttonInsetRatio: 0.9,
+        edgeOpacity: 1,
       },
     ];
     const segments = showNameShapingTouchZones
@@ -157,6 +168,8 @@ export function TouchZones({
       const visible = segment != null;
 
       if (areaRef) areaRef.visible = visible;
+      const buttonRef = zoneButtonRefs.current[index];
+      if (buttonRef) buttonRef.visible = visible;
       if (edgeRef) edgeRef.visible = visible;
       if (!visible || !areaRef?.material) continue;
 
@@ -171,9 +184,26 @@ export function TouchZones({
       areaMaterial.color.set(segment.color);
       areaMaterial.opacity = segment.opacity;
 
+      if (buttonRef?.material) {
+        buttonRef.scale.set(
+          width * segment.buttonInsetRatio,
+          height * Math.min(segment.buttonInsetRatio, 0.88),
+          1,
+        );
+        buttonRef.position.set(centerX, segmentCenterY, 0.001);
+        const buttonMaterial = buttonRef.material as THREE.MeshBasicMaterial;
+        buttonMaterial.color
+          .set(segment.color)
+          .offsetHSL(0, -0.08, segment.opacity > 0.3 ? 0.08 : -0.02);
+        buttonMaterial.opacity = Math.min(segment.opacity + 0.14, 0.48);
+      }
+
       if (edgeRef) {
         edgeRef.position.copy(areaRef.position);
         edgeRef.scale.copy(areaRef.scale);
+        const edgeMaterial = edgeRef.material as THREE.LineBasicMaterial;
+        edgeMaterial.opacity = segment.edgeOpacity;
+        edgeMaterial.transparent = segment.edgeOpacity < 1;
       }
     }
   });
@@ -211,6 +241,24 @@ export function TouchZones({
               depthTest={false}
             />
           </mesh>
+          <mesh
+            ref={node => {
+              zoneButtonRefs.current[index] = node;
+            }}
+            renderOrder={debugOverlayBase + index}
+          >
+            <planeGeometry args={[1, 1]} />
+            <meshBasicMaterial
+              color={style.centerColor}
+              transparent
+              opacity={style.areaPlaneOpacityCenter}
+              toneMapped={false}
+              blending={THREE.AdditiveBlending}
+              side={THREE.DoubleSide}
+              depthWrite={false}
+              depthTest={false}
+            />
+          </mesh>
           <lineSegments
             ref={node => {
               zoneEdgeRefs.current[index] = node;
@@ -218,7 +266,12 @@ export function TouchZones({
             geometry={planeEdgesGeometry}
             renderOrder={debugOverlayBase + index}
           >
-            <lineBasicMaterial color={style.edgeColor} depthTest={false} />
+            <lineBasicMaterial
+              color={style.edgeColor}
+              transparent
+              opacity={1}
+              depthTest={false}
+            />
           </lineSegments>
         </group>
       ))}

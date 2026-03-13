@@ -43,3 +43,12 @@ export { useNameShapingController } from './useNameShapingController';
 
 export { useSpineNameShapingCapture } from './useSpineNameShapingCapture';
 export type { NameShapingCaptureHandlers } from './useSpineNameShapingCapture';
+
+export { NameShapingDebugOverlay } from './NameShapingDebugOverlay';
+export type {
+  NameShapingDebugOverlayProps,
+  NameShapingDebugOverlayTheme,
+} from './NameShapingDebugOverlay';
+
+export { NameShapingTouchGuideOverlay } from './NameShapingTouchGuideOverlay';
+export type { NameShapingTouchGuideOverlayProps } from './NameShapingTouchGuideOverlay';

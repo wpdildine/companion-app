@@ -49,10 +49,11 @@ import {
   useNameShapingController,
   useNameShapingState,
   useSpineNameShapingCapture,
+  NameShapingTouchGuideOverlay,
 } from './nameShaping';
 
-/** Set true to enable NameShaping touch-to-selector capture for device testing; band then suppresses hold-to-speak and cluster release. */
-const NAME_SHAPING_CAPTURE_DEBUG = true;
+/** Set true to show NameShaping debug affordances by default; enabling capture remains manual in the Viz debug panel. */
+const NAME_SHAPING_CAPTURE_DEBUG = false;
 const DEBUG_ENABLED_DEFAULT = NAME_SHAPING_CAPTURE_DEBUG;
 const DEBUG_SCENARIO = false;
 const SHOW_REVEAL_CHIPS = false;
@@ -207,21 +208,18 @@ export default function AgentSurface() {
     nameShapingActions,
   );
   useEffect(() => {
-    if (NAME_SHAPING_CAPTURE_DEBUG && !nameShapingState.enabled) {
-      nameShapingActions.enable();
-      logInfo('AgentSurface', 'NameShaping debug capture enabled');
-    }
-  }, [nameShapingState.enabled, nameShapingActions]);
-  useEffect(() => {
     const viz = visualizationRef.current;
     if (!viz) return;
-    const showNameShapingDebugZones = NAME_SHAPING_CAPTURE_DEBUG;
+    const showNameShapingDebugZones = nameShapingState.enabled;
     viz.showNameShapingTouchZones = showNameShapingDebugZones;
-    if (showNameShapingDebugZones) {
-      viz.showTouchZones = true;
-      logInfo('AgentSurface', 'NameShaping selector touch zones enabled');
-    }
-  }, []);
+    viz.showTouchZones = showNameShapingDebugZones;
+    logInfo(
+      'AgentSurface',
+      showNameShapingDebugZones
+        ? 'NameShaping touch guide enabled'
+        : 'NameShaping touch guide disabled',
+    );
+  }, [nameShapingState.enabled]);
 
   useEffect(() => {
     logInfo('AgentSurface', 'mounted as active composition root');
@@ -407,7 +405,7 @@ export default function AgentSurface() {
   const canRevealPanels = DEBUG_SCENARIO || hasResultContext || hasReferenceStubs;
   const isAsking = orchState.lifecycle === 'processing';
   const interactionBandEnabled =
-    !debugEnabled &&
+    (!debugEnabled || nameShapingState.enabled) &&
     !anyPanelVisible &&
     orchState.lifecycle !== 'processing';
   const canHoldToSpeak = !isAsking && !anyPanelVisible && !debugEnabled;
@@ -809,8 +807,8 @@ export default function AgentSurface() {
         onLongPressStart={!debugEnabled ? handleUserModeLongPressStart : undefined}
         onLongPressEnd={!debugEnabled ? handleUserModeLongPressEnd : undefined}
         onClusterRelease={!debugEnabled ? handleClusterTap : undefined}
-      >
-        <UserVoiceView
+        >
+          <UserVoiceView
           contentPaddingTop={insets.top}
           contentPaddingBottom={insets.bottom}
           onScroll={handleOverlayScroll}
@@ -851,6 +849,12 @@ export default function AgentSurface() {
           />
         </UserVoiceView>
       </VisualizationSurface>
+      <NameShapingTouchGuideOverlay
+        visible={nameShapingState.enabled}
+        bandTopInsetPx={
+          visualizationRef.current?.scene?.zones.layout.bandTopInsetPx ?? 112
+        }
+      />
       <InteractionBand
         visualizationRef={visualizationRef}
         onClusterRelease={handleClusterTap}
@@ -902,6 +906,8 @@ export default function AgentSurface() {
                 stubRulesEnabled={debugStubRulesEnabled}
                 onToggleStubCards={() => setDebugStubCardsEnabled(prev => !prev)}
                 onToggleStubRules={() => setDebugStubRulesEnabled(prev => !prev)}
+                nameShapingState={nameShapingState}
+                nameShapingActions={nameShapingActions}
                 maxHeight={
                   telemetryLayout.height > 0
                     ? telemetryLayout.height - ((insets.top || 0) + (insets.bottom || 0) + 16)

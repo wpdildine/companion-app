@@ -46,7 +46,7 @@ When NameShaping is **enabled**, touch on the spine-adjacent interaction band ca
 - **Region map:** `nameShapingTouchRegions.ts` exposes `getSelectorFromNdc(ndcX, ndcY)` for **interaction-band-local NDC**. The canonical map is spine-local: a narrow reserved center voice lane stays excluded from selector capture, and mirrored spine-adjacent lanes are divided into six **vertical** selector segments from top to bottom = BRIGHT, ROUND, LIQUID, SOFT, HARD, BREAK. **BREAK is still a touchable debug region** so the full vocabulary can be exercised on device; the abstract model’s “BREAK as structural separator” is unchanged.
 - **Capture hook:** `useSpineNameShapingCapture(enabled, actions)` returns handlers that map touch start/move/end/cancel to state: touch start sets `activeSelector` only; move emits only on region change; end/cancel clear `activeSelector`.
 - **Integration:** Handlers are passed to `InteractionBand` as `nameShapingCapture`. InteractionBand remains the single touch owner. NameShaping capture is a semantic side path on the same touch stream, and the reserved center lane remains the hold-to-speak voice affordance. The TouchZones debug layer switches to the same canonical spine-local selector regions used by capture, so the visible overlay and input mapping stay aligned.
-- **Enabling for testing:** Set `NAME_SHAPING_CAPTURE_DEBUG = true` in `AgentSurface.tsx` to enable NameShaping on load for device testing.
+- **Enabling for testing:** Open the Viz debug panel and use the NameShaping **Enable** control to turn capture on manually for device testing. NameShaping touch zones appear only while the debug surface is open and NameShaping is enabled.
 
 ## Later executables
 
