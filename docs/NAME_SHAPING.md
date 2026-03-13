@@ -25,7 +25,7 @@ Selectors are **coarse sound-shape families**, not letters. The fixed vocabulary
 
 - A **name signature** is an ordered sequence of selectors. Repetition is allowed.
 - Raw emitted selector sequences preserve order and repetition.
-- **BREAK** is structural only; it does not denote a phonetic sound. Normalization may treat it specially in a later executable.
+- **BREAK** is structural only; it does not denote a phonetic sound. Token normalization (Executable 7) defines how BREAK is handled in normalized signatures.
 - The canonical ordering for UI/debug is: BRIGHT, ROUND, LIQUID, SOFT, HARD, BREAK (see `SELECTOR_ORDER` in code).
 
 ## Code surface
@@ -33,7 +33,11 @@ Selectors are **coarse sound-shape families**, not letters. The fixed vocabulary
 - **Constants and types:** `src/app/nameShaping/nameShapingConstants.ts`, `src/app/nameShaping/nameShapingTypes.ts`.
 - **Barrel:** `src/app/nameShaping/index.ts` — import from here for shared truth.
 - **Card-name-to-signature:** `buildCardNameSignature(cardName)` in `buildCardNameSignature.ts` returns a structured result (normalizedName, baseName, fullNameSignature, baseNameSignature). Code term: **baseNameSignature**. Doc phrase: "base-name sound-shape signature".
-- **Runtime state shape:** `NameShapingState` (enabled, rawEmittedSequence, normalizedSignature, resolverCandidates, selectedCandidate, activeSelector). Shape only in Block 1; no normalization or resolver behavior yet.
+- **Runtime state shape:** `NameShapingState` (enabled, rawEmittedSequence, normalizedSignature, resolverCandidates, selectedCandidate, activeSelector).
+
+## Token normalization (Executable 7)
+
+Raw emitted token sequences are normalized by `normalizeNameShapingSequence(rawTokens)` before being passed to the resolver. Rules: adjacent duplicate selectors collapse to one; adjacent BREAK runs collapse to one BREAK; leading and trailing BREAK are removed; interior BREAK is preserved; order is preserved. Output is a `NormalizedNameShapingSignature` (readonly array of selectors) suitable for `resolveProperNounBySignature`. No timing, DB, or UI—sequence-based only.
 
 ## Touch-to-selector capture (Executable 6)
 
@@ -48,6 +52,5 @@ When NameShaping is **enabled**, touch on the spine-adjacent interaction band ca
 
 This doc will be updated when:
 
-- Normalization rules (e.g. whether BREAK appears in normalized signatures) are defined.
-- Resolver contract and scoring are implemented.
+- Resolver contract and scoring are refined or extended.
 - Overlay rendering is added.

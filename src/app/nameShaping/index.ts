@@ -23,6 +23,8 @@ export type {
 export { buildCardNameSignature } from './buildCardNameSignature';
 export type { CardNameSignatureResult } from './buildCardNameSignature';
 
+export { normalizeNameShapingSequence } from './normalizeNameShapingSequence';
+
 export { buildResolverIndex } from './resolverIndex';
 export type { ResolverIndexReader } from './resolverIndex';
 
