@@ -32,5 +32,10 @@ export {
 } from './resolveProperNounBySignature';
 export type { ScoreResult } from './resolveProperNounBySignature';
 
+export { getSelectorFromNdc } from './nameShapingTouchRegions';
+
 export { useNameShapingState } from './useNameShapingState';
 export type { NameShapingActions } from './useNameShapingState';
+
+export { useSpineNameShapingCapture } from './useSpineNameShapingCapture';
+export type { NameShapingCaptureHandlers } from './useSpineNameShapingCapture';

@@ -122,6 +122,8 @@ export interface VisualizationEngineRef {
   focusZone: 'rules' | 'neutral' | 'cards' | null;
   /** Show touch zone debug meshes (rules/center/cards). Default off; toggle in Dev panel. */
   showTouchZones: boolean;
+  /** When true, the touch-zone debug layer shows six NameShaping selector regions instead of the default rules/center/cards layout. */
+  showNameShapingTouchZones: boolean;
   /** Spine planes: true = per-plane halftone shader, false = solid MeshBasicMaterial. Toggle in Dev panel. */
   spineUseHalftonePlanes: boolean;
   /** Dev: cycle-all-states toggle and timer (persists when panel closes). */

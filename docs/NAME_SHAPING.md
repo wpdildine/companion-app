@@ -35,10 +35,19 @@ Selectors are **coarse sound-shape families**, not letters. The fixed vocabulary
 - **Card-name-to-signature:** `buildCardNameSignature(cardName)` in `buildCardNameSignature.ts` returns a structured result (normalizedName, baseName, fullNameSignature, baseNameSignature). Code term: **baseNameSignature**. Doc phrase: "base-name sound-shape signature".
 - **Runtime state shape:** `NameShapingState` (enabled, rawEmittedSequence, normalizedSignature, resolverCandidates, selectedCandidate, activeSelector). Shape only in Block 1; no normalization or resolver behavior yet.
 
+## Touch-to-selector capture (Executable 6)
+
+When NameShaping is **enabled**, touch on the spine-adjacent interaction band can drive selector capture:
+
+- **Region map:** `nameShapingTouchRegions.ts` exposes `getSelectorFromNdc(ndcX, ndcY)` for **interaction-band-local NDC**. The canonical map is spine-local: a narrow reserved center voice lane stays excluded from selector capture, and mirrored spine-adjacent lanes are divided into six **vertical** selector segments from top to bottom = BRIGHT, ROUND, LIQUID, SOFT, HARD, BREAK. **BREAK is still a touchable debug region** so the full vocabulary can be exercised on device; the abstract model’s “BREAK as structural separator” is unchanged.
+- **Capture hook:** `useSpineNameShapingCapture(enabled, actions)` returns handlers that map touch start/move/end/cancel to state: touch start sets `activeSelector` only; move emits only on region change; end/cancel clear `activeSelector`.
+- **Integration:** Handlers are passed to `InteractionBand` as `nameShapingCapture`. InteractionBand remains the single touch owner. NameShaping capture is a semantic side path on the same touch stream, and the reserved center lane remains the hold-to-speak voice affordance. The TouchZones debug layer switches to the same canonical spine-local selector regions used by capture, so the visible overlay and input mapping stay aligned.
+- **Enabling for testing:** Set `NAME_SHAPING_CAPTURE_DEBUG = true` in `AgentSurface.tsx` to enable NameShaping on load for device testing.
+
 ## Later executables
 
 This doc will be updated when:
 
 - Normalization rules (e.g. whether BREAK appears in normalized signatures) are defined.
 - Resolver contract and scoring are implemented.
-- Overlay and input-capture behavior are added.
+- Overlay rendering is added.

@@ -18,6 +18,7 @@ import React, { useRef, useCallback, useEffect } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 import type { LayoutChangeEvent, GestureResponderEvent } from 'react-native';
 import type { RefObject } from 'react';
+import { isVoiceLaneNdc } from '../../app/nameShaping/nameShapingTouchRegions';
 import type { VisualizationEngineRef } from '../runtime/runtimeTypes';
 import { getZoneFromNdcX } from './zoneLayout';
 
@@ -25,6 +26,14 @@ import { getZoneFromNdcX } from './zoneLayout';
 const CENTER_HOLD_THRESHOLD_MS = 450;
 /** Move beyond this (px) or leave center zone cancels the pending center hold. */
 const CENTER_HOLD_MOVE_CANCEL_PX = 12;
+
+/** When present, band invokes these with NDC and suppresses hold-to-speak and cluster release (debug capture priority). */
+export type NameShapingCaptureHandlers = {
+  onTouchStart: (ndc: [number, number]) => void;
+  onTouchMove: (ndc: [number, number]) => void;
+  onTouchEnd: () => void;
+  onTouchCancel: () => void;
+};
 
 export type InteractionBandProps = {
   visualizationRef: RefObject<VisualizationEngineRef | null>;
@@ -36,6 +45,8 @@ export type InteractionBandProps = {
   onCenterHoldStart?: () => void;
   /** Center spine hold: called once when touch ends after hold had started. */
   onCenterHoldEnd?: () => void;
+  /** When provided, touch NDC is forwarded to these handlers and band semantic actions (center hold, cluster release) are suppressed. */
+  nameShapingCapture?: NameShapingCaptureHandlers;
   enabled?: boolean;
   blocked?: boolean;
   blockedUntil?: number | null;
@@ -47,6 +58,7 @@ export function InteractionBand({
   onClusterTap,
   onCenterHoldStart,
   onCenterHoldEnd,
+  nameShapingCapture,
   enabled = true,
   blocked = false,
   blockedUntil = null,
@@ -85,6 +97,17 @@ export function InteractionBand({
       return [ndcX, ndcY];
     },
     [visualizationRef],
+  );
+
+  const toBandNdc = useCallback(
+    (locationX: number, locationY: number): [number, number] | null => {
+      const layout = layoutRef.current;
+      if (!layout || layout.w <= 0 || layout.h <= 0) return null;
+      const ndcX = (locationX / layout.w) * 2 - 1;
+      const ndcY = 1 - (locationY / layout.h) * 2;
+      return [ndcX, ndcY];
+    },
+    [],
   );
 
   const setZoneArmedFromNdc = useCallback(
@@ -131,6 +154,7 @@ export function InteractionBand({
       const v = visualizationRef.current;
       if (!v) return;
       const ndc = toNdc(locationX, locationY);
+      const bandNdc = toBandNdc(locationX, locationY);
       if (ndc) {
         touchStartRef.current = { x: locationX, y: locationY };
         v.touchFieldActive = true;
@@ -138,7 +162,11 @@ export function InteractionBand({
         v.touchFieldStrength = 1;
         setZoneArmedFromNdc(v, ndc);
         const zone = getZoneFromNdcX(ndc[0]);
-        if (zone === null) {
+        const inVoiceLane =
+          nameShapingCapture != null && bandNdc != null
+            ? isVoiceLaneNdc(bandNdc[0], bandNdc[1])
+            : zone === null;
+        if (inVoiceLane) {
           centerHoldTimerRef.current = setTimeout(() => {
             centerHoldTimerRef.current = null;
             if (!centerHoldStartedRef.current) {
@@ -147,9 +175,12 @@ export function InteractionBand({
             }
           }, CENTER_HOLD_THRESHOLD_MS);
         }
+        if (bandNdc) {
+          nameShapingCapture?.onTouchStart(bandNdc);
+        }
       }
     },
-    [visualizationRef, toNdc, enabled, setZoneArmedFromNdc, onCenterHoldStart],
+    [visualizationRef, toNdc, toBandNdc, enabled, setZoneArmedFromNdc, onCenterHoldStart, nameShapingCapture],
   );
 
   const handleTouchMove = useCallback(
@@ -159,15 +190,20 @@ export function InteractionBand({
       const v = visualizationRef.current;
       if (!v) return;
       const ndc = toNdc(locationX, locationY);
+      const bandNdc = toBandNdc(locationX, locationY);
       if (ndc) {
         const zone = getZoneFromNdcX(ndc[0]);
         const start = touchStartRef.current;
         const movedPx = start
           ? Math.hypot(locationX - start.x, locationY - start.y)
           : 0;
+        const inVoiceLane =
+          nameShapingCapture != null && bandNdc != null
+            ? isVoiceLaneNdc(bandNdc[0], bandNdc[1])
+            : zone === null;
         if (
           centerHoldTimerRef.current &&
-          (zone !== null || movedPx > CENTER_HOLD_MOVE_CANCEL_PX)
+          (!inVoiceLane || movedPx > CENTER_HOLD_MOVE_CANCEL_PX)
         ) {
           clearTimeout(centerHoldTimerRef.current);
           centerHoldTimerRef.current = null;
@@ -175,9 +211,12 @@ export function InteractionBand({
         v.touchFieldNdc = ndc;
         v.touchFieldStrength = 1;
         setZoneArmedFromNdc(v, ndc);
+        if (bandNdc) {
+          nameShapingCapture?.onTouchMove(bandNdc);
+        }
       }
     },
-    [visualizationRef, toNdc, enabled, setZoneArmedFromNdc],
+    [visualizationRef, toNdc, toBandNdc, enabled, setZoneArmedFromNdc, nameShapingCapture],
   );
 
   const handleTouchEnd = useCallback(
@@ -185,6 +224,7 @@ export function InteractionBand({
       if (!enabled) return;
       const v = visualizationRef.current;
       const holdHadStarted = centerHoldStartedRef.current;
+      nameShapingCapture?.onTouchEnd();
       clearCenterHoldState();
       if (v) {
         v.touchFieldActive = false;
@@ -212,9 +252,11 @@ export function InteractionBand({
       onCenterHoldEnd,
       enabled,
       clearCenterHoldState,
+      nameShapingCapture,
     ],
   );
   const handleTouchCancel = useCallback(() => {
+    nameShapingCapture?.onTouchCancel();
     clearCenterHoldState();
     const v = visualizationRef.current;
     if (v) {
@@ -223,7 +265,7 @@ export function InteractionBand({
       v.touchFieldStrength = 0;
       v.zoneArmed = null;
     }
-  }, [visualizationRef, clearCenterHoldState]);
+  }, [visualizationRef, clearCenterHoldState, nameShapingCapture]);
 
   return (
     <View

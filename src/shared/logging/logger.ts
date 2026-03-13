@@ -22,6 +22,7 @@ export type LogScope =
   | 'RAG'
   | 'Playback'
   | 'Interaction'
+  | 'NameShapingCapture'
   | 'AppBoot';
 
 export type LogDetails = Record<string, unknown> & {

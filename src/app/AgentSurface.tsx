@@ -45,8 +45,11 @@ import {
   type RequestDebugState,
 } from './agent';
 import { copyBundlePackToDocuments } from '../rag';
+import { useNameShapingState, useSpineNameShapingCapture } from './nameShaping';
 
-const DEBUG_ENABLED_DEFAULT = false;
+/** Set true to enable NameShaping touch-to-selector capture for device testing; band then suppresses hold-to-speak and cluster release. */
+const NAME_SHAPING_CAPTURE_DEBUG = true;
+const DEBUG_ENABLED_DEFAULT = NAME_SHAPING_CAPTURE_DEBUG;
 const DEBUG_SCENARIO = false;
 const SHOW_REVEAL_CHIPS = false;
 const SHOW_HOLD_TO_SPEAK = false;
@@ -59,6 +62,7 @@ const DEBUG_LOG_SCOPES: Array<import('../shared/logging').LogScope> = [
   'AgentOrchestrator',
   'Interaction',
   'AgentSurface',
+  'NameShapingCapture',
 ];
 
 /** Interaction ownership: one owner wins by priority (debug > overlay > holdToSpeak > swipeContext > playbackTap > none). none = no owner holds exclusive interaction. */
@@ -146,7 +150,7 @@ export default function AgentSurface() {
   }, []);
 
   const [debugPanelMode, setDebugPanelMode] = useState<'off' | 'telemetry' | 'viz'>(
-    DEBUG_ENABLED_DEFAULT ? 'telemetry' : 'off',
+    DEBUG_ENABLED_DEFAULT ? 'viz' : 'off',
   );
   const debugEnabled = debugPanelMode !== 'off';
   const [debugStubCardsEnabled, setDebugStubCardsEnabled] = useState(false);
@@ -191,6 +195,28 @@ export default function AgentSurface() {
     debugEnabled,
     debugScenario: DEBUG_SCENARIO,
   });
+
+  const { state: nameShapingState, actions: nameShapingActions } = useNameShapingState();
+  const { capture: nameShapingCapture } = useSpineNameShapingCapture(
+    nameShapingState.enabled,
+    nameShapingActions,
+  );
+  useEffect(() => {
+    if (NAME_SHAPING_CAPTURE_DEBUG && !nameShapingState.enabled) {
+      nameShapingActions.enable();
+      logInfo('AgentSurface', 'NameShaping debug capture enabled');
+    }
+  }, [nameShapingState.enabled, nameShapingActions]);
+  useEffect(() => {
+    const viz = visualizationRef.current;
+    if (!viz) return;
+    const showNameShapingDebugZones = NAME_SHAPING_CAPTURE_DEBUG;
+    viz.showNameShapingTouchZones = showNameShapingDebugZones;
+    if (showNameShapingDebugZones) {
+      viz.showTouchZones = true;
+      logInfo('AgentSurface', 'NameShaping selector touch zones enabled');
+    }
+  }, []);
 
   useEffect(() => {
     logInfo('AgentSurface', 'mounted as active composition root');
@@ -825,6 +851,7 @@ export default function AgentSurface() {
         onClusterRelease={handleClusterTap}
         onCenterHoldStart={!debugEnabled ? handleCenterHoldStart : undefined}
         onCenterHoldEnd={!debugEnabled ? handleCenterHoldEnd : undefined}
+        nameShapingCapture={nameShapingState.enabled ? nameShapingCapture : undefined}
         enabled={interactionBandEnabled}
         blocked={orchState.ioBlockedUntil != null}
         blockedUntil={orchState.ioBlockedUntil ?? null}

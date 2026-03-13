@@ -1,11 +1,17 @@
 /**
- * Touch zone affordances (rules / center / cards). Dumb renderer: viewport math and
- * camera-facing placement only; all layout and style from visualizationRef.current.scene.
+ * Touch zone affordances. Dumb renderer: viewport math and camera-facing placement
+ * only; all layout/style from visualizationRef.current.scene. When NameShaping
+ * debug capture is enabled, this layer reuses the canonical selector region map.
  */
 
 import { useFrame } from '@react-three/fiber/native';
 import { useRef } from 'react';
 import * as THREE from 'three';
+import {
+  NAME_SHAPING_OVERLAY_REGIONS,
+  type NameShapingOverlayRegion,
+} from '../../../app/nameShaping/nameShapingTouchRegions';
+import type { NameShapingSelector } from '../../../app/nameShaping/nameShapingConstants';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
@@ -13,6 +19,43 @@ import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 const planeEdgesGeometry = new THREE.EdgesGeometry(
   new THREE.PlaneGeometry(1, 1),
 );
+
+const MAX_ZONE_COUNT = 13;
+
+const NAME_SHAPING_SELECTOR_COLORS: Record<NameShapingSelector, string> = {
+  BRIGHT: '#f59e0b',
+  ROUND: '#ef4444',
+  LIQUID: '#06b6d4',
+  SOFT: '#22c55e',
+  HARD: '#3b82f6',
+  BREAK: '#a855f7',
+};
+
+type OverlaySegment = {
+  widthRatio: number;
+  heightRatio: number;
+  centerNdcX: number;
+  centerNdcY: number;
+  color: string;
+  opacity: number;
+};
+
+function buildNameShapingSegments(
+  regions: readonly NameShapingOverlayRegion[],
+  opacity: number,
+): OverlaySegment[] {
+  return regions.map(region => ({
+    widthRatio: (region.endNdcX - region.startNdcX) * 0.5,
+    heightRatio: (region.endNdcY - region.startNdcY) * 0.5,
+    centerNdcX: (region.startNdcX + region.endNdcX) * 0.5,
+    centerNdcY: (region.startNdcY + region.endNdcY) * 0.5,
+    color:
+      region.kind === 'voice'
+        ? '#f8fafc'
+        : NAME_SHAPING_SELECTOR_COLORS[region.selector!],
+    opacity: region.kind === 'voice' ? opacity * 0.75 : opacity,
+  }));
+}
 
 export function TouchZones({
   visualizationRef,
@@ -22,12 +65,8 @@ export function TouchZones({
   descriptor?: LayerDescriptor;
 }) {
   const areaGroupRef = useRef<THREE.Group>(null);
-  const rulesAreaRef = useRef<THREE.Mesh>(null);
-  const centerAreaRef = useRef<THREE.Mesh>(null);
-  const cardsAreaRef = useRef<THREE.Mesh>(null);
-  const rulesAreaEdgesRef = useRef<THREE.LineSegments>(null);
-  const centerAreaEdgesRef = useRef<THREE.LineSegments>(null);
-  const cardsAreaEdgesRef = useRef<THREE.LineSegments>(null);
+  const zoneAreaRefs = useRef<Array<THREE.Mesh | null>>([]);
+  const zoneEdgeRefs = useRef<Array<THREE.LineSegments | null>>([]);
   const cameraPosRef = useRef(new THREE.Vector3());
   const cameraDirRef = useRef(new THREE.Vector3());
 
@@ -47,6 +86,7 @@ export function TouchZones({
     const { layout, style } = scene.zones;
     const show = v.vizIntensity !== 'off';
     const showZones = v.showTouchZones ?? false;
+    const showNameShapingTouchZones = v.showNameShapingTouchZones ?? false;
 
     if (!areaGroupRef.current) return;
     const w = v.canvasWidth > 0 ? v.canvasWidth : state.size.width;
@@ -70,9 +110,38 @@ export function TouchZones({
     const activeHeight = viewHeight * activeHeightRatio;
     const centerY = centerNdcY * (viewHeight * 0.5);
 
-    const leftRatio = layout.leftRatio;
-    const centerRatio = layout.centerRatio;
-    const rightRatio = layout.rightRatio;
+    const defaultSegments: OverlaySegment[] = [
+      {
+        widthRatio: layout.leftRatio,
+        heightRatio: 1,
+        centerNdcX: -1 + layout.leftRatio,
+        centerNdcY: 0,
+        color: style.rulesColor,
+        opacity: style.areaPlaneOpacityRules,
+      },
+      {
+        widthRatio: layout.centerRatio,
+        heightRatio: 1,
+        centerNdcX: 0,
+        centerNdcY: 0,
+        color: style.centerColor,
+        opacity: style.areaPlaneOpacityCenter,
+      },
+      {
+        widthRatio: layout.rightRatio,
+        heightRatio: 1,
+        centerNdcX: 1 - layout.rightRatio,
+        centerNdcY: 0,
+        color: style.cardsColor,
+        opacity: style.areaPlaneOpacityCards,
+      },
+    ];
+    const segments = showNameShapingTouchZones
+      ? buildNameShapingSegments(
+          NAME_SHAPING_OVERLAY_REGIONS,
+          style.areaPlaneOpacityCenter,
+        )
+      : defaultSegments;
 
     cam.getWorldPosition(cameraPosRef.current);
     cam.getWorldDirection(cameraDirRef.current);
@@ -81,49 +150,30 @@ export function TouchZones({
       .add(cameraDirRef.current.multiplyScalar(10));
     areaGroupRef.current.quaternion.copy(cam.quaternion);
 
-    if (rulesAreaRef.current?.material) {
-      rulesAreaRef.current.scale.set(viewWidth * leftRatio, activeHeight, 1);
-      rulesAreaRef.current.position.set(
-        -viewWidth * (0.5 - leftRatio * 0.5),
-        centerY,
-        0,
-      );
-      const m = rulesAreaRef.current.material as THREE.MeshBasicMaterial;
-      m.color.set(style.rulesColor);
-      m.opacity = style.areaPlaneOpacityRules;
-      if (rulesAreaEdgesRef.current) {
-        rulesAreaEdgesRef.current.position.copy(rulesAreaRef.current.position);
-        rulesAreaEdgesRef.current.scale.copy(rulesAreaRef.current.scale);
-      }
-    }
-    if (centerAreaRef.current?.material) {
-      centerAreaRef.current.scale.set(viewWidth * centerRatio, activeHeight, 1);
-      centerAreaRef.current.position.set(0, centerY, 0);
-      centerAreaRef.current.visible = areaVisible;
-      const m = centerAreaRef.current.material as THREE.MeshBasicMaterial;
-      m.color.set(style.centerColor);
-      m.opacity = style.areaPlaneOpacityCenter;
-      if (centerAreaEdgesRef.current) {
-        centerAreaEdgesRef.current.position.copy(
-          centerAreaRef.current.position,
-        );
-        centerAreaEdgesRef.current.scale.copy(centerAreaRef.current.scale);
-        centerAreaEdgesRef.current.visible = areaVisible;
-      }
-    }
-    if (cardsAreaRef.current?.material) {
-      cardsAreaRef.current.scale.set(viewWidth * rightRatio, activeHeight, 1);
-      cardsAreaRef.current.position.set(
-        viewWidth * (0.5 - rightRatio * 0.5),
-        centerY,
-        0,
-      );
-      const m = cardsAreaRef.current.material as THREE.MeshBasicMaterial;
-      m.color.set(style.cardsColor);
-      m.opacity = style.areaPlaneOpacityCards;
-      if (cardsAreaEdgesRef.current) {
-        cardsAreaEdgesRef.current.position.copy(cardsAreaRef.current.position);
-        cardsAreaEdgesRef.current.scale.copy(cardsAreaRef.current.scale);
+    for (let index = 0; index < MAX_ZONE_COUNT; index += 1) {
+      const areaRef = zoneAreaRefs.current[index];
+      const edgeRef = zoneEdgeRefs.current[index];
+      const segment = segments[index];
+      const visible = segment != null;
+
+      if (areaRef) areaRef.visible = visible;
+      if (edgeRef) edgeRef.visible = visible;
+      if (!visible || !areaRef?.material) continue;
+
+      const width = viewWidth * segment.widthRatio;
+      const height = activeHeight * segment.heightRatio;
+      const centerX = segment.centerNdcX * (viewWidth * 0.5);
+      const segmentCenterY = centerY + segment.centerNdcY * (activeHeight * 0.5);
+      areaRef.scale.set(width, height, 1);
+      areaRef.position.set(centerX, segmentCenterY, 0);
+
+      const areaMaterial = areaRef.material as THREE.MeshBasicMaterial;
+      areaMaterial.color.set(segment.color);
+      areaMaterial.opacity = segment.opacity;
+
+      if (edgeRef) {
+        edgeRef.position.copy(areaRef.position);
+        edgeRef.scale.copy(areaRef.scale);
       }
     }
   });
@@ -138,72 +188,40 @@ export function TouchZones({
     'debugOverlay',
     4000,
   );
-  const zoneIndexRules = 0;
-  const zoneIndexCenter = 1;
-  const zoneIndexCards = 2;
 
   return (
     <group ref={areaGroupRef} visible={false} renderOrder={debugOverlayBase}>
-      <mesh ref={rulesAreaRef} renderOrder={debugOverlayBase + zoneIndexRules}>
-        <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial
-          color={style.rulesColor}
-          transparent
-          opacity={style.areaPlaneOpacityRules}
-          toneMapped={false}
-          blending={THREE.AdditiveBlending}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-          depthTest={false}
-        />
-      </mesh>
-      <lineSegments
-        ref={rulesAreaEdgesRef}
-        geometry={planeEdgesGeometry}
-        renderOrder={debugOverlayBase + zoneIndexRules}
-      >
-        <lineBasicMaterial color={style.edgeColor} depthTest={false} />
-      </lineSegments>
-      <mesh ref={centerAreaRef} renderOrder={debugOverlayBase + zoneIndexCenter}>
-        <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial
-          color={style.centerColor}
-          transparent
-          opacity={style.areaPlaneOpacityCenter}
-          toneMapped={false}
-          blending={THREE.AdditiveBlending}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-          depthTest={false}
-        />
-      </mesh>
-      <lineSegments
-        ref={centerAreaEdgesRef}
-        geometry={planeEdgesGeometry}
-        renderOrder={debugOverlayBase + zoneIndexCenter}
-      >
-        <lineBasicMaterial color={style.edgeColor} depthTest={false} />
-      </lineSegments>
-      <mesh ref={cardsAreaRef} renderOrder={debugOverlayBase + zoneIndexCards}>
-        <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial
-          color={style.cardsColor}
-          transparent
-          opacity={style.areaPlaneOpacityCards}
-          toneMapped={false}
-          blending={THREE.AdditiveBlending}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-          depthTest={false}
-        />
-      </mesh>
-      <lineSegments
-        ref={cardsAreaEdgesRef}
-        geometry={planeEdgesGeometry}
-        renderOrder={debugOverlayBase + zoneIndexCards}
-      >
-        <lineBasicMaterial color={style.edgeColor} depthTest={false} />
-      </lineSegments>
+      {Array.from({ length: MAX_ZONE_COUNT }, (_, index) => (
+        <group key={index}>
+          <mesh
+            ref={node => {
+              zoneAreaRefs.current[index] = node;
+            }}
+            renderOrder={debugOverlayBase + index}
+          >
+            <planeGeometry args={[1, 1]} />
+            <meshBasicMaterial
+              color={style.centerColor}
+              transparent
+              opacity={style.areaPlaneOpacityCenter}
+              toneMapped={false}
+              blending={THREE.AdditiveBlending}
+              side={THREE.DoubleSide}
+              depthWrite={false}
+              depthTest={false}
+            />
+          </mesh>
+          <lineSegments
+            ref={node => {
+              zoneEdgeRefs.current[index] = node;
+            }}
+            geometry={planeEdgesGeometry}
+            renderOrder={debugOverlayBase + index}
+          >
+            <lineBasicMaterial color={style.edgeColor} depthTest={false} />
+          </lineSegments>
+        </group>
+      ))}
     </group>
   );
 }
