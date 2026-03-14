@@ -223,6 +223,37 @@ describe('useOpenAIProxy', () => {
   });
 
   describe('Missing text handling', () => {
+    it('STT: accepts common nested proxy transcript shapes', async () => {
+      mockGetEndpointBaseUrl.mockReturnValue('https://proxy.example.com');
+      const responses = [
+        { transcript: 'Nested transcript' },
+        { output_text: 'Output text transcript' },
+        { data: { text: 'Data text transcript' } },
+        { result: { transcript: 'Result transcript' } },
+        { text: { value: 'Object value transcript' } },
+        { text: [{ text: 'Array' }, { value: 'based transcript' }] },
+        { choices: [{ text: 'Choice transcript' }] },
+        { segments: [{ text: 'Joined' }, { text: 'segments' }] },
+      ];
+
+      renderHarness();
+
+      for (const response of responses) {
+        (fetchMock as jest.Mock).mockResolvedValueOnce({
+          ok: true,
+          json: async () => response,
+        } as Response);
+
+        let result: { text: string } | undefined;
+        await act(async () => {
+          result = await hookResult!.transcribeAudio({ audioBase64: 'x' });
+        });
+
+        expect(result?.text.length).toBeGreaterThan(0);
+        expect(hookResult!.lastError).toBeNull();
+      }
+    });
+
     it('STT: 200 with valid JSON but missing/empty text treats as error and does not return result', async () => {
       mockGetEndpointBaseUrl.mockReturnValue('https://proxy.example.com');
       (fetchMock as jest.Mock).mockResolvedValueOnce({

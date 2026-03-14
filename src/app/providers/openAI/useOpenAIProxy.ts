@@ -7,6 +7,7 @@
 
 import { useCallback, useState } from 'react';
 import { getEndpointBaseUrl } from '../../endpointConfig';
+import { logWarn } from '../../../shared/logging';
 import type {
   OpenAIProxyError,
   RespondParams,
@@ -42,14 +43,129 @@ function buildProxyUrl(base: string, path: '/api/stt' | '/api/respond'): string 
   return `${base.replace(/\/+$/, '')}${path}`;
 }
 
+function readTrimmedString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function readStructuredText(value: unknown): string | null {
+  const direct = readTrimmedString(value);
+  if (direct) return direct;
+
+  if (Array.isArray(value)) {
+    const joined = value
+      .map(item => {
+        if (typeof item === 'string') return readTrimmedString(item);
+        if (item != null && typeof item === 'object') {
+          const obj = item as Record<string, unknown>;
+          return (
+            readTrimmedString(obj.text) ??
+            readTrimmedString(obj.value) ??
+            readTrimmedString(obj.content)
+          );
+        }
+        return null;
+      })
+      .filter((item): item is string => item != null)
+      .join(' ')
+      .trim();
+    return joined.length > 0 ? joined : null;
+  }
+
+  if (value != null && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    return (
+      readTrimmedString(obj.text) ??
+      readTrimmedString(obj.value) ??
+      readTrimmedString(obj.content) ??
+      readStructuredText(obj.parts) ??
+      readStructuredText(obj.segments)
+    );
+  }
+
+  return null;
+}
+
+function summarizeObjectKeys(value: unknown): string[] {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) return [];
+  return Object.keys(value as Record<string, unknown>).slice(0, 8);
+}
+
+function summarizeSttPayloadShape(data: unknown): Record<string, unknown> {
+  if (data == null) return { responseType: 'null' };
+  if (Array.isArray(data)) {
+    return {
+      responseType: 'array',
+      length: data.length,
+      firstItemKeys: summarizeObjectKeys(data[0]),
+    };
+  }
+  if (typeof data !== 'object') {
+    return {
+      responseType: typeof data,
+      preview: typeof data === 'string' ? data.slice(0, 120) : String(data),
+    };
+  }
+
+  const obj = data as Record<string, unknown>;
+  return {
+    responseType: 'object',
+    keys: Object.keys(obj).slice(0, 12),
+    textType: Array.isArray(obj.text) ? 'array' : typeof obj.text,
+    textKeys: summarizeObjectKeys(obj.text),
+    textPreview: readStructuredText(obj.text)?.slice(0, 120) ?? null,
+    dataKeys: summarizeObjectKeys(obj.data),
+    resultKeys: summarizeObjectKeys(obj.result),
+    responseKeys: summarizeObjectKeys(obj.response),
+    firstChoiceKeys: Array.isArray(obj.choices) ? summarizeObjectKeys(obj.choices[0]) : [],
+    segmentCount: Array.isArray(obj.segments) ? obj.segments.length : 0,
+    hasError: obj.error != null,
+  };
+}
+
 /** Extract text from proxy STT response (e.g. { text } or OpenAI Whisper shape). */
 function parseSttResponse(data: unknown): { text: string } {
-  if (data != null && typeof data === 'object' && 'text' in data) {
-    const t = (data as { text?: unknown }).text;
-    if (typeof t === 'string' && t.trim().length > 0) {
-      return { text: t.trim() };
+  if (data != null && typeof data === 'object') {
+    const obj = data as Record<string, unknown>;
+    const directCandidates = [
+      obj.text,
+      obj.transcript,
+      obj.output_text,
+      (obj.data as Record<string, unknown> | undefined)?.text,
+      (obj.data as Record<string, unknown> | undefined)?.transcript,
+      (obj.result as Record<string, unknown> | undefined)?.text,
+      (obj.result as Record<string, unknown> | undefined)?.transcript,
+      (obj.response as Record<string, unknown> | undefined)?.text,
+      (obj.response as Record<string, unknown> | undefined)?.transcript,
+    ];
+    for (const candidate of directCandidates) {
+      const text = readStructuredText(candidate);
+      if (text) {
+        return { text };
+      }
+    }
+
+    if (Array.isArray(obj.segments)) {
+      const joinedSegments = obj.segments
+        .map(segment => readTrimmedString((segment as Record<string, unknown> | null)?.text))
+        .filter((segment): segment is string => segment != null)
+        .join(' ')
+        .trim();
+      if (joinedSegments.length > 0) {
+        return { text: joinedSegments };
+      }
+    }
+
+    if (Array.isArray(obj.choices) && obj.choices.length > 0) {
+      const firstChoice = obj.choices[0] as Record<string, unknown> | undefined;
+      const text = readStructuredText(firstChoice?.text);
+      if (text) {
+        return { text };
+      }
     }
   }
+  logWarn('OpenAIProxy', 'stt response missing text', summarizeSttPayloadShape(data));
   throwNormalizedError(ERR_STT_NO_TEXT, 'E_NO_TEXT');
 }
 

@@ -15,7 +15,25 @@ jest.mock('expo-audio', () => ({
     seekTo: jest.fn(() => Promise.resolve()),
     release: jest.fn(),
   })),
+  useAudioRecorder: jest.fn(() => ({
+    prepareToRecordAsync: jest.fn(() => Promise.resolve()),
+    record: jest.fn(),
+    stop: jest.fn(() => Promise.resolve()),
+    uri: 'file:///tmp/mock-recording.m4a',
+  })),
+  requestRecordingPermissionsAsync: jest.fn(() =>
+    Promise.resolve({ granted: true, status: 'granted' }),
+  ),
+  RecordingPresets: {
+    HIGH_QUALITY: {},
+  },
   setAudioModeAsync: jest.fn(() => Promise.resolve()),
+}));
+
+jest.mock('expo-file-system', () => ({
+  File: jest.fn(() => ({
+    base64: jest.fn(() => Promise.resolve('')),
+  })),
 }));
 
 jest.mock('../src/shared/feedback/earcons', () => ({

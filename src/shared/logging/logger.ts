@@ -12,6 +12,7 @@
 
 export type LogScope =
   | 'AgentOrchestrator'
+  | 'OpenAIProxy'
   | 'AgentSurface'
   | 'Visualization'
   | 'VisualizationController'

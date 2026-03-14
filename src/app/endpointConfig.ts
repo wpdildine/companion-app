@@ -11,6 +11,12 @@ const raw =
   typeof process !== 'undefined' && process.env != null
     ? process.env.ENDPOINT_BASE_URL
     : undefined;
+const rawSttProvider =
+  typeof process !== 'undefined' && process.env != null
+    ? process.env.STT_PROVIDER
+    : undefined;
+
+export type SttProvider = 'local' | 'remote';
 
 /** Base URL for hook endpoints, or null if unset / "null" string. */
 export function getEndpointBaseUrl(): string | null {
@@ -18,4 +24,9 @@ export function getEndpointBaseUrl(): string | null {
     return null;
   }
   return raw.replace(/\/$/, '');
+}
+
+/** Speech-to-text provider mode: `local` keeps native speech recognition, `remote` uploads captured audio to the proxy. */
+export function getSttProvider(): SttProvider {
+  return rawSttProvider === 'remote' ? 'remote' : 'local';
 }

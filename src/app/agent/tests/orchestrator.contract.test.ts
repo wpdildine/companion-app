@@ -59,6 +59,40 @@ jest.mock('react-native-tts', () => ({
   },
 }));
 
+jest.mock('expo-audio', () => ({
+  useAudioRecorder: jest.fn(() => ({
+    prepareToRecordAsync: jest.fn(() => Promise.resolve()),
+    record: jest.fn(),
+    stop: jest.fn(() => Promise.resolve()),
+    uri: 'file:///tmp/mock-recording.m4a',
+  })),
+  requestRecordingPermissionsAsync: jest.fn(() =>
+    Promise.resolve({ granted: true, status: 'granted' }),
+  ),
+  RecordingPresets: {
+    HIGH_QUALITY: {},
+  },
+  setAudioModeAsync: jest.fn(() => Promise.resolve()),
+}));
+
+jest.mock('expo-file-system', () => ({
+  File: jest.fn((...args: unknown[]) => ({
+    uri: typeof args[args.length - 1] === 'string' ? String(args[args.length - 1]) : 'file:///tmp/mock-recording.m4a',
+    base64: jest.fn(() => Promise.resolve('')),
+    create: jest.fn(),
+    write: jest.fn(),
+  })),
+  Directory: jest.fn(() => ({
+    create: jest.fn(),
+    uri: 'file:///documents/debug-stt-captures',
+  })),
+  Paths: {
+    document: {
+      uri: 'file:///documents',
+    },
+  },
+}));
+
 jest.mock('../../../rag', () => ({
   BUNDLE_PACK_ROOT: 'content_pack',
   copyBundlePackToDocuments: jest.fn(),
@@ -484,5 +518,44 @@ describe('AgentOrchestrator contract events', () => {
     expect(idleIndex).toBeLessThan(requestCompleteIndex);
 
     harness.unmount();
+  });
+
+  it('remote stt transcript is fetched and used after stopListeningAndRequestSubmit', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ text: 'Remote transcript' }),
+    } as Response);
+    const recorder = createEventRecorder();
+    const harness = createHarness(recorder);
+
+    await act(async () => {
+      await harness.actions.startListening(true);
+      await flushPromises();
+    });
+
+    await act(async () => {
+      await harness.actions.stopListeningAndRequestSubmit();
+      await flushPromises();
+    });
+
+    await act(async () => {
+      await flushPromises();
+      await flushPromises();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://192.168.1.54:8787/api/stt',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(harness.getState().transcribedText).toBe('Remote transcript');
+
+    await act(async () => {
+      await harness.actions.submit();
+      await flushPromises();
+      await flushPromises();
+    });
+
+    harness.unmount();
+    fetchMock.mockRestore();
   });
 });
