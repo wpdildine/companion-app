@@ -1,15 +1,24 @@
+/**
+ * Experimental on-surface guide for Name Shaping selector regions.
+ * Preserved as paused future-work UI; it should remain visual-only and must not
+ * become the canonical touch owner.
+ *
+ * TODO(nameshaping-resume): Revisit Android rendering/perf before expanding this
+ * guide further or making it part of the default product surface.
+ */
+
 import React from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
   SELECTOR_METADATA,
   type NameShapingSelector,
-} from './nameShapingConstants';
+} from '../foundation/nameShapingConstants';
 import {
   NAME_SHAPING_OVERLAY_REGIONS,
   type NameShapingOverlayRegion,
-} from './nameShapingTouchRegions';
-import { getActiveBandVerticalEnvelope } from '../../visualization/interaction/activeBandEnvelope';
-import { ndcRegionToScreenRect } from './nameShapingLayoutTransforms';
+} from '../layout/nameShapingTouchRegions';
+import { getActiveBandVerticalEnvelope } from '../../../visualization/interaction/activeBandEnvelope';
+import { ndcRegionToScreenRect } from '../layout/nameShapingLayoutTransforms';
 
 const SELECTOR_COLORS: Record<NameShapingSelector, string> = {
   BRIGHT: '#f59e0b',

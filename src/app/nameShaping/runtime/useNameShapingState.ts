@@ -7,19 +7,21 @@
  * clear() = reset feature data but preserve current enabled (clear interaction data while staying enabled).
  */
 
-import { useCallback, useState } from 'react';
-import type { NameShapingSelector } from './nameShapingConstants';
+import { useCallback, useMemo, useState } from 'react';
+import type { NameShapingSelector } from '../foundation/nameShapingConstants';
 import type {
   NameShapingRawToken,
   NameShapingResolverCandidate,
   NameShapingState,
-  NormalizedNameShapingSignature,
-} from './nameShapingTypes';
+} from '../foundation/nameShapingTypes';
+import { beginNameShapingCommitTrace } from './nameShapingCommitTrace';
+import { normalizeNameShapingSequence } from '../foundation/normalizeNameShapingSequence';
 
 const initialNameShapingState: NameShapingState = {
   enabled: false,
   rawEmittedSequence: [],
   normalizedSignature: [],
+  committedSignature: [],
   resolverCandidates: [],
   selectedCandidate: null,
   activeSelector: null,
@@ -34,6 +36,20 @@ function createInitialNameShapingState(): NameShapingState {
   };
 }
 
+function withNormalizedSignature(
+  prev: NameShapingState,
+  rawEmittedSequence: readonly NameShapingRawToken[],
+): NameShapingState {
+  return {
+    ...prev,
+    rawEmittedSequence: [...rawEmittedSequence],
+    normalizedSignature: normalizeNameShapingSequence(rawEmittedSequence),
+    committedSignature: [],
+    resolverCandidates: [],
+    selectedCandidate: null,
+  };
+}
+
 export interface NameShapingActions {
   enable: () => void;
   disable: () => void;
@@ -41,7 +57,7 @@ export interface NameShapingActions {
   appendEmittedToken: (token: NameShapingRawToken) => void;
   setActiveSelector: (selector: NameShapingSelector | null) => void;
   commitBreak: () => void;
-  setNormalizedSignature: (signature: NormalizedNameShapingSignature) => void;
+  commitResolution: () => void;
   setResolverCandidates: (candidates: readonly NameShapingResolverCandidate[]) => void;
   setSelectedCandidate: (candidate: NameShapingResolverCandidate | null) => void;
 }
@@ -67,10 +83,7 @@ export function useNameShapingState(): { state: NameShapingState; actions: NameS
   }, []);
 
   const appendEmittedToken = useCallback((token: NameShapingRawToken) => {
-    setState((prev) => ({
-      ...prev,
-      rawEmittedSequence: [...prev.rawEmittedSequence, token],
-    }));
+    setState((prev) => withNormalizedSignature(prev, [...prev.rawEmittedSequence, token]));
   }, []);
 
   const setActiveSelector = useCallback((selector: NameShapingSelector | null) => {
@@ -79,14 +92,19 @@ export function useNameShapingState(): { state: NameShapingState; actions: NameS
 
   /** Append BREAK token; v1 no timestamp. */
   const commitBreak = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      rawEmittedSequence: [...prev.rawEmittedSequence, { selector: 'BREAK' }],
-    }));
+    setState((prev) =>
+      withNormalizedSignature(prev, [...prev.rawEmittedSequence, { selector: 'BREAK' }]),
+    );
   }, []);
 
-  const setNormalizedSignature = useCallback((signature: NormalizedNameShapingSignature) => {
-    setState((prev) => ({ ...prev, normalizedSignature: [...signature] }));
+  const commitResolution = useCallback(() => {
+    setState((prev) => {
+      beginNameShapingCommitTrace(prev.normalizedSignature);
+      return {
+        ...prev,
+        committedSignature: [...prev.normalizedSignature],
+      };
+    });
   }, []);
 
   const setResolverCandidates = useCallback((candidates: readonly NameShapingResolverCandidate[]) => {
@@ -97,17 +115,27 @@ export function useNameShapingState(): { state: NameShapingState; actions: NameS
     setState((prev) => ({ ...prev, selectedCandidate: candidate }));
   }, []);
 
-  const actions: NameShapingActions = {
+  const actions = useMemo<NameShapingActions>(() => ({
     enable,
     disable,
     clear,
     appendEmittedToken,
     setActiveSelector,
     commitBreak,
-    setNormalizedSignature,
+    commitResolution,
     setResolverCandidates,
     setSelectedCandidate,
-  };
+  }), [
+    enable,
+    disable,
+    clear,
+    appendEmittedToken,
+    setActiveSelector,
+    commitBreak,
+    commitResolution,
+    setResolverCandidates,
+    setSelectedCandidate,
+  ]);
 
   return { state, actions };
 }

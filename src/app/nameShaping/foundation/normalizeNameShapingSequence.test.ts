@@ -3,7 +3,7 @@
  * Tests assert on contents of the result, not identity or mutability.
  */
 
-import { normalizeNameShapingSequence } from './normalizeNameShapingSequence';
+import { normalizeNameShapingSequence } from '../foundation/normalizeNameShapingSequence';
 
 function tok(selector: 'BRIGHT' | 'ROUND' | 'LIQUID' | 'SOFT' | 'HARD' | 'BREAK') {
   return { selector };

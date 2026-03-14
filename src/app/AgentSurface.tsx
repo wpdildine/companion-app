@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Dimensions, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Dimensions, Modal, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
 import { logInfo } from '../shared/logging';
 import {
   cleanupEarcons,
@@ -60,9 +60,15 @@ import {
   NameShapingTouchGuideOverlay,
   type ResolverIndex,
 } from './nameShaping';
+import {
+  endNameShapingCommitTrace,
+  getActiveNameShapingCommitTrace,
+} from './nameShaping/runtime/nameShapingCommitTrace';
 
 /** Set true to show NameShaping debug affordances by default; enabling capture remains manual in the Viz debug panel. */
 const NAME_SHAPING_CAPTURE_DEBUG = false;
+const NAME_SHAPING_VERBOSE_DEBUG_LOGS = false;
+const NAME_SHAPING_VISUAL_DEBUG_ENABLED = true;
 const DEBUG_ENABLED_DEFAULT = NAME_SHAPING_CAPTURE_DEBUG;
 const DEBUG_SCENARIO = false;
 const SHOW_REVEAL_CHIPS = false;
@@ -213,6 +219,7 @@ export default function AgentSurface() {
   const { state: nameShapingState, actions: nameShapingActions } = useNameShapingState();
   const [nameShapingResolverIndex, setNameShapingResolverIndex] =
     useState<ResolverIndex | null>(null);
+  const [nameShapingResolverIndexLoading, setNameShapingResolverIndexLoading] = useState(false);
   const nameShapingResolverIndexLoadingRef = useRef(false);
   useNameShapingController(
     nameShapingState,
@@ -222,17 +229,26 @@ export default function AgentSurface() {
   const { capture: nameShapingCapture } = useSpineNameShapingCapture(
     nameShapingState.enabled,
     nameShapingActions,
-    { emitOnTouchStart: true },
+    {
+      emitOnTouchStart: true,
+      debugLogging: NAME_SHAPING_VERBOSE_DEBUG_LOGS,
+    },
   );
   useEffect(() => {
     let cancelled = false;
 
+    // TODO(nameshaping-resume): Name Shaping is intentionally paused after the
+    // current prototype foundation. Preserve lazy resolver bootstrap, but revisit
+    // Android resolver perf before expanding this integration further.
     const loadNameShapingResolverIndex = async () => {
       if (!nameShapingState.enabled) return;
       if (nameShapingResolverIndex != null) return;
       if (nameShapingResolverIndexLoadingRef.current) return;
 
       nameShapingResolverIndexLoadingRef.current = true;
+      if (!cancelled) {
+        setNameShapingResolverIndexLoading(true);
+      }
 
       const existingPackState = getPackState();
       const existingFileReader = getFileReader();
@@ -260,6 +276,9 @@ export default function AgentSurface() {
           logInfo('AgentSurface', 'NameShaping resolver index unavailable: no pack reader');
         }
         nameShapingResolverIndexLoadingRef.current = false;
+        if (!cancelled) {
+          setNameShapingResolverIndexLoading(false);
+        }
         return;
       }
 
@@ -285,6 +304,9 @@ export default function AgentSurface() {
         });
       } finally {
         nameShapingResolverIndexLoadingRef.current = false;
+        if (!cancelled) {
+          setNameShapingResolverIndexLoading(false);
+        }
       }
     };
 
@@ -295,7 +317,7 @@ export default function AgentSurface() {
     };
   }, [nameShapingState.enabled, nameShapingResolverIndex]);
   useEffect(() => {
-    if (!nameShapingState.enabled) return;
+    if (!NAME_SHAPING_VERBOSE_DEBUG_LOGS || !nameShapingState.enabled) return;
     logInfo('AgentSurface', 'NameShaping raw sequence updated', {
       count: nameShapingState.rawEmittedSequence.length,
       rawSequence: nameShapingState.rawEmittedSequence.map((token) => token.selector),
@@ -303,13 +325,23 @@ export default function AgentSurface() {
   }, [nameShapingState.enabled, nameShapingState.rawEmittedSequence]);
   useEffect(() => {
     if (!nameShapingState.enabled) return;
+    const count = nameShapingState.rawEmittedSequence.length;
+    if (count === 0) return;
+    const lastToken = nameShapingState.rawEmittedSequence[count - 1];
+    logInfo('AgentSurface', 'NameShaping token appended', {
+      count,
+      selector: lastToken?.selector ?? null,
+    });
+  }, [nameShapingState.enabled, nameShapingState.rawEmittedSequence]);
+  useEffect(() => {
+    if (!NAME_SHAPING_VERBOSE_DEBUG_LOGS || !nameShapingState.enabled) return;
     logInfo('AgentSurface', 'NameShaping normalized signature updated', {
       count: nameShapingState.normalizedSignature.length,
       normalizedSignature: [...nameShapingState.normalizedSignature],
     });
   }, [nameShapingState.enabled, nameShapingState.normalizedSignature]);
   useEffect(() => {
-    if (!nameShapingState.enabled) return;
+    if (!NAME_SHAPING_VERBOSE_DEBUG_LOGS || !nameShapingState.enabled) return;
     logInfo('AgentSurface', 'NameShaping resolver candidates updated', {
       hasResolverIndex: nameShapingResolverIndex !== null,
       count: nameShapingState.resolverCandidates.length,
@@ -325,7 +357,27 @@ export default function AgentSurface() {
     nameShapingResolverIndex,
   ]);
   useEffect(() => {
+    if (!nameShapingState.enabled) return;
+    if (nameShapingState.committedSignature.length === 0) return;
+    const trace = getActiveNameShapingCommitTrace(nameShapingState.committedSignature);
+    if (!trace) return;
+    logInfo('AgentSurface', 'NameShaping commit trace render settled', {
+      traceId: trace.id,
+      elapsedMs: trace.elapsedMs,
+      committedLength: nameShapingState.committedSignature.length,
+      candidateCount: nameShapingState.resolverCandidates.length,
+      hasSelectedCandidate: nameShapingState.selectedCandidate != null,
+    });
+    endNameShapingCommitTrace(trace.id);
+  }, [
+    nameShapingState.enabled,
+    nameShapingState.committedSignature,
+    nameShapingState.resolverCandidates,
+    nameShapingState.selectedCandidate,
+  ]);
+  useEffect(() => {
     if (
+      !NAME_SHAPING_VERBOSE_DEBUG_LOGS ||
       !nameShapingState.enabled ||
       nameShapingState.normalizedSignature.length === 0 ||
       nameShapingResolverIndex !== null
@@ -343,7 +395,11 @@ export default function AgentSurface() {
   useEffect(() => {
     const viz = visualizationRef.current;
     if (!viz) return;
-    const showNameShapingDebugZones = nameShapingState.enabled;
+    const showNameShapingDebugZones =
+      nameShapingState.enabled && NAME_SHAPING_VISUAL_DEBUG_ENABLED;
+    // TODO(nameshaping-resume): These visual debug zones remain prototype-only.
+    // Keep them aligned with the subsystem while paused, but do not treat them
+    // as settled product UI.
     viz.showNameShapingTouchZones = showNameShapingDebugZones;
     viz.showTouchZones = showNameShapingDebugZones;
     logInfo(
@@ -983,11 +1039,40 @@ export default function AgentSurface() {
         </UserVoiceView>
       </VisualizationSurface>
       <NameShapingTouchGuideOverlay
-        visible={nameShapingState.enabled}
+        visible={nameShapingState.enabled && NAME_SHAPING_VISUAL_DEBUG_ENABLED}
         bandTopInsetPx={
-          visualizationRef.current?.scene?.zones.layout.bandTopInsetPx ?? 112
+          nameShapingState.enabled
+            ? 0
+            : (visualizationRef.current?.scene?.zones.layout.bandTopInsetPx ?? 112)
         }
       />
+      <Modal
+        visible={
+          nameShapingState.enabled &&
+          nameShapingResolverIndex === null &&
+          nameShapingResolverIndexLoading
+        }
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+      >
+        <View pointerEvents="none" style={localStyles.nameShapingLoadingOverlay}>
+          <View
+            style={[
+              localStyles.nameShapingLoadingCard,
+              { backgroundColor: inputBg, borderColor },
+            ]}
+          >
+            <ActivityIndicator size="small" color={theme.primary} />
+            <Text style={[localStyles.nameShapingLoadingTitle, { color: textColor }]}>
+              Prototype Loading
+            </Text>
+            <Text style={[localStyles.nameShapingLoadingHint, { color: mutedColor }]}>
+              Loading NameShaping card-name index...
+            </Text>
+          </View>
+        </View>
+      </Modal>
       <InteractionBand
         visualizationRef={visualizationRef}
         onClusterRelease={handleClusterTap}
@@ -996,6 +1081,7 @@ export default function AgentSurface() {
         nameShapingCapture={
           nameShapingState.enabled && !debugEnabled ? nameShapingCapture : undefined
         }
+        topInsetOverridePx={nameShapingState.enabled ? 0 : undefined}
         enabled={interactionBandEnabled}
         blocked={orchState.ioBlockedUntil != null}
         blockedUntil={orchState.ioBlockedUntil ?? null}
@@ -1077,6 +1163,38 @@ export default function AgentSurface() {
 
 const localStyles = StyleSheet.create({
   screenWrapper: { flex: 1 },
+  nameShapingLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 30,
+    elevation: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  nameShapingLoadingCard: {
+    minWidth: 220,
+    maxWidth: 320,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  nameShapingLoadingTitle: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+  nameShapingLoadingHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
   askTrigger: {
     borderWidth: 1,
     borderRadius: 10,

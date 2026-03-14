@@ -10,9 +10,9 @@ import * as THREE from 'three';
 import {
   NAME_SHAPING_OVERLAY_REGIONS,
   type NameShapingOverlayRegion,
-} from '../../../app/nameShaping/nameShapingTouchRegions';
-import { ndcRegionToRenderDescriptor } from '../../../app/nameShaping/nameShapingLayoutTransforms';
-import type { NameShapingSelector } from '../../../app/nameShaping/nameShapingConstants';
+} from '../../../app/nameShaping/layout/nameShapingTouchRegions';
+import { ndcRegionToRenderDescriptor } from '../../../app/nameShaping/layout/nameShapingLayoutTransforms';
+import type { NameShapingSelector } from '../../../app/nameShaping/foundation/nameShapingConstants';
 import { getActiveBandVerticalEnvelope } from '../../interaction/activeBandEnvelope';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
@@ -105,7 +105,10 @@ export function TouchZones({
     areaGroupRef.current.visible = areaVisible;
     if (!areaVisible) return;
 
-    const envelope = getActiveBandVerticalEnvelope(layout.bandTopInsetPx, h);
+    const envelope = getActiveBandVerticalEnvelope(
+      showNameShapingTouchZones ? 0 : layout.bandTopInsetPx,
+      h,
+    );
     const { activeHeightRatio, centerNdcY } = envelope;
 
     const cam = state.camera as THREE.PerspectiveCamera;

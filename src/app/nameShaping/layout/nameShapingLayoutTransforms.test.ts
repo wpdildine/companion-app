@@ -8,7 +8,7 @@ import {
   ndcRegionToRenderDescriptor,
   type ActiveBandEnvelope,
   type NdcRegionBounds,
-} from './nameShapingLayoutTransforms';
+} from '../layout/nameShapingLayoutTransforms';
 
 const sampleEnvelope: ActiveBandEnvelope = {
   widthPx: 400,

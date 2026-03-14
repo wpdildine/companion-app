@@ -2,6 +2,29 @@
 
 Living doc for the Name Shaping subsystem. Updated as overlay, resolver, normalization, and input-capture executables land.
 
+## Current status
+
+Name Shaping is currently **paused after prototype/refactor work**. The subsystem foundation is intentionally being preserved, but active product development has shifted back to the core MTG assistant path.
+
+What is considered stable enough to keep:
+
+- canonical selector vocabulary, shared types, and pure signature/normalization transforms
+- in-memory resolver index foundation and deterministic scorer
+- feature-local state owner and explicit commit-based resolver path
+- shared touch/layout foundation and current debug/manual inspection surfaces
+
+What is intentionally paused:
+
+- Android performance work for committed resolution
+- further UX/design iteration on live touch entry, overlays, and debug surfaces
+- promotion of Name Shaping from prototype/debug flow into the primary product path
+
+Resume point:
+
+- start from the explicit commit flow and in-memory resolver index
+- treat debug overlays, touch guides, and commit tracing as prototype scaffolding
+- re-profile Android resolver cost before re-enabling richer live resolution behavior
+
 ## Overview
 
 Name Shaping provides an app-level way to represent proper names (and other text) as **sound-shape signatures**: ordered sequences of coarse phonetic/structure selectors. The goal is to support input capture (e.g. touch/gesture), a debug overlay, and a resolver that matches user input to card names by signature.
@@ -61,7 +84,7 @@ When NameShaping is **enabled**, touch on the spine-adjacent interaction band ca
 - **Region map:** The center strip is partitioned into **7 regions** (6 selectors + 1 voice). `nameShapingTouchLayout.ts` defines them; `nameShapingTouchRegions.ts` exposes `getSelectorFromNdc(ndcX, ndcY)` for **interaction-band-local NDC**. The reserved center (voice) region is excluded from selector capture; the other six are BRIGHT, ROUND, LIQUID, SOFT, HARD, BREAK top to bottom. **BREAK** is a touchable debug region so the full vocabulary can be exercised on device.
 - **Capture hook:** `useSpineNameShapingCapture(enabled, actions)` returns handlers that map touch start/move/end/cancel to state: touch start sets `activeSelector` only; move emits only on region change; end/cancel clear `activeSelector`.
 - **Integration:** Handlers are passed to `InteractionBand` as `nameShapingCapture`. InteractionBand remains the single touch owner. NameShaping capture is a semantic side path on the same touch stream; the voice region remains the hold-to-speak affordance. The overlay and TouchZones debug layer consume the same shared layout and transforms, so the visible guide and input mapping stay aligned.
-- **Enabling for testing:** Open the Viz debug panel and use the NameShaping **Enable** control to turn capture on manually for device testing. NameShaping touch zones appear only while the debug surface is open and NameShaping is enabled.
+- **Enabling for testing:** Open the Viz debug panel and use the NameShaping **Enable** control to turn capture on manually for device testing. The current prototype also includes explicit **Commit**-based resolution so resolver work stays out of the live touch loop.
 
 ## Later executables
 

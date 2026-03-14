@@ -4,8 +4,9 @@
  * build, getCandidatesBySignature, getAllIndexedCards, getIndexStats, getDebugSample.
  */
 
-import { buildCardNameSignature } from './buildCardNameSignature';
-import { buildResolverIndex } from './resolverIndex';
+import { buildCardNameSignature } from '../foundation/buildCardNameSignature';
+import type { ResolverIndexEntry } from '../foundation/nameShapingTypes';
+import { buildResolverIndex } from '../resolver/resolverIndex';
 
 function createReader(jsonl: string) {
   return {
@@ -137,7 +138,7 @@ describe('buildResolverIndex', () => {
     const index = await buildResolverIndex(reader, 'cards/name_lookup.jsonl');
 
     const all = index.getAllIndexedCards();
-    expect(Object.isFrozen(all)).toBe(false);
+    expect(Object.isFrozen(all)).toBe(true);
     expect(Object.isFrozen(all[0]!)).toBe(true);
     expect(Object.isFrozen(all[0]!.baseNameSignature)).toBe(true);
     expect(Object.isFrozen(all[0]!.fullNameSignature)).toBe(true);
@@ -155,6 +156,30 @@ describe('buildResolverIndex', () => {
     expect(() => {
       (all[0]!.baseNameSignature as string[]).push('BREAK');
     }).toThrow();
+  });
+
+  it('getEntriesSharingSelectors returns the union of entries that share at least one selector', async () => {
+    const jsonl = [
+      JSON.stringify({ doc_id: 'a', name: 'Ao', norm: 'ao', aliases_norm: [] }),
+      JSON.stringify({ doc_id: 'b', name: 'Urborg', norm: 'urborg', aliases_norm: [] }),
+      JSON.stringify({ doc_id: 'c', name: 'Gitrog', norm: 'gitrog', aliases_norm: [] }),
+    ].join('\n');
+    const reader = createReader(jsonl);
+    const index = await buildResolverIndex(reader, 'cards/name_lookup.jsonl');
+
+    const query: ReadonlyArray<'ROUND' | 'HARD'> = ['ROUND', 'HARD'];
+    const querySet = new Set(query);
+    const shared = index.getEntriesSharingSelectors(query);
+    const displayNames = shared.map((entry) => entry.displayName).sort();
+    const expected = ['Ao', 'Urborg', 'Gitrog']
+      .filter((name) => {
+        const signature = buildCardNameSignature(name).baseNameSignature;
+        return signature.some((selector) => querySet.has(selector as 'ROUND' | 'HARD'));
+      })
+      .sort();
+
+    expect(displayNames).toEqual(expected);
+    expect(new Set(displayNames).size).toBe(displayNames.length);
   });
 
   it('getIndexStats returns entryCount and uniqueBaseSignatures', async () => {

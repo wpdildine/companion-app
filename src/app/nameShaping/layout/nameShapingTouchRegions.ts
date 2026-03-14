@@ -4,13 +4,13 @@
  * Does not own layout constants; consumes nameShapingTouchLayout.
  */
 
-import type { NameShapingSelector } from './nameShapingConstants';
-import { isInsideCenterStrip } from '../../visualization/interaction/spineTouchSurfaceLayout';
+import type { NameShapingSelector } from '../foundation/nameShapingConstants';
+import { isInsideCenterStrip } from '../../../visualization/interaction/spineTouchSurfaceLayout';
 import {
   getVoiceRegion,
   NAME_SHAPING_LAYOUT_REGIONS,
   type NameShapingLayoutRegion,
-} from './nameShapingTouchLayout';
+} from '../layout/nameShapingTouchLayout';
 
 const NDC_MIN = -1;
 const NDC_MAX = 1;

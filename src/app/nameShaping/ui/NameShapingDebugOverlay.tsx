@@ -1,19 +1,20 @@
 /**
- * Name Shaping debug overlay: controls, live pipeline readout, reverse card-signature inspection.
- * Debug-only; consumes NameShapingState and NameShapingActions. No resolver usage in reverse inspection.
+ * Name Shaping debug overlay: debug-only scaffold for manual subsystem exercise.
+ * Preserved while Name Shaping development is paused so future work can resume
+ * from a working inspection surface without affecting the core MTG assistant path.
  */
 
 import React, { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { logInfo } from '../../shared/logging';
-import type { NameShapingActions } from './useNameShapingState';
-import type { NameShapingState } from './nameShapingTypes';
-import { buildCardNameSignature } from './buildCardNameSignature';
+import { logInfo } from '../../../shared/logging';
+import type { NameShapingActions } from '../runtime/useNameShapingState';
+import type { NameShapingState } from '../foundation/nameShapingTypes';
+import { buildCardNameSignature } from '../foundation/buildCardNameSignature';
 import {
   SELECTOR_METADATA,
   SELECTOR_ORDER,
   type NameShapingSelector,
-} from './nameShapingConstants';
+} from '../foundation/nameShapingConstants';
 
 const fontMono = Platform.select({ ios: 'Menlo', android: 'monospace' });
 
@@ -119,6 +120,13 @@ export function NameShapingDebugOverlay({
     logInfo('AgentSurface', 'NameShaping appended BREAK from Viz debug panel');
   };
 
+  const handleCommit = () => {
+    actions.commitResolution();
+    logInfo('AgentSurface', 'NameShaping resolution committed from Viz debug panel', {
+      normalizedSignature: [...state.normalizedSignature],
+    });
+  };
+
   const handleSelectCandidate = (index: number) => {
     const candidate = state.resolverCandidates[index] ?? null;
     actions.setSelectedCandidate(candidate);
@@ -161,6 +169,17 @@ export function NameShapingDebugOverlay({
       <View style={styles.buttonRow}>
         <Pressable style={[styles.btn, styles.btnBreak]} onPress={handleAppendBreak}>
           <Text style={styles.btnText}>Append BREAK</Text>
+        </Pressable>
+        <Pressable
+          style={[
+            styles.btn,
+            styles.btnCommit,
+            state.normalizedSignature.length === 0 && styles.btnDisabled,
+          ]}
+          onPress={handleCommit}
+          disabled={state.normalizedSignature.length === 0}
+        >
+          <Text style={styles.btnText}>Commit</Text>
         </Pressable>
         <Pressable
           style={[
@@ -225,10 +244,18 @@ export function NameShapingDebugOverlay({
             label="Normalized signature"
             value={formatSignature(state.normalizedSignature)}
           />
+          <Row
+            theme={theme}
+            label="Committed signature"
+            value={formatSignature(state.committedSignature)}
+            muted={state.committedSignature.length === 0}
+          />
           <SectionTitle theme={theme} title="Resolver candidates" />
           {state.resolverCandidates.length === 0 ? (
             <Text style={[styles.placeholder, { color: theme.textMuted }]}>
-              No candidates / resolver index unavailable
+              {state.committedSignature.length === 0
+                ? 'No candidates yet. Commit the current signature to resolve.'
+                : 'No candidates found for the committed signature.'}
             </Text>
           ) : (
             state.resolverCandidates.map((c, i) => (
@@ -346,6 +373,7 @@ const styles = StyleSheet.create({
   btnClear: { backgroundColor: '#6e7681' },
   btnSelector: { backgroundColor: '#30363d' },
   btnBreak: { backgroundColor: '#8957e5' },
+  btnCommit: { backgroundColor: '#0f766e' },
   btnSelect: { backgroundColor: '#9a6700' },
   btnDisabled: { opacity: 0.45 },
   btnText: { color: '#fff', fontSize: 12, fontFamily: fontMono, fontWeight: '600' },

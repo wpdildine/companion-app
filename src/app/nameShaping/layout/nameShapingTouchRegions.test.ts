@@ -8,8 +8,8 @@ import {
   isVoiceLaneNdc,
   NAME_SHAPING_OVERLAY_REGIONS,
   NAME_SHAPING_VERTICAL_SEGMENTS,
-} from './nameShapingTouchRegions';
-import { getVoiceRegion, type NameShapingLayoutRegion } from './nameShapingTouchLayout';
+} from '../layout/nameShapingTouchRegions';
+import { getVoiceRegion, type NameShapingLayoutRegion } from '../layout/nameShapingTouchLayout';
 
 describe('getSelectorFromNdc', () => {
   it('returns null when touch is outside the active band range', () => {

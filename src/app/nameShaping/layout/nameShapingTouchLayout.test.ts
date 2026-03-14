@@ -8,7 +8,7 @@ import {
   VOICE_REGION_INDEX,
   regionsWithinCenterStrip,
   regionsWithinEnvelope,
-} from './nameShapingTouchLayout';
+} from '../layout/nameShapingTouchLayout';
 
 describe('nameShapingTouchLayout', () => {
   describe('region count', () => {

@@ -8,8 +8,8 @@ import {
   CENTER_STRIP_NDC,
   ENVELOPE_NDC,
   getCenterStripBounds,
-} from '../../visualization/interaction/spineTouchSurfaceLayout';
-import type { NameShapingSelector } from './nameShapingConstants';
+} from '../../../visualization/interaction/spineTouchSurfaceLayout';
+import type { NameShapingSelector } from '../foundation/nameShapingConstants';
 
 const NDC_MIN = -1;
 const NDC_MAX = 1;

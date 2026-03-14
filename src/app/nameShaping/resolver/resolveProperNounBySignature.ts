@@ -9,7 +9,7 @@ import type {
   NormalizedNameShapingSignature,
   ResolverIndex,
   ResolverIndexEntry,
-} from './nameShapingTypes';
+} from '../foundation/nameShapingTypes';
 
 const DEFAULT_TOP_K = 5;
 
@@ -140,7 +140,10 @@ export function resolveProperNounBySignature(
   options?: { topK?: number }
 ): readonly NameShapingResolverCandidate[] {
   const topK = options?.topK ?? DEFAULT_TOP_K;
-  const entries = index.getAllIndexedCards();
+  const entries =
+    inputSignature.length === 0
+      ? index.getAllIndexedCards()
+      : index.getEntriesSharingSelectors(inputSignature);
 
   const candidates: NameShapingResolverCandidate[] = [];
   for (const entry of entries) {

@@ -5,12 +5,13 @@
  * signatureToKey function only (single blessed path).
  */
 
-import { buildCardNameSignature } from './buildCardNameSignature';
+import { buildCardNameSignature } from '../foundation/buildCardNameSignature';
+import type { NameShapingSelector } from '../foundation/nameShapingConstants';
 import type {
   NormalizedNameShapingSignature,
   ResolverIndex,
   ResolverIndexEntry,
-} from './nameShapingTypes';
+} from '../foundation/nameShapingTypes';
 
 /** Minimal reader: paths relative to pack root. Caller provides e.g. getFileReader() from RAG. */
 export interface ResolverIndexReader {
@@ -96,6 +97,7 @@ export async function buildResolverIndex(
   const allEntries: ResolverIndexEntry[] = [];
   const byBaseKey = new Map<string, ResolverIndexEntry[]>();
   const byFullKey = new Map<string, ResolverIndexEntry[]>();
+  const bySelector = new Map<NameShapingSelector, ResolverIndexEntry[]>();
 
   for (const { cardId, displayName } of nameRows) {
     const sigResult = buildCardNameSignature(displayName);
@@ -124,12 +126,25 @@ export async function buildResolverIndex(
       byFullKey.set(fullKey, fullList);
     }
     fullList.push(entry);
+
+    for (const selector of new Set(sigResult.baseNameSignature)) {
+      let selectorList = bySelector.get(selector);
+      if (!selectorList) {
+        selectorList = [];
+        bySelector.set(selector, selectorList);
+      }
+      selectorList.push(entry);
+    }
   }
 
   const readonlyAllEntries = Object.freeze([...allEntries]);
   const readonlyByBaseKey = new Map<string, readonly ResolverIndexEntry[]>();
   for (const [key, entries] of byBaseKey.entries()) {
     readonlyByBaseKey.set(key, Object.freeze([...entries]));
+  }
+  const readonlyBySelector = new Map<NameShapingSelector, readonly ResolverIndexEntry[]>();
+  for (const [selector, entries] of bySelector.entries()) {
+    readonlyBySelector.set(selector, Object.freeze([...entries]));
   }
 
   const index: ResolverIndex = {
@@ -140,7 +155,21 @@ export async function buildResolverIndex(
     },
 
     getAllIndexedCards(): readonly ResolverIndexEntry[] {
-      return [...readonlyAllEntries];
+      return readonlyAllEntries;
+    },
+
+    getEntriesSharingSelectors(
+      signature: NormalizedNameShapingSignature,
+    ): readonly ResolverIndexEntry[] {
+      const deduped = new Set<ResolverIndexEntry>();
+      for (const selector of new Set(signature)) {
+        const entries = readonlyBySelector.get(selector);
+        if (!entries) continue;
+        for (const entry of entries) {
+          deduped.add(entry);
+        }
+      }
+      return [...deduped];
     },
 
     getIndexStats(): { entryCount: number; uniqueBaseSignatures: number } {

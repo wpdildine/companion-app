@@ -3,12 +3,12 @@
  * Uses a small controlled resolver index fixture; no app runtime or pack wiring.
  */
 
-import { buildCardNameSignature } from './buildCardNameSignature';
-import { buildResolverIndex } from './resolverIndex';
+import { buildCardNameSignature } from '../foundation/buildCardNameSignature';
+import { buildResolverIndex } from '../resolver/resolverIndex';
 import {
   resolveProperNounBySignature,
   scoreSignatureMatch,
-} from './resolveProperNounBySignature';
+} from '../resolver/resolveProperNounBySignature';
 
 function createReader(jsonl: string) {
   return {

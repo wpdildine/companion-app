@@ -10,11 +10,11 @@
 export {
   SELECTOR_METADATA,
   SELECTOR_ORDER,
-} from './nameShapingConstants';
+} from './foundation/nameShapingConstants';
 export type {
   NameShapingSelector,
   NameShapingSelectorMetadata,
-} from './nameShapingConstants';
+} from './foundation/nameShapingConstants';
 export type {
   NameShapingRawToken,
   NormalizedNameShapingSignature,
@@ -22,37 +22,37 @@ export type {
   ResolverIndexEntry,
   NameShapingResolverCandidate,
   NameShapingState,
-} from './nameShapingTypes';
+} from './foundation/nameShapingTypes';
 
-export { buildCardNameSignature } from './buildCardNameSignature';
-export type { CardNameSignatureResult } from './buildCardNameSignature';
+export { buildCardNameSignature } from './foundation/buildCardNameSignature';
+export type { CardNameSignatureResult } from './foundation/buildCardNameSignature';
 
-export { normalizeNameShapingSequence } from './normalizeNameShapingSequence';
+export { normalizeNameShapingSequence } from './foundation/normalizeNameShapingSequence';
 
-export { buildResolverIndex } from './resolverIndex';
-export type { ResolverIndexReader } from './resolverIndex';
+export { buildResolverIndex } from './resolver/resolverIndex';
+export type { ResolverIndexReader } from './resolver/resolverIndex';
 
 export {
   resolveProperNounBySignature,
   scoreSignatureMatch,
-} from './resolveProperNounBySignature';
-export type { ScoreResult } from './resolveProperNounBySignature';
+} from './resolver/resolveProperNounBySignature';
+export type { ScoreResult } from './resolver/resolveProperNounBySignature';
 
-export { getSelectorFromNdc } from './nameShapingTouchRegions';
+export { getSelectorFromNdc } from './layout/nameShapingTouchRegions';
 
-export { useNameShapingState } from './useNameShapingState';
-export type { NameShapingActions } from './useNameShapingState';
+export { useNameShapingState } from './runtime/useNameShapingState';
+export type { NameShapingActions } from './runtime/useNameShapingState';
 
-export { useNameShapingController } from './useNameShapingController';
+export { useNameShapingController } from './runtime/useNameShapingController';
 
-export { useSpineNameShapingCapture } from './useSpineNameShapingCapture';
-export type { NameShapingCaptureHandlers } from './useSpineNameShapingCapture';
+export { useSpineNameShapingCapture } from './runtime/useSpineNameShapingCapture';
+export type { NameShapingCaptureHandlers } from './runtime/useSpineNameShapingCapture';
 
-export { NameShapingDebugOverlay } from './NameShapingDebugOverlay';
+export { NameShapingDebugOverlay } from './ui/NameShapingDebugOverlay';
 export type {
   NameShapingDebugOverlayProps,
   NameShapingDebugOverlayTheme,
-} from './NameShapingDebugOverlay';
+} from './ui/NameShapingDebugOverlay';
 
-export { NameShapingTouchGuideOverlay } from './NameShapingTouchGuideOverlay';
-export type { NameShapingTouchGuideOverlayProps } from './NameShapingTouchGuideOverlay';
+export { NameShapingTouchGuideOverlay } from './ui/NameShapingTouchGuideOverlay';
+export type { NameShapingTouchGuideOverlayProps } from './ui/NameShapingTouchGuideOverlay';

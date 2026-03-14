@@ -6,7 +6,7 @@ import {
   isCenterHoldEligible,
   shouldForwardToNameShapingCapture,
   shouldEmitClusterReleaseOnEnd,
-} from './nameShapingInteractionRouting';
+} from '../layout/nameShapingInteractionRouting';
 
 describe('nameShapingInteractionRouting', () => {
   describe('isCenterHoldEligible', () => {

@@ -6,8 +6,8 @@
 
 import { useCallback, useRef } from 'react';
 import type { NameShapingActions } from './useNameShapingState';
-import { getSelectorFromNdc } from './nameShapingTouchRegions';
-import { logInfo } from '../../shared/logging';
+import { getSelectorFromNdc } from '../layout/nameShapingTouchRegions';
+import { logInfo } from '../../../shared/logging';
 
 export interface NameShapingCaptureHandlers {
   onTouchStart: (ndc: [number, number]) => void;
@@ -18,6 +18,7 @@ export interface NameShapingCaptureHandlers {
 
 export interface UseSpineNameShapingCaptureOptions {
   emitOnTouchStart?: boolean;
+  debugLogging?: boolean;
 }
 
 function noopStart(_ndc: [number, number]) {}
@@ -39,6 +40,7 @@ export function useSpineNameShapingCapture(
 ): { capture: NameShapingCaptureHandlers } {
   const lastSelectorRef = useRef<ReturnType<typeof getSelectorFromNdc>>(null);
   const emitOnTouchStart = options.emitOnTouchStart ?? false;
+  const debugLogging = options.debugLogging ?? false;
 
   const onTouchStart = useCallback(
     (ndc: [number, number]) => {
@@ -48,11 +50,15 @@ export function useSpineNameShapingCapture(
       actions.setActiveSelector(selector);
       if (emitOnTouchStart && selector !== null) {
         actions.appendEmittedToken({ selector, timestamp: Date.now() });
-        logInfo('NameShapingCapture', 'touch start emitted', { selector });
+        if (debugLogging) {
+          logInfo('NameShapingCapture', 'touch start emitted', { selector });
+        }
       }
-      logInfo('NameShapingCapture', 'touch start', { selector });
+      if (debugLogging) {
+        logInfo('NameShapingCapture', 'touch start', { selector });
+      }
     },
-    [enabled, actions, emitOnTouchStart],
+    [enabled, actions, emitOnTouchStart, debugLogging],
   );
 
   const onTouchMove = useCallback(
@@ -64,25 +70,31 @@ export function useSpineNameShapingCapture(
       actions.setActiveSelector(selector);
       if (selector !== null) {
         actions.appendEmittedToken({ selector, timestamp: Date.now() });
-        logInfo('NameShapingCapture', 'region change', { selector });
+        if (debugLogging) {
+          logInfo('NameShapingCapture', 'region change', { selector });
+        }
       }
     },
-    [enabled, actions],
+    [enabled, actions, debugLogging],
   );
 
   const onTouchEnd = useCallback(() => {
     if (!enabled) return;
     lastSelectorRef.current = null;
     actions.setActiveSelector(null);
-    logInfo('NameShapingCapture', 'touch end');
-  }, [enabled, actions]);
+    if (debugLogging) {
+      logInfo('NameShapingCapture', 'touch end');
+    }
+  }, [enabled, actions, debugLogging]);
 
   const onTouchCancel = useCallback(() => {
     if (!enabled) return;
     lastSelectorRef.current = null;
     actions.setActiveSelector(null);
-    logInfo('NameShapingCapture', 'touch cancel');
-  }, [enabled, actions]);
+    if (debugLogging) {
+      logInfo('NameShapingCapture', 'touch cancel');
+    }
+  }, [enabled, actions, debugLogging]);
 
   const capture: NameShapingCaptureHandlers =
     enabled

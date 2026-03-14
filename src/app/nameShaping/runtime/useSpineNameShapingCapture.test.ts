@@ -21,7 +21,7 @@ function createMockActions(): NameShapingActions & { calls: { setActiveSelector:
       calls.setActiveSelector.push(selector);
     },
     commitBreak: () => {},
-    setNormalizedSignature: () => {},
+    commitResolution: () => {},
     setResolverCandidates: () => {},
     setSelectedCandidate: () => {},
   };

@@ -6,7 +6,7 @@
 import type {
   NameShapingRawToken,
   NormalizedNameShapingSignature,
-} from './nameShapingTypes';
+} from '../foundation/nameShapingTypes';
 
 /**
  * Normalize a raw emitted token sequence into a stable selector signature.

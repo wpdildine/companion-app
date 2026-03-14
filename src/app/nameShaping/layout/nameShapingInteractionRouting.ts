@@ -4,7 +4,7 @@
  * Routing clarification: preserve existing default user-visible spine semantics.
  */
 
-import type { TouchZone } from '../../visualization/interaction/zoneLayout';
+import type { TouchZone } from '../../../visualization/interaction/zoneLayout';
 
 /**
  * When Name Shaping capture is active, voice lane is determined by layout (isVoiceLaneNdc).

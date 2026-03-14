@@ -37,6 +37,7 @@ export interface ResolverIndexEntry {
 export interface ResolverIndex {
   getCandidatesBySignature(signature: NormalizedNameShapingSignature): readonly ResolverIndexEntry[];
   getAllIndexedCards(): readonly ResolverIndexEntry[];
+  getEntriesSharingSelectors(signature: NormalizedNameShapingSignature): readonly ResolverIndexEntry[];
   getIndexStats(): { entryCount: number; uniqueBaseSignatures: number };
   getDebugSample(limit?: number): ReadonlyArray<{
     displayName: string;
@@ -58,13 +59,16 @@ export interface NameShapingResolverCandidate {
 
 /**
  * Name Shaping runtime state. normalizedSignature is shape only; initial value
- * may be empty; no normalization guarantees in this executable.
+ * may be empty. committedSignature is the explicit resolver snapshot used by the
+ * current paused prototype; live entry does not resolve automatically.
  */
 export interface NameShapingState {
   enabled: boolean;
   rawEmittedSequence: readonly NameShapingRawToken[];
-  /** Shape only; initial value may be empty; no normalization guarantees in this executable. */
+  /** Derived from rawEmittedSequence in feature-local state; empty until input exists. */
   normalizedSignature: NormalizedNameShapingSignature;
+  /** Explicit snapshot for resolver execution; cleared whenever live input changes. */
+  committedSignature: NormalizedNameShapingSignature;
   resolverCandidates: readonly NameShapingResolverCandidate[];
   selectedCandidate: NameShapingResolverCandidate | null;
   activeSelector: NameShapingSelector | null;

@@ -5,7 +5,7 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
 import { useNameShapingState } from './useNameShapingState';
-import type { NameShapingState } from './nameShapingTypes';
+import type { NameShapingState } from '../foundation/nameShapingTypes';
 
 let currentState: NameShapingState | null = null;
 let currentActions: ReturnType<typeof useNameShapingState>['actions'] | null = null;
@@ -49,6 +49,7 @@ describe('useNameShapingState', () => {
     expect(state.enabled).toBe(false);
     expect(state.rawEmittedSequence).toEqual([]);
     expect(state.normalizedSignature).toEqual([]);
+    expect(state.committedSignature).toEqual([]);
     expect(state.resolverCandidates).toEqual([]);
     expect(state.selectedCandidate).toBe(null);
     expect(state.activeSelector).toBe(null);
@@ -78,6 +79,7 @@ describe('useNameShapingState', () => {
     expect(getState().enabled).toBe(false);
     expect(getState().rawEmittedSequence).toHaveLength(0);
     expect(getState().normalizedSignature).toEqual([]);
+    expect(getState().committedSignature).toEqual([]);
     expect(getState().resolverCandidates).toEqual([]);
     expect(getState().selectedCandidate).toBe(null);
     expect(getState().activeSelector).toBe(null);
@@ -105,6 +107,7 @@ describe('useNameShapingState', () => {
     });
     expect(getState().enabled).toBe(true);
     expect(getState().rawEmittedSequence).toHaveLength(0);
+    expect(getState().committedSignature).toHaveLength(0);
     expect(getState().resolverCandidates).toHaveLength(0);
     expect(getState().selectedCandidate).toBe(null);
     expect(getState().activeSelector).toBe(null);
@@ -134,6 +137,17 @@ describe('useNameShapingState', () => {
     expect(seq).toHaveLength(2);
     expect(seq[1]).toEqual({ selector: 'BREAK' });
     expect('timestamp' in seq[1]).toBe(false);
+  });
+
+  it('commitResolution() snapshots the current normalized signature', () => {
+    const { getState, actions } = createHarness();
+    act(() => {
+      actions.appendEmittedToken({ selector: 'BRIGHT' });
+      actions.appendEmittedToken({ selector: 'ROUND' });
+      actions.commitResolution();
+    });
+    expect(getState().normalizedSignature).toEqual(['BRIGHT', 'ROUND']);
+    expect(getState().committedSignature).toEqual(['BRIGHT', 'ROUND']);
   });
 
   it('setResolverCandidates stores shallow copy; contents match', () => {
@@ -188,14 +202,4 @@ describe('useNameShapingState', () => {
     expect(getState().activeSelector).toBe(null);
   });
 
-  it('setNormalizedSignature stores shallow copy', () => {
-    const { getState, actions } = createHarness();
-    const sig = ['BRIGHT', 'ROUND', 'HARD'] as const;
-    act(() => {
-      actions.setNormalizedSignature(sig);
-    });
-    const stored = getState().normalizedSignature;
-    expect(stored).toEqual(['BRIGHT', 'ROUND', 'HARD']);
-    expect(stored).not.toBe(sig);
-  });
 });

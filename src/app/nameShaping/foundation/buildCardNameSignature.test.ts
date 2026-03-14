@@ -2,7 +2,7 @@
  * buildCardNameSignature: stable selector sequences and base-name extraction.
  */
 
-import { buildCardNameSignature } from './buildCardNameSignature';
+import { buildCardNameSignature } from '../foundation/buildCardNameSignature';
 
 describe('buildCardNameSignature', () => {
   it('returns structured result with normalizedName, baseName, fullNameSignature, baseNameSignature', () => {
