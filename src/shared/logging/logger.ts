@@ -13,6 +13,7 @@
 export type LogScope =
   | 'AgentOrchestrator'
   | 'AgentSurface'
+  | 'Visualization'
   | 'VisualizationController'
   | 'VisualizationRuntime'
   | 'ResultsOverlay'

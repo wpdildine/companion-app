@@ -191,9 +191,9 @@ export async function getContextRN(
       abilityKeys: analysis.ability_keys,
     });
     const stopwordsList = getStopwords(routerMap) || ['the', 'a', 'of'];
-    const stopwords = new Set(stopwordsList);
+    const stopwords = new Set<string>(stopwordsList);
     const thresholds = getResolverThresholds(routerMap);
-    const generalTokenSet = new Set(generalTokens(normalized, stopwords));
+    const generalTokenSet = new Set<string>(generalTokens(normalized, stopwords));
     const prefixLenMin = thresholds.prefix_len_min ?? 3;
 
     let resolvedCards: DbRow[] = [];
@@ -251,7 +251,7 @@ export async function getContextRN(
     const keywords = [...new Set([...generalTokenSet, ...cardKeywords])];
 
     const plan = route(analysis, routerMap, cardKeywords, spec);
-    const sectionsConsidered = plan.section_intents.map(([s]) => s);
+    const sectionsConsidered = plan.section_intents.map(([s]: [string, string]) => s);
     const sectionsSelected = [...new Set(sectionsConsidered)];
     logInfo('RAG', 'getContextRN routing summary', {
       resolvedCards: resolvedCards.map(card => String((card as { name?: string }).name ?? '')),
@@ -273,10 +273,10 @@ export async function getContextRN(
         t => t in (keywordAbilitiesMap || {}),
       );
 
-    const cardTokenSet = new Set(cardKeywords);
+    const cardTokenSet = new Set<string>(cardKeywords);
     const rulesResult: DbRule[] = [];
-    const conceptDefaultIds = plan.concept_default_rule_ids || [];
-    const keywordPrefixes = plan.hard_includes || [];
+    const conceptDefaultIds = (plan.concept_default_rule_ids || []) as string[];
+    const keywordPrefixes = (plan.hard_includes || []) as string[];
 
     for (const prefix of [...new Set(keywordPrefixes)]) {
       const rows = rulesDb.rulesByRuleIdPrefix(prefix);

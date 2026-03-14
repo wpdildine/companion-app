@@ -58,7 +58,9 @@ function deriveDurations(s: RequestDebugSnapshot): RequestDebugDurations | null 
   if (s.generationStartedAt != null && s.firstTokenAt != null) {
     d.timeToFirstTokenMs = s.firstTokenAt - s.generationStartedAt;
   }
-  const inferenceStartedAt = (s as Record<string, unknown>).inferenceStartedAt as number | undefined;
+  const inferenceStartedAt = (s as unknown as Record<string, unknown>).inferenceStartedAt as
+    | number
+    | undefined;
   if (inferenceStartedAt != null && s.firstTokenAt != null) {
     d.timeToFirstTokenFromInferenceMs = s.firstTokenAt - inferenceStartedAt;
   }
@@ -85,22 +87,34 @@ function mergeRagPayloadIntoSnapshot(
   type: string,
   payload: Record<string, unknown>,
 ): void {
-  snapshot.ragTelemetry = snapshot.ragTelemetry ?? {};
-  const rt = snapshot.ragTelemetry;
+  const rt: NonNullable<RequestDebugRagTelemetry> = snapshot.ragTelemetry ?? {};
+  snapshot.ragTelemetry = rt;
   if (type === 'rag_retrieval_start' || type === 'rag_retrieval_mode' || type === 'rag_context_bundle_selected' || type === 'rag_context_assembled' || type === 'rag_retrieval_complete') {
-    rt.retrievalSummary = { ...rt.retrievalSummary, ...payload } as RequestDebugRagTelemetry['retrievalSummary'];
+    rt.retrievalSummary = {
+      ...rt.retrievalSummary,
+      ...payload,
+    } as NonNullable<RequestDebugRagTelemetry>['retrievalSummary'];
   }
   if (type === 'rag_prompt_built') {
-    rt.promptAssembly = { ...rt.promptAssembly, ...payload } as RequestDebugRagTelemetry['promptAssembly'];
+    rt.promptAssembly = {
+      ...rt.promptAssembly,
+      ...payload,
+    } as NonNullable<RequestDebugRagTelemetry>['promptAssembly'];
   }
   if (type === 'rag_generation_request_start') {
-    rt.generationRequest = { ...rt.generationRequest, ...payload } as RequestDebugRagTelemetry['generationRequest'];
+    rt.generationRequest = {
+      ...rt.generationRequest,
+      ...payload,
+    } as NonNullable<RequestDebugRagTelemetry>['generationRequest'];
   }
   if (type === 'rag_generation_complete') {
-    rt.generationStats = { ...rt.generationStats, ...payload } as RequestDebugRagTelemetry['generationStats'];
+    rt.generationStats = {
+      ...rt.generationStats,
+      ...payload,
+    } as NonNullable<RequestDebugRagTelemetry>['generationStats'];
   }
   if (type === 'rag_generation_request_start') {
-    (snapshot as Record<string, unknown>).modelInfo = {
+    (snapshot as unknown as Record<string, unknown>).modelInfo = {
       modelPath: payload.modelPath ?? rt.generationRequest?.modelPath,
       modelId: payload.modelId ?? rt.generationRequest?.modelId,
       temperature: payload.temperature ?? rt.generationRequest?.temperature,
@@ -109,7 +123,7 @@ function mergeRagPayloadIntoSnapshot(
     };
   }
   if (type === 'rag_prompt_built' && payload.promptHash != null) {
-    (snapshot as Record<string, unknown>).promptHash = payload.promptHash;
+    (snapshot as unknown as Record<string, unknown>).promptHash = payload.promptHash;
   }
   if (type === 'rag_retrieval_complete' && typeof payload.timestamp === 'number') {
     snapshot.contextReadyAt = payload.timestamp;
@@ -177,7 +191,7 @@ function mergePayloadIntoSnapshot(
       if (skipKeys.has(key)) continue;
       const v = payload[key];
       if (v === undefined) continue;
-      (snapshot as Record<string, unknown>)[key] = v;
+      (snapshot as unknown as Record<string, unknown>)[key] = v;
     }
   }
   snapshot.eventsSeen = (snapshot.eventsSeen ?? 0) + 1;

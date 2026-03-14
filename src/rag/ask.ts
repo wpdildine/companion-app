@@ -232,8 +232,8 @@ const BUNDLE_PREVIEW_MAX = 200;
 function toContextSelection(
   bundle:
     | {
-        cards?: Array<{ name?: string; oracle_id?: string }>;
-        rules?: Array<{ rule_id?: string }>;
+        cards?: Array<{ name?: string; oracle_id?: string; oracle_text?: string }>;
+        rules?: Array<{ rule_id?: string; text?: string }>;
       }
     | null
     | undefined,
@@ -446,13 +446,15 @@ export async function runRagFlow(
           });
         } else {
           const runtime = await import('@mtg/runtime');
+          const runtimeModule = runtime as {
+            getContext?: (question: string, packRoot: string) => Promise<unknown>;
+            default?: {
+              getContext?: (question: string, packRoot: string) => Promise<unknown>;
+            };
+          };
           const getContext =
-            runtime.getContext ??
-            (
-              runtime as {
-                default?: { getContext?: typeof runtime.getContext };
-              }
-            ).default?.getContext;
+            runtimeModule.getContext ??
+            runtimeModule.default?.getContext;
           if (typeof getContext === 'function') {
             mark('getContext start');
             const result = await getContext(question, packRoot);
@@ -467,8 +469,8 @@ export async function runRagFlow(
             if (bundle) {
               contextSelection = toContextSelection(
                 bundle as {
-                  cards?: Array<{ name?: string; oracle_id?: string }>;
-                  rules?: Array<{ rule_id?: string }>;
+                  cards?: Array<{ name?: string; oracle_id?: string; oracle_text?: string }>;
+                  rules?: Array<{ rule_id?: string; text?: string }>;
                 },
               );
               bundleRulesCount = Array.isArray(bundle.rules) ? bundle.rules.length : undefined;

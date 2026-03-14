@@ -429,7 +429,9 @@ export default function AgentSurface() {
   const releaseGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const centerHoldActiveRef = useRef(false);
   const holdCompletionInFlightRef = useRef(false);
-  const holdStartPromiseRef = useRef<Promise<boolean> | null>(null);
+  const holdStartPromiseRef = useRef<
+    Promise<{ ok: boolean; reason?: string }> | null
+  >(null);
   const submitTriggeredForReleaseRef = useRef(false);
   const releaseReasonRef = useRef<'hold release' | 'timeout'>('hold release');
 
@@ -552,7 +554,7 @@ export default function AgentSurface() {
           releaseGraceTimerRef.current = null;
         }
       },
-      onError: (reason, details) => {
+      onError: (reason?: string, details?: Record<string, unknown>) => {
         current.onError?.(reason, details);
         clearRecordingTimeout();
         if (releaseGraceTimerRef.current) {

@@ -26,6 +26,12 @@ function base64ToBytes(base64: string): Uint8Array {
   return new Uint8Array(out);
 }
 
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
+
 /**
  * Returns a reader that throws on any read. Use when the pack is not yet configured
  * so that init() or ask() fails with a clear message instead of silent errors.
@@ -64,7 +70,7 @@ export function createBundlePackReader(): PackFileReader | null {
         const path = prefix + relativePath.replace(/^\//, '');
         const base64 = await RagPackReader.readFileBinary(path);
         const bytes = base64ToBytes(base64);
-        return bytes.buffer;
+        return toArrayBuffer(bytes);
       },
     };
   } catch {
@@ -98,7 +104,7 @@ export function createDocumentsPackReader(packRoot: string): PackFileReader | nu
         const path = `${root}/${relativePath.replace(/^\//, '')}`;
         const base64 = await RagPackReader.readFileBinaryAtPath(path);
         const bytes = base64ToBytes(base64);
-        return bytes.buffer;
+        return toArrayBuffer(bytes);
       },
     };
   } catch {
