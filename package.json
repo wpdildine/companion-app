@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "start": "react-native start",
+    "start:local": "dotenv -e .env.local -- react-native start",
     "android": "react-native run-android",
     "ios": "pnpm run pods && react-native run-ios",
     "pods": "cd ios && PIPER_USE_ESPEAK=1 pod install",
@@ -42,6 +43,8 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "babel-plugin-inline-dotenv": "^1.7.0",
+    "dotenv-cli": "^7.4.2",
     "@babel/preset-env": "^7.25.3",
     "@babel/runtime": "^7.25.0",
     "@react-native-community/cli": "19.1.2",

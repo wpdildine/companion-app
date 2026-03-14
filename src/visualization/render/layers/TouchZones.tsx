@@ -59,7 +59,7 @@ function buildNameShapingSegments(
         region.kind === 'voice'
           ? '#f8fafc'
           : NAME_SHAPING_SELECTOR_COLORS[region.selector!],
-      opacity: region.kind === 'voice' ? 0.24 : 0.34,
+      opacity: (region.kind === 'voice' ? 0.24 : 0.34) * opacity,
       buttonInsetRatio: region.kind === 'voice' ? 0.84 : 0.9,
       edgeOpacity: region.kind === 'voice' ? 0.65 : 1,
     };

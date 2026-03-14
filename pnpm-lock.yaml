@@ -108,6 +108,12 @@ importers:
       '@types/three':
         specifier: ^0.162.0
         version: 0.162.0
+      babel-plugin-inline-dotenv:
+        specifier: ^1.7.0
+        version: 1.7.0(dotenv-expand@11.0.7)
+      dotenv-cli:
+        specifier: ^7.4.2
+        version: 7.4.4
       eslint:
         specifier: ^8.19.0
         version: 8.57.1
@@ -1662,6 +1668,14 @@ packages:
     peerDependencies:
       '@babel/core': ^7.8.0
 
+  babel-plugin-inline-dotenv@1.7.0:
+    resolution: {integrity: sha512-FUrXEwY9R9ZO8l0NFHqXFBzHjjMvdIJlELrzJoE6imDsj6Vh7g9svm7iHPHVYPbHmt6BPB2eCAJkwvG6kr5byg==}
+    peerDependencies:
+      dotenv-expand: '>= 5.0.0'
+    peerDependenciesMeta:
+      dotenv-expand:
+        optional: true
+
   babel-plugin-istanbul@6.1.1:
     resolution: {integrity: sha512-Y1IQok9821cC9onCx5otgFfRm7Lm+I+wwxOx738M/WLPZ9Q42m4IG5W0FNX8WLL2gYMZo3JkuXIH2DOpWM+qwA==}
     engines: {node: '>=8'}
@@ -2097,6 +2111,14 @@ packages:
   doctrine@3.0.0:
     resolution: {integrity: sha512-yS+Q5i3hBf7GBkd4KG8a7eBNNWNGLTaEwwYWUijIYM7zrlYDM0BFXHjjPWlWZ1Rg7UaddZeIDmi9jF3HmqiQ2w==}
     engines: {node: '>=6.0.0'}
+
+  dotenv-cli@7.4.4:
+    resolution: {integrity: sha512-XkBYCG0tPIes+YZr4SpfFv76SQrV/LeCE8CI7JSEMi3VR9MvTihCGTOtbIexD6i2mXF+6px7trb1imVCXSNMDw==}
+    hasBin: true
+
+  dotenv-expand@10.0.0:
+    resolution: {integrity: sha512-GopVGCpVS1UKH75VKHGuQFqS1Gusej0z4FyQkPdwjil2gNIv+LNsqBlboOzpJFZKVT95GkCyWJbBSdFEFUWI2A==}
+    engines: {node: '>=12'}
 
   dotenv-expand@11.0.7:
     resolution: {integrity: sha512-zIHwmZPRshsCdpMDyVsqGmgyP0yT8GAgXUnkdAoJisxvf33k7yO6OuoKmcTGuXPWSsm8Oh88nZicRLA9Y0rUeA==}
@@ -7023,6 +7045,12 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  babel-plugin-inline-dotenv@1.7.0(dotenv-expand@11.0.7):
+    dependencies:
+      dotenv: 16.6.1
+    optionalDependencies:
+      dotenv-expand: 11.0.7
+
   babel-plugin-istanbul@6.1.1:
     dependencies:
       '@babel/helper-plugin-utils': 7.28.6
@@ -7518,6 +7546,15 @@ snapshots:
   doctrine@3.0.0:
     dependencies:
       esutils: 2.0.3
+
+  dotenv-cli@7.4.4:
+    dependencies:
+      cross-spawn: 7.0.6
+      dotenv: 16.6.1
+      dotenv-expand: 10.0.0
+      minimist: 1.2.8
+
+  dotenv-expand@10.0.0: {}
 
   dotenv-expand@11.0.7:
     dependencies:
