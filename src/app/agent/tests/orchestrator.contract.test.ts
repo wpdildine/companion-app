@@ -477,6 +477,46 @@ describe('AgentOrchestrator contract events', () => {
     harness.unmount();
   });
 
+  it('exposes audioSessionState changes reactively during stop-for-submit', async () => {
+    let resolveTranscript: ((value: { text: string }) => void) | null = null;
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: () =>
+        new Promise(resolve => {
+          resolveTranscript = resolve;
+        }),
+    } as Response);
+    const recorder = createEventRecorder();
+    const harness = createHarness(recorder);
+
+    await act(async () => {
+      await harness.actions.startListening(true);
+      await flushPromises();
+    });
+
+    expect(harness.getState().audioSessionState).toBe('listening');
+
+    let stopPromise: Promise<void> | null = null;
+    await act(async () => {
+      stopPromise = harness.actions.stopListeningAndRequestSubmit();
+      await flushPromises();
+    });
+
+    expect(harness.getState().audioSessionState).not.toBe('listening');
+    expect(['stopping', 'settling']).toContain(
+      harness.getState().audioSessionState,
+    );
+
+    await act(async () => {
+      resolveTranscript?.({ text: 'Remote transcript' });
+      await stopPromise;
+      await flushPromises();
+    });
+
+    harness.unmount();
+    fetchMock.mockRestore();
+  });
+
   it('playback ordering', async () => {
     const recorder = createEventRecorder();
     const harness = createHarness(recorder);
@@ -554,6 +594,33 @@ describe('AgentOrchestrator contract events', () => {
       await flushPromises();
       await flushPromises();
     });
+
+    harness.unmount();
+    fetchMock.mockRestore();
+  });
+
+  it('returns audioSessionState to idleReady when remote stt transcript is empty', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ text: '   ' }),
+    } as Response);
+    const recorder = createEventRecorder();
+    const harness = createHarness(recorder);
+
+    await act(async () => {
+      await harness.actions.startListening(true);
+      await flushPromises();
+    });
+
+    await act(async () => {
+      await harness.actions.stopListeningAndRequestSubmit();
+      await flushPromises();
+      await flushPromises();
+    });
+
+    expect(harness.getState().audioSessionState).toBe('idleReady');
+    expect(harness.getState().lifecycle).toBe('idle');
+    expect(harness.getState().transcribedText).toBe('');
 
     harness.unmount();
     fetchMock.mockRestore();

@@ -2,12 +2,12 @@
  * Unit tests for remote STT coordinator: wait for capture, transcribe, normalize, failure callback.
  */
 
+import type { CapturedSttAudio } from '../../hooks/useSttAudioCapture';
 import {
   createRemoteSttCoordinator,
-  REMOTE_STT_CAPTURE_WAIT_MS,
   REMOTE_STT_CAPTURE_POLL_MS,
+  REMOTE_STT_CAPTURE_WAIT_MS,
 } from './remoteStt';
-import type { CapturedSttAudio } from '../../hooks/useSttAudioCapture';
 
 const mockCaptured: CapturedSttAudio = {
   filename: 'capture.webm',
@@ -20,7 +20,8 @@ describe('createRemoteSttCoordinator', () => {
   const mockTranscribe = jest.fn();
   let pendingCapture: CapturedSttAudio | null = null;
   let appliedText: string | null = null;
-  let failureArgs: { message: string; recordingSessionId?: string } | null = null;
+  let failureArgs: { message: string; recordingSessionId?: string } | null =
+    null;
 
   const deps = {
     getPendingCapture: () => pendingCapture,
@@ -51,7 +52,8 @@ describe('createRemoteSttCoordinator', () => {
 
   it('waits for pending capture then transcribes and applies', async () => {
     pendingCapture = null;
-    const { transcribeCapturedAudioIfNeeded } = createRemoteSttCoordinator(deps);
+    const { transcribeCapturedAudioIfNeeded } =
+      createRemoteSttCoordinator(deps);
     const promise = transcribeCapturedAudioIfNeeded('rec-1');
     await jest.advanceTimersByTimeAsync(REMOTE_STT_CAPTURE_POLL_MS * 2);
     pendingCapture = { ...mockCaptured };
@@ -63,14 +65,15 @@ describe('createRemoteSttCoordinator', () => {
       expect.objectContaining({
         audioBase64: 'base64data',
         language: 'en',
-      })
+      }),
     );
     expect(appliedText).toBe('hello world');
     expect(failureArgs).toBeNull();
   });
 
   it('times out cleanly when capture never arrives and calls onFailure', async () => {
-    const { transcribeCapturedAudioIfNeeded } = createRemoteSttCoordinator(deps);
+    const { transcribeCapturedAudioIfNeeded } =
+      createRemoteSttCoordinator(deps);
     const promise = transcribeCapturedAudioIfNeeded('rec-1');
     jest.advanceTimersByTime(REMOTE_STT_CAPTURE_WAIT_MS + 100);
     const result = await promise;
@@ -83,27 +86,37 @@ describe('createRemoteSttCoordinator', () => {
   it('normalizes transcript on success and clears pending', async () => {
     pendingCapture = { ...mockCaptured };
     mockTranscribe.mockResolvedValue({ text: '  foo   bar  \n' });
-    const { transcribeCapturedAudioIfNeeded } = createRemoteSttCoordinator(deps);
+    const { transcribeCapturedAudioIfNeeded } =
+      createRemoteSttCoordinator(deps);
     const result = await transcribeCapturedAudioIfNeeded('rec-1');
     expect(result).toBe(true);
     expect(appliedText).toBe('foo bar');
     expect(pendingCapture).toBeNull();
   });
 
-  it('calls onFailure when transcribe returns empty text', async () => {
+  it('calls onEmptyTranscript (recoverable) when transcribe returns empty/whitespace text', async () => {
     pendingCapture = { ...mockCaptured };
     mockTranscribe.mockResolvedValue({ text: '   \n\t  ' });
-    const { transcribeCapturedAudioIfNeeded } = createRemoteSttCoordinator(deps);
+    let emptyCalled = false;
+    const { transcribeCapturedAudioIfNeeded } = createRemoteSttCoordinator({
+      ...deps,
+      onEmptyTranscript: () => {
+        emptyCalled = true;
+      },
+    });
     const result = await transcribeCapturedAudioIfNeeded('rec-1');
     expect(result).toBe(false);
-    expect(failureArgs?.message).toContain('no text');
+    expect(emptyCalled).toBe(true);
+    expect(failureArgs).toBeNull();
     expect(appliedText).toBeNull();
+    expect(pendingCapture).toBeNull();
   });
 
   it('calls onFailure when transcribe throws', async () => {
     pendingCapture = { ...mockCaptured };
     mockTranscribe.mockRejectedValue(new Error('Network error'));
-    const { transcribeCapturedAudioIfNeeded } = createRemoteSttCoordinator(deps);
+    const { transcribeCapturedAudioIfNeeded } =
+      createRemoteSttCoordinator(deps);
     const result = await transcribeCapturedAudioIfNeeded('rec-1');
     expect(result).toBe(false);
     expect(failureArgs?.message).toBe('Network error');

@@ -3,7 +3,7 @@
  * Does not own lifecycle/mode; orchestrator provides callbacks for apply and onFailure.
  */
 
-import { logError, logInfo } from '../../../shared/logging';
+import { logError, logInfo, logWarn } from '../../../shared/logging';
 import type { CapturedSttAudio } from '../../hooks/useSttAudioCapture';
 import { normalizeTranscript, transcriptPreview } from './transcriptSettlement';
 
@@ -24,6 +24,8 @@ export interface RemoteSttDeps {
   transcribeAudio: TranscribeAudioFn;
   getEndpointBaseUrl: () => string | null;
   onFailure: (message: string, recordingSessionId?: string) => void;
+  /** When STT returns empty/whitespace-only (recoverable). Orchestrator uses this to return to idle without terminal error. */
+  onEmptyTranscript?: (recordingSessionId?: string) => void;
 }
 
 function toErrorMessage(e: unknown): string {
@@ -38,7 +40,9 @@ function toErrorMessage(e: unknown): string {
  * Orchestrator keeps pendingCapturedAudioRef and passes get/clear; coordinator owns wait loop and transcribe flow.
  */
 export function createRemoteSttCoordinator(deps: RemoteSttDeps): {
-  transcribeCapturedAudioIfNeeded: (recordingSessionId?: string) => Promise<boolean>;
+  transcribeCapturedAudioIfNeeded: (
+    recordingSessionId?: string,
+  ) => Promise<boolean>;
 } {
   const {
     getPendingCapture,
@@ -47,26 +51,34 @@ export function createRemoteSttCoordinator(deps: RemoteSttDeps): {
     transcribeAudio,
     getEndpointBaseUrl,
     onFailure,
+    onEmptyTranscript,
   } = deps;
 
   const transcribeCapturedAudioIfNeeded = async (
-    recordingSessionId?: string
+    recordingSessionId?: string,
   ): Promise<boolean> => {
     if (!getPendingCapture()) {
-      logInfo('AgentOrchestrator', 'waiting for remote stt capture to finalize', {
-        recordingSessionId,
-        waitMs: REMOTE_STT_CAPTURE_WAIT_MS,
-      });
+      logInfo(
+        'AgentOrchestrator',
+        'waiting for remote stt capture to finalize',
+        {
+          recordingSessionId,
+          waitMs: REMOTE_STT_CAPTURE_WAIT_MS,
+        },
+      );
       const deadline = Date.now() + REMOTE_STT_CAPTURE_WAIT_MS;
       while (!getPendingCapture() && Date.now() < deadline) {
         await new Promise<void>(resolve =>
-          setTimeout(() => resolve(), REMOTE_STT_CAPTURE_POLL_MS)
+          setTimeout(() => resolve(), REMOTE_STT_CAPTURE_POLL_MS),
         );
       }
     }
     const capturedAudio = getPendingCapture();
     if (!capturedAudio) {
-      onFailure('Remote STT audio capture produced no uploadable audio', recordingSessionId);
+      onFailure(
+        'Remote STT audio capture produced no uploadable audio',
+        recordingSessionId,
+      );
       return false;
     }
     logInfo('AgentOrchestrator', 'remote stt transcription requested', {
@@ -76,16 +88,28 @@ export function createRemoteSttCoordinator(deps: RemoteSttDeps): {
       durationMillis: capturedAudio.durationMillis,
       sizeBase64Chars: capturedAudio.audioBase64.length,
     });
+    logInfo('AgentOrchestrator', 'remote stt awaiting proxy response', {
+      recordingSessionId,
+      filename: capturedAudio.filename,
+    });
     try {
       const result = await transcribeAudio({
-        audioBase64: capturedAudio.audioBase64,
-        mimeType: capturedAudio.mimeType,
-        filename: capturedAudio.filename,
-        language: 'en',
+      audioBase64: capturedAudio.audioBase64,
+      mimeType: capturedAudio.mimeType,
+      filename: capturedAudio.filename,
+      language: 'en',
+      });
+      logInfo('AgentOrchestrator', 'remote stt proxy response received', {
+        recordingSessionId,
+        transcriptChars: result.text.length,
       });
       const normalized = normalizeTranscript(result.text);
       if (!normalized) {
-        onFailure('STT transcription returned no text', recordingSessionId);
+        clearPendingCapture();
+        logWarn('AgentOrchestrator', 'remote stt transcript normalized to empty', {
+          recordingSessionId,
+        });
+        onEmptyTranscript?.(recordingSessionId);
         return false;
       }
       clearPendingCapture();

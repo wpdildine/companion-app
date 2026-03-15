@@ -21,9 +21,9 @@ import type { RefObject } from 'react';
 import React, { useCallback, useEffect, useRef } from 'react';
 import type { GestureResponderEvent, LayoutChangeEvent } from 'react-native';
 import { Animated, StyleSheet, View } from 'react-native';
-import { logInfo } from '../../shared/logging';
 import { isCenterHoldEligible } from '../../app/nameShaping/layout/nameShapingInteractionRouting';
 import { isVoiceLaneNdc } from '../../app/nameShaping/layout/nameShapingTouchRegions';
+import { logInfo } from '../../shared/logging';
 import type { VisualizationEngineRef } from '../runtime/runtimeTypes';
 import { getZoneFromNdcX } from './zoneLayout';
 
@@ -43,7 +43,10 @@ export type NameShapingCaptureHandlers = {
 export type InteractionBandProps = {
   visualizationRef: RefObject<VisualizationEngineRef | null>;
   /** Semantic commit on touch end (rules/cards only; center does nothing). Optional 2nd arg is diagnostic touch-end sequence id. */
-  onClusterRelease?: (cluster: 'rules' | 'cards', diagnosticTouchEndId?: number) => void;
+  onClusterRelease?: (
+    cluster: 'rules' | 'cards',
+    diagnosticTouchEndId?: number,
+  ) => void;
   /** @deprecated Use onClusterRelease; kept for compatibility. */
   onClusterTap?: (cluster: 'rules' | 'cards') => void;
   /** Center spine hold: called once when hold timer fires. Primary hold-to-speak affordance. */

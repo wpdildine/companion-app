@@ -6,10 +6,12 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Platform, NativeModules, type AppStateStatus } from 'react-native';
-import { getEndpointBaseUrl, getSttProvider } from '../endpointConfig';
-import { useSttAudioCapture, type CapturedSttAudio } from '../hooks/useSttAudioCapture';
-import { useOpenAIProxy } from '../providers/openAI/useOpenAIProxy';
+import {
+  AppState,
+  NativeModules,
+  Platform,
+  type AppStateStatus,
+} from 'react-native';
 import {
   copyBundlePackToDocuments,
   createBundlePackReader,
@@ -20,35 +22,45 @@ import {
   getPackState,
   type ValidationSummary,
 } from '../../rag';
-import { logInfo, logLifecycle, logWarn, logError } from '../../shared/logging';
+import { logError, logInfo, logLifecycle, logWarn } from '../../shared/logging';
+import { getEndpointBaseUrl, getSttProvider } from '../endpointConfig';
+import {
+  useSttAudioCapture,
+  type CapturedSttAudio,
+} from '../hooks/useSttAudioCapture';
+import { useOpenAIProxy } from '../providers/openAI/useOpenAIProxy';
 import { classifyRecoverableFailure } from './failureClassification';
 import { emitRequestDebug } from './orchestrator/telemetry';
 import { executeRequest } from './request/executeRequest';
+import type { RequestDebugEmitPayload } from './requestDebugTypes';
 import type {
   AgentLifecycleState,
   AgentOrchestratorListeners,
   AgentOrchestratorState,
   ProcessingSubstate,
 } from './types';
-import type { RequestDebugEmitPayload } from './requestDebugTypes';
 import { createRemoteSttCoordinator } from './voice/remoteStt';
+import {
+  createSessionCoordinator,
+  IOS_STOP_GRACE_MS,
+  type AudioSessionState,
+} from './voice/sessionCoordinator';
+import {
+  createTranscriptSettlementCoordinator,
+  normalizeTranscript,
+  transcriptPreview,
+  type SettlementOutcome,
+} from './voice/transcriptSettlement';
 import {
   blockWindowUntil,
   getOnDeviceModelPaths,
   getVoiceNative,
   invokeVoiceStop,
-  runNativeStopFlow,
-  isRecoverableSpeechError,
   isRecognizerReentrancyError,
+  isRecoverableSpeechError,
   NATIVE_RESTART_GUARD_MS,
+  runNativeStopFlow,
 } from './voice/voiceNative';
-import { createSessionCoordinator, IOS_STOP_GRACE_MS } from './voice/sessionCoordinator';
-import {
-  createTranscriptSettlementCoordinator,
-  normalizeTranscript,
-  type SettlementOutcome,
-  transcriptPreview,
-} from './voice/transcriptSettlement';
 type VoiceModule = {
   start: (locale: string) => Promise<void>;
   stop: () => Promise<void>;
@@ -69,7 +81,9 @@ type TtsModule = {
 };
 
 /** Sink for request-scoped debug telemetry: (payload) => void. Payload must include type and requestId. */
-export type RequestDebugSink = (payload: RequestDebugEmitPayload & { type: string }) => void;
+export type RequestDebugSink = (
+  payload: RequestDebugEmitPayload & { type: string },
+) => void;
 
 export interface UseAgentOrchestratorOptions {
   /** Optional ref to listeners; orchestrator will call these on lifecycle events. */
@@ -79,7 +93,9 @@ export interface UseAgentOrchestratorOptions {
 }
 
 export interface AgentOrchestratorActions {
-  startListening: (fresh?: boolean) => Promise<{ ok: boolean; reason?: string }>;
+  startListening: (
+    fresh?: boolean,
+  ) => Promise<{ ok: boolean; reason?: string }>;
   stopListening: () => Promise<void>;
   /** For hold-to-speak release: stop and request submit only after transcript settlement. Submit must be triggered via onTranscriptReadyForSubmit. */
   stopListeningAndRequestSubmit: () => Promise<void>;
@@ -101,23 +117,31 @@ export function useAgentOrchestrator(
   const { transcribeAudio } = useOpenAIProxy();
   const sttAudioCapture = useSttAudioCapture();
 
-  const [mode, setMode] = useState<'idle' | 'listening' | 'processing' | 'speaking'>('idle');
+  const [mode, setMode] = useState<
+    'idle' | 'listening' | 'processing' | 'speaking'
+  >('idle');
   const [lifecycle, setLifecycle] = useState<AgentLifecycleState>('idle');
-  const [processingSubstate, setProcessingSubstate] = useState<ProcessingSubstate | null>(null);
+  const [processingSubstate, setProcessingSubstate] =
+    useState<ProcessingSubstate | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [voiceReady, setVoiceReady] = useState(false);
   const [transcribedText, setTranscribedText] = useState('');
   const [responseText, setResponseText] = useState<string | null>(null);
-  const [validationSummary, setValidationSummary] = useState<ValidationSummary | null>(null);
+  const [validationSummary, setValidationSummary] =
+    useState<ValidationSummary | null>(null);
   const [piperAvailable, setPiperAvailable] = useState<boolean | null>(null);
   const [ioBlockedUntil, setIoBlockedUntil] = useState<number | null>(null);
   const [ioBlockedReason, setIoBlockedReason] = useState<string | null>(null);
+  const [audioSessionState, setAudioSessionState] =
+    useState<AudioSessionState>('idleReady');
 
   const voiceRef = useRef<VoiceModule | null>(null);
   const ttsRef = useRef<TtsModule | null>(null);
   const transcribedTextRef = useRef('');
   const responseTextRef = useRef<string | null>(responseText);
-  const validationSummaryRef = useRef<ValidationSummary | null>(validationSummary);
+  const validationSummaryRef = useRef<ValidationSummary | null>(
+    validationSummary,
+  );
   const committedTextRef = useRef('');
   const partialTranscriptRef = useRef('');
   const speechEndedRef = useRef(false);
@@ -125,6 +149,9 @@ export function useAgentOrchestrator(
   const modeRef = useRef(mode);
   const lifecycleRef = useRef(lifecycle);
   const playbackInterruptedRef = useRef(false);
+  const lastRemoteSttEmptyRef = useRef(false);
+  /** Final safety net: if remote STT await never resolves, exit settling after this. */
+  const ORCHESTRATOR_STT_SETTLE_TIMEOUT_MS = 7000;
   const requestIdRef = useRef(0);
   const requestInFlightRef = useRef(false);
   const activeRequestIdRef = useRef(0);
@@ -140,7 +167,10 @@ export function useAgentOrchestrator(
   const lastPartialNormalizedRef = useRef('');
   const playTextRef = useRef<(text: string) => Promise<void>>(null);
   const ioBlockedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingPlaybackCompleteRef = useRef<{ requestId: number; endedAt: number } | null>(null);
+  const pendingPlaybackCompleteRef = useRef<{
+    requestId: number;
+    endedAt: number;
+  } | null>(null);
   const previousCommittedResponseRef = useRef<string | null>(null);
   const previousCommittedValidationRef = useRef<ValidationSummary | null>(null);
   const prevLifecycleRef = useRef<AgentLifecycleState>(lifecycle);
@@ -168,7 +198,7 @@ export function useAgentOrchestrator(
         telemetryReason: classification.telemetryReason,
       });
       const requestId = activeRequestIdRef.current;
-      emitRequestDebug(requestDebugSinkRef,{
+      emitRequestDebug(requestDebugSinkRef, {
         type: 'recoverable_failure',
         requestId: requestId !== 0 ? requestId : null,
         reason: classification.telemetryReason,
@@ -180,17 +210,25 @@ export function useAgentOrchestrator(
 
   const onAudioStateChange = useCallback(
     (
-      prev: 'idleReady' | 'starting' | 'listening' | 'stopping' | 'settling',
-      next: 'idleReady' | 'starting' | 'listening' | 'stopping' | 'settling',
-      context?: object
+      prev: AudioSessionState,
+      next: AudioSessionState,
+      context?: object,
     ) => {
-      logInfo('AgentOrchestrator', 'audio session transition', { from: prev, to: next, ...context });
+      setAudioSessionState(next);
+      logInfo('AgentOrchestrator', 'audio session transition', {
+        from: prev,
+        to: next,
+        ...context,
+      });
       if (next === 'listening') {
         setMode('listening');
         setLifecycle('listening');
       } else if (next === 'idleReady') {
         if (modeRef.current === 'listening') setMode('idle');
-        if (lifecycleRef.current === 'listening' || lifecycleRef.current === 'idle') {
+        if (
+          lifecycleRef.current === 'listening' ||
+          lifecycleRef.current === 'idle'
+        ) {
           setProcessingSubstate(null);
           setLifecycle('idle');
         }
@@ -205,7 +243,10 @@ export function useAgentOrchestrator(
   );
 
   const setAudioState = useCallback(
-    (next: 'idleReady' | 'starting' | 'listening' | 'stopping' | 'settling', context?: object) => {
+    (
+      next: 'idleReady' | 'starting' | 'listening' | 'stopping' | 'settling',
+      context?: object,
+    ) => {
       sessionCoordinator.setAudioState(next, context);
     },
     [sessionCoordinator],
@@ -242,7 +283,10 @@ export function useAgentOrchestrator(
   const failRemoteStt = useCallback(
     (message: string, recordingSessionId?: string) => {
       pendingCapturedAudioRef.current = null;
-      setAudioState('idleReady', { recordingSessionId, reason: 'sttProxyFailed' });
+      setAudioState('idleReady', {
+        recordingSessionId,
+        reason: 'sttProxyFailed',
+      });
       setError(message);
       setProcessingSubstate(null);
       setMode('idle');
@@ -283,6 +327,9 @@ export function useAgentOrchestrator(
         transcribeAudio,
         getEndpointBaseUrl: () => endpointBaseUrl ?? null,
         onFailure: failRemoteStt,
+        onEmptyTranscript: () => {
+          lastRemoteSttEmptyRef.current = true;
+        },
       }),
     [
       applyTranscriptForRemoteStt,
@@ -295,7 +342,9 @@ export function useAgentOrchestrator(
   const transcribeCapturedAudioIfNeeded = useCallback(
     async (recordingSessionId?: string): Promise<boolean> => {
       if (sttProvider !== 'remote') return true;
-      return remoteSttCoordinator.transcribeCapturedAudioIfNeeded(recordingSessionId);
+      return remoteSttCoordinator.transcribeCapturedAudioIfNeeded(
+        recordingSessionId,
+      );
     },
     [sttProvider, remoteSttCoordinator],
   );
@@ -318,13 +367,17 @@ export function useAgentOrchestrator(
       if (current.length >= fallback.length) return;
       committedTextRef.current = fallback;
       updateTranscript(fallback);
-      logInfo('AgentOrchestrator', 'transcript final synthesized from partial', {
-        recordingSessionId,
-        totalChars: fallback.length,
-        transcriptText: fallback,
-        transcriptPreview: transcriptPreview(fallback),
-        reason,
-      });
+      logInfo(
+        'AgentOrchestrator',
+        'transcript final synthesized from partial',
+        {
+          recordingSessionId,
+          totalChars: fallback.length,
+          transcriptText: fallback,
+          transcriptPreview: transcriptPreview(fallback),
+          reason,
+        },
+      );
     },
     [updateTranscript],
   );
@@ -366,29 +419,53 @@ export function useAgentOrchestrator(
   );
 
   const finalizeStop = useCallback(
-    (reason: string, recordingSessionId?: string, opts?: { keepLifecycle?: boolean }) => {
+    (
+      reason: string,
+      recordingSessionId?: string,
+      opts?: { keepLifecycle?: boolean },
+    ) => {
       settlementCoordinator.finalizeStop(reason, recordingSessionId);
       listenersRef?.current?.onListeningEnd?.();
       onSettlementFinalizeComplete(opts);
-      logInfo('AgentOrchestrator', 'voice listen stopped', { recordingSessionId });
+      logInfo('AgentOrchestrator', 'voice listen stopped', {
+        recordingSessionId,
+      });
     },
     [listenersRef, onSettlementFinalizeComplete, settlementCoordinator],
   );
 
   const cleanupPendingIosStopIfNeeded = useCallback(
-    async (recordingSessionId?: string, nextAudioState: 'idleReady' | 'settling' = 'idleReady') => {
-      if (Platform.OS !== 'ios' || !sessionCoordinator.getIosStopPending() || sessionCoordinator.getIosStopInvoked()) {
+    async (
+      recordingSessionId?: string,
+      nextAudioState: 'idleReady' | 'settling' = 'idleReady',
+    ) => {
+      if (
+        Platform.OS !== 'ios' ||
+        !sessionCoordinator.getIosStopPending() ||
+        sessionCoordinator.getIosStopInvoked()
+      ) {
         return;
       }
-      logInfo('AgentOrchestrator', 'cleanup forcing native voice stop before idle', { recordingSessionId });
+      logInfo(
+        'AgentOrchestrator',
+        'cleanup forcing native voice stop before idle',
+        { recordingSessionId },
+      );
       setAudioState('stopping', { recordingSessionId });
-      logInfo('AgentOrchestrator', 'native voice stop in flight', { recordingSessionId });
+      logInfo('AgentOrchestrator', 'native voice stop in flight', {
+        recordingSessionId,
+      });
       const V = voiceRef.current;
       await invokeVoiceStop(V, getVoiceNative);
       sessionCoordinator.setIosStopPending(false);
       sessionCoordinator.setIosStopInvoked(true);
-      setAudioState(nextAudioState, { recordingSessionId, reason: 'nativeStopComplete' });
-      logInfo('AgentOrchestrator', 'native voice stop completed', { recordingSessionId });
+      setAudioState(nextAudioState, {
+        recordingSessionId,
+        reason: 'nativeStopComplete',
+      });
+      logInfo('AgentOrchestrator', 'native voice stop completed', {
+        recordingSessionId,
+      });
     },
     [sessionCoordinator, setAudioState],
   );
@@ -400,11 +477,18 @@ export function useAgentOrchestrator(
       recordingSessionId?: string,
     ) => {
       if (outcome.kind === 'recoverable_empty') {
-        logLifecycle('AgentOrchestrator', 'lifecycle transition listening -> idle', {
+        logLifecycle(
+          'AgentOrchestrator',
+          'lifecycle transition listening -> idle',
+          {
+            recordingSessionId,
+            reason: 'speech capture failed: no usable transcript',
+          },
+        );
+        setAudioState('idleReady', {
           recordingSessionId,
-          reason: 'speech capture failed: no usable transcript',
+          reason: outcome.failureReason,
         });
-        setAudioState('idleReady', { recordingSessionId, reason: outcome.failureReason });
         await cleanupPendingIosStopIfNeeded(recordingSessionId, 'idleReady');
         finalizeStop(reason, recordingSessionId, { keepLifecycle: true });
         return;
@@ -416,10 +500,14 @@ export function useAgentOrchestrator(
         finalizeStop(reason, recordingSessionId, { keepLifecycle: true });
         return;
       }
-      logInfo('AgentOrchestrator', 'submit triggered after transcript settlement', {
-        reason,
-        recordingSessionId,
-      });
+      logInfo(
+        'AgentOrchestrator',
+        'submit triggered after transcript settlement',
+        {
+          reason,
+          recordingSessionId,
+        },
+      );
       logInfo('AgentOrchestrator', 'settlement resolved; restart eligible', {
         recordingSessionId,
         pendingSubmitWhenReady: outcome.shouldSubmit,
@@ -429,16 +517,32 @@ export function useAgentOrchestrator(
         listenersRef?.current?.onTranscriptReadyForSubmit?.();
       }
       const nextAudioState = outcome.shouldSubmit ? 'settling' : 'idleReady';
-      setAudioState(nextAudioState, { recordingSessionId, reason: 'settlementResolved' });
+      setAudioState(nextAudioState, {
+        recordingSessionId,
+        reason: 'settlementResolved',
+      });
       await cleanupPendingIosStopIfNeeded(recordingSessionId, nextAudioState);
-      finalizeStop(reason, recordingSessionId, outcome.shouldSubmit ? { keepLifecycle: true } : undefined);
+      finalizeStop(
+        reason,
+        recordingSessionId,
+        outcome.shouldSubmit ? { keepLifecycle: true } : undefined,
+      );
     },
-    [cleanupPendingIosStopIfNeeded, finalizeStop, listenersRef, setAudioState, settlementCoordinator],
+    [
+      cleanupPendingIosStopIfNeeded,
+      finalizeStop,
+      listenersRef,
+      setAudioState,
+      settlementCoordinator,
+    ],
   );
 
   const resolveSettlement = useCallback(
     async (reason: string, recordingSessionId?: string) => {
-      const outcome = await settlementCoordinator.resolveSettlement(reason, recordingSessionId);
+      const outcome = await settlementCoordinator.resolveSettlement(
+        reason,
+        recordingSessionId,
+      );
       await handleSettlementOutcome(outcome, reason, recordingSessionId);
     },
     [handleSettlementOutcome, settlementCoordinator],
@@ -448,9 +552,11 @@ export function useAgentOrchestrator(
     (
       recordingSessionId: string | undefined,
       runStop: () => Promise<void>,
-      pendingSubmitWhenReady: boolean
+      pendingSubmitWhenReady: boolean,
     ): Promise<void> => {
-      logInfo('AgentOrchestrator', 'native voice stop in flight', { recordingSessionId });
+      logInfo('AgentOrchestrator', 'native voice stop in flight', {
+        recordingSessionId,
+      });
       logInfo('AgentOrchestrator', 'voice stop invoked', {
         recordingSessionId,
         platform: Platform.OS,
@@ -462,9 +568,13 @@ export function useAgentOrchestrator(
           graceMs: IOS_STOP_GRACE_MS,
         });
       } else {
-        logInfo('AgentOrchestrator', 'voice stop invoked immediately (non-ios)', {
-          recordingSessionId,
-        });
+        logInfo(
+          'AgentOrchestrator',
+          'voice stop invoked immediately (non-ios)',
+          {
+            recordingSessionId,
+          },
+        );
       }
       return sessionCoordinator.executeNativeStopWithGrace(
         Platform.OS === 'ios',
@@ -473,74 +583,178 @@ export function useAgentOrchestrator(
         runStop,
       );
     },
-    [sessionCoordinator]
+    [sessionCoordinator],
   );
 
   const stopListening = useCallback(async () => {
     const recordingSessionId = recordingSessionRef.current ?? undefined;
-    logInfo('AgentOrchestrator', 'voice listen stop requested', { recordingSessionId });
+    logInfo('AgentOrchestrator', 'voice listen stop requested', {
+      recordingSessionId,
+    });
     stopRequestedRef.current = true;
     setAudioState('stopping', { recordingSessionId, reason: 'stopRequested' });
     if (sttProvider === 'remote') {
       pendingCapturedAudioRef.current = null;
       await sttAudioCapture.cancelCapture(recordingSessionId);
-      setAudioState('idleReady', { recordingSessionId, reason: 'remoteCaptureCancelled' });
-      sessionCoordinator.setNativeRestartGuardUntil(Date.now() + NATIVE_RESTART_GUARD_MS);
+      setAudioState('idleReady', {
+        recordingSessionId,
+        reason: 'remoteCaptureCancelled',
+      });
+      sessionCoordinator.setNativeRestartGuardUntil(
+        Date.now() + NATIVE_RESTART_GUARD_MS,
+      );
       settlementCoordinator.clearFinalizeTimer();
       finalizeStop('stopListening', recordingSessionId);
       return;
     }
     const V = voiceRef.current;
     const onStopped = () => {
-      logInfo('AgentOrchestrator', 'native voice stop completed', { recordingSessionId });
-      const next = settlementCoordinator.getPendingSubmitWhenReady() ? 'settling' : 'idleReady';
+      logInfo('AgentOrchestrator', 'native voice stop completed', {
+        recordingSessionId,
+      });
+      const next = settlementCoordinator.getPendingSubmitWhenReady()
+        ? 'settling'
+        : 'idleReady';
       setAudioState(next, { recordingSessionId, reason: 'nativeStopComplete' });
-      sessionCoordinator.setNativeRestartGuardUntil(Date.now() + NATIVE_RESTART_GUARD_MS);
+      sessionCoordinator.setNativeRestartGuardUntil(
+        Date.now() + NATIVE_RESTART_GUARD_MS,
+      );
     };
     const runStop = () =>
-      runNativeStopFlow(sessionCoordinator, V, getVoiceNative, recordingSessionId, onStopped);
+      runNativeStopFlow(
+        sessionCoordinator,
+        V,
+        getVoiceNative,
+        recordingSessionId,
+        onStopped,
+      );
     await runNativeStopWithLogging(
       recordingSessionId,
       runStop,
       settlementCoordinator.getPendingSubmitWhenReady(),
     );
     settlementCoordinator.clearFinalizeTimer();
-    settlementCoordinator.scheduleDelayedFinalize('stopListening', recordingSessionId, 300);
-  }, [finalizeStop, runNativeStopWithLogging, setAudioState, sessionCoordinator, sttAudioCapture, sttProvider, settlementCoordinator]);
+    settlementCoordinator.scheduleDelayedFinalize(
+      'stopListening',
+      recordingSessionId,
+      300,
+    );
+  }, [
+    finalizeStop,
+    runNativeStopWithLogging,
+    setAudioState,
+    sessionCoordinator,
+    sttAudioCapture,
+    sttProvider,
+    settlementCoordinator,
+  ]);
 
   const stopListeningAndRequestSubmit = useCallback(async () => {
     const recordingSessionId = recordingSessionRef.current ?? undefined;
-    logInfo('AgentOrchestrator', 'voice listen stop requested', { recordingSessionId });
-    logInfo('AgentOrchestrator', 'transcript finalization started', { recordingSessionId });
+    logInfo('AgentOrchestrator', 'voice listen stop requested', {
+      recordingSessionId,
+    });
+    logInfo('AgentOrchestrator', 'transcript finalization started', {
+      recordingSessionId,
+    });
     stopRequestedRef.current = true;
     setAudioState('stopping', { recordingSessionId, reason: 'stopForSubmit' });
     if (sttProvider === 'remote') {
-      pendingCapturedAudioRef.current = await sttAudioCapture.endCapture(recordingSessionId);
-      setAudioState('settling', { recordingSessionId, reason: 'remoteCaptureComplete' });
-      const sttReady = await transcribeCapturedAudioIfNeeded(recordingSessionId);
+      pendingCapturedAudioRef.current = await sttAudioCapture.endCapture(
+        recordingSessionId,
+      );
+      setAudioState('settling', {
+        recordingSessionId,
+        reason: 'remoteCaptureComplete',
+      });
+      lastRemoteSttEmptyRef.current = false;
+      const sttPromise = transcribeCapturedAudioIfNeeded(recordingSessionId);
+      const settleTimeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error('ORCHESTRATOR_STT_SETTLE_TIMEOUT')),
+          ORCHESTRATOR_STT_SETTLE_TIMEOUT_MS,
+        ),
+      );
+      let sttReady: boolean;
+      try {
+        sttReady = await Promise.race([sttPromise, settleTimeoutPromise]);
+      } catch (e) {
+        if (
+          e instanceof Error &&
+          e.message === 'ORCHESTRATOR_STT_SETTLE_TIMEOUT'
+        ) {
+          logWarn('AgentOrchestrator', 'orchestrator-level STT settle timeout fired', {
+            recordingSessionId,
+            timeoutMs: ORCHESTRATOR_STT_SETTLE_TIMEOUT_MS,
+          });
+          failRemoteStt(
+            'Remote STT request timed out (orchestrator)',
+            recordingSessionId,
+          );
+          finalizeStop('remoteSttFailed', recordingSessionId, {
+            keepLifecycle: true,
+          });
+          return;
+        }
+        throw e;
+      }
       if (!sttReady) {
-        finalizeStop('remoteSttFailed', recordingSessionId, { keepLifecycle: true });
+        const wasEmptyTranscript = lastRemoteSttEmptyRef.current;
+        lastRemoteSttEmptyRef.current = false;
+        if (wasEmptyTranscript) {
+          setAudioState('idleReady', {
+            recordingSessionId,
+            reason: 'remoteSttEmptyTranscript',
+          });
+          finalizeStop('remoteSttEmptyTranscript', recordingSessionId);
+        } else {
+          finalizeStop('remoteSttFailed', recordingSessionId, {
+            keepLifecycle: true,
+          });
+        }
         return;
       }
-      logInfo('AgentOrchestrator', 'submit triggered after remote stt capture', {
-        recordingSessionId,
-        sttProvider,
-      });
+      logInfo(
+        'AgentOrchestrator',
+        'submit triggered after remote stt capture',
+        {
+          recordingSessionId,
+          sttProvider,
+        },
+      );
       listenersRef?.current?.onTranscriptReadyForSubmit?.();
-      setAudioState('settling', { recordingSessionId, reason: 'remoteTranscriptReady' });
-      finalizeStop('remoteSttSubmitReady', recordingSessionId, { keepLifecycle: true });
+      setAudioState('settling', {
+        recordingSessionId,
+        reason: 'remoteTranscriptReady',
+      });
+      finalizeStop('remoteSttSubmitReady', recordingSessionId, {
+        keepLifecycle: true,
+      });
       return;
     }
     settlementCoordinator.setPendingSubmit(recordingSessionRef.current);
     settlementCoordinator.clearFinalizeTimer();
     const V = voiceRef.current;
     const onStopped = () => {
-      logInfo('AgentOrchestrator', 'native voice stop completed', { recordingSessionId });
-      setAudioState('settling', { recordingSessionId, reason: 'nativeStopComplete' });
-      sessionCoordinator.setNativeRestartGuardUntil(Date.now() + NATIVE_RESTART_GUARD_MS);
+      logInfo('AgentOrchestrator', 'native voice stop completed', {
+        recordingSessionId,
+      });
+      setAudioState('settling', {
+        recordingSessionId,
+        reason: 'nativeStopComplete',
+      });
+      sessionCoordinator.setNativeRestartGuardUntil(
+        Date.now() + NATIVE_RESTART_GUARD_MS,
+      );
     };
     const runStop = () =>
-      runNativeStopFlow(sessionCoordinator, V, getVoiceNative, recordingSessionId, onStopped);
+      runNativeStopFlow(
+        sessionCoordinator,
+        V,
+        getVoiceNative,
+        recordingSessionId,
+        onStopped,
+      );
     await runNativeStopWithLogging(
       recordingSessionId,
       runStop,
@@ -552,6 +766,7 @@ export function useAgentOrchestrator(
     });
   }, [
     finalizeStop,
+    failRemoteStt,
     listenersRef,
     resolveSettlement,
     runNativeStopWithLogging,
@@ -567,25 +782,44 @@ export function useAgentOrchestrator(
     async (fresh = false): Promise<{ ok: boolean; reason?: string }> => {
       const V = voiceRef.current;
       if (!V && sttProvider !== 'remote') {
-        logWarn('AgentOrchestrator', 'start attempt rejected: voice module unavailable');
+        logWarn(
+          'AgentOrchestrator',
+          'start attempt rejected: voice module unavailable',
+        );
         return { ok: false, reason: 'voiceUnavailable' };
       }
       const block = sessionCoordinator.shouldBlockStart();
       if (block.block) {
-        logWarn('AgentOrchestrator', 'start attempt rejected', { reason: block.reason });
+        logWarn('AgentOrchestrator', 'start attempt rejected', {
+          reason: block.reason,
+          audioState: sessionCoordinator.getAudioState(),
+          recordingSessionId: recordingSessionRef.current ?? undefined,
+        });
         applyIoBlock(block.reason ?? 'blocked');
         return { ok: false, reason: block.reason };
       }
-      if (settlementCoordinator.getPendingSubmitWhenReady() && !settlementCoordinator.getSettlementResolved()) {
-        logWarn('AgentOrchestrator', 'start attempt rejected: pending settlement still open', {
-          pendingSubmitWhenReady: settlementCoordinator.getPendingSubmitWhenReady(),
-          settlementResolved: settlementCoordinator.getSettlementResolved(),
-          audioState: sessionCoordinator.getAudioState(),
-        });
+      if (
+        settlementCoordinator.getPendingSubmitWhenReady() &&
+        !settlementCoordinator.getSettlementResolved()
+      ) {
+        logWarn(
+          'AgentOrchestrator',
+          'start attempt rejected: pending settlement still open',
+          {
+            pendingSubmitWhenReady:
+              settlementCoordinator.getPendingSubmitWhenReady(),
+            settlementResolved: settlementCoordinator.getSettlementResolved(),
+            audioState: sessionCoordinator.getAudioState(),
+          },
+        );
         return { ok: false, reason: 'pendingSettlement' };
       }
       if (mode === 'processing' || mode === 'speaking') {
-        logWarn('AgentOrchestrator', 'start attempt rejected: lifecycle blocked', { mode });
+        logWarn(
+          'AgentOrchestrator',
+          'start attempt rejected: lifecycle blocked',
+          { mode },
+        );
         return { ok: false, reason: 'lifecycleBlocked' };
       }
       setError(null);
@@ -616,25 +850,36 @@ export function useAgentOrchestrator(
       try {
         if (sttProvider === 'remote') {
           if (!endpointBaseUrl) {
-            const message = 'OpenAI proxy base URL not configured (ENDPOINT_BASE_URL)';
+            const message =
+              'OpenAI proxy base URL not configured (ENDPOINT_BASE_URL)';
             setAudioState('idleReady', { recordingSessionId });
             setError(message);
-            logError('AgentOrchestrator', 'remote stt start blocked: base URL missing', {
-              recordingSessionId,
-              sttProvider,
-            });
+            logError(
+              'AgentOrchestrator',
+              'remote stt start blocked: base URL missing',
+              {
+                recordingSessionId,
+                sttProvider,
+              },
+            );
             return { ok: false, reason: 'sttBaseUrlMissing' };
           }
-          const captureStarted = await sttAudioCapture.beginCapture(recordingSessionId);
+          const captureStarted = await sttAudioCapture.beginCapture(
+            recordingSessionId,
+          );
           if (!captureStarted) {
             const message = 'Remote STT audio capture unavailable';
             setAudioState('idleReady', { recordingSessionId });
             setError(message);
-            logError('AgentOrchestrator', 'remote stt start blocked: audio capture unavailable', {
-              recordingSessionId,
-              sttProvider,
-              endpointBaseUrl,
-            });
+            logError(
+              'AgentOrchestrator',
+              'remote stt start blocked: audio capture unavailable',
+              {
+                recordingSessionId,
+                sttProvider,
+                endpointBaseUrl,
+              },
+            );
             return { ok: false, reason: 'sttCaptureUnavailable' };
           }
           setAudioState('listening', { recordingSessionId });
@@ -644,9 +889,13 @@ export function useAgentOrchestrator(
           logInfo('AgentOrchestrator', 'voice listen active', {
             recordingSessionId,
             startLatencyMs:
-              recordingStartAtRef.current != null ? Date.now() - recordingStartAtRef.current : undefined,
+              recordingStartAtRef.current != null
+                ? Date.now() - recordingStartAtRef.current
+                : undefined,
           });
-          logInfo('AgentOrchestrator', 'start attempt accepted', { recordingSessionId });
+          logInfo('AgentOrchestrator', 'start attempt accepted', {
+            recordingSessionId,
+          });
           playListenIn();
           return { ok: true };
         }
@@ -671,9 +920,13 @@ export function useAgentOrchestrator(
         logInfo('AgentOrchestrator', 'voice listen active', {
           recordingSessionId,
           startLatencyMs:
-            recordingStartAtRef.current != null ? Date.now() - recordingStartAtRef.current : undefined,
+            recordingStartAtRef.current != null
+              ? Date.now() - recordingStartAtRef.current
+              : undefined,
         });
-        logInfo('AgentOrchestrator', 'start attempt accepted', { recordingSessionId });
+        logInfo('AgentOrchestrator', 'start attempt accepted', {
+          recordingSessionId,
+        });
         playListenIn();
         return { ok: true };
       } catch (e) {
@@ -682,13 +935,20 @@ export function useAgentOrchestrator(
           await sttAudioCapture.cancelCapture(recordingSessionId);
         }
         setAudioState('idleReady', { recordingSessionId });
-        const message = e instanceof Error ? e.message : 'Failed to start voice';
+        const message =
+          e instanceof Error ? e.message : 'Failed to start voice';
         if (isRecognizerReentrancyError(message)) {
-          logWarn('AgentOrchestrator', 'voice listen start blocked by native reentrancy', {
-            recordingSessionId,
-            message,
-          });
-          sessionCoordinator.setNativeRestartGuardUntil(Date.now() + NATIVE_RESTART_GUARD_MS);
+          logWarn(
+            'AgentOrchestrator',
+            'voice listen start blocked by native reentrancy',
+            {
+              recordingSessionId,
+              message,
+            },
+          );
+          sessionCoordinator.setNativeRestartGuardUntil(
+            Date.now() + NATIVE_RESTART_GUARD_MS,
+          );
           applyIoBlock('nativeReentrancy');
           return { ok: false, reason: 'nativeReentrancy' };
         }
@@ -719,11 +979,14 @@ export function useAgentOrchestrator(
   );
 
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (nextState: AppStateStatus) => {
-      if (nextState === 'background' && modeRef.current === 'listening') {
-        stopListening();
-      }
-    });
+    const sub = AppState.addEventListener(
+      'change',
+      (nextState: AppStateStatus) => {
+        if (nextState === 'background' && modeRef.current === 'listening') {
+          stopListening();
+        }
+      },
+    );
     return () => sub.remove();
   }, [stopListening]);
 
@@ -741,7 +1004,10 @@ export function useAgentOrchestrator(
       return null;
     }
     if (requestInFlightRef.current) {
-      logWarn('AgentOrchestrator', 'submit blocked because active request exists');
+      logWarn(
+        'AgentOrchestrator',
+        'submit blocked because active request exists',
+      );
       return null;
     }
     // Normalize input (canonical step: trim + collapse whitespace).
@@ -775,9 +1041,13 @@ export function useAgentOrchestrator(
     {
       const prev = prevLifecycleRef.current;
       if (prev !== 'processing') {
-        logLifecycle('AgentOrchestrator', `lifecycle transition ${prev} -> processing`, {
-          requestId: reqId,
-        });
+        logLifecycle(
+          'AgentOrchestrator',
+          `lifecycle transition ${prev} -> processing`,
+          {
+            requestId: reqId,
+          },
+        );
         prevLifecycleRef.current = 'processing';
       }
     }
@@ -788,14 +1058,14 @@ export function useAgentOrchestrator(
       reason: 'newRequestStart',
     });
     setProcessingSubstate('retrieving');
-    emitRequestDebug(requestDebugSinkRef,{
+    emitRequestDebug(requestDebugSinkRef, {
       type: 'processing_substate',
       requestId: reqId,
       processingSubstate: 'retrieving',
       timestamp: Date.now(),
     });
     const requestStartedAt = Date.now();
-    emitRequestDebug(requestDebugSinkRef,{
+    emitRequestDebug(requestDebugSinkRef, {
       type: 'request_start',
       requestId: reqId,
       acceptedTranscript: transcribedTextRef.current,
@@ -816,7 +1086,7 @@ export function useAgentOrchestrator(
     });
     listenersRef?.current?.onRequestStart?.();
     const retrievalStartedAt = Date.now();
-    emitRequestDebug(requestDebugSinkRef,{
+    emitRequestDebug(requestDebugSinkRef, {
       type: 'retrieval_start',
       requestId: reqId,
       retrievalStartedAt,
@@ -842,7 +1112,9 @@ export function useAgentOrchestrator(
         createBundlePackReader,
         createThrowReader,
         getPackEmbedModelId: (reader: unknown) =>
-          getPackEmbedModelId(reader as Parameters<typeof getPackEmbedModelId>[0]),
+          getPackEmbedModelId(
+            reader as Parameters<typeof getPackEmbedModelId>[0],
+          ),
         getOnDeviceModelPaths,
         previousCommittedResponseRef,
         previousCommittedValidationRef,
@@ -859,13 +1131,15 @@ export function useAgentOrchestrator(
     if (runResult.status === 'failed') {
       requestInFlightRef.current = false;
       activeRequestIdRef.current = 0;
-      logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: reqId });
+      logInfo('AgentOrchestrator', 'active requestId cleared', {
+        requestId: reqId,
+      });
       setResponseText(previousCommittedResponseRef.current);
       setValidationSummary(previousCommittedValidationRef.current);
       previousCommittedResponseRef.current = null;
       previousCommittedValidationRef.current = null;
       setProcessingSubstate(null);
-      emitRequestDebug(requestDebugSinkRef,{
+      emitRequestDebug(requestDebugSinkRef, {
         type: 'processing_substate',
         requestId: reqId,
         processingSubstate: null,
@@ -886,7 +1160,7 @@ export function useAgentOrchestrator(
     requestInFlightRef.current = false;
     setError(null);
     setProcessingSubstate(null);
-    emitRequestDebug(requestDebugSinkRef,{
+    emitRequestDebug(requestDebugSinkRef, {
       type: 'processing_substate',
       requestId: reqId,
       processingSubstate: null,
@@ -896,18 +1170,22 @@ export function useAgentOrchestrator(
     setLifecycle('idle');
     if (runResult.shouldPlay) {
       playbackRequestIdRef.current = reqId;
-      logInfo('ResponseSurface', 'response_surface_playback_bound_to_committed_response', {
-        requestId: reqId,
-        speakingBoundToCommittedResponse: true,
-        committedChars: runResult.committedText.length,
-      });
+      logInfo(
+        'ResponseSurface',
+        'response_surface_playback_bound_to_committed_response',
+        {
+          requestId: reqId,
+          speakingBoundToCommittedResponse: true,
+          committedChars: runResult.committedText.length,
+        },
+      );
       playTextRef.current?.(runResult.committedText).catch(() => undefined);
       return runResult.committedText;
     }
     if (!runResult.shouldPlay) {
       activeRequestIdRef.current = 0;
       const completedAt = Date.now();
-      emitRequestDebug(requestDebugSinkRef,{
+      emitRequestDebug(requestDebugSinkRef, {
         type: 'request_complete',
         requestId: reqId,
         status: 'completed',
@@ -916,7 +1194,9 @@ export function useAgentOrchestrator(
         timestamp: completedAt,
       });
       setAudioState('idleReady', { reason: 'requestComplete' });
-      logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: reqId });
+      logInfo('AgentOrchestrator', 'active requestId cleared', {
+        requestId: reqId,
+      });
     }
     return runResult.committedText;
   }, [listenersRef, requestDebugSinkRef, setAudioState]);
@@ -941,7 +1221,10 @@ export function useAgentOrchestrator(
         }
       }
       if (canUsePiper) {
-        logInfo('Playback', 'tts path selected', { provider: 'piper', textChars: normalized.length });
+        logInfo('Playback', 'tts path selected', {
+          provider: 'piper',
+          textChars: normalized.length,
+        });
         PiperTts.setOptions({
           lengthScale: 1.08,
           noiseScale: 0.62,
@@ -954,7 +1237,7 @@ export function useAgentOrchestrator(
         setMode('speaking');
         setLifecycle('speaking');
         const ttsStartedAt = Date.now();
-        emitRequestDebug(requestDebugSinkRef,{
+        emitRequestDebug(requestDebugSinkRef, {
           type: 'tts_start',
           requestId: playbackRequestIdRef.current,
           ttsStartedAt,
@@ -967,14 +1250,18 @@ export function useAgentOrchestrator(
           await PiperTts.speak(normalized);
         } catch (e) {
           if (!playbackInterruptedRef.current) {
-            const message = e instanceof Error ? e.message : 'Piper playback failed';
+            const message =
+              e instanceof Error ? e.message : 'Piper playback failed';
             setError(message);
-            logError('Playback', 'piper playback failed', { message, textChars: normalized.length });
+            logError('Playback', 'piper playback failed', {
+              message,
+              textChars: normalized.length,
+            });
           }
         } finally {
           const ttsEndedAt = Date.now();
           const reqIdForLog = playbackRequestIdRef.current;
-          emitRequestDebug(requestDebugSinkRef,{
+          emitRequestDebug(requestDebugSinkRef, {
             type: 'tts_end',
             requestId: reqIdForLog,
             ttsEndedAt,
@@ -982,7 +1269,10 @@ export function useAgentOrchestrator(
             lifecycle: 'idle',
           });
           if (reqIdForLog != null) {
-            pendingPlaybackCompleteRef.current = { requestId: reqIdForLog, endedAt: ttsEndedAt };
+            pendingPlaybackCompleteRef.current = {
+              requestId: reqIdForLog,
+              endedAt: ttsEndedAt,
+            };
           }
           playbackRequestIdRef.current = null;
           setProcessingSubstate(null);
@@ -1007,11 +1297,14 @@ export function useAgentOrchestrator(
       try {
         await Tts.getInitStatus();
         if (Platform.OS === 'android') Tts.stop();
-        logInfo('Playback', 'tts path selected', { provider: 'react-native-tts', textChars: normalized.length });
+        logInfo('Playback', 'tts path selected', {
+          provider: 'react-native-tts',
+          textChars: normalized.length,
+        });
         const reqIdForTts = playbackRequestIdRef.current;
         const onFinish = () => {
           const ttsEndedAt = Date.now();
-          emitRequestDebug(requestDebugSinkRef,{
+          emitRequestDebug(requestDebugSinkRef, {
             type: 'tts_end',
             requestId: reqIdForTts,
             ttsEndedAt,
@@ -1019,7 +1312,10 @@ export function useAgentOrchestrator(
             lifecycle: 'idle',
           });
           if (reqIdForTts != null) {
-            pendingPlaybackCompleteRef.current = { requestId: reqIdForTts, endedAt: ttsEndedAt };
+            pendingPlaybackCompleteRef.current = {
+              requestId: reqIdForTts,
+              endedAt: ttsEndedAt,
+            };
           }
           playbackRequestIdRef.current = null;
           setProcessingSubstate(null);
@@ -1043,24 +1339,30 @@ export function useAgentOrchestrator(
         setMode('speaking');
         setLifecycle('speaking');
         const ttsStartedAt = Date.now();
-        emitRequestDebug(requestDebugSinkRef,{
+        emitRequestDebug(requestDebugSinkRef, {
           type: 'tts_start',
           requestId: reqIdForTts,
           ttsStartedAt,
           timestamp: ttsStartedAt,
           lifecycle: 'speaking',
         });
-        logInfo('AgentOrchestrator', 'playback started', { provider: 'react-native-tts' });
+        logInfo('AgentOrchestrator', 'playback started', {
+          provider: 'react-native-tts',
+        });
         listenersRef?.current?.onPlaybackStart?.();
         Tts.speak(normalized);
       } catch (e) {
         if (!playbackInterruptedRef.current) {
-          const message = e instanceof Error ? e.message : 'TTS playback failed';
+          const message =
+            e instanceof Error ? e.message : 'TTS playback failed';
           setError(message);
           setProcessingSubstate(null);
           setMode('idle');
           setLifecycle('error');
-          logError('Playback', 'tts playback failed', { message, textChars: normalized.length });
+          logError('Playback', 'tts playback failed', {
+            message,
+            textChars: normalized.length,
+          });
           // TTS error before tts_end: we do not emit request_complete. request_complete is only emitted
           // after tts_end (via pendingPlaybackCompleteRef effect). Playback failure leaves lifecycle 'error' for user recovery.
         }
@@ -1120,16 +1422,26 @@ export function useAgentOrchestrator(
     try {
       const VoiceNative = getVoiceNative();
       if (!VoiceNative) {
-        setError('Speech recognition not available (native Voice module not linked).');
+        setError(
+          'Speech recognition not available (native Voice module not linked).',
+        );
         setVoiceReady(true);
         voiceRef.current = null;
         return;
       }
-      if (typeof (VoiceNative as { addListener?: unknown }).addListener !== 'function') {
+      if (
+        typeof (VoiceNative as { addListener?: unknown }).addListener !==
+        'function'
+      ) {
         (VoiceNative as { addListener: () => void }).addListener = () => {};
       }
-      if (typeof (VoiceNative as { removeListeners?: unknown }).removeListeners !== 'function') {
-        (VoiceNative as { removeListeners: (_: number) => void }).removeListeners = () => {};
+      if (
+        typeof (VoiceNative as { removeListeners?: unknown })
+          .removeListeners !== 'function'
+      ) {
+        (
+          VoiceNative as { removeListeners: (_: number) => void }
+        ).removeListeners = () => {};
       }
       const Voice = require('@react-native-voice/voice').default as VoiceModule;
       const hasStartApi =
@@ -1139,7 +1451,9 @@ export function useAgentOrchestrator(
         typeof Voice?.stop === 'function' ||
         typeof VoiceNative?.stopSpeech === 'function';
       if (!hasStartApi || !hasStopApi) {
-        setError('Speech recognition not available (Voice start/stop API missing).');
+        setError(
+          'Speech recognition not available (Voice start/stop API missing).',
+        );
         setVoiceReady(true);
         voiceRef.current = null;
         return;
@@ -1168,8 +1482,7 @@ export function useAgentOrchestrator(
   }, []);
 
   useEffect(() => {
-    return () => {
-    };
+    return () => {};
   }, []);
 
   useEffect(() => {
@@ -1193,7 +1506,11 @@ export function useAgentOrchestrator(
       if (activeRequestId > 0 && requestScopedTransition) {
         details.requestId = activeRequestId;
       }
-      logLifecycle('AgentOrchestrator', `lifecycle transition ${prev} -> ${lifecycle}`, details);
+      logLifecycle(
+        'AgentOrchestrator',
+        `lifecycle transition ${prev} -> ${lifecycle}`,
+        details,
+      );
       prevLifecycleRef.current = lifecycle;
     }
   }, [lifecycle]);
@@ -1203,7 +1520,7 @@ export function useAgentOrchestrator(
     const pending = pendingPlaybackCompleteRef.current;
     if (!pending) return;
     pendingPlaybackCompleteRef.current = null;
-    emitRequestDebug(requestDebugSinkRef,{
+    emitRequestDebug(requestDebugSinkRef, {
       type: 'request_complete',
       requestId: pending.requestId,
       status: 'completed',
@@ -1216,7 +1533,9 @@ export function useAgentOrchestrator(
       lifecycle: 'idle',
     });
     activeRequestIdRef.current = 0;
-    logInfo('AgentOrchestrator', 'active requestId cleared', { requestId: pending.requestId });
+    logInfo('AgentOrchestrator', 'active requestId cleared', {
+      requestId: pending.requestId,
+    });
     logInfo('ResponseSurface', 'response_surface_concealed_after_playback', {
       requestId: pending.requestId,
       lifecycle: 'idle',
@@ -1235,30 +1554,47 @@ export function useAgentOrchestrator(
     V.onSpeechResults = e => {
       const sessionId = recordingSessionRef.current ?? undefined;
       if (settlementCoordinator.getSettlementResolved()) {
-        logWarn('AgentOrchestrator', 'late final ignored for settled session', { recordingSessionId: sessionId });
+        logWarn('AgentOrchestrator', 'late final ignored for settled session', {
+          recordingSessionId: sessionId,
+        });
         return;
       }
-      if (sessionId && sessionId === settlementCoordinator.getLastSettledSessionId()) {
-        logWarn('AgentOrchestrator', 'late final ignored for settled session', { recordingSessionId: sessionId });
+      if (
+        sessionId &&
+        sessionId === settlementCoordinator.getLastSettledSessionId()
+      ) {
+        logWarn('AgentOrchestrator', 'late final ignored for settled session', {
+          recordingSessionId: sessionId,
+        });
         return;
       }
       if (!sessionId && !stopRequestedRef.current) {
-        logWarn('AgentOrchestrator', 'late final ignored for inactive session', {});
+        logWarn(
+          'AgentOrchestrator',
+          'late final ignored for inactive session',
+          {},
+        );
         return;
       }
       if (modeRef.current !== 'listening' && !stopRequestedRef.current) return;
       const next = (e.value?.[0] ?? '').trim();
       if (speechEndedRef.current) {
         const normalizedIncoming = normalizeTranscript(next);
-        logInfo('AgentOrchestrator', 'final ignored because speechEndedRef=true', {
-          recordingSessionId: sessionId,
-          pendingSubmitWhenReady: settlementCoordinator.getPendingSubmitWhenReady(),
-          settlementResolved: settlementCoordinator.getSettlementResolved(),
-          finalStabilizationActive: settlementCoordinator.getFinalStabilizationActive(),
-          incomingChunkChars: normalizedIncoming.length,
-          incomingTranscriptText: normalizedIncoming,
-          incomingTranscriptPreview: transcriptPreview(normalizedIncoming),
-        });
+        logInfo(
+          'AgentOrchestrator',
+          'final ignored because speechEndedRef=true',
+          {
+            recordingSessionId: sessionId,
+            pendingSubmitWhenReady:
+              settlementCoordinator.getPendingSubmitWhenReady(),
+            settlementResolved: settlementCoordinator.getSettlementResolved(),
+            finalStabilizationActive:
+              settlementCoordinator.getFinalStabilizationActive(),
+            incomingChunkChars: normalizedIncoming.length,
+            incomingTranscriptText: normalizedIncoming,
+            incomingTranscriptPreview: transcriptPreview(normalizedIncoming),
+          },
+        );
         return;
       }
       if (!next) return;
@@ -1292,24 +1628,43 @@ export function useAgentOrchestrator(
       listenersRef?.current?.onTranscriptUpdate?.();
       if (
         settlementCoordinator.getPendingSubmitWhenReady() &&
-        recordingSessionRef.current === settlementCoordinator.getPendingSubmitSessionId() &&
+        recordingSessionRef.current ===
+          settlementCoordinator.getPendingSubmitSessionId() &&
         !settlementCoordinator.getSettlementResolved()
       ) {
-        settlementCoordinator.acceptFinalCandidate(normalizedCombined, sessionId ?? undefined);
+        settlementCoordinator.acceptFinalCandidate(
+          normalizedCombined,
+          sessionId ?? undefined,
+        );
       }
     };
     V.onSpeechPartialResults = e => {
       const sessionId = recordingSessionRef.current ?? undefined;
       if (settlementCoordinator.getSettlementResolved()) {
-        logWarn('AgentOrchestrator', 'late partial ignored for settled session', { recordingSessionId: sessionId });
+        logWarn(
+          'AgentOrchestrator',
+          'late partial ignored for settled session',
+          { recordingSessionId: sessionId },
+        );
         return;
       }
-      if (sessionId && sessionId === settlementCoordinator.getLastSettledSessionId()) {
-        logWarn('AgentOrchestrator', 'late partial ignored for settled session', { recordingSessionId: sessionId });
+      if (
+        sessionId &&
+        sessionId === settlementCoordinator.getLastSettledSessionId()
+      ) {
+        logWarn(
+          'AgentOrchestrator',
+          'late partial ignored for settled session',
+          { recordingSessionId: sessionId },
+        );
         return;
       }
       if (!sessionId && !stopRequestedRef.current) {
-        logWarn('AgentOrchestrator', 'late partial ignored for inactive session', {});
+        logWarn(
+          'AgentOrchestrator',
+          'late partial ignored for inactive session',
+          {},
+        );
         return;
       }
       if (modeRef.current !== 'listening' && !stopRequestedRef.current) return;
@@ -1347,32 +1702,52 @@ export function useAgentOrchestrator(
     };
     V.onSpeechError = e => {
       const sessionId = recordingSessionRef.current ?? undefined;
-      if (settlementCoordinator.getSettlementResolved() || (sessionId && sessionId === settlementCoordinator.getLastSettledSessionId())) {
-        logWarn('AgentOrchestrator', 'late speechError downgraded for settled session', {
-          recordingSessionId: sessionId,
-          message: e.error?.message ?? 'Speech recognition error',
-        });
+      if (
+        settlementCoordinator.getSettlementResolved() ||
+        (sessionId &&
+          sessionId === settlementCoordinator.getLastSettledSessionId())
+      ) {
+        logWarn(
+          'AgentOrchestrator',
+          'late speechError downgraded for settled session',
+          {
+            recordingSessionId: sessionId,
+            message: e.error?.message ?? 'Speech recognition error',
+          },
+        );
         return;
       }
       if (!sessionId && !stopRequestedRef.current) {
-        logWarn('AgentOrchestrator', 'late speechError downgraded for inactive session', {
-          message: e.error?.message ?? 'Speech recognition error',
-        });
+        logWarn(
+          'AgentOrchestrator',
+          'late speechError downgraded for inactive session',
+          {
+            message: e.error?.message ?? 'Speech recognition error',
+          },
+        );
         return;
       }
       if (stopRequestedRef.current || modeRef.current !== 'listening') {
-        logWarn('AgentOrchestrator', 'post-stop speech error downgraded to non-fatal', {
-          recordingSessionId: sessionId,
-          message: e.error?.message ?? 'Speech recognition error',
-        });
+        logWarn(
+          'AgentOrchestrator',
+          'post-stop speech error downgraded to non-fatal',
+          {
+            recordingSessionId: sessionId,
+            message: e.error?.message ?? 'Speech recognition error',
+          },
+        );
         return;
       }
       const message = e.error?.message ?? 'Speech recognition error';
       if (isRecoverableSpeechError(message)) {
-        logWarn('AgentOrchestrator', 'speech recognition error downgraded (recoverable)', {
-          recordingSessionId: sessionId,
-          message,
-        });
+        logWarn(
+          'AgentOrchestrator',
+          'speech recognition error downgraded (recoverable)',
+          {
+            recordingSessionId: sessionId,
+            message,
+          },
+        );
         emitRecoverableFailure('speechErrorRecoverable', {
           recordingSessionId: sessionId,
           message,
@@ -1386,18 +1761,29 @@ export function useAgentOrchestrator(
           sessionCoordinator.getIosStopPending() ||
           modeRef.current !== 'listening')
       ) {
-        logWarn('AgentOrchestrator', 'speech recognition error downgraded (native reentrancy)', {
-          recordingSessionId: sessionId,
-          message,
-          audioState: sessionCoordinator.getAudioState(),
-          iosStopPending: sessionCoordinator.getIosStopPending(),
-          mode: modeRef.current,
-        });
-        sessionCoordinator.setNativeRestartGuardUntil(Date.now() + NATIVE_RESTART_GUARD_MS);
-        setAudioState(sessionCoordinator.getAudioState() === 'stopping' ? 'stopping' : 'settling', {
-          recordingSessionId: sessionId,
-          reason: 'nativeReentrancy',
-        });
+        logWarn(
+          'AgentOrchestrator',
+          'speech recognition error downgraded (native reentrancy)',
+          {
+            recordingSessionId: sessionId,
+            message,
+            audioState: sessionCoordinator.getAudioState(),
+            iosStopPending: sessionCoordinator.getIosStopPending(),
+            mode: modeRef.current,
+          },
+        );
+        sessionCoordinator.setNativeRestartGuardUntil(
+          Date.now() + NATIVE_RESTART_GUARD_MS,
+        );
+        setAudioState(
+          sessionCoordinator.getAudioState() === 'stopping'
+            ? 'stopping'
+            : 'settling',
+          {
+            recordingSessionId: sessionId,
+            reason: 'nativeReentrancy',
+          },
+        );
         return;
       }
       setError(message);
@@ -1407,49 +1793,87 @@ export function useAgentOrchestrator(
       setProcessingSubstate(null);
       setMode('idle');
       setLifecycle('error');
-      logError('AgentOrchestrator', 'speech recognition error (fatal: transcript acquisition failed)', {
-        recordingSessionId: recordingSessionRef.current ?? undefined,
-        message,
+      logError(
+        'AgentOrchestrator',
+        'speech recognition error (fatal: transcript acquisition failed)',
+        {
+          recordingSessionId: recordingSessionRef.current ?? undefined,
+          message,
+        },
+      );
+      setAudioState('settling', {
+        recordingSessionId: sessionId,
+        reason: 'speechErrorFatal',
       });
-      setAudioState('settling', { recordingSessionId: sessionId, reason: 'speechErrorFatal' });
-      sessionCoordinator.setNativeRestartGuardUntil(Date.now() + NATIVE_RESTART_GUARD_MS);
+      sessionCoordinator.setNativeRestartGuardUntil(
+        Date.now() + NATIVE_RESTART_GUARD_MS,
+      );
       recordingSessionRef.current = null;
       speechEndedRef.current = false;
     };
     V.onSpeechEnd = () => {
       const recordingSessionId = recordingSessionRef.current ?? undefined;
       if (settlementCoordinator.getSettlementResolved()) {
-        logWarn('AgentOrchestrator', 'late speechEnd ignored for settled session', { recordingSessionId });
+        logWarn(
+          'AgentOrchestrator',
+          'late speechEnd ignored for settled session',
+          { recordingSessionId },
+        );
         return;
       }
-      if (recordingSessionId && recordingSessionId === settlementCoordinator.getLastSettledSessionId()) {
-        logWarn('AgentOrchestrator', 'late speechEnd ignored for settled session', { recordingSessionId });
+      if (
+        recordingSessionId &&
+        recordingSessionId === settlementCoordinator.getLastSettledSessionId()
+      ) {
+        logWarn(
+          'AgentOrchestrator',
+          'late speechEnd ignored for settled session',
+          { recordingSessionId },
+        );
         return;
       }
       if (!recordingSessionId && !stopRequestedRef.current) {
-        logWarn('AgentOrchestrator', 'late speechEnd ignored for inactive session', {});
+        logWarn(
+          'AgentOrchestrator',
+          'late speechEnd ignored for inactive session',
+          {},
+        );
         return;
       }
       if (speechEndedRef.current) return;
       logInfo('AgentOrchestrator', 'speech recognition end event', {
         recordingSessionId,
         tMs:
-          recordingStartAtRef.current != null ? Date.now() - recordingStartAtRef.current : undefined,
+          recordingStartAtRef.current != null
+            ? Date.now() - recordingStartAtRef.current
+            : undefined,
       });
       speechEndedRef.current = true;
       if (sessionCoordinator.getAudioState() !== 'stopping') {
-        const next = settlementCoordinator.getPendingSubmitWhenReady() ? 'settling' : 'idleReady';
+        const next = settlementCoordinator.getPendingSubmitWhenReady()
+          ? 'settling'
+          : 'idleReady';
         setAudioState(next, { recordingSessionId, reason: 'speechEnd' });
-        sessionCoordinator.setNativeRestartGuardUntil(Date.now() + NATIVE_RESTART_GUARD_MS);
+        sessionCoordinator.setNativeRestartGuardUntil(
+          Date.now() + NATIVE_RESTART_GUARD_MS,
+        );
       }
       if (
         settlementCoordinator.getPendingSubmitWhenReady() &&
-        recordingSessionRef.current === settlementCoordinator.getPendingSubmitSessionId() &&
+        recordingSessionRef.current ===
+          settlementCoordinator.getPendingSubmitSessionId() &&
         !settlementCoordinator.getSettlementResolved()
       ) {
-        settlementCoordinator.startQuietWindow(recordingSessionId ?? undefined, outcome => {
-          handleSettlementOutcome(outcome, 'quietWindowExpired', recordingSessionId ?? undefined);
-        });
+        settlementCoordinator.startQuietWindow(
+          recordingSessionId ?? undefined,
+          outcome => {
+            handleSettlementOutcome(
+              outcome,
+              'quietWindowExpired',
+              recordingSessionId ?? undefined,
+            );
+          },
+        );
       }
     };
     return () => {
@@ -1486,9 +1910,14 @@ export function useAgentOrchestrator(
           : null;
       if (!copy) return;
       copy()
-        .then((path: string) => path && logInfo('Playback', 'Piper model copied to', { path }))
+        .then(
+          (path: string) =>
+            path && logInfo('Playback', 'Piper model copied to', { path }),
+        )
         .catch((e: unknown) =>
-          logWarn('Playback', 'Piper copyModelToFiles failed', { message: e instanceof Error ? e.message : String(e) }),
+          logWarn('Playback', 'Piper copyModelToFiles failed', {
+            message: e instanceof Error ? e.message : String(e),
+          }),
         );
     };
     run();
@@ -1522,7 +1951,8 @@ export function useAgentOrchestrator(
 
   const state: AgentOrchestratorState = {
     lifecycle: emittedLifecycle,
-    processingSubstate: emittedLifecycle === 'processing' ? processingSubstate : null,
+    processingSubstate:
+      emittedLifecycle === 'processing' ? processingSubstate : null,
     error,
     voiceReady,
     transcribedText,
@@ -1530,6 +1960,7 @@ export function useAgentOrchestrator(
     validationSummary,
     ioBlockedUntil,
     ioBlockedReason,
+    audioSessionState,
     metadata: undefined,
   };
 

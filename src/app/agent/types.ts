@@ -77,5 +77,7 @@ export interface AgentOrchestratorState {
   validationSummary: ValidationSummary | null;
   ioBlockedUntil?: number | null;
   ioBlockedReason?: string | null;
+  /** Audio session phase; used to ignore duplicate hold-end while stopping/settling. */
+  audioSessionState?: 'idleReady' | 'starting' | 'listening' | 'stopping' | 'settling';
   metadata?: AgentStateMetadata;
 }

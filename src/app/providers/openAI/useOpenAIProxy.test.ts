@@ -220,9 +220,67 @@ describe('useOpenAIProxy', () => {
         code: 'E_NETWORK',
       });
     });
+
+    it('times out STT when fetch never resolves', async () => {
+      jest.useFakeTimers();
+      mockGetEndpointBaseUrl.mockReturnValue('https://proxy.example.com');
+      (fetchMock as jest.Mock).mockImplementationOnce(
+        () => new Promise(() => {}),
+      );
+      renderHarness();
+      let error: unknown;
+      await act(async () => {
+        const promise = hookResult!.transcribeAudio({ audioBase64: 'x' }).catch(
+          e => {
+            error = e;
+          },
+        );
+        await jest.advanceTimersByTimeAsync(4000);
+        await promise;
+      });
+      expect(error).toEqual({
+        message: 'STT request timed out',
+        code: 'E_TIMEOUT',
+      });
+      expect(hookResult!.lastError).toEqual({
+        message: 'STT request timed out',
+        code: 'E_TIMEOUT',
+      });
+      jest.useRealTimers();
+    });
   });
 
   describe('Missing text handling', () => {
+    it('STT: accepts top-level { text: string, usage?: ... } and returns text as-is', async () => {
+      mockGetEndpointBaseUrl.mockReturnValue('https://proxy.example.com');
+      (fetchMock as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ text: 'Top-level transcript', usage: { inputTokens: 0, outputTokens: 1 } }),
+      } as Response);
+      renderHarness();
+      let result: { text: string } | undefined;
+      await act(async () => {
+        result = await hookResult!.transcribeAudio({ audioBase64: 'x' });
+      });
+      expect(result!.text).toBe('Top-level transcript');
+      expect(hookResult!.lastError).toBeNull();
+    });
+
+    it('STT: accepts top-level text when empty or whitespace-only (caller treats as no usable transcript)', async () => {
+      mockGetEndpointBaseUrl.mockReturnValue('https://proxy.example.com');
+      (fetchMock as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ text: '   \n\t  ' }),
+      } as Response);
+      renderHarness();
+      let result: { text: string } | undefined;
+      await act(async () => {
+        result = await hookResult!.transcribeAudio({ audioBase64: 'x' });
+      });
+      expect(result!.text).toBe('   \n\t  ');
+      expect(hookResult!.lastError).toBeNull();
+    });
+
     it('STT: accepts common nested proxy transcript shapes', async () => {
       mockGetEndpointBaseUrl.mockReturnValue('https://proxy.example.com');
       const responses = [
@@ -254,24 +312,27 @@ describe('useOpenAIProxy', () => {
       }
     });
 
-    it('STT: 200 with valid JSON but missing/empty text treats as error and does not return result', async () => {
+    it('STT: 200 with valid JSON but no usable text (empty object or non-string text) treats as error', async () => {
       mockGetEndpointBaseUrl.mockReturnValue('https://proxy.example.com');
-      (fetchMock as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({}),
-      } as Response);
+      const malformedResponses = [{}, { text: null }, { usage: 10 }];
       renderHarness();
-      await act(async () => {
-        try {
-          await hookResult!.transcribeAudio({ audioBase64: 'x' });
-        } catch (e) {
-          expect(e).toMatchObject({ message: 'STT transcription returned no text', code: 'E_NO_TEXT' });
-        }
-      });
-      expect(hookResult!.lastError).toEqual({
-        message: 'STT transcription returned no text',
-        code: 'E_NO_TEXT',
-      });
+      for (const response of malformedResponses) {
+        (fetchMock as jest.Mock).mockResolvedValueOnce({
+          ok: true,
+          json: async () => response,
+        } as Response);
+        await act(async () => {
+          try {
+            await hookResult!.transcribeAudio({ audioBase64: 'x' });
+          } catch (e) {
+            expect(e).toMatchObject({ message: 'STT transcription returned no text', code: 'E_NO_TEXT' });
+          }
+        });
+        expect(hookResult!.lastError).toEqual({
+          message: 'STT transcription returned no text',
+          code: 'E_NO_TEXT',
+        });
+      }
     });
 
     it('respond: 200 with valid JSON but no assistant text treats as error', async () => {

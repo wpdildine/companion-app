@@ -639,10 +639,12 @@ export default function AgentSurface() {
           const result = await startPromise;
           if (!result.ok) return;
         }
-        if (orchState.lifecycle === 'listening') {
+        if (orchState.audioSessionState === 'listening') {
           await orchActions.stopListeningAndRequestSubmit();
         } else {
-          logInfo('Interaction', 'stopListeningAndRequestSubmit skipped (not listening)');
+          logInfo('Interaction', 'stopListeningAndRequestSubmit skipped (not listening)', {
+            audioSessionState: orchState.audioSessionState ?? null,
+          });
         }
         // Listening stopped / submit triggered logs and feedback run after settlement in onTranscriptReadyForSubmit.
       } finally {
@@ -650,7 +652,7 @@ export default function AgentSurface() {
         holdCompletionInFlightRef.current = false;
       }
     },
-    [clearRecordingTimeout, orchActions, orchState.lifecycle],
+    [clearRecordingTimeout, orchActions, orchState.audioSessionState],
   );
 
   const handleCenterHoldStart = useCallback(() => {
@@ -721,6 +723,9 @@ export default function AgentSurface() {
 
   const handleCenterHoldEnd = useCallback(() => {
     if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current) return;
+    if (orchState.audioSessionState !== 'listening') {
+      return;
+    }
     logInfo('Interaction', 'center hold end detected');
     clearRecordingTimeout();
     if (releaseGraceTimerRef.current) {
@@ -728,7 +733,7 @@ export default function AgentSurface() {
       releaseGraceTimerRef.current = null;
     }
     stopListeningAndSubmit('hold release').catch(() => {});
-  }, [clearRecordingTimeout, stopListeningAndSubmit]);
+  }, [clearRecordingTimeout, orchState.audioSessionState, stopListeningAndSubmit]);
 
   const handleUserModeTap = useCallback(() => {
     if (orchState.lifecycle === 'processing' || orchState.lifecycle === 'listening') {

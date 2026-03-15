@@ -20,7 +20,11 @@ import type {
 const ERR_BASE_URL = 'OpenAI proxy base URL not configured (ENDPOINT_BASE_URL)';
 const ERR_REQUEST_FAILED = 'OpenAI proxy request failed';
 const ERR_STT_NO_TEXT = 'STT transcription returned no text';
+const ERR_STT_TIMEOUT = 'STT request timed out';
 const ERR_RESPOND_NO_TEXT = 'Respond request returned no assistant text';
+
+/** Timeout for /api/stt fetch; short for hold-to-speak + local proxy. */
+const REMOTE_STT_REQUEST_TIMEOUT_MS = 4000;
 
 function normalizeError(message: string, code?: string): OpenAIProxyError {
   return { message, code };
@@ -128,10 +132,13 @@ function summarizeSttPayloadShape(data: unknown): Record<string, unknown> {
 function parseSttResponse(data: unknown): { text: string } {
   if (data != null && typeof data === 'object') {
     const obj = data as Record<string, unknown>;
+    if (typeof obj.text === 'string') {
+      return { text: obj.text };
+    }
     const directCandidates = [
-      obj.text,
       obj.transcript,
       obj.output_text,
+      obj.text,
       (obj.data as Record<string, unknown> | undefined)?.text,
       (obj.data as Record<string, unknown> | undefined)?.transcript,
       (obj.result as Record<string, unknown> | undefined)?.text,
@@ -237,9 +244,11 @@ export function useOpenAIProxy(): {
     }
     setLastError(null);
     setIsTranscribing(true);
+    const controller = new AbortController();
+    let timeoutId: ReturnType<typeof setTimeout>;
     try {
       const url = buildProxyUrl(base, '/api/stt');
-      const res = await fetch(url, {
+      const fetchPromise = fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -248,7 +257,16 @@ export function useOpenAIProxy(): {
           ...(input.filename != null && { filename: input.filename }),
           ...(input.language != null && { language: input.language }),
         }),
+        signal: controller.signal,
       });
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          controller.abort();
+          reject(normalizeError(ERR_STT_TIMEOUT, 'E_TIMEOUT'));
+        }, REMOTE_STT_REQUEST_TIMEOUT_MS);
+      });
+      const res = await Promise.race([fetchPromise, timeoutPromise]);
+      clearTimeout(timeoutId);
       if (!res.ok) {
         throwNormalizedError(`${ERR_REQUEST_FAILED}: ${res.status}`, 'E_PROXY');
       }
@@ -263,6 +281,18 @@ export function useOpenAIProxy(): {
       const result: TranscribeAudioResult = { text, raw: data };
       return result;
     } catch (e) {
+      clearTimeout(timeoutId);
+      if (
+        (e instanceof Error && e.name === 'AbortError') ||
+        (isOpenAIProxyError(e) && e.code === 'E_TIMEOUT')
+      ) {
+        logWarn('OpenAIProxy', 'stt request timeout fired', {
+          timeoutMs: REMOTE_STT_REQUEST_TIMEOUT_MS,
+        });
+        const error = normalizeError(ERR_STT_TIMEOUT, 'E_TIMEOUT');
+        setLastError(error);
+        throw error;
+      }
       const error = isOpenAIProxyError(e) ? e : normalizeError(ERR_REQUEST_FAILED, 'E_NETWORK');
       setLastError(error);
       throw error;
