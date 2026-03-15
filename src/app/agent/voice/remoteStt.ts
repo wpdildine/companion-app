@@ -1,0 +1,113 @@
+/**
+ * Remote STT coordinator: wait for captured audio, transcribe via proxy, normalize and apply transcript or call failure handler.
+ * Does not own lifecycle/mode; orchestrator provides callbacks for apply and onFailure.
+ */
+
+import { logError, logInfo } from '../../../shared/logging';
+import type { CapturedSttAudio } from '../../hooks/useSttAudioCapture';
+import { normalizeTranscript, transcriptPreview } from './transcriptSettlement';
+
+export const REMOTE_STT_CAPTURE_WAIT_MS = 800;
+export const REMOTE_STT_CAPTURE_POLL_MS = 25;
+
+export type TranscribeAudioFn = (input: {
+  audioBase64: string;
+  mimeType?: string;
+  filename?: string;
+  language?: string;
+}) => Promise<{ text: string }>;
+
+export interface RemoteSttDeps {
+  getPendingCapture: () => CapturedSttAudio | null;
+  clearPendingCapture: () => void;
+  applyTranscript: (normalizedText: string) => void;
+  transcribeAudio: TranscribeAudioFn;
+  getEndpointBaseUrl: () => string | null;
+  onFailure: (message: string, recordingSessionId?: string) => void;
+}
+
+function toErrorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === 'object' && e !== null && 'message' in e)
+    return String((e as { message: unknown }).message);
+  return String(e);
+}
+
+/**
+ * Returns a coordinator that exposes transcribeCapturedAudioIfNeeded.
+ * Orchestrator keeps pendingCapturedAudioRef and passes get/clear; coordinator owns wait loop and transcribe flow.
+ */
+export function createRemoteSttCoordinator(deps: RemoteSttDeps): {
+  transcribeCapturedAudioIfNeeded: (recordingSessionId?: string) => Promise<boolean>;
+} {
+  const {
+    getPendingCapture,
+    clearPendingCapture,
+    applyTranscript,
+    transcribeAudio,
+    getEndpointBaseUrl,
+    onFailure,
+  } = deps;
+
+  const transcribeCapturedAudioIfNeeded = async (
+    recordingSessionId?: string
+  ): Promise<boolean> => {
+    if (!getPendingCapture()) {
+      logInfo('AgentOrchestrator', 'waiting for remote stt capture to finalize', {
+        recordingSessionId,
+        waitMs: REMOTE_STT_CAPTURE_WAIT_MS,
+      });
+      const deadline = Date.now() + REMOTE_STT_CAPTURE_WAIT_MS;
+      while (!getPendingCapture() && Date.now() < deadline) {
+        await new Promise<void>(resolve =>
+          setTimeout(() => resolve(), REMOTE_STT_CAPTURE_POLL_MS)
+        );
+      }
+    }
+    const capturedAudio = getPendingCapture();
+    if (!capturedAudio) {
+      onFailure('Remote STT audio capture produced no uploadable audio', recordingSessionId);
+      return false;
+    }
+    logInfo('AgentOrchestrator', 'remote stt transcription requested', {
+      recordingSessionId,
+      endpointBaseUrl: getEndpointBaseUrl(),
+      filename: capturedAudio.filename,
+      durationMillis: capturedAudio.durationMillis,
+      sizeBase64Chars: capturedAudio.audioBase64.length,
+    });
+    try {
+      const result = await transcribeAudio({
+        audioBase64: capturedAudio.audioBase64,
+        mimeType: capturedAudio.mimeType,
+        filename: capturedAudio.filename,
+        language: 'en',
+      });
+      const normalized = normalizeTranscript(result.text);
+      if (!normalized) {
+        onFailure('STT transcription returned no text', recordingSessionId);
+        return false;
+      }
+      clearPendingCapture();
+      applyTranscript(normalized);
+      logInfo('AgentOrchestrator', 'remote stt transcription succeeded', {
+        recordingSessionId,
+        transcriptChars: normalized.length,
+        transcriptText: normalized,
+        transcriptPreview: transcriptPreview(normalized),
+      });
+      return true;
+    } catch (error) {
+      const message = toErrorMessage(error);
+      logError('AgentOrchestrator', 'remote stt transcription failed', {
+        recordingSessionId,
+        message,
+        endpointBaseUrl: getEndpointBaseUrl(),
+      });
+      onFailure(message, recordingSessionId);
+      return false;
+    }
+  };
+
+  return { transcribeCapturedAudioIfNeeded };
+}
