@@ -1084,6 +1084,7 @@ export default function AgentSurface() {
         enabled={interactionBandEnabled}
         blocked={orchState.ioBlockedUntil != null}
         blockedUntil={orchState.ioBlockedUntil ?? null}
+        debugInteraction={debugPanelMode === 'viz'}
       />
       {debugPanelMode !== 'off' && (
         <View

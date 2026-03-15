@@ -11,6 +11,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { logInfo } from '../shared/logging';
 import AgentSurface from './AgentSurface';
 
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
 
@@ -19,10 +21,12 @@ function App() {
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <AgentSurface />
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
+        <AgentSurface />
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 

@@ -13,18 +13,23 @@
  *
  * This separates "physical response while touching" from "discrete action on release."
  *
- * Invariant: Native touch remains the authoritative input path. No layout or refactor
- * should move primary touch semantics to GL/raycast; this band is the single touch owner.
+ * Invariant: Native touch remains the authoritative input path. Pan is the sole physical
+ * gesture owner; tap-like and hold-like semantics are preserved via JS handlers (runOnJS).
  */
 
 import type { RefObject } from 'react';
-import React, { useCallback, useEffect, useRef } from 'react';
-import type { GestureResponderEvent, LayoutChangeEvent } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import type { LayoutChangeEvent } from 'react-native';
 import { Animated, StyleSheet, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
 import { isCenterHoldEligible } from '../../app/nameShaping/layout/nameShapingInteractionRouting';
 import { isVoiceLaneNdc } from '../../app/nameShaping/layout/nameShapingTouchRegions';
 import { logInfo } from '../../shared/logging';
 import type { VisualizationEngineRef } from '../runtime/runtimeTypes';
+import { hasMovedBeyondThreshold } from './fastMath';
+import { InteractionProbe } from './InteractionProbe';
+import type { InteractionProbeDebugState } from './InteractionProbe';
 import { getZoneFromNdcX } from './zoneLayout';
 
 /** Canonical center-hold threshold: press in center for this long to start hold-to-speak. */
@@ -59,6 +64,8 @@ export type InteractionBandProps = {
   enabled?: boolean;
   blocked?: boolean;
   blockedUntil?: number | null;
+  /** When true, band renders passive debug overlay (InteractionProbe) with NDC/zone/eligibility readout. */
+  debugInteraction?: boolean;
 };
 
 export function InteractionBand({
@@ -72,6 +79,7 @@ export function InteractionBand({
   enabled = true,
   blocked = false,
   blockedUntil = null,
+  debugInteraction = false,
 }: InteractionBandProps) {
   const layoutRef = useRef<{
     x: number;
@@ -82,8 +90,10 @@ export function InteractionBand({
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const centerHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const centerHoldStartedRef = useRef(false);
-  // TODO(android): monotonically increasing id per touch end for diagnosis of duplicate/follow-up events; remove when no longer needed
   const touchEndSequenceIdRef = useRef(0);
+
+  const [debugState, setDebugState] = useState<InteractionProbeDebugState | null>(null);
+  const [layoutSize, setLayoutSize] = useState({ w: 0, h: 0 });
 
   const clearCenterHoldState = useCallback(() => {
     if (centerHoldTimerRef.current) {
@@ -97,6 +107,7 @@ export function InteractionBand({
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { x, y, width: w, height: h } = e.nativeEvent.layout;
     layoutRef.current = { x, y, w, h };
+    setLayoutSize({ w, h });
   }, []);
   const bandTopInsetPx =
     topInsetOverridePx ??
@@ -132,7 +143,6 @@ export function InteractionBand({
 
   const setZoneArmedFromNdc = useCallback(
     (v: VisualizationEngineRef, ndc: [number, number]) => {
-      // zoneArmed is purely a transient hint while touch is down.
       v.zoneArmed = getZoneFromNdcX(ndc[0]);
     },
     [],
@@ -168,10 +178,38 @@ export function InteractionBand({
     }).start();
   }, [blocked, blockedUntil, blockedOpacity]);
 
+  const updateDebugState = useCallback(
+    (touchActive: boolean, locationX?: number, locationY?: number) => {
+      if (!debugInteraction) return;
+      if (!touchActive) {
+        setDebugState(null);
+        return;
+      }
+      const layout = layoutRef.current;
+      if (!layout || locationX == null || locationY == null) return;
+      const ndc = toNdc(locationX, locationY);
+      const bandNdc = toBandNdc(locationX, locationY);
+      const zone = ndc ? getZoneFromNdcX(ndc[0]) : null;
+      const inVoiceLaneFromLayout =
+        bandNdc != null ? isVoiceLaneNdc(bandNdc[0], bandNdc[1]) : false;
+      const eligible = isCenterHoldEligible(
+        nameShapingCapture != null,
+        inVoiceLaneFromLayout,
+        zone,
+      );
+      setDebugState({
+        ndc,
+        zone,
+        eligible,
+        touchActive: true,
+      });
+    },
+    [debugInteraction, toNdc, toBandNdc, nameShapingCapture],
+  );
+
   const handleTouchStart = useCallback(
-    (e: GestureResponderEvent) => {
+    (locationX: number, locationY: number) => {
       if (!enabled) return;
-      const { locationX, locationY } = e.nativeEvent;
       const v = visualizationRef.current;
       if (!v) return;
       const ndc = toNdc(locationX, locationY);
@@ -206,6 +244,7 @@ export function InteractionBand({
           nameShapingCapture?.onTouchStart(bandNdc);
         }
       }
+      updateDebugState(true, locationX, locationY);
     },
     [
       visualizationRef,
@@ -215,13 +254,13 @@ export function InteractionBand({
       setZoneArmedFromNdc,
       onCenterHoldStart,
       nameShapingCapture,
+      updateDebugState,
     ],
   );
 
   const handleTouchMove = useCallback(
-    (e: GestureResponderEvent) => {
+    (locationX: number, locationY: number) => {
       if (!enabled) return;
-      const { locationX, locationY } = e.nativeEvent;
       const v = visualizationRef.current;
       if (!v) return;
       const ndc = toNdc(locationX, locationY);
@@ -230,9 +269,15 @@ export function InteractionBand({
       if (ndc) {
         const zone = getZoneFromNdcX(ndc[0]);
         const start = touchStartRef.current;
-        const movedPx = start
-          ? Math.hypot(locationX - start.x, locationY - start.y)
-          : 0;
+        const movedBeyond =
+          start != null &&
+          hasMovedBeyondThreshold(
+            start.x,
+            start.y,
+            locationX,
+            locationY,
+            CENTER_HOLD_MOVE_CANCEL_PX,
+          );
         const inVoiceLaneFromLayout =
           bandNdc != null ? isVoiceLaneNdc(bandNdc[0], bandNdc[1]) : false;
         const inVoiceLane = isCenterHoldEligible(
@@ -242,7 +287,7 @@ export function InteractionBand({
         );
         if (
           centerHoldTimerRef.current &&
-          (!inVoiceLane || movedPx > CENTER_HOLD_MOVE_CANCEL_PX)
+          (!inVoiceLane || movedBeyond)
         ) {
           clearTimeout(centerHoldTimerRef.current);
           centerHoldTimerRef.current = null;
@@ -256,6 +301,7 @@ export function InteractionBand({
           nameShapingCapture?.onTouchMove(bandNdc);
         }
       }
+      updateDebugState(true, locationX, locationY);
     },
     [
       visualizationRef,
@@ -264,19 +310,20 @@ export function InteractionBand({
       enabled,
       setZoneArmedFromNdc,
       nameShapingCapture,
+      updateDebugState,
     ],
   );
 
   const handleTouchEnd = useCallback(
-    (e: GestureResponderEvent) => {
+    (locationX: number, locationY: number) => {
       if (!enabled) return;
-      // TODO(android): diagnostic logging for touch-end duplicate/follow-up diagnosis; remove when no longer needed
       const sequenceId = ++touchEndSequenceIdRef.current;
       const timestamp = Date.now();
       const v = visualizationRef.current;
       const holdHadStarted = centerHoldStartedRef.current;
       nameShapingCapture?.onTouchEnd();
       clearCenterHoldState();
+      updateDebugState(false);
       if (v) {
         v.touchFieldActive = false;
         v.touchFieldNdc = null;
@@ -305,7 +352,6 @@ export function InteractionBand({
         });
         return;
       }
-      const { locationX, locationY } = e.nativeEvent;
       const ndc = toNdc(locationX, locationY);
       if (!ndc) {
         logInfo('Interaction', 'touchEnd (Android diagnosis)', {
@@ -343,11 +389,14 @@ export function InteractionBand({
       enabled,
       clearCenterHoldState,
       nameShapingCapture,
+      updateDebugState,
     ],
   );
+
   const handleTouchCancel = useCallback(() => {
     nameShapingCapture?.onTouchCancel();
     clearCenterHoldState();
+    updateDebugState(false);
     const v = visualizationRef.current;
     if (v) {
       v.touchFieldActive = false;
@@ -355,24 +404,69 @@ export function InteractionBand({
       v.touchFieldStrength = 0;
       v.zoneArmed = null;
     }
-  }, [visualizationRef, clearCenterHoldState, nameShapingCapture]);
+  }, [
+    visualizationRef,
+    clearCenterHoldState,
+    nameShapingCapture,
+    updateDebugState,
+  ]);
+
+  const panGesture = React.useMemo(() => {
+    return Gesture.Pan()
+      .manualActivation(true)
+      .onTouchesDown((_e, stateManager) => {
+        if (!enabled || blocked) {
+          stateManager.fail();
+          return;
+        }
+        stateManager.activate();
+      })
+      .onStart((e) => {
+        runOnJS(handleTouchStart)(e.x, e.y);
+      })
+      .onUpdate((e) => {
+        runOnJS(handleTouchMove)(e.x, e.y);
+      })
+      .onEnd((e, success) => {
+        if (!success) return;
+        runOnJS(handleTouchEnd)(e.x, e.y);
+      })
+      .onFinalize((_e, success) => {
+        if (success) return;
+        runOnJS(handleTouchCancel)();
+      });
+  }, [
+    enabled,
+    blocked,
+    handleTouchStart,
+    handleTouchMove,
+    handleTouchEnd,
+    handleTouchCancel,
+  ]);
 
   return (
     <View
       style={[styles.band, { top: bandTopInsetPx }]}
       onLayout={onLayout}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      onTouchCancel={handleTouchCancel}
       pointerEvents={enabled ? 'auto' : 'none'}
     >
-      {blocked && (
-        <Animated.View
-          pointerEvents="none"
-          style={[styles.blockedOverlay, { opacity: blockedOpacity }]}
-        />
-      )}
+      <GestureDetector gesture={panGesture}>
+        <View collapsable={false} style={StyleSheet.absoluteFill}>
+          {debugInteraction && (
+            <InteractionProbe
+              debugState={debugState}
+              layoutW={layoutSize.w}
+              layoutH={layoutSize.h}
+            />
+          )}
+          {blocked && (
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.blockedOverlay, { opacity: blockedOpacity }]}
+            />
+          )}
+        </View>
+      </GestureDetector>
     </View>
   );
 }

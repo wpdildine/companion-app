@@ -16,5 +16,6 @@ module.exports = {
         unsafe: true, // bake the value into the bundle (no runtime process.env fallback)
       },
     ],
+    'react-native-reanimated/plugin',
   ],
 };
