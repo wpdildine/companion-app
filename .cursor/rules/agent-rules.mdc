@@ -1,12 +1,126 @@
 ---
-description: Agent must follow project AI rules and use README + architecture docs
+description: CompanionApp project rules: ownership-first diagnosis, minimal diffs, architecture-aware patching
 alwaysApply: true
 ---
 
-# Project context and agent rules
+# CompanionApp agent rules
 
-- **README.md** — Project overview, how the app works, structure, and links to mtg_rules. Use it for product context and high-level orientation.
-- **docs/ARCHITECTURE.md** — "Where do I go?" Map: app, rag, viz, shared; screens don't do IO; shared has no feature logic.
-- **docs/ai/AGENT_RULES.md** — How to implement: prime directive (search before adding), navigation, anti-bloat, reuse-first, no heuristic smoothing, contracts over guesses, screen/hook/service patterns, tests, PR checklist.
+Read these before changing code:
 
-Before changing code, follow **docs/ai/AGENT_RULES.md**. For where code lives, use **docs/ARCHITECTURE.md**. For project and product context, use **README.md**.
+1. `README.md` - product/runtime context
+2. `docs/ARCHITECTURE.md` - placement and repo structure
+3. `docs/APP_ARCHITECTURE.md` - ownership boundaries
+4. `docs/AGENT_RULES.md` - implementation discipline
+
+## Project identity
+
+CompanionApp is an architecture-first React Native AI surface.
+
+Core ownership model:
+
+- `useAgentOrchestrator` owns durable runtime truth: lifecycle, `processingSubstate`, request/audio session truth, failure resolution, playback boundaries.
+- `AgentSurface` owns composition and high-level interaction routing.
+- `VisualizationController` translates orchestrator semantics into visualization signals only.
+- `InteractionBand` owns raw touch capture/release interpretation, not request/session semantics.
+- `remoteStt` / `useOpenAIProxy` own STT coordination and transport, not app lifecycle semantics.
+- Render, materials, overlays, telemetry, and debug layers are observational/presentational unless explicitly documented otherwise.
+
+Current phase:
+
+- architecture is largely complete
+- primary work is stabilization, performance, cleanup, and polish
+- do not invent new ownership layers unless explicitly required
+
+## Required operating mode
+
+Before editing, always state:
+
+1. **Owning layer** of the bug/change
+2. **Broken invariant** in one sentence
+3. **Exact files in scope**
+4. **Exact files out of scope**
+
+If ownership is unclear, diagnose first. Do not patch yet.
+
+Patch the **owner of the invariant**, not the nearest visible symptom layer.
+
+## Non-negotiable invariants
+
+- `useAgentOrchestrator` is the single source of truth for durable runtime semantics.
+- `processingSubstate` only exists while `lifecycle === processing`.
+- Top-level lifecycle stays minimal: `idle`, `listening`, `processing`, `speaking`, `error`.
+- Audio session semantics are orchestrator-owned, not touch-owned.
+- Empty/blank remote STT is recoverable, not terminal.
+- Remote STT must never leave the app stuck in `audioSettling` / `settling`.
+- There is exactly one `responseText` slot.
+- Response persistence is independent from response surface visibility.
+- TTS speaks only committed response text.
+- Render/visualization layers do not invent app/request/failure semantics.
+- Debug/telemetry stores are observational only.
+- Request/session callbacks must be request-id or session guarded.
+- `applyVisualizationSignals` is the single write path into visualization runtime state.
+
+## Hard constraints
+
+- Search for the existing owner before adding code.
+- Prefer editing an existing owner module over adding files.
+- No speculative fixes.
+- No side quests.
+- No broad refactors during a narrow bug fix.
+- No new top-level `src/` folders without updating `docs/ARCHITECTURE.md`.
+- Do not touch touch/layout/visualization files for orchestrator/STT/request bugs unless evidence proves that layer owns the invariant.
+- Do not add timers, suppression windows, guards, or heuristics unless logs/code path prove they are necessary.
+
+## Patch discipline
+
+Before editing:
+
+- name the exact symbols/functions to change
+- explain why each file is in scope
+- explain why neighboring files are out of scope
+
+During editing:
+
+- make the smallest possible diff
+- do not rename unrelated symbols
+- do not move code unless necessary
+- do not introduce new abstractions unless the current owner cannot hold the change
+- prefer instrumentation before behavior changes when evidence is weak
+
+After editing, self-audit:
+
+- every file changed
+- every symbol changed
+- whether unrelated lines changed
+- stale comments/logs/tests introduced by the patch
+- any temporary diagnostics that should be removed or gated later
+
+## Escalation rules
+
+If a fix appears to require touching more than one ownership layer, stop and explain:
+
+- which layer actually owns the invariant
+- why the broader edit is necessary
+- what the minimum safe boundary is
+
+If evidence is insufficient, add **minimal instrumentation** first instead of changing behavior.
+
+## Logging and tests
+
+- Use `src/shared/logging/` for architecture/runtime logs.
+- Prefer milestone/state-transition logs over noisy loop logs.
+- When changing semantics, add or update the smallest targeted tests.
+- Remove or gate temporary diagnostics once the bug is understood.
+
+## Response format
+
+For code-change tasks, respond in this order:
+
+1. owning layer
+2. broken invariant
+3. planned exact changes
+4. out-of-scope files
+5. patch summary
+6. self-audit
+
+For review/diagnosis tasks, do not force patch-summary/self-audit formatting; report findings and recommendations in the most natural structure for the task.
