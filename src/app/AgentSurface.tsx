@@ -674,24 +674,16 @@ export default function AgentSurface() {
           const result = await startPromise;
           if (!result.ok) return;
         }
-        if (orchState.audioSessionState === 'listening') {
-          await orchActions.stopListeningAndRequestSubmit();
-        } else {
-          logInfo(
-            'Interaction',
-            'stopListeningAndRequestSubmit skipped (not listening)',
-            {
-              audioSessionState: orchState.audioSessionState ?? null,
-            },
-          );
-        }
+        // Always request stop after a successful start; orchestrator owns whether to act.
+        // Avoids losing a quick release when local snapshot is still "starting".
+        await orchActions.stopListeningAndRequestSubmit();
         // Listening stopped / submit triggered logs and feedback run after settlement in onTranscriptReadyForSubmit.
       } finally {
         holdStartPromiseRef.current = null;
         holdCompletionInFlightRef.current = false;
       }
     },
-    [clearRecordingTimeout, orchActions, orchState.audioSessionState],
+    [clearRecordingTimeout, orchActions],
   );
 
   const handleCenterHoldStart = useCallback(() => {
@@ -728,17 +720,7 @@ export default function AgentSurface() {
       }
       if (!result.ok) {
         centerHoldActiveRef.current = false;
-        if (
-          result.reason === 'audioNotReady' ||
-          result.reason === 'audioStarting' ||
-          result.reason === 'audioStopping' ||
-          result.reason === 'audioSettling' ||
-          result.reason === 'nativeGuard' ||
-          result.reason === 'iosStopPending' ||
-          result.reason === 'nativeReentrancy'
-        ) {
-          emitEvent(TRANSIENT_SIGNAL_SOFT_FAIL);
-        }
+        emitEvent(TRANSIENT_SIGNAL_SOFT_FAIL);
         return;
       }
       if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current)
@@ -769,9 +751,6 @@ export default function AgentSurface() {
   const handleCenterHoldEnd = useCallback(() => {
     if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current)
       return;
-    if (orchState.audioSessionState !== 'listening') {
-      return;
-    }
     logInfo('Interaction', 'center hold end detected');
     clearRecordingTimeout();
     if (releaseGraceTimerRef.current) {
@@ -779,11 +758,7 @@ export default function AgentSurface() {
       releaseGraceTimerRef.current = null;
     }
     stopListeningAndSubmit('hold release').catch(() => {});
-  }, [
-    clearRecordingTimeout,
-    orchState.audioSessionState,
-    stopListeningAndSubmit,
-  ]);
+  }, [clearRecordingTimeout, stopListeningAndSubmit]);
 
   const handleUserModeTap = useCallback(() => {
     if (
@@ -844,17 +819,7 @@ export default function AgentSurface() {
       }
       if (!result.ok) {
         userModeLongPressActiveRef.current = false;
-        if (
-          result.reason === 'audioNotReady' ||
-          result.reason === 'audioStarting' ||
-          result.reason === 'audioStopping' ||
-          result.reason === 'audioSettling' ||
-          result.reason === 'nativeGuard' ||
-          result.reason === 'iosStopPending' ||
-          result.reason === 'nativeReentrancy'
-        ) {
-          emitEvent(TRANSIENT_SIGNAL_SOFT_FAIL);
-        }
+        emitEvent(TRANSIENT_SIGNAL_SOFT_FAIL);
         return;
       }
       if (
@@ -1262,6 +1227,9 @@ export default function AgentSurface() {
         enabled={interactionBandEnabled}
         blocked={orchState.ioBlockedUntil != null}
         blockedUntil={orchState.ioBlockedUntil ?? null}
+        centerHoldShouldBypassDelay={
+          orchState.audioSessionState !== 'idleReady'
+        }
         debugInteraction={debugPanelMode === 'viz'}
       />
       {debugPanelMode !== 'off' && (

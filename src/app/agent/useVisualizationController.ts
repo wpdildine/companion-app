@@ -34,6 +34,24 @@ function lifecycleToMode(
   }
 }
 
+/**
+ * When lifecycle is listening but audio session is stopping/settling (post-release, awaiting STT),
+ * project as idle so the surface does not read as actively listening.
+ */
+function effectiveMode(
+  lifecycle: AgentOrchestratorState['lifecycle'],
+  audioSessionState: AgentOrchestratorState['audioSessionState'],
+): 'idle' | 'listening' | 'processing' | 'speaking' {
+  const base = lifecycleToMode(lifecycle);
+  if (
+    base === 'listening' &&
+    (audioSessionState === 'stopping' || audioSessionState === 'settling')
+  ) {
+    return 'idle';
+  }
+  return base;
+}
+
 export interface UseVisualizationControllerOptions {
   /** When true, do not push mode/phase so DevPanel/RuntimeLoop own mode. */
   debugEnabled?: boolean;
@@ -134,7 +152,7 @@ export function useVisualizationController(
       return;
     }
 
-    const mode = lifecycleToMode(state.lifecycle);
+    const mode = effectiveMode(state.lifecycle, state.audioSessionState);
     const phase =
       state.lifecycle === 'processing'
         ? 'processing'
@@ -200,6 +218,7 @@ export function useVisualizationController(
     }
   }, [
     state.lifecycle,
+    state.audioSessionState,
     state.processingSubstate,
     state.validationSummary,
     setSignals,

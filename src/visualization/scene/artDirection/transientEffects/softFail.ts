@@ -10,7 +10,7 @@ export const SOFT_FAIL_EFFECT: TransientEffectDefinition = {
   modulation: {
     hueShift: 0.35,
     intensity: 1,
-    agitation: 0.22,
-    opacityBias: 0.28,
+    agitation: 0.52,
+    opacityBias: 0.4,
   },
 };

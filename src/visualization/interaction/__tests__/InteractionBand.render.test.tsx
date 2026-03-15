@@ -223,4 +223,48 @@ describe('InteractionBand render path', () => {
     expect(nameShapingCapture.onTouchCancel).toHaveBeenCalledTimes(1);
     expect(nameShapingCapture.onTouchEnd).not.toHaveBeenCalled();
   });
+
+  it('bypasses the hold delay for center-lane touches when busy-audio retry feedback is enabled', () => {
+    jest.useFakeTimers();
+    const visualizationRef = createVisualizationRef();
+    const onCenterHoldStart = jest.fn();
+
+    let renderer: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(
+        <InteractionBand
+          visualizationRef={visualizationRef}
+          onCenterHoldStart={onCenterHoldStart}
+          centerHoldShouldBypassDelay
+        />,
+      );
+    });
+
+    const band = renderer!.root
+      .findAllByType(View)
+      .find((node) => node.props.onLayout != null);
+    expect(band).toBeDefined();
+
+    act(() => {
+      band!.props.onLayout({
+        nativeEvent: { layout: { x: 0, y: 0, width: 200, height: 288 } },
+      });
+    });
+
+    const gesture = lastGesture;
+    expect(gesture).not.toBeNull();
+
+    act(() => {
+      gesture!.handlers.onStart?.({ x: 100, y: 100 });
+    });
+
+    expect(onCenterHoldStart).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
+
+    expect(onCenterHoldStart).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
+  });
 });

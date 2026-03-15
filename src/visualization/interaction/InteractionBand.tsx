@@ -64,6 +64,8 @@ export type InteractionBandProps = {
   enabled?: boolean;
   blocked?: boolean;
   blockedUntil?: number | null;
+  /** When true, center-lane touches bypass the hold delay and route directly into the existing hold-start path. */
+  centerHoldShouldBypassDelay?: boolean;
   /** When true, band renders passive debug overlay (InteractionProbe) with NDC/zone/eligibility readout. */
   debugInteraction?: boolean;
 };
@@ -79,6 +81,7 @@ export function InteractionBand({
   enabled = true,
   blocked = false,
   blockedUntil = null,
+  centerHoldShouldBypassDelay = false,
   debugInteraction = false,
 }: InteractionBandProps) {
   const layoutRef = useRef<{
@@ -232,13 +235,18 @@ export function InteractionBand({
           zone,
         );
         if (inVoiceLane) {
-          centerHoldTimerRef.current = setTimeout(() => {
-            centerHoldTimerRef.current = null;
-            if (!centerHoldStartedRef.current) {
-              centerHoldStartedRef.current = true;
-              onCenterHoldStart?.();
-            }
-          }, CENTER_HOLD_THRESHOLD_MS);
+          if (centerHoldShouldBypassDelay) {
+            centerHoldStartedRef.current = true;
+            onCenterHoldStart?.();
+          } else {
+            centerHoldTimerRef.current = setTimeout(() => {
+              centerHoldTimerRef.current = null;
+              if (!centerHoldStartedRef.current) {
+                centerHoldStartedRef.current = true;
+                onCenterHoldStart?.();
+              }
+            }, CENTER_HOLD_THRESHOLD_MS);
+          }
         }
         if (bandNdc) {
           nameShapingCapture?.onTouchStart(bandNdc);
@@ -251,6 +259,7 @@ export function InteractionBand({
       toNdc,
       toBandNdc,
       enabled,
+      centerHoldShouldBypassDelay,
       setZoneArmedFromNdc,
       onCenterHoldStart,
       nameShapingCapture,

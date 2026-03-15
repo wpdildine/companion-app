@@ -296,6 +296,7 @@ export function useAgentOrchestrator(
         message,
         sttProvider,
         endpointBaseUrl: endpointBaseUrl ?? null,
+        transientEvent: 'terminalFail',
       });
       logError('AgentOrchestrator', 'remote stt transcription failed', {
         recordingSessionId,
