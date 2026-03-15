@@ -71,6 +71,7 @@ export function applyVisualizationSignals(
   if (signals.event != null) {
     v.lastEvent = signals.event;
     v.lastEventTime = v.clock;
+    logInfo('VisualizationRuntime', `applied visualization event: ${signals.event}`);
   }
 
   if (panelRects != null) {

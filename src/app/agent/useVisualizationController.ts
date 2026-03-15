@@ -85,25 +85,19 @@ export function useVisualizationController(
         emitEventRef.current(TRANSIENT_SIGNAL_FIRST_TOKEN);
       },
       onGenerationEnd: () => {
-        logInfo('VisualizationController', 'emitted event chunkAccepted');
+        logInfo('VisualizationController', 'emitted event: chunkAccepted');
         emitEventRef.current('chunkAccepted');
       },
       onPlaybackStart: () => {},
       onPlaybackEnd: () => {},
       onComplete: () => {},
-      onRecoverableFailure: (reason: string, details?: Record<string, unknown>) => {
-        logInfo('VisualizationController', 'emitted transient: softFail', {
-          reason,
-          ...(details ?? {}),
-        });
+      onRecoverableFailure: () => {
+        logInfo('VisualizationController', 'emitted transient: softFail');
         emitEventRef.current(TRANSIENT_SIGNAL_SOFT_FAIL);
       },
-      onError: (reason?: string, details?: Record<string, unknown>) => {
+      onError: (_reason?: string, details?: Record<string, unknown>) => {
         if (details?.transientEvent === 'terminalFail') {
-          logInfo('VisualizationController', 'emitted transient: terminalFail', {
-            reason,
-            ...(details ?? {}),
-          });
+          logInfo('VisualizationController', 'emitted transient: terminalFail');
           emitEventRef.current(TRANSIENT_SIGNAL_TERMINAL_FAIL);
         }
       },
@@ -117,6 +111,7 @@ export function useVisualizationController(
   const attachedLoggedRef = useRef(false);
   const lastLoggedModeRef = useRef<string | null>(null);
   const lastLoggedLifecycleRef = useRef<string | null>(null);
+  const lastLoggedSubstateRef = useRef<string | null>(null);
 
   // Map normalized agent state → visualization signals (mode, phase, grounded, etc.)
   useEffect(() => {
@@ -153,7 +148,16 @@ export function useVisualizationController(
     }
     if (lastLoggedModeRef.current !== mode) {
       lastLoggedModeRef.current = mode;
-      logInfo('VisualizationController', `applied visualization mode ${mode}`);
+      logInfo('VisualizationController', `mode changed to ${mode}`);
+    }
+    if (state.lifecycle === 'processing' && state.processingSubstate != null) {
+      const substate = state.processingSubstate;
+      if (lastLoggedSubstateRef.current !== substate) {
+        lastLoggedSubstateRef.current = substate;
+        logInfo('VisualizationController', `processingSubstate changed to ${substate}`);
+      }
+    } else {
+      lastLoggedSubstateRef.current = null;
     }
     const grounded =
       state.validationSummary != null
@@ -196,6 +200,7 @@ export function useVisualizationController(
     }
   }, [
     state.lifecycle,
+    state.processingSubstate,
     state.validationSummary,
     setSignals,
     debugEnabled,

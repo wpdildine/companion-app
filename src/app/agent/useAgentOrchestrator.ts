@@ -702,6 +702,10 @@ export function useAgentOrchestrator(
         const wasEmptyTranscript = lastRemoteSttEmptyRef.current;
         lastRemoteSttEmptyRef.current = false;
         if (wasEmptyTranscript) {
+          emitRecoverableFailure('noUsableTranscript', {
+            recordingSessionId,
+            reason: 'remoteSttEmptyTranscript',
+          });
           setAudioState('idleReady', {
             recordingSessionId,
             reason: 'remoteSttEmptyTranscript',
@@ -765,6 +769,7 @@ export function useAgentOrchestrator(
       resolveSettlement('flushWindowExpired', sessionId);
     });
   }, [
+    emitRecoverableFailure,
     finalizeStop,
     failRemoteStt,
     listenersRef,

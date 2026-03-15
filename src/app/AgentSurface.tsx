@@ -6,7 +6,17 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Dimensions, Modal, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  Dimensions,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  useColorScheme,
+  View,
+} from 'react-native';
 import { logInfo } from '../shared/logging';
 import {
   cleanupEarcons,
@@ -14,10 +24,16 @@ import {
   playListeningEndEarcon,
   prepareEarcons,
 } from '../shared/feedback/earcons';
-import { triggerListeningStartHaptic, triggerListeningEndHaptic } from '../shared/feedback/haptics';
+import {
+  triggerListeningStartHaptic,
+  triggerListeningEndHaptic,
+} from '../shared/feedback/haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { dummyAnswer, dummyCards, dummyRules } from '../shared/stubs/demoResults';
-import type { CardRef, SelectedRule } from './ui';
+import {
+  dummyAnswer,
+  dummyCards,
+  dummyRules,
+} from '../shared/stubs/demoResults';
 import { SemanticChannelView } from '../screens';
 import { SemanticChannelLoadingView } from './ui';
 import { getTheme } from '../theme';
@@ -114,35 +130,52 @@ export default function AgentSurface() {
       return r;
     })(),
   );
-  const listenersRef = useRef<import('./agent').AgentOrchestratorListeners | null>(null);
-  const requestDebugSinkRef = useRef<import('./agent').RequestDebugSink | null>(requestDebugEmit);
+  const listenersRef = useRef<
+    import('./agent').AgentOrchestratorListeners | null
+  >(null);
+  const requestDebugSinkRef = useRef<import('./agent').RequestDebugSink | null>(
+    requestDebugEmit,
+  );
   const orch = useAgentOrchestrator({ listenersRef, requestDebugSinkRef });
   const { state: orchState, actions: orchActions } = orch;
 
-  const [requestDebugState, setRequestDebugState] = useState<RequestDebugState>(getRequestDebugState);
+  const [requestDebugState, setRequestDebugState] =
+    useState<RequestDebugState>(getRequestDebugState);
   useEffect(() => {
-    return subscribeRequestDebug(() => setRequestDebugState(getRequestDebugState()));
+    return subscribeRequestDebug(() =>
+      setRequestDebugState(getRequestDebugState()),
+    );
   }, []);
 
-  const [debugPanelMode, setDebugPanelMode] = useState<'off' | 'telemetry' | 'viz'>(
-    DEBUG_ENABLED_DEFAULT ? 'viz' : 'off',
-  );
+  const [debugPanelMode, setDebugPanelMode] = useState<
+    'off' | 'telemetry' | 'viz'
+  >(DEBUG_ENABLED_DEFAULT ? 'viz' : 'off');
   const debugEnabled = debugPanelMode !== 'off';
   const [debugStubCardsEnabled, setDebugStubCardsEnabled] = useState(false);
   const [debugStubRulesEnabled, setDebugStubRulesEnabled] = useState(false);
-  const [telemetryLayout, setTelemetryLayout] = useState({ width: 0, height: 0 });
-  const [revealedBlocks, setRevealedBlocks] = useState<ResultsOverlayRevealedBlocks>({
-    answer: false,
-    cards: false,
-    rules: false,
-    sources: false,
+  const [telemetryLayout, setTelemetryLayout] = useState({
+    width: 0,
+    height: 0,
   });
+  const [revealedBlocks, setRevealedBlocks] =
+    useState<ResultsOverlayRevealedBlocks>({
+      answer: false,
+      cards: false,
+      rules: false,
+      sources: false,
+    });
 
   const handleTelemetryClose = useCallback(() => {
     const activeId = requestDebugState.activeRequestId;
-    let snapshot = activeId != null ? requestDebugState.snapshotsById.get(activeId) ?? null : null;
+    let snapshot =
+      activeId != null
+        ? requestDebugState.snapshotsById.get(activeId) ?? null
+        : null;
     if (!snapshot && requestDebugState.recentRequestIds.length > 0) {
-      const lastId = requestDebugState.recentRequestIds[requestDebugState.recentRequestIds.length - 1];
+      const lastId =
+        requestDebugState.recentRequestIds[
+          requestDebugState.recentRequestIds.length - 1
+        ];
       snapshot = requestDebugState.snapshotsById.get(lastId) ?? null;
     }
     if (snapshot) {
@@ -171,10 +204,12 @@ export default function AgentSurface() {
     debugScenario: DEBUG_SCENARIO,
   });
 
-  const { state: nameShapingState, actions: nameShapingActions } = useNameShapingState();
+  const { state: nameShapingState, actions: nameShapingActions } =
+    useNameShapingState();
   const [nameShapingResolverIndex, setNameShapingResolverIndex] =
     useState<ResolverIndex | null>(null);
-  const [nameShapingResolverIndexLoading, setNameShapingResolverIndexLoading] = useState(false);
+  const [nameShapingResolverIndexLoading, setNameShapingResolverIndexLoading] =
+    useState(false);
   const nameShapingResolverIndexLoadingRef = useRef(false);
   useNameShapingController(
     nameShapingState,
@@ -208,7 +243,8 @@ export default function AgentSurface() {
       const existingPackState = getPackState();
       const existingFileReader = getFileReader();
       let nameLookupPath =
-        existingPackState?.validate.cardsNameLookupPath ?? 'cards/name_lookup.jsonl';
+        existingPackState?.validate.cardsNameLookupPath ??
+        'cards/name_lookup.jsonl';
       let fileReader = existingFileReader;
 
       if (!fileReader) {
@@ -216,9 +252,13 @@ export default function AgentSurface() {
         try {
           packRoot = await copyBundlePackToDocuments();
         } catch (error) {
-          logInfo('AgentSurface', 'NameShaping resolver pack copy skipped, falling back', {
-            error: error instanceof Error ? error.message : String(error),
-          });
+          logInfo(
+            'AgentSurface',
+            'NameShaping resolver pack copy skipped, falling back',
+            {
+              error: error instanceof Error ? error.message : String(error),
+            },
+          );
           packRoot = (await getContentPackPathInDocuments()) ?? '';
         }
         fileReader =
@@ -228,7 +268,10 @@ export default function AgentSurface() {
 
       if (!fileReader) {
         if (!cancelled) {
-          logInfo('AgentSurface', 'NameShaping resolver index unavailable: no pack reader');
+          logInfo(
+            'AgentSurface',
+            'NameShaping resolver index unavailable: no pack reader',
+          );
         }
         nameShapingResolverIndexLoadingRef.current = false;
         if (!cancelled) {
@@ -255,7 +298,9 @@ export default function AgentSurface() {
         logInfo('AgentSurface', 'NameShaping resolver index failed to load', {
           nameLookupPath,
           error:
-            error instanceof Error ? error.message : 'unknown resolver index load error',
+            error instanceof Error
+              ? error.message
+              : 'unknown resolver index load error',
         });
       } finally {
         nameShapingResolverIndexLoadingRef.current = false;
@@ -275,7 +320,9 @@ export default function AgentSurface() {
     if (!NAME_SHAPING_VERBOSE_DEBUG_LOGS || !nameShapingState.enabled) return;
     logInfo('AgentSurface', 'NameShaping raw sequence updated', {
       count: nameShapingState.rawEmittedSequence.length,
-      rawSequence: nameShapingState.rawEmittedSequence.map((token) => token.selector),
+      rawSequence: nameShapingState.rawEmittedSequence.map(
+        token => token.selector,
+      ),
     });
   }, [nameShapingState.enabled, nameShapingState.rawEmittedSequence]);
   useEffect(() => {
@@ -300,7 +347,7 @@ export default function AgentSurface() {
     logInfo('AgentSurface', 'NameShaping resolver candidates updated', {
       hasResolverIndex: nameShapingResolverIndex !== null,
       count: nameShapingState.resolverCandidates.length,
-      candidates: nameShapingState.resolverCandidates.map((candidate) => ({
+      candidates: nameShapingState.resolverCandidates.map(candidate => ({
         cardId: candidate.cardId,
         displayName: candidate.displayName,
         score: candidate.score,
@@ -314,7 +361,9 @@ export default function AgentSurface() {
   useEffect(() => {
     if (!nameShapingState.enabled) return;
     if (nameShapingState.committedSignature.length === 0) return;
-    const trace = getActiveNameShapingCommitTrace(nameShapingState.committedSignature);
+    const trace = getActiveNameShapingCommitTrace(
+      nameShapingState.committedSignature,
+    );
     if (!trace) return;
     logInfo('AgentSurface', 'NameShaping commit trace render settled', {
       traceId: trace.id,
@@ -339,9 +388,13 @@ export default function AgentSurface() {
     ) {
       return;
     }
-    logInfo('AgentSurface', 'NameShaping normalized signature has no resolver index yet', {
-      normalizedSignature: [...nameShapingState.normalizedSignature],
-    });
+    logInfo(
+      'AgentSurface',
+      'NameShaping normalized signature has no resolver index yet',
+      {
+        normalizedSignature: [...nameShapingState.normalizedSignature],
+      },
+    );
   }, [
     nameShapingState.enabled,
     nameShapingState.normalizedSignature,
@@ -368,8 +421,11 @@ export default function AgentSurface() {
   useEffect(() => {
     logInfo('AgentSurface', 'mounted as active composition root');
     if (typeof globalThis !== 'undefined') {
-      (globalThis as { __LOG_SCOPES__?: string[] }).__LOG_SCOPES__ = DEBUG_LOG_SCOPES;
-      (globalThis as { __DISABLE_IOS_EARCON_START__?: boolean }).__DISABLE_IOS_EARCON_START__ = true;
+      (globalThis as { __LOG_SCOPES__?: string[] }).__LOG_SCOPES__ =
+        DEBUG_LOG_SCOPES;
+      (
+        globalThis as { __DISABLE_IOS_EARCON_START__?: boolean }
+      ).__DISABLE_IOS_EARCON_START__ = true;
     }
     prepareEarcons().catch(() => {});
   }, []);
@@ -380,13 +436,18 @@ export default function AgentSurface() {
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const userModeLongPressActiveRef = useRef(false);
   const askHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const releaseGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const releaseGraceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const centerHoldActiveRef = useRef(false);
   const holdCompletionInFlightRef = useRef(false);
-  const holdStartPromiseRef = useRef<
-    Promise<{ ok: boolean; reason?: string }> | null
-  >(null);
+  const holdStartPromiseRef = useRef<Promise<{
+    ok: boolean;
+    reason?: string;
+  }> | null>(null);
   const submitTriggeredForReleaseRef = useRef(false);
   const releaseReasonRef = useRef<'hold release' | 'timeout'>('hold release');
   const submitRef = useRef<(() => Promise<string | null>) | null>(null);
@@ -395,7 +456,11 @@ export default function AgentSurface() {
   const flushPanelRects = useCallback(() => {
     const next: VisualizationPanelRects = {};
     const source = panelRectsContentRef.current;
-    const keys: Array<keyof VisualizationPanelRects> = ['answer', 'cards', 'rules'];
+    const keys: Array<keyof VisualizationPanelRects> = [
+      'answer',
+      'cards',
+      'rules',
+    ];
     for (const key of keys) {
       const rect = source[key];
       if (!rect || rect.w <= 0 || rect.h <= 0) continue;
@@ -414,8 +479,14 @@ export default function AgentSurface() {
   }, [setSignals]);
 
   const updatePanelRect = useCallback(
-    (key: keyof VisualizationPanelRects, rect: { x: number; y: number; w: number; h: number }) => {
-      panelRectsContentRef.current = { ...panelRectsContentRef.current, [key]: rect };
+    (
+      key: keyof VisualizationPanelRects,
+      rect: { x: number; y: number; w: number; h: number },
+    ) => {
+      panelRectsContentRef.current = {
+        ...panelRectsContentRef.current,
+        [key]: rect,
+      };
       flushPanelRects();
     },
     [flushPanelRects],
@@ -459,7 +530,10 @@ export default function AgentSurface() {
       return null;
     }
     if (DEBUG_DISABLE_PROCESSING) {
-      logInfo('AgentSurface', 'submit skipped: processing disabled for speech debug');
+      logInfo(
+        'AgentSurface',
+        'submit skipped: processing disabled for speech debug',
+      );
       return null;
     }
     return orchActions.submit();
@@ -479,17 +553,20 @@ export default function AgentSurface() {
     logInfo('Interaction', 'listening started');
   }, []);
 
-  const playListeningEndFeedback = useCallback((reason: 'hold release' | 'timeout') => {
-    playListeningEndEarcon();
-    triggerListeningEndHaptic();
-    logInfo('Interaction', 'listening stopped');
-    logInfo(
-      'Interaction',
-      reason === 'timeout'
-        ? 'submit triggered from recording timeout'
-        : 'submit triggered from hold release',
-    );
-  }, []);
+  const playListeningEndFeedback = useCallback(
+    (reason: 'hold release' | 'timeout') => {
+      playListeningEndEarcon();
+      triggerListeningEndHaptic();
+      logInfo('Interaction', 'listening stopped');
+      logInfo(
+        'Interaction',
+        reason === 'timeout'
+          ? 'submit triggered from recording timeout'
+          : 'submit triggered from hold release',
+      );
+    },
+    [],
+  );
 
   useEffect(() => {
     const current = listenersRef.current;
@@ -550,28 +627,29 @@ export default function AgentSurface() {
     revealedBlocks.cards ||
     revealedBlocks.rules ||
     revealedBlocks.sources;
-  const canRevealPanels = DEBUG_SCENARIO || hasResultContext || hasReferenceStubs;
+  const canRevealPanels =
+    DEBUG_SCENARIO || hasResultContext || hasReferenceStubs;
   const isAsking = orchState.lifecycle === 'processing';
   const interactionBandEnabled =
-    !debugEnabled &&
-    !anyPanelVisible &&
-    orchState.lifecycle !== 'processing';
+    !debugEnabled && !anyPanelVisible && orchState.lifecycle !== 'processing';
   const canHoldToSpeak = !isAsking && !anyPanelVisible && !debugEnabled;
   const canSwipeContext = canRevealPanels && interactionBandEnabled;
   const activeInteractionOwner: ActiveInteractionOwner = debugEnabled
     ? 'debug'
     : anyPanelVisible
-      ? 'overlay'
-      : orchState.lifecycle === 'listening'
-        ? 'holdToSpeak'
-        : canRevealPanels &&
-            (orchState.lifecycle === 'idle' || orchState.lifecycle === 'error')
-          ? 'swipeContext'
-          : orchState.lifecycle === 'speaking'
-            ? 'playbackTap'
-            : 'none';
+    ? 'overlay'
+    : orchState.lifecycle === 'listening'
+    ? 'holdToSpeak'
+    : canRevealPanels &&
+      (orchState.lifecycle === 'idle' || orchState.lifecycle === 'error')
+    ? 'swipeContext'
+    : orchState.lifecycle === 'speaking'
+    ? 'playbackTap'
+    : 'none';
 
-  const prevInteractionOwnerRef = useRef<ActiveInteractionOwner>(activeInteractionOwner);
+  const prevInteractionOwnerRef = useRef<ActiveInteractionOwner>(
+    activeInteractionOwner,
+  );
   useEffect(() => {
     if (prevInteractionOwnerRef.current !== activeInteractionOwner) {
       logInfo('Interaction', 'interaction owner change', {
@@ -599,9 +677,13 @@ export default function AgentSurface() {
         if (orchState.audioSessionState === 'listening') {
           await orchActions.stopListeningAndRequestSubmit();
         } else {
-          logInfo('Interaction', 'stopListeningAndRequestSubmit skipped (not listening)', {
-            audioSessionState: orchState.audioSessionState ?? null,
-          });
+          logInfo(
+            'Interaction',
+            'stopListeningAndRequestSubmit skipped (not listening)',
+            {
+              audioSessionState: orchState.audioSessionState ?? null,
+            },
+          );
         }
         // Listening stopped / submit triggered logs and feedback run after settlement in onTranscriptReadyForSubmit.
       } finally {
@@ -616,8 +698,13 @@ export default function AgentSurface() {
     if (holdCompletionInFlightRef.current) return;
     if (!canHoldToSpeak) {
       logInfo('Interaction', 'hold blocked', {
-        reason:
-          isAsking ? 'active request' : anyPanelVisible ? 'overlay' : debugEnabled ? 'debug' : 'unknown',
+        reason: isAsking
+          ? 'active request'
+          : anyPanelVisible
+          ? 'overlay'
+          : debugEnabled
+          ? 'debug'
+          : 'unknown',
       });
       return;
     }
@@ -654,11 +741,12 @@ export default function AgentSurface() {
         }
         return;
       }
-      if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current) return;
-      emitEvent('chunkAccepted');
+      if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current)
+        return;
       recordingTimeoutRef.current = setTimeout(() => {
         recordingTimeoutRef.current = null;
-        if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current) return;
+        if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current)
+          return;
         logInfo('Interaction', 'recording timeout reached');
         stopListeningAndSubmit('timeout').catch(() => {});
       }, MAX_RECORDING_DURATION_MS);
@@ -679,7 +767,8 @@ export default function AgentSurface() {
   ]);
 
   const handleCenterHoldEnd = useCallback(() => {
-    if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current) return;
+    if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current)
+      return;
     if (orchState.audioSessionState !== 'listening') {
       return;
     }
@@ -690,10 +779,17 @@ export default function AgentSurface() {
       releaseGraceTimerRef.current = null;
     }
     stopListeningAndSubmit('hold release').catch(() => {});
-  }, [clearRecordingTimeout, orchState.audioSessionState, stopListeningAndSubmit]);
+  }, [
+    clearRecordingTimeout,
+    orchState.audioSessionState,
+    stopListeningAndSubmit,
+  ]);
 
   const handleUserModeTap = useCallback(() => {
-    if (orchState.lifecycle === 'processing' || orchState.lifecycle === 'listening') {
+    if (
+      orchState.lifecycle === 'processing' ||
+      orchState.lifecycle === 'listening'
+    ) {
       return;
     }
     const now = Date.now();
@@ -720,8 +816,13 @@ export default function AgentSurface() {
     if (holdCompletionInFlightRef.current) return;
     if (!canHoldToSpeak) {
       logInfo('Interaction', 'hold blocked', {
-        reason:
-          isAsking ? 'active request' : anyPanelVisible ? 'overlay' : debugEnabled ? 'debug' : 'unknown',
+        reason: isAsking
+          ? 'active request'
+          : anyPanelVisible
+          ? 'overlay'
+          : debugEnabled
+          ? 'debug'
+          : 'unknown',
       });
       return;
     }
@@ -756,11 +857,18 @@ export default function AgentSurface() {
         }
         return;
       }
-      if (!userModeLongPressActiveRef.current || holdCompletionInFlightRef.current) return;
-      emitEvent('chunkAccepted');
+      if (
+        !userModeLongPressActiveRef.current ||
+        holdCompletionInFlightRef.current
+      )
+        return;
       recordingTimeoutRef.current = setTimeout(() => {
         recordingTimeoutRef.current = null;
-        if (!userModeLongPressActiveRef.current || holdCompletionInFlightRef.current) return;
+        if (
+          !userModeLongPressActiveRef.current ||
+          holdCompletionInFlightRef.current
+        )
+          return;
         logInfo('Interaction', 'recording timeout reached');
         stopListeningAndSubmit('timeout').catch(() => {});
       }, MAX_RECORDING_DURATION_MS);
@@ -781,7 +889,11 @@ export default function AgentSurface() {
   ]);
 
   const handleUserModeLongPressEnd = useCallback(() => {
-    if (!userModeLongPressActiveRef.current || holdCompletionInFlightRef.current) return;
+    if (
+      !userModeLongPressActiveRef.current ||
+      holdCompletionInFlightRef.current
+    )
+      return;
     clearRecordingTimeout();
     if (releaseGraceTimerRef.current) {
       clearTimeout(releaseGraceTimerRef.current);
@@ -849,10 +961,20 @@ export default function AgentSurface() {
         return;
       }
       if (cluster === 'rules') {
-        setRevealedBlocks({ answer: false, cards: false, rules: true, sources: false });
+        setRevealedBlocks({
+          answer: false,
+          cards: false,
+          rules: true,
+          sources: false,
+        });
         emitEvent('tapCitation');
       } else {
-        setRevealedBlocks({ answer: false, cards: true, rules: false, sources: false });
+        setRevealedBlocks({
+          answer: false,
+          cards: true,
+          rules: false,
+          sources: false,
+        });
         emitEvent('tapCard');
       }
     },
@@ -865,7 +987,9 @@ export default function AgentSurface() {
       const requestId =
         requestDebugState.activeRequestId ??
         (requestDebugState.recentRequestIds.length > 0
-          ? requestDebugState.recentRequestIds[requestDebugState.recentRequestIds.length - 1]
+          ? requestDebugState.recentRequestIds[
+              requestDebugState.recentRequestIds.length - 1
+            ]
           : null);
       logInfo('ResponseSurface', 'response_surface_revealed_by_user', {
         requestId: requestId ?? undefined,
@@ -873,7 +997,11 @@ export default function AgentSurface() {
         reason: 'userReveal',
       });
     },
-    [orchState.lifecycle, requestDebugState.activeRequestId, requestDebugState.recentRequestIds],
+    [
+      orchState.lifecycle,
+      requestDebugState.activeRequestId,
+      requestDebugState.recentRequestIds,
+    ],
   );
 
   const clearHoldInteractionState = useCallback(() => {
@@ -890,7 +1018,12 @@ export default function AgentSurface() {
 
   const resetInteractionSurface = useCallback(() => {
     clearHoldInteractionState();
-    setRevealedBlocks({ answer: false, cards: false, rules: false, sources: false });
+    setRevealedBlocks({
+      answer: false,
+      cards: false,
+      rules: false,
+      sources: false,
+    });
   }, [clearHoldInteractionState]);
 
   const handleClearError = useCallback(() => {
@@ -906,11 +1039,14 @@ export default function AgentSurface() {
 
   useEffect(() => {
     if (!canRevealPanels) {
-      setRevealedBlocks({ answer: false, cards: false, rules: false, sources: false });
+      setRevealedBlocks({
+        answer: false,
+        cards: false,
+        rules: false,
+        sources: false,
+      });
     }
-  }, [
-    canRevealPanels,
-  ]);
+  }, [canRevealPanels]);
 
   useEffect(() => {
     if (orchState.error == null) return;
@@ -923,10 +1059,20 @@ export default function AgentSurface() {
     const next = orchState.lifecycle;
     prevLifecycleRef.current = next;
     if (prev === 'speaking' && next === 'idle') {
-      setRevealedBlocks({ answer: false, cards: false, rules: false, sources: false });
+      setRevealedBlocks({
+        answer: false,
+        cards: false,
+        rules: false,
+        sources: false,
+      });
     }
     if (prev !== 'processing' && next === 'processing') {
-      setRevealedBlocks({ answer: false, cards: false, rules: false, sources: false });
+      setRevealedBlocks({
+        answer: false,
+        cards: false,
+        rules: false,
+        sources: false,
+      });
     }
   }, [orchState.lifecycle]);
 
@@ -934,16 +1080,28 @@ export default function AgentSurface() {
     if (cardsCount === 0 || !revealedBlocks.cards) clearPanelRect('cards');
     if (rulesCount === 0 || !revealedBlocks.rules) clearPanelRect('rules');
     if (!canRevealPanels || !revealedBlocks.answer) clearPanelRect('answer');
-  }, [cardsCount, rulesCount, canRevealPanels, revealedBlocks.answer, revealedBlocks.cards, revealedBlocks.rules, clearPanelRect]);
+  }, [
+    cardsCount,
+    rulesCount,
+    canRevealPanels,
+    revealedBlocks.answer,
+    revealedBlocks.cards,
+    revealedBlocks.rules,
+    clearPanelRect,
+  ]);
 
   useEffect(() => {
     const setReduceMotion = (enabled: boolean) => {
-      if (visualizationRef.current) visualizationRef.current.reduceMotion = enabled;
+      if (visualizationRef.current)
+        visualizationRef.current.reduceMotion = enabled;
     };
     AccessibilityInfo.isReduceMotionEnabled?.()
       .then(setReduceMotion)
       .catch(() => {});
-    const sub = AccessibilityInfo.addEventListener?.('reduceMotionChanged', setReduceMotion);
+    const sub = AccessibilityInfo.addEventListener?.(
+      'reduceMotionChanged',
+      setReduceMotion,
+    );
     return () => sub?.remove?.();
   }, []);
 
@@ -966,22 +1124,24 @@ export default function AgentSurface() {
     return <SemanticChannelLoadingView theme={theme} paddingTop={insets.top} />;
   }
 
-  const holdToSpeakSlot =
-    SHOW_HOLD_TO_SPEAK ? (
-      <Pressable
-        style={[localStyles.askTrigger, { borderColor, backgroundColor: inputBg }]}
-        onPressIn={handleAskPressIn}
-        onPressOut={handleAskPressOut}
-        onPress={handleUserModeTap}
-      >
-        <Text style={[localStyles.askTriggerLabel, { color: textColor }]}>
-          Hold to speak, release to ask
-        </Text>
-        <Text style={[localStyles.askTriggerHint, { color: mutedColor }]}>
-          Tap to play answer or cancel
-        </Text>
-      </Pressable>
-    ) : null;
+  const holdToSpeakSlot = SHOW_HOLD_TO_SPEAK ? (
+    <Pressable
+      style={[
+        localStyles.askTrigger,
+        { borderColor, backgroundColor: inputBg },
+      ]}
+      onPressIn={handleAskPressIn}
+      onPressOut={handleAskPressOut}
+      onPress={handleUserModeTap}
+    >
+      <Text style={[localStyles.askTriggerLabel, { color: textColor }]}>
+        Hold to speak, release to ask
+      </Text>
+      <Text style={[localStyles.askTriggerHint, { color: mutedColor }]}>
+        Tap to play answer or cancel
+      </Text>
+    </Pressable>
+  ) : null;
 
   return (
     <View style={localStyles.screenWrapper}>
@@ -992,11 +1152,13 @@ export default function AgentSurface() {
         clusterZoneHighlights={!debugEnabled && !anyPanelVisible}
         canvasBackground={theme.viz.canvasBackground}
         onShortTap={!debugEnabled ? handleUserModeTap : undefined}
-        onLongPressStart={!debugEnabled ? handleUserModeLongPressStart : undefined}
+        onLongPressStart={
+          !debugEnabled ? handleUserModeLongPressStart : undefined
+        }
         onLongPressEnd={!debugEnabled ? handleUserModeLongPressEnd : undefined}
         onClusterRelease={!debugEnabled ? handleClusterTap : undefined}
-        >
-          <SemanticChannelView
+      >
+        <SemanticChannelView
           contentPaddingTop={insets.top}
           contentPaddingBottom={insets.bottom}
           onScroll={handleOverlayScroll}
@@ -1042,7 +1204,8 @@ export default function AgentSurface() {
         bandTopInsetPx={
           nameShapingState.enabled
             ? 0
-            : (visualizationRef.current?.scene?.zones.layout.bandTopInsetPx ?? 112)
+            : visualizationRef.current?.scene?.zones.layout.bandTopInsetPx ??
+              112
         }
       />
       <Modal
@@ -1055,7 +1218,10 @@ export default function AgentSurface() {
         animationType="fade"
         statusBarTranslucent
       >
-        <View pointerEvents="none" style={localStyles.nameShapingLoadingOverlay}>
+        <View
+          pointerEvents="none"
+          style={localStyles.nameShapingLoadingOverlay}
+        >
           <View
             style={[
               localStyles.nameShapingLoadingCard,
@@ -1063,10 +1229,20 @@ export default function AgentSurface() {
             ]}
           >
             <ActivityIndicator size="small" color={theme.primary} />
-            <Text style={[localStyles.nameShapingLoadingTitle, { color: textColor }]}>
+            <Text
+              style={[
+                localStyles.nameShapingLoadingTitle,
+                { color: textColor },
+              ]}
+            >
               Prototype Loading
             </Text>
-            <Text style={[localStyles.nameShapingLoadingHint, { color: mutedColor }]}>
+            <Text
+              style={[
+                localStyles.nameShapingLoadingHint,
+                { color: mutedColor },
+              ]}
+            >
               Loading NameShaping card-name index...
             </Text>
           </View>
@@ -1078,7 +1254,9 @@ export default function AgentSurface() {
         onCenterHoldStart={!debugEnabled ? handleCenterHoldStart : undefined}
         onCenterHoldEnd={!debugEnabled ? handleCenterHoldEnd : undefined}
         nameShapingCapture={
-          nameShapingState.enabled && !debugEnabled ? nameShapingCapture : undefined
+          nameShapingState.enabled && !debugEnabled
+            ? nameShapingCapture
+            : undefined
         }
         topInsetOverridePx={nameShapingState.enabled ? 0 : undefined}
         enabled={interactionBandEnabled}
@@ -1096,7 +1274,7 @@ export default function AgentSurface() {
             },
           ]}
           pointerEvents="box-none"
-          onLayout={(e) => {
+          onLayout={e => {
             const { width, height } = e.nativeEvent.layout;
             setTelemetryLayout({ width, height });
           }}
@@ -1108,8 +1286,10 @@ export default function AgentSurface() {
                 onClose={handleTelemetryClose}
                 maxHeight={
                   telemetryLayout.height > 0
-                    ? telemetryLayout.height - ((insets.top || 0) + (insets.bottom || 0) + 16)
-                    : Dimensions.get('window').height - ((insets.top || 0) + (insets.bottom || 0) + 16)
+                    ? telemetryLayout.height -
+                      ((insets.top || 0) + (insets.bottom || 0) + 16)
+                    : Dimensions.get('window').height -
+                      ((insets.top || 0) + (insets.bottom || 0) + 16)
                 }
                 maxWidth={
                   telemetryLayout.width > 0
@@ -1124,14 +1304,20 @@ export default function AgentSurface() {
                 onClose={() => setDebugPanelMode('off')}
                 stubCardsEnabled={debugStubCardsEnabled}
                 stubRulesEnabled={debugStubRulesEnabled}
-                onToggleStubCards={() => setDebugStubCardsEnabled(prev => !prev)}
-                onToggleStubRules={() => setDebugStubRulesEnabled(prev => !prev)}
+                onToggleStubCards={() =>
+                  setDebugStubCardsEnabled(prev => !prev)
+                }
+                onToggleStubRules={() =>
+                  setDebugStubRulesEnabled(prev => !prev)
+                }
                 nameShapingState={nameShapingState}
                 nameShapingActions={nameShapingActions}
                 maxHeight={
                   telemetryLayout.height > 0
-                    ? telemetryLayout.height - ((insets.top || 0) + (insets.bottom || 0) + 16)
-                    : Dimensions.get('window').height - ((insets.top || 0) + (insets.bottom || 0) + 16)
+                    ? telemetryLayout.height -
+                      ((insets.top || 0) + (insets.bottom || 0) + 16)
+                    : Dimensions.get('window').height -
+                      ((insets.top || 0) + (insets.bottom || 0) + 16)
                 }
                 maxWidth={
                   telemetryLayout.width > 0
@@ -1153,7 +1339,11 @@ export default function AgentSurface() {
         }
       >
         <Text style={localStyles.devToggleLabel}>
-          {debugPanelMode === 'off' ? 'Dev' : debugPanelMode === 'telemetry' ? 'Telemetry' : 'Viz'}
+          {debugPanelMode === 'off'
+            ? 'Dev'
+            : debugPanelMode === 'telemetry'
+            ? 'Telemetry'
+            : 'Viz'}
         </Text>
       </Pressable>
     </View>
@@ -1200,7 +1390,12 @@ const localStyles = StyleSheet.create({
     padding: 14,
   },
   askTriggerLabel: { fontSize: 15, lineHeight: 22, fontWeight: '600' },
-  askTriggerHint: { fontSize: 12, lineHeight: 16, marginTop: 4, fontWeight: '500' },
+  askTriggerHint: {
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 4,
+    fontWeight: '500',
+  },
   devToggle: {
     position: 'absolute',
     right: 16,
