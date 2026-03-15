@@ -1964,17 +1964,30 @@ export function useAgentOrchestrator(
     metadata: undefined,
   };
 
-  const actions: AgentOrchestratorActions = {
-    startListening,
-    stopListening,
-    stopListeningAndRequestSubmit,
-    submit,
-    playText,
-    cancelPlayback,
-    setTranscribedText,
-    clearError,
-    recoverFromRequestFailure,
-  };
+  const actions = useMemo<AgentOrchestratorActions>(
+    () => ({
+      startListening,
+      stopListening,
+      stopListeningAndRequestSubmit,
+      submit,
+      playText,
+      cancelPlayback,
+      setTranscribedText,
+      clearError,
+      recoverFromRequestFailure,
+    }),
+    [
+      startListening,
+      stopListening,
+      stopListeningAndRequestSubmit,
+      submit,
+      playText,
+      cancelPlayback,
+      setTranscribedText,
+      clearError,
+      recoverFromRequestFailure,
+    ],
+  );
 
   return { state, actions };
 }

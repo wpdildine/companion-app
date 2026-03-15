@@ -70,7 +70,7 @@ export function useVisualizationController(
   useEffect(() => {
     logInfo('VisualizationController', 'initialized');
     const ref = visualizationRef;
-    listenersRef.current = {
+    const listeners = {
       onListeningStart: () => {},
       onListeningEnd: () => {},
       onTranscriptUpdate: () => {
@@ -91,14 +91,14 @@ export function useVisualizationController(
       onPlaybackStart: () => {},
       onPlaybackEnd: () => {},
       onComplete: () => {},
-      onRecoverableFailure: (reason, details) => {
+      onRecoverableFailure: (reason: string, details?: Record<string, unknown>) => {
         logInfo('VisualizationController', 'emitted transient: softFail', {
           reason,
           ...(details ?? {}),
         });
         emitEventRef.current(TRANSIENT_SIGNAL_SOFT_FAIL);
       },
-      onError: (reason, details) => {
+      onError: (reason?: string, details?: Record<string, unknown>) => {
         if (details?.transientEvent === 'terminalFail') {
           logInfo('VisualizationController', 'emitted transient: terminalFail', {
             reason,
@@ -108,6 +108,7 @@ export function useVisualizationController(
         }
       },
     };
+    listenersRef.current = listeners;
     return () => {
       listenersRef.current = null;
     };

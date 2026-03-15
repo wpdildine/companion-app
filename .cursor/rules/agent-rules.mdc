@@ -44,6 +44,61 @@ If ownership is unclear, diagnose first. Do not patch yet.
 
 Patch the **owner of the invariant**, not the nearest visible symptom layer.
 
+## Diagnosis first, question vs patch
+
+**Diagnosis-first rule**
+
+When the user asks why something is happening, or asks for a diagnosis/review/audit, do not modify code, install dependencies, or propose patches immediately.
+
+First provide:
+
+1. owning layer
+2. broken invariant or likely regression point
+3. evidence from current code/logs
+4. whether the issue is:
+   - diagnosis only
+   - diagnosis + suggested fix options
+   - explicitly approved code change
+
+Only edit code if the user explicitly asks for a fix or patch.
+
+**Regression rule**
+
+If the user reports that something used to work and regressed, do not explain it as a missing platform capability unless current code/log evidence proves that.
+
+For regressions, first determine:
+
+- what previously working path likely stopped firing
+- what guard/callback/wiring changed
+- what ownership layer the regression belongs to
+
+Do not install new dependencies to solve a regression unless the user explicitly asks for a new implementation approach.
+
+**No unsolicited dependency changes**
+
+Do not add, remove, or upgrade dependencies unless:
+
+- the user explicitly asked for implementation, and
+- the dependency change is necessary, and
+- you first state why the existing stack cannot support the fix
+
+**Question vs patch mode**
+
+If the user asks a question like “why is this happening?”, “determine why”, “review this”, “diagnose this”, “what is going on?”, then default to **analysis mode**, not patch mode.
+
+In analysis mode:
+
+- no file edits
+- no dependency installs
+- no speculative fixes
+- no code changes unless explicitly requested after diagnosis
+
+**In short:**
+
+- If the user asks for diagnosis/review, do not patch.
+- If the issue is described as a regression, assume wiring/path drift before platform incapability.
+- Do not install dependencies unless explicitly asked to implement.
+
 ## Non-negotiable invariants
 
 - `useAgentOrchestrator` is the single source of truth for durable runtime semantics.

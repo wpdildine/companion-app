@@ -434,6 +434,7 @@ export default function AgentSurface() {
   >(null);
   const submitTriggeredForReleaseRef = useRef(false);
   const releaseReasonRef = useRef<'hold release' | 'timeout'>('hold release');
+  const submitRef = useRef<(() => Promise<string | null>) | null>(null);
 
   const panelRectsLoggedRef = useRef(false);
   const flushPanelRects = useCallback(() => {
@@ -508,6 +509,7 @@ export default function AgentSurface() {
     }
     return orchActions.submit();
   }, [orchActions, setSignals, debugEnabled]);
+  submitRef.current = handleSubmit;
 
   const clearRecordingTimeout = useCallback(() => {
     if (recordingTimeoutRef.current) {
@@ -543,7 +545,7 @@ export default function AgentSurface() {
         playListeningEndFeedback(releaseReasonRef.current ?? 'hold release');
         if (!submitTriggeredForReleaseRef.current) {
           submitTriggeredForReleaseRef.current = true;
-          handleSubmit().catch(() => {});
+          submitRef.current?.().catch(() => {});
         }
       },
       onListeningEnd: () => {
@@ -569,7 +571,7 @@ export default function AgentSurface() {
         listenersRef.current = current;
       }
     };
-  }, [clearRecordingTimeout, handleSubmit, playListeningEndFeedback]);
+  }, [clearRecordingTimeout, playListeningEndFeedback]);
 
   const stubCards = debugStubCardsEnabled ? dummyCards : [];
   const stubRules = debugStubRulesEnabled ? dummyRules : [];
@@ -675,6 +677,7 @@ export default function AgentSurface() {
     logInfo('Interaction', 'center hold start detected');
     centerHoldActiveRef.current = true;
     (async () => {
+      playListeningStartFeedback();
       const startPromise = orchActions.startListening(true);
       holdStartPromiseRef.current = startPromise;
       const result = await startPromise;
@@ -698,7 +701,6 @@ export default function AgentSurface() {
       }
       if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current) return;
       emitEvent('chunkAccepted');
-      playListeningStartFeedback();
       recordingTimeoutRef.current = setTimeout(() => {
         recordingTimeoutRef.current = null;
         if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current) return;
@@ -777,6 +779,7 @@ export default function AgentSurface() {
     userModeLongPressActiveRef.current = true;
     clearRecordingTimeout();
     (async () => {
+      playListeningStartFeedback();
       const startPromise = orchActions.startListening(true);
       holdStartPromiseRef.current = startPromise;
       const result = await startPromise;
@@ -800,7 +803,6 @@ export default function AgentSurface() {
       }
       if (!userModeLongPressActiveRef.current || holdCompletionInFlightRef.current) return;
       emitEvent('chunkAccepted');
-      playListeningStartFeedback();
       recordingTimeoutRef.current = setTimeout(() => {
         recordingTimeoutRef.current = null;
         if (!userModeLongPressActiveRef.current || holdCompletionInFlightRef.current) return;

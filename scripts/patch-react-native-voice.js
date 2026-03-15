@@ -9,7 +9,7 @@ const target = path.join(
   '@react-native-voice',
   'voice',
   'android',
-  'build.gradle'
+  'build.gradle',
 );
 const srcIndexTarget = path.join(
   __dirname,
@@ -18,7 +18,7 @@ const srcIndexTarget = path.join(
   '@react-native-voice',
   'voice',
   'src',
-  'index.ts'
+  'index.ts',
 );
 const distIndexTarget = path.join(
   __dirname,
@@ -27,7 +27,7 @@ const distIndexTarget = path.join(
   '@react-native-voice',
   'voice',
   'dist',
-  'index.js'
+  'index.js',
 );
 const iosVoiceTarget = path.join(
   __dirname,
@@ -37,7 +37,7 @@ const iosVoiceTarget = path.join(
   'voice',
   'ios',
   'Voice',
-  'Voice.m'
+  'Voice.m',
 );
 
 if (!fs.existsSync(target)) {
@@ -80,11 +80,16 @@ dependencies {
 `;
 
 const current = fs.readFileSync(target, 'utf8');
-if (current.includes('androidx.appcompat:appcompat:1.7.0') && current.includes('namespace "com.wenkesj.voice"')) {
+if (
+  current.includes('androidx.appcompat:appcompat:1.7.0') &&
+  current.includes('namespace "com.wenkesj.voice"')
+) {
   console.log('[patch-voice] already patched.');
 } else {
   fs.writeFileSync(target, patched);
-  console.log('[patch-voice] patched @react-native-voice/voice android build.gradle');
+  console.log(
+    '[patch-voice] patched @react-native-voice/voice android build.gradle',
+  );
 }
 
 function patchModuleResolution(filePath, from, to) {
@@ -99,12 +104,12 @@ function patchModuleResolution(filePath, from, to) {
 const patchedSrcIndex = patchModuleResolution(
   srcIndexTarget,
   'const Voice = NativeModules.Voice as VoiceModule;',
-  'const Voice = (NativeModules.Voice ?? NativeModules.RCTVoice) as VoiceModule;'
+  'const Voice = (NativeModules.Voice ?? NativeModules.RCTVoice) as VoiceModule;',
 );
 const patchedDistIndex = patchModuleResolution(
   distIndexTarget,
   'const Voice = react_native_1.NativeModules.Voice;',
-  'const Voice = react_native_1.NativeModules.Voice ?? react_native_1.NativeModules.RCTVoice;'
+  'const Voice = react_native_1.NativeModules.Voice ?? react_native_1.NativeModules.RCTVoice;',
 );
 
 if (patchedSrcIndex || patchedDistIndex) {
@@ -113,10 +118,14 @@ if (patchedSrcIndex || patchedDistIndex) {
     [
       patchedSrcIndex ? 'src/index.ts' : null,
       patchedDistIndex ? 'dist/index.js' : null,
-    ].filter(Boolean).join(', ')
+    ]
+      .filter(Boolean)
+      .join(', '),
   );
 } else {
-  console.log('[patch-voice] module resolution already patched or files not found.');
+  console.log(
+    '[patch-voice] module resolution already patched or files not found.',
+  );
 }
 
 if (fs.existsSync(iosVoiceTarget)) {
@@ -133,7 +142,10 @@ if (fs.existsSync(iosVoiceTarget)) {
   if (iosContent.includes(safeRestore)) {
     console.log('[patch-voice] iOS audio session restore already patched.');
   } else if (iosContent.includes(invalidRestore)) {
-    fs.writeFileSync(iosVoiceTarget, iosContent.replace(invalidRestore, safeRestore));
+    fs.writeFileSync(
+      iosVoiceTarget,
+      iosContent.replace(invalidRestore, safeRestore),
+    );
     console.log('[patch-voice] patched iOS audio session restore in Voice.m');
   } else {
     console.log('[patch-voice] iOS Voice.m restore block not found; skipping.');
@@ -145,15 +157,23 @@ if (fs.existsSync(iosVoiceTarget)) {
   const commentedReset = `    // Set audio session to inactive and notify other sessions
     // [self.audioSession setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error: nil];`;
   if (iosContent.includes(inactiveReset)) {
-    console.log('[patch-voice] iOS audio session deactivate-before-restore already patched.');
+    console.log(
+      '[patch-voice] iOS audio session deactivate-before-restore already patched.',
+    );
   } else if (iosContent.includes(commentedReset)) {
     fs.writeFileSync(
       iosVoiceTarget,
-      fs.readFileSync(iosVoiceTarget, 'utf8').replace(commentedReset, inactiveReset)
+      fs
+        .readFileSync(iosVoiceTarget, 'utf8')
+        .replace(commentedReset, inactiveReset),
     );
-    console.log('[patch-voice] patched iOS audio session deactivate-before-restore in Voice.m');
+    console.log(
+      '[patch-voice] patched iOS audio session deactivate-before-restore in Voice.m',
+    );
   } else {
-    console.log('[patch-voice] iOS Voice.m deactivate-before-restore block not found; skipping.');
+    console.log(
+      '[patch-voice] iOS Voice.m deactivate-before-restore block not found; skipping.',
+    );
   }
 } else {
   console.log('[patch-voice] iOS Voice.m not found, skipping.');
