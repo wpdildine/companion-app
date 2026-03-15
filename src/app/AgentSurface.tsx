@@ -16,6 +16,7 @@ import {
 } from '../shared/feedback/earcons';
 import { triggerListeningStartHaptic, triggerListeningEndHaptic } from '../shared/feedback/haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { dummyAnswer, dummyCards, dummyRules } from '../shared/stubs/demoResults';
 import type { CardRef, SelectedRule } from './ui';
 import { SemanticChannelView } from '../screens';
 import { SemanticChannelLoadingView } from './ui';
@@ -96,55 +97,6 @@ type ActiveInteractionOwner =
   | 'playbackTap'
   | 'overlay'
   | 'debug';
-
-const dummyAnswer = `
-Blood Moon turns all nonbasic lands into Mountains.
-This removes their abilities unless those abilities are intrinsic to being a Mountain.
-Continuous effects are applied in layer 4 and layer 6 depending on the interaction.
-`;
-
-const dummyCards: CardRef[] = [
-  {
-    id: 'blood-moon',
-    name: 'Blood Moon',
-    imageUri: undefined,
-    typeLine: 'Enchantment',
-    manaCost: '{2}{R}',
-    oracle: 'Nonbasic lands are Mountains.',
-  },
-  {
-    id: 'urborg',
-    name: 'Urborg, Tomb of Yawgmoth',
-    imageUri: undefined,
-    typeLine: 'Legendary Land',
-    manaCost: '',
-    oracle: 'Each land is a Swamp in addition to its other land types.',
-  },
-];
-
-const dummyRules: SelectedRule[] = [
-  {
-    id: '613.1',
-    title: 'Layer System',
-    excerpt:
-      'The values of objects are determined by applying continuous effects in a series of layers.',
-    used: true,
-  },
-  {
-    id: '305.7',
-    title: 'Land Type Changing Effects',
-    excerpt:
-      "If an effect sets a land's subtype to one or more basic land types, the land loses all abilities and gains the corresponding mana abilities.",
-    used: true,
-  },
-  {
-    id: '604.1',
-    title: 'Static Abilities',
-    excerpt:
-      'Static abilities do something all the time rather than being activated or triggered.',
-    used: false,
-  },
-];
 
 export default function AgentSurface() {
   const insets = useSafeAreaInsets();

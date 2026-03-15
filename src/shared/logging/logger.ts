@@ -19,7 +19,6 @@ export type LogScope =
   | 'VisualizationRuntime'
   | 'ResultsOverlay'
   | 'ResponseSurface'
-  | 'VoiceScreen'
   | 'Runtime'
   | 'RAG'
   | 'Playback'

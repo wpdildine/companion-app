@@ -1,6 +1,6 @@
 /**
  * Developer controls: palette, easing, viz toggles. Writes only into runtime ref.
- * Gate: long-press on status header in VoiceScreen sets devEnabled.
+ * Gate: long-press on status header in AgentSurface sets devEnabled.
  */
 
 import {

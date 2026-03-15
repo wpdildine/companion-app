@@ -2,12 +2,12 @@
  * App UI components barrel. Role-based: content/, panels/, overlays/.
  */
 
-export { ContentPanel } from './panels/ContentPanel';
+export { ContentPanel } from './panels';
 export type {
   ContentPanelIntensity,
   ContentPanelProps,
   ContentPanelVariant,
-} from './panels/ContentPanel';
+} from './panels';
 
 export { CardReferenceSection } from './content/CardReferenceSection';
 export type { CardRef, CardReferenceSectionProps } from './content/CardReferenceSection';

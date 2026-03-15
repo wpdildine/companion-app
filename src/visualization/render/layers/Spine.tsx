@@ -737,7 +737,7 @@ export function Spine({
   if (!validateSceneSpec(scene)) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.warn(
-        '[Spine] Not mounting: scene or scene.spine invalid. Ensure visualizationRef.current.scene = getSceneDescription() at viz mount (e.g. VoiceScreen).',
+        '[Spine] Not mounting: scene or scene.spine invalid. Ensure visualizationRef.current.scene = getSceneDescription() at viz mount (e.g. AgentSurface).',
       );
     }
     return null;

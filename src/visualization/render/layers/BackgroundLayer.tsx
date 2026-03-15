@@ -460,7 +460,7 @@ export function BackgroundLayer({
   if (!bp || !layers?.background) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {
       console.error(
-        '[BackgroundLayer] visualizationRef.current.scene.backgroundPlanes or scene.layers is missing. Set visualizationRef.current.scene = getSceneDescription() in the screen that mounts the viz (e.g. VoiceScreen ref initializer).',
+        '[BackgroundLayer] visualizationRef.current.scene.backgroundPlanes or scene.layers is missing. Set visualizationRef.current.scene = getSceneDescription() in the screen that mounts the viz (e.g. AgentSurface ref initializer).',
       );
     }
     return null;

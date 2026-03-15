@@ -10,8 +10,6 @@
   - **InteractionBand** (cluster touch input, conditionally enabled)
   - **Debug HUD panels** (Pipeline telemetry + Viz debug overlay)
 
-**Legacy name:** `VoiceScreen.tsx` re-exports `AgentSurface` for compatibility. Prefer importing `AgentSurface`.
-
 ## Four roles (Phase 6)
 
 The runtime/UI architecture is split into four clearly named roles:
@@ -201,7 +199,6 @@ During startup and lifecycle testing, the following subsystems emit logs (via `s
 
 - **AppBoot** — application boot started
 - **AgentSurface** — mounted as active composition root
-- **VoiceScreen** — one-time deprecation warning when the legacy entrypoint is imported
 - **AgentOrchestrator** — initialized, runtime lifecycle ready, lifecycle transitions (idle → listening → … → speaking/idle/error), request/playback events (voice listen started/stopped, request started, retrieval started/completed, generation started/first token/completed, playback started/completed/interrupted, request failed). Recoverable failures log e.g. “lifecycle transition listening -> idle”, “recoverable attempt failed; returning to idle-ready state”; hard errors log e.g. “voice listen start failed”, “speech recognition error (fatal: …)”.
 - **Interaction** — center hold start/end detected, submit triggered from hold release, earcon/haptic start/end fired (gesture-level logs only)
 - **VisualizationController** — initialized, attached to visualization signal pipeline, received lifecycle state, applied visualization mode, emitted semantic events (e.g. chunkAccepted)
@@ -215,7 +212,6 @@ Logs are state-change and event-based only; no per-frame or render-loop logging.
 
 - App shell: `src/app/App.tsx`
 - Composition root: `src/app/AgentSurface.tsx`
-- Legacy alias: `src/app/VoiceScreen.tsx` (re-exports AgentSurface)
 - Earcon/haptic hooks: `src/shared/feedback/earcons.ts`, `src/shared/feedback/haptics.ts` (listening start/end; assets at `assets/sound/earcon_in.wav`, `earcon_out.wav`)
 - Agent roles: `src/app/agent/` — `useAgentOrchestrator.ts`, `useVisualizationController.ts`, `ResultsOverlay.tsx`, `types.ts`, `index.ts`
 - Signal hook: `src/app/hooks/useVisualizationSignals.ts`
