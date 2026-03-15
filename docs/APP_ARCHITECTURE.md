@@ -226,7 +226,7 @@ Logs are state-change and event-based only; no per-frame or render-loop logging.
 - Scene/layers: `src/visualization/runtime/RuntimeLoop.tsx`, `applyVisualizationSignals.ts`, `render/layers/ContextGlyphs.tsx`, `ContextLinks.tsx`, `TouchZones.tsx`, `CameraOrbit.tsx`, `PostFXPass.tsx`
 - Runtime/types: `src/visualization/runtime/runtimeTypes.ts`, `createDefaultRef.ts`, `src/visualization/scene/*`, `src/visualization/materials/*`, `src/visualization/utils/*`
 - RAG feature: `src/rag/*`
-- Pure utils: `src/utils/log.ts`
+- Pure utils: `src/utils/` (as needed)
 
 ## Known In-Progress Areas
 

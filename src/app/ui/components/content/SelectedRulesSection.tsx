@@ -1,6 +1,6 @@
 /**
  * Selected rules: CR sections/snippets used in the answer. Trust builder.
- * Stable excerpt text; decon only in container and section headers.
+ * Stable excerpt text.
  */
 
 import React from 'react';
@@ -12,7 +12,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { DeconPanel, type DeconPanelIntensity } from './DeconPanel';
+import { ContentPanel, type ContentPanelIntensity } from '../panels';
 
 export type SelectedRule = {
   id: string;
@@ -24,9 +24,9 @@ export type SelectedRule = {
   whySelected?: string;
 };
 
-export type SelectedRulesBlockProps = {
+export type SelectedRulesSectionProps = {
   rules: SelectedRule[];
-  intensity?: DeconPanelIntensity;
+  intensity?: ContentPanelIntensity;
   reduceMotion?: boolean;
   onRulePress?: (ruleId: string) => void;
   onRect?: (rect: { x: number; y: number; w: number; h: number }) => void;
@@ -46,7 +46,7 @@ export type SelectedRulesBlockProps = {
 
 const UNIT = 8;
 
-export function SelectedRulesBlock({
+export function SelectedRulesSection({
   rules,
   intensity = 'subtle',
   reduceMotion = false,
@@ -63,13 +63,13 @@ export function SelectedRulesBlock({
   warn,
   textColor,
   mutedColor,
-}: SelectedRulesBlockProps) {
+}: SelectedRulesSectionProps) {
   if (rules.length === 0) return null;
   const primaryText = ink ?? textColor ?? '#e5e5e5';
   const secondaryText = mutedInk ?? mutedColor ?? '#9a9aa2';
 
   return (
-    <DeconPanel
+    <ContentPanel
       title="Selected Rules"
       variant="rules"
       intensity={intensity}
@@ -129,7 +129,7 @@ export function SelectedRulesBlock({
           );
         })}
       </View>
-    </DeconPanel>
+    </ContentPanel>
   );
 }
 

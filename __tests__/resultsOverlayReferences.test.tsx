@@ -1,26 +1,36 @@
 import React from 'react';
 import TestRenderer, { act } from 'react-test-renderer';
-import { ResultsOverlay } from '../src/app/agent/ResultsOverlay';
+import { ResultsOverlay } from '../src/app/ui/components/overlays/ResultsOverlay';
 
 const mockCardBlock = jest.fn();
 const mockRulesBlock = jest.fn();
 
-jest.mock('../src/components', () => ({
-  DeconPanel: ({ children }: { children?: React.ReactNode }) => {
-    const ReactNative = require('react-native');
-    return <ReactNative.View>{children}</ReactNative.View>;
-  },
-  CardReferenceBlock: (props: unknown) => {
-    const ReactNative = require('react-native');
-    mockCardBlock(props);
-    return <ReactNative.Text>CardReferenceBlock</ReactNative.Text>;
-  },
-  SelectedRulesBlock: (props: unknown) => {
-    const ReactNative = require('react-native');
-    mockRulesBlock(props);
-    return <ReactNative.Text>SelectedRulesBlock</ReactNative.Text>;
-  },
-}));
+jest.mock('../src/app/ui/components/panels/ContentPanel', () => {
+  const ReactNative = require('react-native');
+  return {
+    ContentPanel: ({ children }: { children?: React.ReactNode }) => (
+      <ReactNative.View>{children}</ReactNative.View>
+    ),
+  };
+});
+jest.mock('../src/app/ui/components/content/CardReferenceSection', () => {
+  const ReactNative = require('react-native');
+  return {
+    CardReferenceSection: (props: unknown) => {
+      mockCardBlock(props);
+      return <ReactNative.Text>CardReferenceSection</ReactNative.Text>;
+    },
+  };
+});
+jest.mock('../src/app/ui/components/content/SelectedRulesSection', () => {
+  const ReactNative = require('react-native');
+  return {
+    SelectedRulesSection: (props: unknown) => {
+      mockRulesBlock(props);
+      return <ReactNative.Text>SelectedRulesSection</ReactNative.Text>;
+    },
+  };
+});
 
 jest.mock('../src/shared/logging', () => ({
   logInfo: jest.fn(),

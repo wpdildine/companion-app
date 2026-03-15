@@ -1,6 +1,6 @@
 /**
- * Main voice UI: hold-to-speak trigger and scrollable content (answer, cards, rules).
- * App composes VisualizationSurface + UserVoiceView.
+ * Semantic channel: scrollable content surface (answer, cards, rules).
+ * App composes VisualizationSurface + SemanticChannelView.
  * Theme and layout props are injected; no theme import.
  */
 
@@ -13,7 +13,7 @@ import {
   type NativeScrollEvent,
 } from 'react-native';
 
-export type UserVoiceViewProps = {
+export type SemanticChannelViewProps = {
   contentPaddingTop: number;
   contentPaddingBottom: number;
   onScroll?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
@@ -33,13 +33,13 @@ const styles = StyleSheet.create({
   },
 });
 
-export function UserVoiceView({
+export function SemanticChannelView({
   contentPaddingTop,
   contentPaddingBottom,
   onScroll,
   scrollEventThrottle = 16,
   children,
-}: UserVoiceViewProps) {
+}: SemanticChannelViewProps) {
   return (
     <ScrollView
       style={[styles.scroll, styles.scrollOverlay]}

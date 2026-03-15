@@ -1,6 +1,4 @@
-export { UserVoiceView } from './UserVoiceView';
-export type { UserVoiceViewProps } from './UserVoiceView';
-
-export { VoiceLoadingView } from './VoiceLoadingView';
+export { SemanticChannelView } from './SemanticChannelView';
+export type { SemanticChannelViewProps } from './SemanticChannelView';
 
 export type { PanelInstanceState, PanelState } from './panelState';

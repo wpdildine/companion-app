@@ -1,18 +1,21 @@
 /**
- * Loading state for the voice screen. Consumes theme from App.
+ * Full-surface loading state for the semantic channel (e.g. loading speech recognition).
+ * Consumes theme from composition.
  */
 
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import type { Theme } from '../../theme';
+import type { Theme } from '../../../../theme';
 
-export function VoiceLoadingView({
-  theme,
-  paddingTop,
-}: {
+export type SemanticChannelLoadingViewProps = {
   theme: Theme;
   paddingTop: number;
-}) {
+};
+
+export function SemanticChannelLoadingView({
+  theme,
+  paddingTop,
+}: SemanticChannelLoadingViewProps) {
   return (
     <View
       style={[

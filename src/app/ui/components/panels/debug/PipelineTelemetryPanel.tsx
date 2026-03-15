@@ -6,7 +6,7 @@
 
 import React, { useMemo } from 'react';
 import { Dimensions, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import type { RequestDebugState, RequestDebugEvent } from './requestDebugTypes';
+import type { RequestDebugState, RequestDebugEvent } from '../../../../agent/requestDebugTypes';
 
 const PANEL_WIDTH = 360;
 const TRUNCATE_PREVIEW = 200;
@@ -78,7 +78,7 @@ export function PipelineTelemetryPanel({ state, onClose, maxHeight, maxWidth }: 
   const requestId = snapshot?.requestId ?? null;
   const timelineEvents = useMemo(() => {
     if (requestId == null) return [];
-    const list = state.events.filter(e => e.requestId === requestId);
+    const list = state.events.filter((e: RequestDebugEvent) => e.requestId === requestId);
     return list.slice(); // chronological
   }, [state.events, requestId]);
 

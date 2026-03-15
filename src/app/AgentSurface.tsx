@@ -16,8 +16,9 @@ import {
 } from '../shared/feedback/earcons';
 import { triggerListeningStartHaptic, triggerListeningEndHaptic } from '../shared/feedback/haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { CardRef, SelectedRule } from '../components';
-import { UserVoiceView, VoiceLoadingView } from '../screens';
+import type { CardRef, SelectedRule } from './ui';
+import { SemanticChannelView } from '../screens';
+import { SemanticChannelLoadingView } from './ui';
 import { getTheme } from '../theme';
 import {
   createDefaultVisualizationRef,
@@ -35,15 +36,17 @@ import { useVisualizationSignals } from './hooks/useVisualizationSignals';
 import {
   useAgentOrchestrator,
   useVisualizationController,
-  ResultsOverlay,
   emit as requestDebugEmit,
   getState as getRequestDebugState,
   subscribe as subscribeRequestDebug,
+  type RequestDebugState,
+} from './agent';
+import {
+  ResultsOverlay,
   PipelineTelemetryPanel,
   VizDebugPanel,
   type ResultsOverlayRevealedBlocks,
-  type RequestDebugState,
-} from './agent';
+} from './ui';
 import {
   createBundlePackReader,
   createDocumentsPackReader,
@@ -1008,7 +1011,7 @@ export default function AgentSurface() {
   }, [clearHoldInteractionState]);
 
   if (!orchState.voiceReady && !orchState.error) {
-    return <VoiceLoadingView theme={theme} paddingTop={insets.top} />;
+    return <SemanticChannelLoadingView theme={theme} paddingTop={insets.top} />;
   }
 
   const holdToSpeakSlot =
@@ -1041,7 +1044,7 @@ export default function AgentSurface() {
         onLongPressEnd={!debugEnabled ? handleUserModeLongPressEnd : undefined}
         onClusterRelease={!debugEnabled ? handleClusterTap : undefined}
         >
-          <UserVoiceView
+          <SemanticChannelView
           contentPaddingTop={insets.top}
           contentPaddingBottom={insets.bottom}
           onScroll={handleOverlayScroll}
@@ -1080,7 +1083,7 @@ export default function AgentSurface() {
             showRevealChips={SHOW_REVEAL_CHIPS}
             holdToSpeakSlot={holdToSpeakSlot}
           />
-        </UserVoiceView>
+        </SemanticChannelView>
       </VisualizationSurface>
       <NameShapingTouchGuideOverlay
         visible={nameShapingState.enabled && NAME_SHAPING_VISUAL_DEBUG_ENABLED}

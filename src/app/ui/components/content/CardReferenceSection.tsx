@@ -1,6 +1,6 @@
 /**
  * Card references: image + name/type/mana. Local cache only; placeholder if missing.
- * Decon accents on header/label only. Tap to expand oracle (optional).
+ * Tap to expand oracle (optional).
  */
 
 import React, { useState } from 'react';
@@ -14,9 +14,9 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { DeconPanel, type DeconPanelIntensity } from './DeconPanel';
+import { ContentPanel, type ContentPanelIntensity } from '../panels';
 
-const CARD_BACK_IMAGE = require('../../../assets/images/card_back.png');
+const CARD_BACK_IMAGE = require('../../../../../assets/images/card_back.png');
 
 export type CardRef = {
   id: string;
@@ -29,10 +29,10 @@ export type CardRef = {
   oracle?: string;
 };
 
-export type CardReferenceBlockProps = {
+export type CardReferenceSectionProps = {
   cards: CardRef[];
   layout?: 'strip' | 'stack';
-  intensity?: DeconPanelIntensity;
+  intensity?: ContentPanelIntensity;
   reduceMotion?: boolean;
   onCardPress?: (cardId: string) => void;
   onRect?: (rect: { x: number; y: number; w: number; h: number }) => void;
@@ -59,7 +59,7 @@ const COMPACT_CARD_IMAGE_WIDTH = COMPACT_CARD_IMAGE_HEIGHT * CARD_ASPECT_RATIO;
 const STACK_CARD_IMAGE_HEIGHT = 88;
 const STACK_CARD_IMAGE_WIDTH = STACK_CARD_IMAGE_HEIGHT * CARD_ASPECT_RATIO;
 
-export function CardReferenceBlock({
+export function CardReferenceSection({
   cards,
   layout = 'strip',
   intensity = 'subtle',
@@ -77,13 +77,13 @@ export function CardReferenceBlock({
   warn,
   textColor,
   mutedColor,
-}: CardReferenceBlockProps) {
+}: CardReferenceSectionProps) {
   if (cards.length === 0) return null;
   const primaryText = ink ?? textColor ?? '#e5e5e5';
   const secondaryText = mutedInk ?? mutedColor ?? '#9a9aa2';
 
   return (
-    <DeconPanel
+    <ContentPanel
       title="Cards Referenced"
       variant="cards"
       intensity={intensity}
@@ -131,7 +131,7 @@ export function CardReferenceBlock({
           ))}
         </ScrollView>
       )}
-    </DeconPanel>
+    </ContentPanel>
   );
 }
 

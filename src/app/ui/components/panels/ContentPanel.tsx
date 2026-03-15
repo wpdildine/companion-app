@@ -1,6 +1,6 @@
 /**
- * Reusable modernist/decon panel shell.
- * Decon treatment is header-only and never affects body layout.
+ * Reusable content panel shell (title, subtitle, body slot).
+ * Header treatment is optional and never affects body layout.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -14,14 +14,14 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-export type DeconPanelIntensity = 'off' | 'subtle' | 'full';
-export type DeconPanelVariant = 'answer' | 'cards' | 'rules' | 'neutral' | 'warning';
+export type ContentPanelIntensity = 'off' | 'subtle' | 'full';
+export type ContentPanelVariant = 'answer' | 'cards' | 'rules' | 'neutral' | 'warning';
 
-export type DeconPanelProps = {
+export type ContentPanelProps = {
   title?: string;
   subtitle?: string;
-  variant?: DeconPanelVariant;
-  intensity?: DeconPanelIntensity;
+  variant?: ContentPanelVariant;
+  intensity?: ContentPanelIntensity;
   reduceMotion?: boolean;
   headerDecon?: boolean;
   onRect?: (rect: { x: number; y: number; w: number; h: number }) => void;
@@ -85,7 +85,7 @@ function withAlpha(color: string, alpha: number): string {
   return color;
 }
 
-export function DeconPanel({
+export function ContentPanel({
   title,
   subtitle,
   variant = 'neutral',
@@ -103,7 +103,7 @@ export function DeconPanel({
   panelStroke = DEFAULT_PANEL_STROKE,
   accentIntrusionA = DEFAULT_INTRUSION,
   warn = DEFAULT_WARN,
-}: DeconPanelProps) {
+}: ContentPanelProps) {
   const shouldDeconHeader =
     headerDecon ?? (variant === 'cards' || variant === 'rules');
   const panelFillOpacity = intensity === 'full' ? 0.62 : 0.72;

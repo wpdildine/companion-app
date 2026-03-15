@@ -6,11 +6,11 @@
 import React, { useState } from 'react';
 import { Dimensions, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { RefObject } from 'react';
-import type { VisualizationEngineRef } from '../../visualization';
-import { DevPanel } from '../../visualization';
-import { NameShapingDebugOverlay } from '../nameShaping';
-import type { NameShapingActions } from '../nameShaping';
-import type { NameShapingState } from '../nameShaping';
+import type { VisualizationEngineRef } from '../../../../../visualization';
+import { DevPanel } from '../../../../../visualization';
+import { NameShapingDebugOverlay } from '../../../../nameShaping';
+import type { NameShapingActions } from '../../../../nameShaping';
+import type { NameShapingState } from '../../../../nameShaping';
 
 const PANEL_WIDTH = 360;
 const BG = 'rgba(15,17,21,0.9)';

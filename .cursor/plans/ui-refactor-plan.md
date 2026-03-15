@@ -80,7 +80,7 @@ src/
 ├── native/
 ├── types/
 ├── utils/
-│   ├── log.ts            # logViz, logTouch; no React/theme
+│   ├── (utils as needed)
 │   └── validateVizState.ts
 App.tsx
 __tests__/
@@ -165,7 +165,7 @@ If RuntimeLoop stays **pure (math + ref mutation on derived fields only)**, it s
 
 ## 9. Structured logging (utils)
 
-- **`src/utils/log.ts`:** `logViz`, `logTouch` with consistent prefix and optional payload. No React imports, no theme imports. Can take sessionId/slot index as arguments so callers pass them in; tests then assert on the structured output.
+- **Logging:** Use `src/shared/logging/` (logInfo, logWarn, logError, logLifecycle) for all architecture/runtime logs; see AGENT_RULES §12.
 - Optional debug flag to gate verbose logs. Callers (App, nodeMap) use these helpers instead of ad-hoc `console.log` for mode and pulse events.
 
 ---

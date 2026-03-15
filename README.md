@@ -37,7 +37,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full Architecture Navig
 - **`src/screens/`** — Screen-level composition and views (`voice/`).
 - **`src/components/`** — Reusable UI blocks (`decon/` panel + content blocks).
 - **`src/visualization/`** — **Pure visualization layer**: engine, scene, render (VisualizationCanvas, VisualizationSurface, VisualizationCanvasR3F, 2D fallback), interaction (InteractionBand, touchHandlers), materials. Consumes only injected theme primitives and runtime ref; no app state or voice. Touch API: short tap, double-tap, long-press, drag; see `visualization/interaction/touchHandlers.ts`.
-- **`src/utils/`** — Pure or side-effect isolated: `log` (logModeChange, logPulse). No React or theme imports.
+- **`src/utils/`** — Pure or side-effect isolated utilities. No React or theme imports.
 - **`src/rag/`** — RAG pipeline, context provider, pack DB.
 - **`src/app/agent/`** — Agent orchestrator + debug HUD panels (`PipelineTelemetryPanel`, `VizDebugPanel`).
 

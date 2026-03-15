@@ -6,19 +6,17 @@
 
 import { useEffect, useRef } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { logInfo } from '../../shared/logging';
-import {
-  CardReferenceBlock,
-  DeconPanel,
-  SelectedRulesBlock,
-  type CardRef,
-  type SelectedRule,
-} from '../../components';
-import type { ValidationSummary } from '../../rag';
-import type { ProcessingSubstate } from './types';
-import type { VisualizationIntensity } from '../../visualization';
-import type { VisualizationSignalEvent } from '../../visualization';
-import type { VisualizationPanelRects } from '../../visualization';
+import { logInfo } from '../../../../shared/logging';
+import { ContentPanel } from '../panels';
+import { CardReferenceSection } from '../content/CardReferenceSection';
+import { SelectedRulesSection } from '../content/SelectedRulesSection';
+import type { CardRef } from '../content/CardReferenceSection';
+import type { SelectedRule } from '../content/SelectedRulesSection';
+import type { ValidationSummary } from '../../../../rag';
+import type { ProcessingSubstate } from '../../../agent/types';
+import type { VisualizationIntensity } from '../../../../visualization';
+import type { VisualizationSignalEvent } from '../../../../visualization';
+import type { VisualizationPanelRects } from '../../../../visualization';
 
 export interface ResultsOverlayRevealedBlocks {
   answer: boolean;
@@ -333,7 +331,7 @@ export function ResultsOverlay({
           {debugScenario ? (
             <>
               {revealedBlocks.answer && (
-                <DeconPanel
+                <ContentPanel
                   title="Answer"
                   subtitle="Grounded response"
                   variant="answer"
@@ -358,10 +356,10 @@ export function ResultsOverlay({
                   >
                     {dummyAnswer}
                   </Text>
-                </DeconPanel>
+                </ContentPanel>
               )}
               {dummyCards.length > 0 && revealedBlocks.cards && (
-                <CardReferenceBlock
+                <CardReferenceSection
                   cards={dummyCards}
                   intensity={intensity}
                   reduceMotion={reduceMotion}
@@ -383,7 +381,7 @@ export function ResultsOverlay({
                 />
               )}
               {dummyRules.length > 0 && revealedBlocks.rules && (
-                <SelectedRulesBlock
+                <SelectedRulesSection
                   rules={dummyRules}
                   intensity={intensity}
                   reduceMotion={reduceMotion}
@@ -405,7 +403,7 @@ export function ResultsOverlay({
                 />
               )}
               {revealedBlocks.sources && (
-                <DeconPanel
+                <ContentPanel
                   title="Sources"
                   subtitle="Auditable context summary"
                   variant="neutral"
@@ -427,13 +425,13 @@ export function ResultsOverlay({
                     {dummyRules.length} rule snippet(s), {dummyCards.length}{' '}
                     card reference(s).
                   </Text>
-                </DeconPanel>
+                </ContentPanel>
               )}
             </>
           ) : (
             <>
               {error ? (
-                <DeconPanel
+                <ContentPanel
                   title="Input Error"
                   subtitle="Please retry"
                   variant="warning"
@@ -450,11 +448,11 @@ export function ResultsOverlay({
                   onDismiss={onClearError}
                 >
                   <Text style={styles.errorText}>{error}</Text>
-                </DeconPanel>
+                </ContentPanel>
               ) : null}
 
               {revealedBlocks.answer && (
-                <DeconPanel
+                <ContentPanel
                   title="Answer"
                   subtitle="Grounded response"
                   variant={answerPanelVariant}
@@ -516,14 +514,14 @@ export function ResultsOverlay({
                       Submit a question to see the answer here.
                     </Text>
                   )}
-                </DeconPanel>
+                </ContentPanel>
               )}
 
               {revealedBlocks.cards && (
                 (() => {
                   if (cards.length === 0) {
                     return (
-                      <DeconPanel
+                      <ContentPanel
                         title="Cards Referenced"
                         subtitle="No card references yet"
                         variant="cards"
@@ -545,11 +543,11 @@ export function ResultsOverlay({
                         <Text style={[styles.responsePlaceholder, { color: mutedColor }]}>
                           No cards were selected for this response yet.
                         </Text>
-                      </DeconPanel>
+                      </ContentPanel>
                     );
                   }
                   return (
-                    <CardReferenceBlock
+                    <CardReferenceSection
                       cards={cards}
                       intensity={intensity}
                       reduceMotion={reduceMotion}
@@ -576,7 +574,7 @@ export function ResultsOverlay({
                 (() => {
                   if (rules.length === 0) {
                     return (
-                      <DeconPanel
+                      <ContentPanel
                         title="Selected Rules"
                         subtitle="No rule references yet"
                         variant="rules"
@@ -598,11 +596,11 @@ export function ResultsOverlay({
                         <Text style={[styles.responsePlaceholder, { color: mutedColor }]}>
                           No rules were selected for this response yet.
                         </Text>
-                      </DeconPanel>
+                      </ContentPanel>
                     );
                   }
                   return (
-                    <SelectedRulesBlock
+                    <SelectedRulesSection
                       rules={rules}
                       intensity={intensity}
                       reduceMotion={reduceMotion}
@@ -626,7 +624,7 @@ export function ResultsOverlay({
                 })()
               )}
               {validationSummary && revealedBlocks.sources ? (
-                <DeconPanel
+                <ContentPanel
                   title="Sources"
                   subtitle="Auditable context summary"
                   variant="neutral"
@@ -648,7 +646,7 @@ export function ResultsOverlay({
                     {validationSummary.rules.length} rule snippet(s),{' '}
                     {validationSummary.cards.length} card reference(s).
                   </Text>
-                </DeconPanel>
+                </ContentPanel>
               ) : null}
             </>
           )}
