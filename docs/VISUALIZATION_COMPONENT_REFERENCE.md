@@ -75,17 +75,27 @@ src/visualization/
 
 ### Interaction
 
-- `InteractionBand` (interaction/): top-layer touch capture; **only** writer of `touchFieldActive`, `touchFieldNdc`, `touchFieldStrength`. Sets `zoneArmed` from NDC vs scene zone bounds; on release in left/right zone calls `onClusterRelease` (center commits nothing). RN owns panel visibility; GL emits events only.
+- `InteractionBand` (interaction/): dedicated interaction-layer overlay for continuous touch-field writes and release-commit semantics. In current code it is implemented with `react-native-gesture-handler` `Gesture.Pan()` plus `manualActivation(true)`, mounted on a non-collapsable host view. It remains the only writer of `touchFieldActive`, `touchFieldNdc`, and `touchFieldStrength` when it owns the touch.
+- Current band semantics:
+  - `start` / `move` => continuous organism writes only
+  - `end` => semantic commit (`onClusterRelease`) for left/right release, unless a center hold already started or a higher-priority capture path took over
+  - `cancel` => clear only
+- `InteractionProbe` (interaction/): passive diagnostic overlay used in viz debug mode. Shows live NDC, zone, and center-hold eligibility; does not capture touches.
+- `nameShapingCapture` is an active override path. When present, the band forwards band-relative NDC to that capture layer and suppresses its normal hold-to-speak and cluster-release semantics.
 - Legacy callback note: `onClusterTap` may still appear in wiring as a compatibility alias, but release is the semantic commit phase.
 - Tap mapping (in band):
   - `ndcX < -0.12` => `rules`
   - `ndcX > 0.12` => `cards`
-- Band active region: below scene-configured top inset (`scene.zones.layout.bandTopInsetPx`; fallback `112`).
+- Band active region: currently runtime-configured. Default top inset comes from `scene.zones.layout.bandTopInsetPx` with fallback `112`, but callers may override it (the current Name Shaping path uses `0`). Treat the inset as configurable rather than a permanently fixed architectural constant.
 - Continuous vs discrete split:
   - touch start/move => continuous organism field updates only
   - touch end => semantic commit (`rules/cards`) based on final release position
   - touch cancel => clear only; no semantic callback
   - short tap in canvas => pulse-only path (`pendingTapNdc` -> `TouchRaycaster`)
+
+Migration note:
+
+- The interaction layer is in active native-fast migration. The architecture is stable, but Gesture Handler ownership, activation details, and host-view requirements are still implementation details in motion. Keep this doc aligned to the current code path instead of implying the band internals are fully settled.
 
 ## Runtime Ref (`runtime/runtimeTypes.ts`)
 
@@ -157,7 +167,8 @@ Three systems provide environmental layering so the spine feels embedded in spac
 When `VisualizationSurface` is used:
 
 - Canvas does not receive direct pointer events.
-- `InteractionBand` is the touch owner for map taps.
+- `InteractionBand` is the dedicated owner for the band-driven continuous field and release-commit path.
+- `VisualizationCanvas` still exposes separate discrete callbacks such as short tap and long press through `VisualizationSurface`.
 - RN UI overlays retain direct interaction (scroll, buttons, panel controls).
 
 ## Current Gaps / Cleanup Candidates

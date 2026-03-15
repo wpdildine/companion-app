@@ -6,7 +6,7 @@
 - `src/app/App.tsx` composes `SafeAreaProvider` + **AgentSurface**.
 - **AgentSurface** is the top-level composition root for the agent experience. It composes:
   - **VisualizationSurface** (visual background)
-  - **UserVoiceView** (scrollable RN content) wrapping **ResultsOverlay**
+  - **SemanticChannelView** (scrollable RN content) wrapping **ResultsOverlay**
   - **InteractionBand** (cluster touch input, conditionally enabled)
   - **Debug HUD panels** (Pipeline telemetry + Viz debug overlay)
 
@@ -50,7 +50,7 @@ Recoverable attempt failures (e.g. no usable transcript) return to `idle` withou
 
 **Owns:** Top-level user-facing composition.
 
-- Composing VisualizationSurface, UserVoiceView, ResultsOverlay, InteractionBand, debug HUD overlay (Dev button cycles Telemetry → Viz → Off)
+- Composing VisualizationSurface, SemanticChannelView, ResultsOverlay, InteractionBand, debug HUD overlay (Dev button cycles Telemetry → Viz → Off)
 - Local UI state (revealed blocks, panel rects, debug toggles)
 - High-level layout and safe-area composition
 - Feeding normalized agent state into VisualizationController and ResultsOverlay
@@ -82,11 +82,11 @@ Recoverable attempt failures (e.g. no usable transcript) return to `idle` withou
 - Answer panel, card references, rules references, sources panel
 - Reveal state and dismiss/show behavior
 - Panel rect measurement and reporting (for visualization interaction zones)
-- Overlay-local layout; no scroll view (parent UserVoiceView provides scroll)
+- Overlay-local layout; no scroll view (parent SemanticChannelView provides scroll)
 
 **Does not know:** Provider orchestration, visualization mode selection, or runtime sequencing.
 
-**Where:** `src/app/agent/ResultsOverlay.tsx`.
+**Where:** `src/app/ui/components/overlays/ResultsOverlay.tsx`.
 
 ## Normalized event flow
 
@@ -130,18 +130,28 @@ Fallback is **reserved in the type system and policy only**; there is no fallbac
 
 ## Touch Path
 
-When in user mode and no content panels are visible:
+The high-level interaction contract is still the same, but the implementation is in active migration and should be described as current behavior rather than a settled final design.
 
-- `InteractionBand` is enabled.
-- It captures touch and writes `touchFieldActive/touchFieldNdc/touchFieldStrength`.
-- **Center hold (primary voice affordance):** Press and hold in the center strip for the hold threshold → `onCenterHoldStart`; release → `onCenterHoldEnd`. AgentSurface wires release to `stopListeningAndRequestSubmit()`; submit runs only after transcript settlement (via `onTranscriptReadyForSubmit`). Hold takes precedence: if a center hold started, release does not also trigger rules/cards.
-- On touch release (when not in an active center hold), it maps final NDC X to cluster side and calls `onClusterRelease` (center strip commits nothing; rules/cards reveal panels when context exists).
-- No other semantic action is emitted on touch start/move; those phases are continuous organism response only.
+Current code path:
 
-Short tap behavior still exists separately:
-- Canvas short taps write `pendingTapNdc`.
-- `TouchRaycaster` consumes `pendingTapNdc` and emits pulse visuals.
-- This pulse path does not commit rules/cards semantics.
+- `VisualizationSurface` keeps the canvas at `pointerEvents="none"` and continues to expose discrete canvas callbacks (`onShortTap`, `onLongPressStart`, `onLongPressEnd`, legacy `onClusterTap` wiring).
+- `InteractionBand` is the dedicated touch layer for the continuous touch field and release-commit semantics. In current code it uses `react-native-gesture-handler` `Gesture.Pan()` with `manualActivation(true)`.
+- The band mounts the detector on a non-collapsable host view (`collapsable={false}`), reflecting the current native-fast migration/workaround path.
+- Native touch remains the authoritative physical input path inside the band. Tap-like and hold-like semantics are preserved by JS callbacks (`runOnJS`) off the pan lifecycle.
+- A passive `InteractionProbe` can be enabled in viz debug mode to show live NDC, zone, and center-hold eligibility. It is diagnostic only and does not capture touches.
+
+Current semantic behavior:
+
+- `start` / `move` write continuous organism response only (`touchFieldActive`, `touchFieldNdc`, `touchFieldStrength`, `zoneArmed`) when the band owns the touch.
+- **Center hold (primary voice affordance):** pressing in the eligible center/voice lane arms a hold timer; once the threshold is met the band emits `onCenterHoldStart`; release after hold start emits `onCenterHoldEnd`. AgentSurface wires end-of-hold to `stopListeningAndRequestSubmit()`, and submit still waits for transcript settlement.
+- On touch release, if a center hold did not start and no higher-priority capture has taken over, the band maps final NDC X to rules/cards and calls `onClusterRelease`. Center release still commits nothing.
+- Touch cancel clears band state and emits no semantic callback.
+
+Additional current nuance:
+
+- `nameShapingCapture`, when enabled, is allowed to take over semantic handling. In that mode the band still forwards band-relative NDC to the capture handlers, but hold-to-speak and cluster-release semantics are suppressed.
+- The band can be visually marked blocked via `blocked` / `blockedUntil` while I/O guardrails are active.
+- Because this path is under active migration, treat the exact Gesture Handler ownership and activation details as implementation details, not as a frozen public contract.
 
 When debug mode is enabled or panels are visible:
 
@@ -150,20 +160,35 @@ When debug mode is enabled or panels are visible:
 
 ### Touch arbitration (AgentSurface)
 
-Arbitration is a UI-layer decision; AgentSurface owns the `enabled` prop:
+Arbitration remains a UI-layer decision, but the current code is slightly more explicit than the older doc wording. AgentSurface computes a single active interaction owner with priority:
 
-- **Content panels visible** (`anyPanelVisible`) → InteractionBand **disabled**.
-- **Debug mode** (`debugEnabled`) → InteractionBand **disabled** (touch may be routed to debug).
-- **Lifecycle === 'processing'** → InteractionBand **disabled**.
-- Otherwise InteractionBand **enabled**.
+- `debug`
+- `overlay`
+- `holdToSpeak`
+- `swipeContext`
+- `playbackTap`
+- `none`
+
+Current band enablement:
+
+- **Debug mode** (`debugEnabled`) → InteractionBand **disabled**
+- **Any revealed panel** (`anyPanelVisible`) → InteractionBand **disabled**
+- **Lifecycle === 'processing'** → InteractionBand **disabled**
+- Otherwise InteractionBand **enabled**
 
 When the band becomes disabled, InteractionBand clears ref fields so the runtime does not retain phantom touch influence.
 
 ### Zone layout: single source of truth
 
-Touch zone boundaries (rules / neutral / cards) are defined in **active-region NDC** in `src/visualization/interaction/zoneLayout.ts`. Scene layout ratios in `sceneFormations.ts` are derived from that constant so TouchZones overlays align with what InteractionBand treats as left/center/right.
+Touch zone boundaries (rules / neutral / cards) are currently defined from **active-region NDC** in `src/visualization/interaction/zoneLayout.ts` via `NEUTRAL_HALF_WIDTH_NDC = 0.12`. The classification helper is `getZoneFromNdcX()`.
 
-**Invariant:** NDC for zone classification **MUST** be active-region NDC (from `toNdc(bandRect, canvasSize)` in InteractionBand), **not** screen NDC.
+Current implementation invariant: zone classification **MUST** use InteractionBand's active-region NDC (`toNdc(locationX, locationY)` against canvas dimensions), not raw screen normalization. This remains the intended contract, but because the band bounds/top inset are still being actively adjusted, treat the exact active-region geometry as runtime-configured rather than permanently fixed.
+
+Current bounds behavior:
+
+- The band top inset defaults to `visualizationRef.current.scene?.zones.layout.bandTopInsetPx ?? 112`.
+- AgentSurface may override that inset. The current Name Shaping path sets `topInsetOverridePx={0}`.
+- Documentation should therefore refer to a runtime-configured top inset, not assume the scene-configured value is the only active path at all times.
 
 ### Visual touch affordance
 
@@ -213,12 +238,12 @@ Logs are state-change and event-based only; no per-frame or render-loop logging.
 - App shell: `src/app/App.tsx`
 - Composition root: `src/app/AgentSurface.tsx`
 - Earcon/haptic hooks: `src/shared/feedback/earcons.ts`, `src/shared/feedback/haptics.ts` (listening start/end; assets at `assets/sound/earcon_in.wav`, `earcon_out.wav`)
-- Agent roles: `src/app/agent/` — `useAgentOrchestrator.ts`, `useVisualizationController.ts`, `ResultsOverlay.tsx`, `types.ts`, `index.ts`
+- Agent roles: `src/app/agent/` — `useAgentOrchestrator.ts`, `useVisualizationController.ts`, `types.ts`, `index.ts`
 - Signal hook: `src/app/hooks/useVisualizationSignals.ts`
-- UI wrappers: `src/screens/voice/UserVoiceView.tsx`, `src/screens/voice/VoiceLoadingView.tsx`
-- Debug HUD panels: `src/app/agent/PipelineTelemetryPanel.tsx`, `src/app/agent/VizDebugPanel.tsx`
+- UI wrappers: `src/screens/voice/SemanticChannelView.tsx`, `src/app/ui/components/overlays/SemanticChannelLoadingView.tsx`
+- Overlay/panels: `src/app/ui/components/overlays/ResultsOverlay.tsx`, `src/app/ui/components/panels/debug/PipelineTelemetryPanel.tsx`, `src/app/ui/components/panels/debug/VizDebugPanel.tsx`
 - Visualization surface/canvas: `src/visualization/render/canvas/VisualizationSurface.tsx`, `VisualizationCanvas.tsx`, `VisualizationCanvasR3F.tsx`, `VisualizationCanvasFallback.tsx`
-- Visualization interaction: `src/visualization/interaction/InteractionBand.tsx`, `zoneLayout.ts`, `TouchRaycaster.tsx`, `touchHandlers.ts`
+- Visualization interaction: `src/visualization/interaction/InteractionBand.tsx`, `InteractionProbe.tsx`, `zoneLayout.ts`, `TouchRaycaster.tsx`, `touchHandlers.ts`
 - Scene/layers: `src/visualization/runtime/RuntimeLoop.tsx`, `applyVisualizationSignals.ts`, `render/layers/ContextGlyphs.tsx`, `ContextLinks.tsx`, `TouchZones.tsx`, `CameraOrbit.tsx`, `PostFXPass.tsx`
 - Runtime/types: `src/visualization/runtime/runtimeTypes.ts`, `createDefaultRef.ts`, `src/visualization/scene/*`, `src/visualization/materials/*`, `src/visualization/utils/*`
 - RAG feature: `src/rag/*`
@@ -227,5 +252,6 @@ Logs are state-change and event-based only; no per-frame or render-loop logging.
 ## Known In-Progress Areas
 
 - Panel gesture system from the refactor plan (header drag/snap/dismiss/restore + arbitration) is not fully implemented as a dedicated `src/screens/voice` gesture layer.
+- InteractionBand native-fast migration is still in progress. Current code uses a Pan-based RNGH host with manual activation, non-collapsable host mounting, optional probe diagnostics, and special-case capture takeover for Name Shaping. Keep docs aligned to the active code path and avoid describing this layer as finalized.
 
 **Plan D (Final Integration Pass):** Verified integration boundaries for acceptance → processing → settlement → playback → completion, telemetry ordering, and denial/stale-callback behavior; see `.cursor/plans/final_integration_pass.plan.md`.
