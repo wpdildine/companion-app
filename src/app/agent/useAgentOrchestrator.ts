@@ -548,7 +548,7 @@ export function useAgentOrchestrator(
     );
     settlementCoordinator.scheduleFlushWindow(() => {
       const sessionId = recordingSessionRef.current ?? undefined;
-      void resolveSettlement('flushWindowExpired', sessionId);
+      resolveSettlement('flushWindowExpired', sessionId);
     });
   }, [
     finalizeStop,
@@ -1448,7 +1448,7 @@ export function useAgentOrchestrator(
         !settlementCoordinator.getSettlementResolved()
       ) {
         settlementCoordinator.startQuietWindow(recordingSessionId ?? undefined, outcome => {
-          void handleSettlementOutcome(outcome, 'quietWindowExpired', recordingSessionId ?? undefined);
+          handleSettlementOutcome(outcome, 'quietWindowExpired', recordingSessionId ?? undefined);
         });
       }
     };

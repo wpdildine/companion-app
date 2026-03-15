@@ -310,7 +310,7 @@ export default function AgentSurface() {
       }
     };
 
-    void loadNameShapingResolverIndex();
+    loadNameShapingResolverIndex();
 
     return () => {
       cancelled = true;
@@ -1130,7 +1130,6 @@ export default function AgentSurface() {
             {
               paddingTop: (insets.top || 0) + 8,
               paddingBottom: (insets.bottom || 0) + 8,
-              paddingHorizontal: 16,
             },
           ]}
           pointerEvents="box-none"
@@ -1258,6 +1257,7 @@ const localStyles = StyleSheet.create({
     bottom: 0,
     zIndex: 40,
     alignItems: 'center',
+    paddingHorizontal: 16,
   },
   telemetryPanelWrap: {
     alignSelf: 'center',
