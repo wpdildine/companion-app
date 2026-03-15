@@ -5,6 +5,7 @@
   "scripts": {
     "start": "react-native start",
     "start:local": "dotenv -e .env.local -- react-native start",
+    "start:local:reset": "dotenv -e .env.local -- react-native start --reset-cache",
     "android": "react-native run-android",
     "ios": "pnpm run pods && react-native run-ios",
     "pods": "cd ios && PIPER_USE_ESPEAK=1 pod install",

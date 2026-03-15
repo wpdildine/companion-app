@@ -1,3 +1,10 @@
+---
+name: ''
+overview: ''
+todos: []
+isProject: false
+---
+
 # nodeMap → visualization folder refactor (revised)
 
 ## Overview
@@ -8,13 +15,14 @@ Pure refactor: rename `src/nodeMap` to `src/visualization` and restructure into 
 
 ## Three fixes (incorporated)
 
-**Fix 1 — DevPanel location**  
-Dev tools must not mix with runtime render layers.  
-→ **`render/dev/DevPanel.tsx`** (not `render/DevPanel.tsx`).
+**Fix 1 — DevPanel location**
+Dev tools must not mix with runtime render layers.
+→ `**render/dev/DevPanel.tsx`\* (not `render/DevPanel.tsx`).
 
-**Fix 2 — Scene structure**  
-- **formations** = contract (single source of truth).  
-- **builders** = assembly logic.  
+**Fix 2 — Scene structure**
+
+- **formations** = contract (single source of truth).
+- **builders** = assembly logic.
 - **artDirection** = knobs.
 
 ```
@@ -27,9 +35,9 @@ scene/
     spineArtDirection.ts
 ```
 
-So: `helpers/formations/spine.ts` → **`scene/builders/spine.ts`** (not `scene/spine.ts`).
+So: `helpers/formations/spine.ts` → `**scene/builders/spine.ts**` (not `scene/spine.ts`).
 
-**Fix 3 — Interaction math**  
+**Fix 3 — Interaction math**
 Add **empty** `zoneMath.ts` and `gestureMath.ts` in this refactor so the boundary is explicit:
 
 ```
@@ -43,14 +51,13 @@ interaction/
 
 ---
 
-*(Optional later: add render/adapters/ and extract scene→mesh logic from layers. Not in canonical tree.)*
-
+_(Optional later: add render/adapters/ and extract scene→mesh logic from layers. Not in canonical tree.)_
 
 ## Current state
 
 - **33 files** under `src/nodeMap`: components, helpers/formations, interaction, materials, shaders, types.
 - **External import sites:** `src/app/VoiceScreen.tsx`, `src/app/hooks/useAiVizBridge.ts`, `src/ui/DevScreen.tsx`, `src/ui/DebugZoneOverlay.tsx`, `src/utils/validateVizState.ts`.
-- **Important:** `validateVizState` lives in **`src/utils/validateVizState.ts`**, not in nodeMap. Move it to **`src/visualization/runtime/validateVizState.ts`**.
+- **Important:** `validateVizState` lives in `**src/utils/validateVizState.ts`\*, not in nodeMap. Move it to `**src/visualization/runtime/validateVizState.ts**`.
 
 ---
 
@@ -121,59 +128,59 @@ src/
     index.ts
 ```
 
-*Optional follow-up:* A later refactor can add `render/adapters/` (e.g. `sceneToSpine.ts`, `sceneToGlyphs.ts`) and move scene→mesh logic out of layer components. Not part of the canonical tree for this move.
+_Optional follow-up:_ A later refactor can add `render/adapters/` (e.g. `sceneToSpine.ts`, `sceneToGlyphs.ts`) and move scene→mesh logic out of layer components. Not part of the canonical tree for this move.
 
 ---
 
 ## Move map (exact paths, revised)
 
-| From | To |
-|------|----|
-| **Engine** | |
-| `src/nodeMap/types.ts` | `src/visualization/runtime/types.ts` |
-| Extract from types.ts | `src/visualization/runtime/createDefaultRef.ts` (`createDefaultNodeMapRef`, `TARGET_ACTIVITY_BY_MODE`) |
-| `src/nodeMap/components/RuntimeLoop.tsx` | `src/visualization/runtime/RuntimeLoop.tsx` |
-| `src/utils/validateVizState.ts` | `src/visualization/runtime/validateVizState.ts` |
-| `src/nodeMap/helpers/applySignalsToNodeMap.ts` | `src/visualization/runtime/applySignalsToNodeMap.ts` |
-| `src/nodeMap/helpers/triggerPulse.ts` | `src/visualization/runtime/triggerPulse.ts` |
-| `src/nodeMap/helpers/getPulseColor.ts` | `src/visualization/runtime/getPulseColor.ts` |
-| **Scene** | |
-| `src/nodeMap/helpers/sceneFormations.ts` | `src/visualization/scene/sceneFormations.ts` |
-| `src/nodeMap/helpers/validateSceneSpec.ts` | `src/visualization/scene/validateSceneSpec.ts` |
-| `src/nodeMap/helpers/formations/spineArtDirection.ts` | `src/visualization/scene/artDirection/spineArtDirection.ts` |
-| `src/nodeMap/helpers/formations/spine.ts` | `src/visualization/scene/builders/spine.ts` |
-| **Render** | |
-| `src/nodeMap/components/NodeMapCanvasR3F.tsx` | `src/visualization/render/canvas/VisualizationCanvasR3F.tsx` (rename in rename step) |
-| `src/nodeMap/components/NodeMapCanvas.tsx` | `src/visualization/render/canvas/NodeMapCanvas.tsx` |
-| `src/nodeMap/components/NodeMapSurface.tsx` | `src/visualization/render/canvas/NodeMapSurface.tsx` |
-| `src/nodeMap/components/NodeMapCanvasFallback.tsx` | `src/visualization/render/canvas/NodeMapCanvasFallback.tsx` |
-| `src/nodeMap/components/CameraOrbit.tsx` | `src/visualization/render/canvas/CameraOrbit.tsx` |
-| `src/nodeMap/components/CameraSync.tsx` | `src/visualization/render/canvas/CameraSync.tsx` |
-| `src/nodeMap/components/PostFXPass.tsx` | `src/visualization/render/canvas/PostFXPass.tsx` |
-| `src/nodeMap/components/shaderDebugFlags.ts` | `src/visualization/render/canvas/shaderDebugFlags.ts` |
-| `src/nodeMap/components/Spine.tsx` | `src/visualization/render/layers/Spine.tsx` |
-| `src/nodeMap/components/PlaneLayerField.tsx` | `src/visualization/render/layers/PlaneLayerField.tsx` |
-| `src/nodeMap/components/ContextGlyphs.tsx` | `src/visualization/render/layers/ContextGlyphs.tsx` |
-| `src/nodeMap/components/ContextLinks.tsx` | `src/visualization/render/layers/ContextLinks.tsx` |
-| `src/nodeMap/components/TouchZones.tsx` | `src/visualization/render/layers/TouchZones.tsx` |
-| `src/nodeMap/components/DevPanel.tsx` | `src/visualization/render/dev/DevPanel.tsx` |
-| **Interaction** | |
-| `src/nodeMap/components/NodeMapInteractionBand.tsx` | `src/visualization/interaction/InteractionBand.tsx` (rename in rename step) |
-| `src/nodeMap/interaction/TouchRaycaster.tsx` | `src/visualization/interaction/TouchRaycaster.tsx` |
-| `src/nodeMap/interaction/touchHandlers.ts` | `src/visualization/interaction/touchHandlers.ts` |
-| (new) | `src/visualization/interaction/zoneMath.ts` (empty) |
-| (new) | `src/visualization/interaction/gestureMath.ts` (empty) |
-| **Materials** | |
-| `src/nodeMap/materials/basicPlaneMaterial.ts` | `src/visualization/materials/basicPlaneMaterial.ts` |
-| `src/nodeMap/materials/halftone/halftonePlaneMaterial.ts` | `src/visualization/materials/halftone/halftonePlaneMaterial.ts` |
-| `src/nodeMap/materials/halftone/halftone.vert.ts` | `src/visualization/materials/halftone/halftone.vert.ts` |
-| `src/nodeMap/materials/halftone/halftone.frag.ts` | `src/visualization/materials/halftone/halftone.frag.ts` |
-| `src/nodeMap/shaders/nodes.ts` | `src/visualization/materials/glyphs/nodes.ts` |
-| `src/nodeMap/shaders/connections.ts` | `src/visualization/materials/links/connections.ts` |
-| **Utils** | |
-| (new or extract) | `src/visualization/utils/colors.ts` |
-| (new or extract) | `src/visualization/utils/math.ts` |
-| (new or extract) | `src/visualization/utils/rng.ts` |
+| From                                                      | To                                                                                                     |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **Engine**                                                |                                                                                                        |
+| `src/nodeMap/types.ts`                                    | `src/visualization/runtime/types.ts`                                                                   |
+| Extract from types.ts                                     | `src/visualization/runtime/createDefaultRef.ts` (`createDefaultNodeMapRef`, `TARGET_ACTIVITY_BY_MODE`) |
+| `src/nodeMap/components/RuntimeLoop.tsx`                  | `src/visualization/runtime/RuntimeLoop.tsx`                                                            |
+| `src/utils/validateVizState.ts`                           | `src/visualization/runtime/validateVizState.ts`                                                        |
+| `src/nodeMap/helpers/applySignalsToNodeMap.ts`            | `src/visualization/runtime/applySignalsToNodeMap.ts`                                                   |
+| `src/nodeMap/helpers/triggerPulse.ts`                     | `src/visualization/runtime/triggerPulse.ts`                                                            |
+| `src/nodeMap/helpers/getPulseColor.ts`                    | `src/visualization/runtime/getPulseColor.ts`                                                           |
+| **Scene**                                                 |                                                                                                        |
+| `src/nodeMap/helpers/sceneFormations.ts`                  | `src/visualization/scene/sceneFormations.ts`                                                           |
+| `src/nodeMap/helpers/validateSceneSpec.ts`                | `src/visualization/scene/validateSceneSpec.ts`                                                         |
+| `src/nodeMap/helpers/formations/spineArtDirection.ts`     | `src/visualization/scene/artDirection/spineArtDirection.ts`                                            |
+| `src/nodeMap/helpers/formations/spine.ts`                 | `src/visualization/scene/builders/spine.ts`                                                            |
+| **Render**                                                |                                                                                                        |
+| `src/nodeMap/components/NodeMapCanvasR3F.tsx`             | `src/visualization/render/canvas/VisualizationCanvasR3F.tsx` (rename in rename step)                   |
+| `src/nodeMap/components/NodeMapCanvas.tsx`                | `src/visualization/render/canvas/NodeMapCanvas.tsx`                                                    |
+| `src/nodeMap/components/NodeMapSurface.tsx`               | `src/visualization/render/canvas/NodeMapSurface.tsx`                                                   |
+| `src/nodeMap/components/NodeMapCanvasFallback.tsx`        | `src/visualization/render/canvas/NodeMapCanvasFallback.tsx`                                            |
+| `src/nodeMap/components/CameraOrbit.tsx`                  | `src/visualization/render/canvas/CameraOrbit.tsx`                                                      |
+| `src/nodeMap/components/CameraSync.tsx`                   | `src/visualization/render/canvas/CameraSync.tsx`                                                       |
+| `src/nodeMap/components/PostFXPass.tsx`                   | `src/visualization/render/canvas/PostFXPass.tsx`                                                       |
+| `src/nodeMap/components/shaderDebugFlags.ts`              | `src/visualization/render/canvas/shaderDebugFlags.ts`                                                  |
+| `src/nodeMap/components/Spine.tsx`                        | `src/visualization/render/layers/Spine.tsx`                                                            |
+| `src/nodeMap/components/PlaneLayerField.tsx`              | `src/visualization/render/layers/PlaneLayerField.tsx`                                                  |
+| `src/nodeMap/components/ContextGlyphs.tsx`                | `src/visualization/render/layers/ContextGlyphs.tsx`                                                    |
+| `src/nodeMap/components/ContextLinks.tsx`                 | `src/visualization/render/layers/ContextLinks.tsx`                                                     |
+| `src/nodeMap/components/TouchZones.tsx`                   | `src/visualization/render/layers/TouchZones.tsx`                                                       |
+| `src/nodeMap/components/DevPanel.tsx`                     | `src/visualization/render/dev/DevPanel.tsx`                                                            |
+| **Interaction**                                           |                                                                                                        |
+| `src/nodeMap/components/NodeMapInteractionBand.tsx`       | `src/visualization/interaction/InteractionBand.tsx` (rename in rename step)                            |
+| `src/nodeMap/interaction/TouchRaycaster.tsx`              | `src/visualization/interaction/TouchRaycaster.tsx`                                                     |
+| `src/nodeMap/interaction/touchHandlers.ts`                | `src/visualization/interaction/touchHandlers.ts`                                                       |
+| (new)                                                     | `src/visualization/interaction/zoneMath.ts` (empty)                                                    |
+| (new)                                                     | `src/visualization/interaction/gestureMath.ts` (empty)                                                 |
+| **Materials**                                             |                                                                                                        |
+| `src/nodeMap/materials/basicPlaneMaterial.ts`             | `src/visualization/materials/basicPlaneMaterial.ts`                                                    |
+| `src/nodeMap/materials/halftone/halftonePlaneMaterial.ts` | `src/visualization/materials/halftone/halftonePlaneMaterial.ts`                                        |
+| `src/nodeMap/materials/halftone/halftone.vert.ts`         | `src/visualization/materials/halftone/halftone.vert.ts`                                                |
+| `src/nodeMap/materials/halftone/halftone.frag.ts`         | `src/visualization/materials/halftone/halftone.frag.ts`                                                |
+| `src/nodeMap/shaders/nodes.ts`                            | `src/visualization/materials/glyphs/nodes.ts`                                                          |
+| `src/nodeMap/shaders/connections.ts`                      | `src/visualization/materials/links/connections.ts`                                                     |
+| **Utils**                                                 |                                                                                                        |
+| (new or extract)                                          | `src/visualization/utils/colors.ts`                                                                    |
+| (new or extract)                                          | `src/visualization/utils/math.ts`                                                                      |
+| (new or extract)                                          | `src/visualization/utils/rng.ts`                                                                       |
 
 ---
 
@@ -194,7 +201,7 @@ src/
 ### Step 2 — Move materials first
 
 - Move **only** materials (and shaders into materials):
-  - `nodeMap/materials/*` → `visualization/materials/`
+  - `nodeMap/materials/` → `visualization/materials/`
   - `nodeMap/shaders/nodes.ts` → `visualization/materials/glyphs/nodes.ts`
   - `nodeMap/shaders/connections.ts` → `visualization/materials/links/connections.ts`
 - Fix **every import** that points at the old paths (inside nodeMap and, if any, outside).
@@ -228,7 +235,7 @@ src/
 ### Step 6 — Refactor rules and docs
 
 - Add `src/visualization/README.md` (or `docs/visualization/ARCHITECTURE.md`) with the four rules (scene = aesthetic source; layers dumb; interaction no visuals; engine owns time/state).
-- Update ARCHITECTURE.md, README.md, AGENT_RULES.md, APP_ARCHITECTURE.md, NODEMAP_COMPONENT_REFERENCE.md (or rename to VISUALIZATION_COMPONENT_REFERENCE.md), FORMATIONS_SPINE.md, SPINE_CONTROL_SETTINGS.md, and docs/plans/* to use visualization paths and new names.
+- Update ARCHITECTURE.md, README.md, AGENT_RULES.md, APP_ARCHITECTURE.md, NODEMAP_COMPONENT_REFERENCE.md (or rename to VISUALIZATION_COMPONENT_REFERENCE.md), FORMATIONS_SPINE.md, SPINE_CONTROL_SETTINGS.md, and docs/plans/ to use visualization paths and new names.
 
 ### Step 7 (optional follow-up) — Extract adapters
 
@@ -238,10 +245,10 @@ src/
 
 ## Refactor rules (for README / ARCHITECTURE in visualization)
 
-1. **Scene is the only aesthetic source** — Layout/colors/motion in `scene/sceneFormations.ts` and `scene/artDirection/*` (and materials). Renderers do not define default look constants.
-2. **Render layers are dumb** — `render/layers/*` read `ref.current.scene`, update uniforms/transforms; no layout/color/motion constants. (Optional later: move scene→mesh logic into `render/adapters/`.)
-3. **Interaction never owns visuals** — `interaction/*`: touch capture, mapping to runtime ref, tap vs drag; zone/hit and gesture math in zoneMath.ts / gestureMath.ts.
-4. **Engine owns time and state** — State transitions, ramps, smoothing in `runtime/*`.
+1. **Scene is the only aesthetic source** — Layout/colors/motion in `scene/sceneFormations.ts` and `scene/artDirection/` (and materials). Renderers do not define default look constants.
+2. **Render layers are dumb** — `render/layers/` read `ref.current.scene`, update uniforms/transforms; no layout/color/motion constants. (Optional later: move scene→mesh logic into `render/adapters/`.)
+3. **Interaction never owns visuals** — `interaction/`: touch capture, mapping to runtime ref, tap vs drag; zone/hit and gesture math in zoneMath.ts / gestureMath.ts.
+4. **Engine owns time and state** — State transitions, ramps, smoothing in `runtime/`.
 5. **Dev is separate** — Dev tools live under `render/dev/`, not mixed with runtime layers.
 
 ---
@@ -249,7 +256,7 @@ src/
 ## Summary of changes from original plan
 
 - **DevPanel** → `render/dev/DevPanel.tsx`.
-- **Scene** → `scene/builders/spine.ts` (and `scene/sceneFormations.ts`, `scene/artDirection/*`).
+- **Scene** → `scene/builders/spine.ts` (and `scene/sceneFormations.ts`, `scene/artDirection/`).
 - **Interaction** → add empty `zoneMath.ts` and `gestureMath.ts` in Step 1 or early.
 - **Utils** → `utils/colors.ts`, `utils/math.ts`, `utils/rng.ts` (stubs or moved from existing).
 - **Execution** → Step 1: folders only. Step 2: materials first, fix imports, build. Step 3: render components, fix imports, build. Then runtime/scene/interaction, index, renames, docs, and optional adapters extraction.

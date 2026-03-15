@@ -17,10 +17,11 @@
  * should move primary touch semantics to GL/raycast; this band is the single touch owner.
  */
 
-import React, { useRef, useCallback, useEffect } from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
-import type { LayoutChangeEvent, GestureResponderEvent } from 'react-native';
 import type { RefObject } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
+import type { GestureResponderEvent, LayoutChangeEvent } from 'react-native';
+import { Animated, StyleSheet, View } from 'react-native';
+import { logInfo } from '../../shared/logging';
 import { isCenterHoldEligible } from '../../app/nameShaping/layout/nameShapingInteractionRouting';
 import { isVoiceLaneNdc } from '../../app/nameShaping/layout/nameShapingTouchRegions';
 import type { VisualizationEngineRef } from '../runtime/runtimeTypes';
@@ -41,8 +42,8 @@ export type NameShapingCaptureHandlers = {
 
 export type InteractionBandProps = {
   visualizationRef: RefObject<VisualizationEngineRef | null>;
-  /** Semantic commit on touch end (rules/cards only; center does nothing). */
-  onClusterRelease?: (cluster: 'rules' | 'cards') => void;
+  /** Semantic commit on touch end (rules/cards only; center does nothing). Optional 2nd arg is diagnostic touch-end sequence id. */
+  onClusterRelease?: (cluster: 'rules' | 'cards', diagnosticTouchEndId?: number) => void;
   /** @deprecated Use onClusterRelease; kept for compatibility. */
   onClusterTap?: (cluster: 'rules' | 'cards') => void;
   /** Center spine hold: called once when hold timer fires. Primary hold-to-speak affordance. */
@@ -69,10 +70,17 @@ export function InteractionBand({
   blocked = false,
   blockedUntil = null,
 }: InteractionBandProps) {
-  const layoutRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const layoutRef = useRef<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const centerHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const centerHoldStartedRef = useRef(false);
+  // TODO(android): monotonically increasing id per touch end for diagnosis of duplicate/follow-up events; remove when no longer needed
+  const touchEndSequenceIdRef = useRef(0);
 
   const clearCenterHoldState = useCallback(() => {
     if (centerHoldTimerRef.current) {
@@ -96,7 +104,8 @@ export function InteractionBand({
     (locationX: number, locationY: number): [number, number] | null => {
       const v = visualizationRef.current;
       const layout = layoutRef.current;
-      if (!v || !layout || v.canvasWidth <= 0 || v.canvasHeight <= 0) return null;
+      if (!v || !layout || v.canvasWidth <= 0 || v.canvasHeight <= 0)
+        return null;
       const band = layout as { x: number; y: number; w: number; h: number };
       const screenX = band.x + locationX;
       const screenY = band.y + locationY;
@@ -146,7 +155,8 @@ export function InteractionBand({
       return;
     }
     const now = Date.now();
-    const duration = blockedUntil != null ? Math.max(0, blockedUntil - now) : 200;
+    const duration =
+      blockedUntil != null ? Math.max(0, blockedUntil - now) : 200;
     blockedOpacity.setValue(1);
     Animated.timing(blockedOpacity, {
       toValue: 0,
@@ -194,7 +204,15 @@ export function InteractionBand({
         }
       }
     },
-    [visualizationRef, toNdc, toBandNdc, enabled, setZoneArmedFromNdc, onCenterHoldStart, nameShapingCapture],
+    [
+      visualizationRef,
+      toNdc,
+      toBandNdc,
+      enabled,
+      setZoneArmedFromNdc,
+      onCenterHoldStart,
+      nameShapingCapture,
+    ],
   );
 
   const handleTouchMove = useCallback(
@@ -236,12 +254,22 @@ export function InteractionBand({
         }
       }
     },
-    [visualizationRef, toNdc, toBandNdc, enabled, setZoneArmedFromNdc, nameShapingCapture],
+    [
+      visualizationRef,
+      toNdc,
+      toBandNdc,
+      enabled,
+      setZoneArmedFromNdc,
+      nameShapingCapture,
+    ],
   );
 
   const handleTouchEnd = useCallback(
     (e: GestureResponderEvent) => {
       if (!enabled) return;
+      // TODO(android): diagnostic logging for touch-end duplicate/follow-up diagnosis; remove when no longer needed
+      const sequenceId = ++touchEndSequenceIdRef.current;
+      const timestamp = Date.now();
       const v = visualizationRef.current;
       const holdHadStarted = centerHoldStartedRef.current;
       nameShapingCapture?.onTouchEnd();
@@ -253,19 +281,55 @@ export function InteractionBand({
         v.zoneArmed = null;
       }
       if (holdHadStarted) {
+        logInfo('Interaction', 'touchEnd (Android diagnosis)', {
+          sequenceId,
+          timestamp,
+          holdHadStarted: true,
+          returnedViaCenterHoldEnd: true,
+          reachedClusterPath: false,
+        });
         onCenterHoldEnd?.();
         return;
       }
       if (nameShapingCapture != null) {
+        logInfo('Interaction', 'touchEnd (Android diagnosis)', {
+          sequenceId,
+          timestamp,
+          holdHadStarted: false,
+          returnedViaCenterHoldEnd: false,
+          reachedClusterPath: false,
+          earlyExit: 'nameShapingCapture',
+        });
         return;
       }
       const { locationX, locationY } = e.nativeEvent;
       const ndc = toNdc(locationX, locationY);
-      if (!ndc) return;
+      if (!ndc) {
+        logInfo('Interaction', 'touchEnd (Android diagnosis)', {
+          sequenceId,
+          timestamp,
+          holdHadStarted: false,
+          returnedViaCenterHoldEnd: false,
+          reachedClusterPath: false,
+          earlyExit: 'noNdc',
+        });
+        return;
+      }
       const zone = getZoneFromNdcX(ndc[0]);
+      logInfo('Interaction', 'touchEnd (Android diagnosis)', {
+        sequenceId,
+        timestamp,
+        holdHadStarted: false,
+        returnedViaCenterHoldEnd: false,
+        reachedClusterPath: true,
+        zone,
+        locationX,
+        locationY,
+        ndcX: ndc[0],
+      });
       const onRelease = onClusterRelease ?? onClusterTap;
-      if (zone === 'rules') onRelease?.('rules');
-      else if (zone === 'cards') onRelease?.('cards');
+      if (zone === 'rules') onRelease?.('rules', sequenceId);
+      else if (zone === 'cards') onRelease?.('cards', sequenceId);
     },
     [
       visualizationRef,

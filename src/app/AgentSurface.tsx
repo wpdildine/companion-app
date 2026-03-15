@@ -845,10 +845,45 @@ export default function AgentSurface() {
     }
   }, [handleUserModeLongPressEnd]);
 
+  // Refs for diagnostic log only so handleClusterTap identity stays stable (avoids invariant on Android when deps churn).
+  const clusterTapDiagnosticRef = useRef({
+    canRevealPanels: false,
+    interactionBandEnabled: false,
+    canSwipeContext: false,
+    lifecycle: '' as string,
+    hasResultContext: false,
+    hasReferenceStubs: false,
+    hasResponseText: false,
+    hasValidationSummary: false,
+  });
+  clusterTapDiagnosticRef.current = {
+    canRevealPanels,
+    interactionBandEnabled,
+    canSwipeContext,
+    lifecycle: orchState.lifecycle,
+    hasResultContext,
+    hasReferenceStubs,
+    hasResponseText: orchState.responseText != null,
+    hasValidationSummary: orchState.validationSummary != null,
+  };
+
   const handleClusterTap = useCallback(
-    (cluster: 'rules' | 'cards') => {
+    (cluster: 'rules' | 'cards', diagnosticTouchEndId?: number) => {
       if (!canSwipeContext) {
-        logInfo('Interaction', 'swipe blocked due to no valid context');
+        // TODO(android): augmented log for touch-end diagnosis; remove when no longer needed
+        const d = clusterTapDiagnosticRef.current;
+        logInfo('Interaction', 'swipe blocked due to no valid context', {
+          timestamp: Date.now(),
+          touchEndSequenceId: diagnosticTouchEndId,
+          canRevealPanels: d.canRevealPanels,
+          interactionBandEnabled: d.interactionBandEnabled,
+          canSwipeContext: d.canSwipeContext,
+          lifecycle: d.lifecycle,
+          hasResultContext: d.hasResultContext,
+          hasReferenceStubs: d.hasReferenceStubs,
+          hasResponseText: d.hasResponseText,
+          hasValidationSummary: d.hasValidationSummary,
+        });
         return;
       }
       if (cluster === 'rules') {

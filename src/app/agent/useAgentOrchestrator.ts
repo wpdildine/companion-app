@@ -358,11 +358,8 @@ export function useAgentOrchestrator(
         transcribeCapturedAudioIfNeeded,
       }),
     [
-      listenersRef,
-      sessionCoordinator,
       updateTranscript,
       finalizeTranscriptFromPartial,
-      onSettlementFinalizeComplete,
       emitRecoverableFailure,
       transcribeCapturedAudioIfNeeded,
     ],
@@ -447,34 +444,37 @@ export function useAgentOrchestrator(
     [handleSettlementOutcome, settlementCoordinator],
   );
 
-  const runNativeStopWithLogging = (
-    recordingSessionId: string | undefined,
-    runStop: () => Promise<void>,
-    pendingSubmitWhenReady: boolean
-  ): Promise<void> => {
-    logInfo('AgentOrchestrator', 'native voice stop in flight', { recordingSessionId });
-    logInfo('AgentOrchestrator', 'voice stop invoked', {
-      recordingSessionId,
-      platform: Platform.OS,
-      pendingSubmitWhenReady,
-    });
-    if (Platform.OS === 'ios') {
-      logInfo('AgentOrchestrator', 'ios stop grace scheduled', {
+  const runNativeStopWithLogging = useCallback(
+    (
+      recordingSessionId: string | undefined,
+      runStop: () => Promise<void>,
+      pendingSubmitWhenReady: boolean
+    ): Promise<void> => {
+      logInfo('AgentOrchestrator', 'native voice stop in flight', { recordingSessionId });
+      logInfo('AgentOrchestrator', 'voice stop invoked', {
         recordingSessionId,
-        graceMs: IOS_STOP_GRACE_MS,
+        platform: Platform.OS,
+        pendingSubmitWhenReady,
       });
-    } else {
-      logInfo('AgentOrchestrator', 'voice stop invoked immediately (non-ios)', {
+      if (Platform.OS === 'ios') {
+        logInfo('AgentOrchestrator', 'ios stop grace scheduled', {
+          recordingSessionId,
+          graceMs: IOS_STOP_GRACE_MS,
+        });
+      } else {
+        logInfo('AgentOrchestrator', 'voice stop invoked immediately (non-ios)', {
+          recordingSessionId,
+        });
+      }
+      return sessionCoordinator.executeNativeStopWithGrace(
+        Platform.OS === 'ios',
         recordingSessionId,
-      });
-    }
-    return sessionCoordinator.executeNativeStopWithGrace(
-      Platform.OS === 'ios',
-      recordingSessionId,
-      IOS_STOP_GRACE_MS,
-      runStop,
-    );
-  };
+        IOS_STOP_GRACE_MS,
+        runStop,
+      );
+    },
+    [sessionCoordinator]
+  );
 
   const stopListening = useCallback(async () => {
     const recordingSessionId = recordingSessionRef.current ?? undefined;
@@ -506,7 +506,7 @@ export function useAgentOrchestrator(
     );
     settlementCoordinator.clearFinalizeTimer();
     settlementCoordinator.scheduleDelayedFinalize('stopListening', recordingSessionId, 300);
-  }, [finalizeStop, setAudioState, sessionCoordinator, sttAudioCapture, sttProvider, settlementCoordinator]);
+  }, [finalizeStop, runNativeStopWithLogging, setAudioState, sessionCoordinator, sttAudioCapture, sttProvider, settlementCoordinator]);
 
   const stopListeningAndRequestSubmit = useCallback(async () => {
     const recordingSessionId = recordingSessionRef.current ?? undefined;
@@ -554,6 +554,7 @@ export function useAgentOrchestrator(
     finalizeStop,
     listenersRef,
     resolveSettlement,
+    runNativeStopWithLogging,
     setAudioState,
     sessionCoordinator,
     sttAudioCapture,
