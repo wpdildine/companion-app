@@ -143,7 +143,7 @@ Current code path:
 Current semantic behavior:
 
 - `start` / `move` write continuous organism response only (`touchFieldActive`, `touchFieldNdc`, `touchFieldStrength`, `zoneArmed`) when the band owns the touch.
-- **Center hold (primary voice affordance):** pressing in the eligible center/voice lane arms a hold timer; once the threshold is met the band emits `onCenterHoldStart`; release after hold start emits `onCenterHoldEnd`. AgentSurface wires end-of-hold to `stopListeningAndRequestSubmit()`, and submit still waits for transcript settlement.
+- **Center hold (primary voice affordance):** the band owns touch intent only. When the hold threshold is met (timer or bypass), the band calls `onCenterHoldAttempt(reportAccepted)`. AgentSurface decides accept/reject and calls `reportAccepted` exactly once; only accepted holds get `onCenterHoldEnd` on release. AgentSurface wires end-of-hold to `stopListeningAndRequestSubmit()`. See **docs/INTERACTION_CONTRACT.md** for the full contract.
 - On touch release, if a center hold did not start and no higher-priority capture has taken over, the band maps final NDC X to rules/cards and calls `onClusterRelease`. Center release still commits nothing.
 - Touch cancel clears band state and emits no semantic callback.
 

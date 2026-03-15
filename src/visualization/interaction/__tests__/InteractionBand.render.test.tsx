@@ -227,14 +227,14 @@ describe('InteractionBand render path', () => {
   it('bypasses the hold delay for center-lane touches when busy-audio retry feedback is enabled', () => {
     jest.useFakeTimers();
     const visualizationRef = createVisualizationRef();
-    const onCenterHoldStart = jest.fn();
+    const onCenterHoldAttempt = jest.fn();
 
     let renderer: TestRenderer.ReactTestRenderer;
     act(() => {
       renderer = TestRenderer.create(
         <InteractionBand
           visualizationRef={visualizationRef}
-          onCenterHoldStart={onCenterHoldStart}
+          onCenterHoldAttempt={onCenterHoldAttempt}
           centerHoldShouldBypassDelay
         />,
       );
@@ -258,13 +258,245 @@ describe('InteractionBand render path', () => {
       gesture!.handlers.onStart?.({ x: 100, y: 100 });
     });
 
-    expect(onCenterHoldStart).toHaveBeenCalledTimes(1);
+    expect(onCenterHoldAttempt).toHaveBeenCalledTimes(1);
+    expect(onCenterHoldAttempt).toHaveBeenCalledWith(expect.any(Function));
 
     act(() => {
       jest.runOnlyPendingTimers();
     });
 
-    expect(onCenterHoldStart).toHaveBeenCalledTimes(1);
+    expect(onCenterHoldAttempt).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
+  });
+});
+
+describe('InteractionBand contract (attempt / acceptance / release)', () => {
+  const createVisualizationRef = () => ({
+    current: {
+      canvasWidth: 200,
+      canvasHeight: 400,
+      touchFieldActive: false,
+      touchFieldNdc: null,
+      touchFieldStrength: 0,
+      zoneArmed: null,
+      scene: {
+        zones: {
+          layout: {
+            bandTopInsetPx: 112,
+          },
+        },
+      },
+    },
+  });
+
+  const layoutEvent = {
+    nativeEvent: { layout: { x: 0, y: 0, width: 200, height: 288 } },
+  };
+  const voiceLanePoint = { x: 100, y: 100 };
+
+  beforeEach(() => {
+    lastGesture = null;
+  });
+
+  it('normal accepted hold: attempt -> reportAccepted(true) -> release triggers onCenterHoldEnd', () => {
+    jest.useFakeTimers();
+    const visualizationRef = createVisualizationRef();
+    const onCenterHoldAttempt = jest.fn((reportAccepted: (accepted: boolean) => void) => {
+      reportAccepted(true);
+    });
+    const onCenterHoldEnd = jest.fn();
+
+    let renderer: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(
+        <InteractionBand
+          visualizationRef={visualizationRef}
+          onCenterHoldAttempt={onCenterHoldAttempt}
+          onCenterHoldEnd={onCenterHoldEnd}
+          centerHoldShouldBypassDelay
+        />,
+      );
+    });
+    const band = renderer!.root.findAllByType(View).find((n) => n.props.onLayout != null);
+    act(() => band!.props.onLayout(layoutEvent));
+
+    const gesture = lastGesture!;
+    act(() => gesture.handlers.onStart?.(voiceLanePoint));
+    expect(onCenterHoldAttempt).toHaveBeenCalledTimes(1);
+
+    act(() => gesture.handlers.onEnd?.({ x: 100, y: 100 }, true));
+    expect(onCenterHoldEnd).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
+  });
+
+  it('busy retouch: attempt -> reportAccepted(false) -> release does not call onCenterHoldEnd', () => {
+    jest.useFakeTimers();
+    const visualizationRef = createVisualizationRef();
+    const onCenterHoldAttempt = jest.fn((reportAccepted: (accepted: boolean) => void) => {
+      reportAccepted(false);
+    });
+    const onCenterHoldEnd = jest.fn();
+
+    let renderer: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(
+        <InteractionBand
+          visualizationRef={visualizationRef}
+          onCenterHoldAttempt={onCenterHoldAttempt}
+          onCenterHoldEnd={onCenterHoldEnd}
+          centerHoldShouldBypassDelay
+        />,
+      );
+    });
+    const band = renderer!.root.findAllByType(View).find((n) => n.props.onLayout != null);
+    act(() => band!.props.onLayout(layoutEvent));
+
+    const gesture = lastGesture!;
+    act(() => gesture.handlers.onStart?.(voiceLanePoint));
+    act(() => gesture.handlers.onEnd?.(voiceLanePoint, true));
+
+    expect(onCenterHoldAttempt).toHaveBeenCalledTimes(1);
+    expect(onCenterHoldEnd).not.toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+
+  it('short retouch: release before timer -> no reportAccepted(true) -> no onCenterHoldEnd', () => {
+    jest.useFakeTimers();
+    const visualizationRef = createVisualizationRef();
+    const onCenterHoldAttempt = jest.fn();
+    const onCenterHoldEnd = jest.fn();
+
+    let renderer: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(
+        <InteractionBand
+          visualizationRef={visualizationRef}
+          onCenterHoldAttempt={onCenterHoldAttempt}
+          onCenterHoldEnd={onCenterHoldEnd}
+        />,
+      );
+    });
+    const band = renderer!.root.findAllByType(View).find((n) => n.props.onLayout != null);
+    act(() => band!.props.onLayout(layoutEvent));
+
+    const gesture = lastGesture!;
+    act(() => gesture.handlers.onStart?.(voiceLanePoint));
+    expect(onCenterHoldAttempt).not.toHaveBeenCalled();
+    act(() => gesture.handlers.onEnd?.(voiceLanePoint, true));
+
+    expect(onCenterHoldEnd).not.toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+
+  it('blocked attempt: reportAccepted(false) + release does not call onCenterHoldEnd', () => {
+    jest.useFakeTimers();
+    const visualizationRef = createVisualizationRef();
+    const onCenterHoldAttempt = jest.fn((reportAccepted: (accepted: boolean) => void) => {
+      reportAccepted(false);
+    });
+    const onCenterHoldEnd = jest.fn();
+
+    let renderer: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(
+        <InteractionBand
+          visualizationRef={visualizationRef}
+          onCenterHoldAttempt={onCenterHoldAttempt}
+          onCenterHoldEnd={onCenterHoldEnd}
+          centerHoldShouldBypassDelay
+        />,
+      );
+    });
+    const band = renderer!.root.findAllByType(View).find((n) => n.props.onLayout != null);
+    act(() => band!.props.onLayout(layoutEvent));
+
+    const gesture = lastGesture!;
+    act(() => gesture.handlers.onStart?.(voiceLanePoint));
+    act(() => gesture.handlers.onEnd?.(voiceLanePoint, true));
+
+    expect(onCenterHoldEnd).not.toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+
+  it('accepted start then release: full flow runs and onCenterHoldEnd called once', () => {
+    jest.useFakeTimers();
+    const visualizationRef = createVisualizationRef();
+    const onCenterHoldAttempt = jest.fn((reportAccepted: (accepted: boolean) => void) => {
+      reportAccepted(true);
+    });
+    const onCenterHoldEnd = jest.fn();
+
+    let renderer: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(
+        <InteractionBand
+          visualizationRef={visualizationRef}
+          onCenterHoldAttempt={onCenterHoldAttempt}
+          onCenterHoldEnd={onCenterHoldEnd}
+        />,
+      );
+    });
+    const band = renderer!.root.findAllByType(View).find((n) => n.props.onLayout != null);
+    act(() => band!.props.onLayout(layoutEvent));
+
+    const gesture = lastGesture!;
+    act(() => gesture.handlers.onStart?.(voiceLanePoint));
+    act(() => jest.advanceTimersByTime(450));
+    expect(onCenterHoldAttempt).toHaveBeenCalledTimes(1);
+    const reportAccepted = onCenterHoldAttempt.mock.calls[0][0];
+    act(() => reportAccepted(true));
+
+    act(() => gesture.handlers.onEnd?.(voiceLanePoint, true));
+    expect(onCenterHoldEnd).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
+  });
+
+  it('late reportAccepted from touch A cannot bless touch B', () => {
+    jest.useFakeTimers();
+    const visualizationRef = createVisualizationRef();
+    const capturedReportAccepted: Array<(accepted: boolean) => void> = [];
+    const onCenterHoldAttempt = jest.fn((reportAccepted: (accepted: boolean) => void) => {
+      capturedReportAccepted.push(reportAccepted);
+    });
+    const onCenterHoldEnd = jest.fn();
+
+    let renderer: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(
+        <InteractionBand
+          visualizationRef={visualizationRef}
+          onCenterHoldAttempt={onCenterHoldAttempt}
+          onCenterHoldEnd={onCenterHoldEnd}
+          centerHoldShouldBypassDelay
+        />,
+      );
+    });
+    const band = renderer!.root.findAllByType(View).find((n) => n.props.onLayout != null);
+    act(() => band!.props.onLayout(layoutEvent));
+
+    const gesture = lastGesture!;
+    act(() => gesture.handlers.onStart?.(voiceLanePoint));
+    expect(onCenterHoldAttempt).toHaveBeenCalledTimes(1);
+    expect(capturedReportAccepted).toHaveLength(1);
+
+    act(() => gesture.handlers.onEnd?.(voiceLanePoint, true));
+    expect(onCenterHoldEnd).not.toHaveBeenCalled();
+
+    act(() => gesture.handlers.onStart?.(voiceLanePoint));
+    expect(onCenterHoldAttempt).toHaveBeenCalledTimes(2);
+    expect(capturedReportAccepted).toHaveLength(2);
+
+    act(() => capturedReportAccepted[0](true));
+    act(() => gesture.handlers.onEnd?.(voiceLanePoint, true));
+    expect(onCenterHoldEnd).not.toHaveBeenCalled();
+
+    act(() => gesture.handlers.onStart?.(voiceLanePoint));
+    expect(onCenterHoldAttempt).toHaveBeenCalledTimes(3);
+    expect(capturedReportAccepted).toHaveLength(3);
+
+    act(() => capturedReportAccepted[2](true));
+    act(() => gesture.handlers.onEnd?.(voiceLanePoint, true));
+    expect(onCenterHoldEnd).toHaveBeenCalledTimes(1);
     jest.useRealTimers();
   });
 });

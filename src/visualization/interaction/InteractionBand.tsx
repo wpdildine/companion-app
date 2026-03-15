@@ -54,9 +54,11 @@ export type InteractionBandProps = {
   ) => void;
   /** @deprecated Use onClusterRelease; kept for compatibility. */
   onClusterTap?: (cluster: 'rules' | 'cards') => void;
-  /** Center spine hold: called once when hold timer fires. Primary hold-to-speak affordance. */
-  onCenterHoldStart?: () => void;
-  /** Center spine hold: called once when touch ends after hold had started. */
+  /** Center hold attempt: called when hold intent (timer or bypass) fires. Surface decides accept/reject and calls reportAccepted exactly once. Only accepted holds get onCenterHoldEnd on release. */
+  onCenterHoldAttempt?: (
+    reportAccepted: (accepted: boolean) => void,
+  ) => void;
+  /** Center spine hold: called when touch ends only if that touch's attempt was accepted. */
   onCenterHoldEnd?: () => void;
   /** When provided, touch NDC is forwarded to these handlers and band semantic actions (center hold, cluster release) are suppressed. */
   nameShapingCapture?: NameShapingCaptureHandlers;
@@ -74,7 +76,7 @@ export function InteractionBand({
   visualizationRef,
   onClusterRelease,
   onClusterTap,
-  onCenterHoldStart,
+  onCenterHoldAttempt,
   onCenterHoldEnd,
   nameShapingCapture,
   topInsetOverridePx,
@@ -92,7 +94,10 @@ export function InteractionBand({
   } | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const centerHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const centerHoldStartedRef = useRef(false);
+  /** Set only when Surface calls reportAccepted(true); cleared on touch end/cancel. Only this drives onCenterHoldEnd. */
+  const centerHoldAcceptedRef = useRef(false);
+  /** Monotonic token for the current logical attempt so late callbacks cannot bless a later touch. */
+  const centerHoldAttemptIdRef = useRef(0);
   const touchEndSequenceIdRef = useRef(0);
 
   const [debugState, setDebugState] = useState<InteractionProbeDebugState | null>(null);
@@ -103,8 +108,25 @@ export function InteractionBand({
       clearTimeout(centerHoldTimerRef.current);
       centerHoldTimerRef.current = null;
     }
-    centerHoldStartedRef.current = false;
+    centerHoldAcceptedRef.current = false;
+    centerHoldAttemptIdRef.current += 1;
     touchStartRef.current = null;
+  }, []);
+
+  /** Creates a one-shot resolver bound to a single logical attempt. */
+  const createAttemptReporter = useCallback(() => {
+    const attemptId = centerHoldAttemptIdRef.current + 1;
+    centerHoldAttemptIdRef.current = attemptId;
+    let resolved = false;
+
+    return (accepted: boolean) => {
+      if (resolved) return;
+      resolved = true;
+      if (centerHoldAttemptIdRef.current !== attemptId) return;
+      if (accepted) {
+        centerHoldAcceptedRef.current = true;
+      }
+    };
   }, []);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
@@ -236,15 +258,11 @@ export function InteractionBand({
         );
         if (inVoiceLane) {
           if (centerHoldShouldBypassDelay) {
-            centerHoldStartedRef.current = true;
-            onCenterHoldStart?.();
+            onCenterHoldAttempt?.(createAttemptReporter());
           } else {
             centerHoldTimerRef.current = setTimeout(() => {
               centerHoldTimerRef.current = null;
-              if (!centerHoldStartedRef.current) {
-                centerHoldStartedRef.current = true;
-                onCenterHoldStart?.();
-              }
+              onCenterHoldAttempt?.(createAttemptReporter());
             }, CENTER_HOLD_THRESHOLD_MS);
           }
         }
@@ -261,7 +279,8 @@ export function InteractionBand({
       enabled,
       centerHoldShouldBypassDelay,
       setZoneArmedFromNdc,
-      onCenterHoldStart,
+      onCenterHoldAttempt,
+      createAttemptReporter,
       nameShapingCapture,
       updateDebugState,
     ],
@@ -329,7 +348,7 @@ export function InteractionBand({
       const sequenceId = ++touchEndSequenceIdRef.current;
       const timestamp = Date.now();
       const v = visualizationRef.current;
-      const holdHadStarted = centerHoldStartedRef.current;
+      const holdWasAccepted = centerHoldAcceptedRef.current;
       nameShapingCapture?.onTouchEnd();
       clearCenterHoldState();
       updateDebugState(false);
@@ -339,11 +358,11 @@ export function InteractionBand({
         v.touchFieldStrength = 0;
         v.zoneArmed = null;
       }
-      if (holdHadStarted) {
+      if (holdWasAccepted) {
         logInfo('Interaction', 'touchEnd (Android diagnosis)', {
           sequenceId,
           timestamp,
-          holdHadStarted: true,
+          holdWasAccepted: true,
           returnedViaCenterHoldEnd: true,
           reachedClusterPath: false,
         });
@@ -354,7 +373,7 @@ export function InteractionBand({
         logInfo('Interaction', 'touchEnd (Android diagnosis)', {
           sequenceId,
           timestamp,
-          holdHadStarted: false,
+          holdWasAccepted: false,
           returnedViaCenterHoldEnd: false,
           reachedClusterPath: false,
           earlyExit: 'nameShapingCapture',
@@ -366,7 +385,7 @@ export function InteractionBand({
         logInfo('Interaction', 'touchEnd (Android diagnosis)', {
           sequenceId,
           timestamp,
-          holdHadStarted: false,
+          holdWasAccepted: false,
           returnedViaCenterHoldEnd: false,
           reachedClusterPath: false,
           earlyExit: 'noNdc',
@@ -377,7 +396,7 @@ export function InteractionBand({
       logInfo('Interaction', 'touchEnd (Android diagnosis)', {
         sequenceId,
         timestamp,
-        holdHadStarted: false,
+        holdWasAccepted: false,
         returnedViaCenterHoldEnd: false,
         reachedClusterPath: true,
         zone,

@@ -686,67 +686,84 @@ export default function AgentSurface() {
     [clearRecordingTimeout, orchActions],
   );
 
-  const handleCenterHoldStart = useCallback(() => {
-    if (holdCompletionInFlightRef.current) return;
-    if (!canHoldToSpeak) {
-      logInfo('Interaction', 'hold blocked', {
-        reason: isAsking
-          ? 'active request'
-          : anyPanelVisible
-          ? 'overlay'
-          : debugEnabled
-          ? 'debug'
-          : 'unknown',
-      });
-      return;
-    }
-    logInfo('Interaction', 'hold start detected', { tMs: Date.now() });
-    if (singleTapTimerRef.current) {
-      clearTimeout(singleTapTimerRef.current);
-      singleTapTimerRef.current = null;
-    }
-    lastTapAtRef.current = 0;
-    submitTriggeredForReleaseRef.current = false;
-    clearRecordingTimeout();
-    logInfo('Interaction', 'center hold start detected');
-    centerHoldActiveRef.current = true;
-    (async () => {
-      playListeningStartFeedback();
-      const startPromise = orchActions.startListening(true);
-      holdStartPromiseRef.current = startPromise;
-      const result = await startPromise;
-      if (holdStartPromiseRef.current === startPromise) {
-        holdStartPromiseRef.current = null;
-      }
-      if (!result.ok) {
-        centerHoldActiveRef.current = false;
+  const handleCenterHoldAttempt = useCallback(
+    (reportAccepted: (accepted: boolean) => void) => {
+      if (holdCompletionInFlightRef.current) {
+        reportAccepted(false);
         emitEvent(TRANSIENT_SIGNAL_SOFT_FAIL);
         return;
       }
-      if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current)
+      if (!canHoldToSpeak) {
+        logInfo('Interaction', 'hold blocked', {
+          reason: isAsking
+            ? 'active request'
+            : anyPanelVisible
+            ? 'overlay'
+            : debugEnabled
+            ? 'debug'
+            : 'unknown',
+        });
+        reportAccepted(false);
+        emitEvent(TRANSIENT_SIGNAL_SOFT_FAIL);
         return;
-      recordingTimeoutRef.current = setTimeout(() => {
-        recordingTimeoutRef.current = null;
+      }
+      if (orchState.audioSessionState !== 'idleReady') {
+        reportAccepted(false);
+        emitEvent(TRANSIENT_SIGNAL_SOFT_FAIL);
+        return;
+      }
+      logInfo('Interaction', 'hold attempt detected', { tMs: Date.now() });
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = null;
+      }
+      lastTapAtRef.current = 0;
+      submitTriggeredForReleaseRef.current = false;
+      clearRecordingTimeout();
+      (async () => {
+        playListeningStartFeedback();
+        const startPromise = orchActions.startListening(true);
+        holdStartPromiseRef.current = startPromise;
+        const result = await startPromise;
+        if (holdStartPromiseRef.current === startPromise) {
+          holdStartPromiseRef.current = null;
+        }
+        if (!result.ok) {
+          reportAccepted(false);
+          emitEvent(TRANSIENT_SIGNAL_SOFT_FAIL);
+          return;
+        }
+        centerHoldActiveRef.current = true;
+        reportAccepted(true);
         if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current)
           return;
-        logInfo('Interaction', 'recording timeout reached');
-        stopListeningAndSubmit('timeout').catch(() => {});
-      }, MAX_RECORDING_DURATION_MS);
-    })().catch(() => {
-      centerHoldActiveRef.current = false;
-      holdStartPromiseRef.current = null;
-    });
-  }, [
-    canHoldToSpeak,
-    isAsking,
-    anyPanelVisible,
-    debugEnabled,
-    orchActions,
-    clearRecordingTimeout,
-    stopListeningAndSubmit,
-    playListeningStartFeedback,
-    emitEvent,
-  ]);
+        recordingTimeoutRef.current = setTimeout(() => {
+          recordingTimeoutRef.current = null;
+          if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current)
+            return;
+          logInfo('Interaction', 'recording timeout reached');
+          stopListeningAndSubmit('timeout').catch(() => {});
+        }, MAX_RECORDING_DURATION_MS);
+      })().catch(() => {
+        centerHoldActiveRef.current = false;
+        holdStartPromiseRef.current = null;
+        reportAccepted(false);
+        emitEvent(TRANSIENT_SIGNAL_SOFT_FAIL);
+      });
+    },
+    [
+      canHoldToSpeak,
+      isAsking,
+      anyPanelVisible,
+      debugEnabled,
+      orchState.audioSessionState,
+      orchActions,
+      clearRecordingTimeout,
+      stopListeningAndSubmit,
+      playListeningStartFeedback,
+      emitEvent,
+    ],
+  );
 
   const handleCenterHoldEnd = useCallback(() => {
     if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current)
@@ -1216,7 +1233,9 @@ export default function AgentSurface() {
       <InteractionBand
         visualizationRef={visualizationRef}
         onClusterRelease={handleClusterTap}
-        onCenterHoldStart={!debugEnabled ? handleCenterHoldStart : undefined}
+        onCenterHoldAttempt={
+          !debugEnabled ? handleCenterHoldAttempt : undefined
+        }
         onCenterHoldEnd={!debugEnabled ? handleCenterHoldEnd : undefined}
         nameShapingCapture={
           nameShapingState.enabled && !debugEnabled
