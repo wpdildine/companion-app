@@ -36,6 +36,20 @@ function overrideFiles() {
   ];
 }
 
+/** Directories to copy recursively (e.g. app icon assets). Override must exist. */
+function overrideDirs() {
+  const identity = getAppIdentity();
+  const iosTarget = identity.iosTargetName;
+  return [
+    'android/app/src/main/res/mipmap-mdpi',
+    'android/app/src/main/res/mipmap-hdpi',
+    'android/app/src/main/res/mipmap-xhdpi',
+    'android/app/src/main/res/mipmap-xxhdpi',
+    'android/app/src/main/res/mipmap-xxxhdpi',
+    `ios/${iosTarget}/Images.xcassets`,
+  ];
+}
+
 function copyFileFromOverrides(rel) {
   const src = path.join(OVERRIDES, rel);
   const dst = path.join(ROOT, rel);
@@ -47,9 +61,23 @@ function copyFileFromOverrides(rel) {
   console.log('[apply-native-overrides] Copied', rel);
 }
 
+function copyDirFromOverrides(rel) {
+  const src = path.join(OVERRIDES, rel);
+  const dst = path.join(ROOT, rel);
+  if (!fs.existsSync(src)) return; // optional: icon dirs created by generate-app-icon.js
+  if (!fs.statSync(src).isDirectory()) return;
+  if (fs.existsSync(dst)) fs.rmSync(dst, { recursive: true, force: true });
+  fs.mkdirSync(path.dirname(dst), { recursive: true });
+  fs.cpSync(src, dst, { recursive: true });
+  console.log('[apply-native-overrides] Copied dir', rel);
+}
+
 function main() {
   for (const [overrideRel] of overrideFiles()) {
     copyFileFromOverrides(overrideRel);
+  }
+  for (const rel of overrideDirs()) {
+    copyDirFromOverrides(rel);
   }
 
   console.log('[apply-native-overrides] Re-applying Android voice patch...');

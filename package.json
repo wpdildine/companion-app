@@ -10,6 +10,7 @@
     "native:regen": "node scripts/regen-native.js",
     "native:pods": "cd ios && PIPER_USE_ESPEAK=1 pod install",
     "native:rebuild": "node scripts/nuclear-rebuild.js",
+    "icon:generate": "node scripts/generate-app-icon.js",
     "rag:pack": "node scripts/sync-pack-small.js",
     "rag:pack:full": "node scripts/sync-pack-full.js",
     "rag:runtime:update": "node scripts/update-runtime.js",
