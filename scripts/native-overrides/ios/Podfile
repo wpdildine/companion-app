@@ -14,14 +14,14 @@ require File.join(
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
-# Never build React as a dynamic framework (avoids "class implemented in both React.framework and CompanionApp.debug.dylib").
+# Never build React as a dynamic framework (avoids "class implemented in both React.framework and ATLAS00.debug.dylib").
 # If USE_FRAMEWORKS is set, force static linkage only.
 if ENV['USE_FRAMEWORKS']
   Pod::UI.puts "Configuring Pod with static frameworks (dynamic would cause duplicate RCTSwiftUI class).".green
   use_frameworks! :linkage => :static
 end
 
-target 'CompanionApp' do
+target 'ATLAS00' do
   use_expo_modules!
   # Explicit pod so Piper TTS is always linked (avoids autolinking-only dependency)
   pod 'PiperTts', :path => '../plugins/piper-tts'

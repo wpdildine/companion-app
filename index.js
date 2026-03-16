@@ -11,7 +11,8 @@ function logBootstrapError(label, error) {
 
 try {
   const { AppRegistry, Platform } = require('react-native');
-  const { name: appName } = require('./app.json');
+  const appConfig = require('./app.json');
+  const appName = appConfig.appIdentity?.projectName || appConfig.name;
 
   // R3F native/Expo warns when EXPO_OS was not babel-inlined; define a safe runtime fallback.
   if (typeof process !== 'undefined') {

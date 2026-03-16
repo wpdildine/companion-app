@@ -5,11 +5,10 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execSync } = require('child_process');
+const { getAppIdentity } = require('./app-identity');
 
 const ROOT = path.resolve(__dirname, '..');
 const PACKAGE_JSON = path.join(ROOT, 'package.json');
-const APP_NAME = 'CompanionApp';
-const PACKAGE_NAME = 'com.companionapp';
 
 function ensureNode22() {
   const major = Number(process.versions.node.split('.')[0]);
@@ -36,22 +35,23 @@ function run(cmd, cwd) {
 
 function main() {
   ensureNode22();
+  const identity = getAppIdentity();
   const rnVersion = reactNativeVersion();
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'companion-native-regen-'));
-  const seedDir = path.join(tempRoot, APP_NAME);
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'atlas00-native-regen-'));
+  const seedDir = path.join(tempRoot, identity.projectName);
 
   console.log('[regen-native] temp dir:', tempRoot);
   console.log('[regen-native] generating fresh native projects with RN', rnVersion);
   run(
     [
       'npx @react-native-community/cli init',
-      APP_NAME,
+      identity.projectName,
       `--version ${rnVersion}`,
       '--skip-install',
       '--skip-git-init',
       '--pm npm',
-      `--package-name ${PACKAGE_NAME}`,
-      `--title ${APP_NAME}`,
+      `--package-name ${identity.packageName}`,
+      `--title ${identity.displayName}`,
       `--directory "${seedDir}"`,
     ].join(' '),
     ROOT

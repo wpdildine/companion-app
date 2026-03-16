@@ -1,7 +1,14 @@
 {
-  "name": "CompanionApp",
-  "displayName": "CompanionApp",
+  "name": "ATLAS00",
+  "displayName": "ATLAS 01",
   "reactNative": {
     "newArchEnabled": true
+  },
+  "appIdentity": {
+    "projectName": "ATLAS00",
+    "displayName": "ATLAS 01",
+    "iosTargetName": "ATLAS00",
+    "packageName": "com.atlas00.app",
+    "androidPackageName": "com.atlas00.app"
   }
 }

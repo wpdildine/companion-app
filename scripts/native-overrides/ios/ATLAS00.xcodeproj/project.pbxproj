@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0C80B921A6F3F58F76C31292 /* libPods-CompanionApp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-CompanionApp.a */; };
+		0C80B921A6F3F58F76C31292 /* libPods-ATLAS00.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-ATLAS00.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
@@ -18,22 +18,22 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		13B07F961A680F5B00A75B9A /* CompanionApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CompanionApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = CompanionApp/Images.xcassets; sourceTree = "<group>"; };
-		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = CompanionApp/Info.plist; sourceTree = "<group>"; };
-		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = CompanionApp/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		3B4392A12AC88292D35C810B /* Pods-CompanionApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-CompanionApp.debug.xcconfig"; path = "Target Support Files/Pods-CompanionApp/Pods-CompanionApp.debug.xcconfig"; sourceTree = "<group>"; };
-		5709B34CF0A7D63546082F79 /* Pods-CompanionApp.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-CompanionApp.release.xcconfig"; path = "Target Support Files/Pods-CompanionApp/Pods-CompanionApp.release.xcconfig"; sourceTree = "<group>"; };
-		5DCACB8F33CDC322A6C60F78 /* libPods-CompanionApp.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-CompanionApp.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = CompanionApp/AppDelegate.swift; sourceTree = "<group>"; };
-		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = CompanionApp/LaunchScreen.storyboard; sourceTree = "<group>"; };
-		8E6CC2969297C41056B943D6 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-CompanionApp/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
-		E1E2E3E42CA45674006654EF /* CompanionApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CompanionApp.entitlements; sourceTree = "<group>"; };
+		13B07F961A680F5B00A75B9A /* ATLAS00.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ATLAS00.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = ATLAS00/Images.xcassets; sourceTree = "<group>"; };
+		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = ATLAS00/Info.plist; sourceTree = "<group>"; };
+		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = ATLAS00/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		3B4392A12AC88292D35C810B /* Pods-ATLAS00.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ATLAS00.debug.xcconfig"; path = "Target Support Files/Pods-ATLAS00/Pods-ATLAS00.debug.xcconfig"; sourceTree = "<group>"; };
+		5709B34CF0A7D63546082F79 /* Pods-ATLAS00.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ATLAS00.release.xcconfig"; path = "Target Support Files/Pods-ATLAS00/Pods-ATLAS00.release.xcconfig"; sourceTree = "<group>"; };
+		5DCACB8F33CDC322A6C60F78 /* libPods-ATLAS00.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-ATLAS00.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = ATLAS00/AppDelegate.swift; sourceTree = "<group>"; };
+		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = ATLAS00/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		8E6CC2969297C41056B943D6 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-ATLAS00/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
+		E1E2E3E42CA45674006654EF /* ATLAS00.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ATLAS00.entitlements; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		P1P3R0M0D3L0NNX00001 /* model.onnx */ = {isa = PBXFileReference; lastKnownFileType = file; path = model.onnx; sourceTree = "<group>"; };
 		P1P3R0M0D3L0NNX00002 /* model.onnx.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = model.onnx.json; sourceTree = "<group>"; };
-		RAGRDR02M2CA45674006654EE /* RagPackReaderModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CompanionApp/RagPackReaderModule.m; sourceTree = "<group>"; };
-		RAGRDR03M2CA45674006654EE /* RagPackReaderModule.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CompanionApp/RagPackReaderModule.h; sourceTree = "<group>"; };
+		RAGRDR02M2CA45674006654EE /* RagPackReaderModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ATLAS00/RagPackReaderModule.m; sourceTree = "<group>"; };
+		RAGRDR03M2CA45674006654EE /* RagPackReaderModule.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ATLAS00/RagPackReaderModule.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -41,7 +41,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0C80B921A6F3F58F76C31292 /* libPods-CompanionApp.a in Frameworks */,
+				0C80B921A6F3F58F76C31292 /* libPods-ATLAS00.a in Frameworks */,
 				ESPK001A2B3C4D5E6F7890AB /* libespeak-ng in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -49,12 +49,12 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		13B07FAE1A68108700A75B9A /* CompanionApp */ = {
+		13B07FAE1A68108700A75B9A /* ATLAS */ = {
 			isa = PBXGroup;
 			children = (
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				761780EC2CA45674006654EE /* AppDelegate.swift */,
-				E1E2E3E42CA45674006654EF /* CompanionApp.entitlements */,
+				E1E2E3E42CA45674006654EF /* ATLAS00.entitlements */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
@@ -62,14 +62,14 @@
 				RAGRDR02M2CA45674006654EE /* RagPackReaderModule.m */,
 				RAGRDR03M2CA45674006654EE /* RagPackReaderModule.h */,
 			);
-			name = CompanionApp;
+			name = ATLAS00;
 			sourceTree = "<group>";
 		};
 		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				5DCACB8F33CDC322A6C60F78 /* libPods-CompanionApp.a */,
+				5DCACB8F33CDC322A6C60F78 /* libPods-ATLAS00.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -77,7 +77,7 @@
 		70F477553E71DFF0D14ECD68 /* ExpoModulesProviders */ = {
 			isa = PBXGroup;
 			children = (
-				944C8FF78CD9830D81B350B8 /* CompanionApp */,
+				944C8FF78CD9830D81B350B8 /* ATLAS */,
 			);
 			name = ExpoModulesProviders;
 			sourceTree = "<group>";
@@ -92,7 +92,7 @@
 		83CBB9F61A601CBA00E9B192 = {
 			isa = PBXGroup;
 			children = (
-				13B07FAE1A68108700A75B9A /* CompanionApp */,
+				13B07FAE1A68108700A75B9A /* ATLAS */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
@@ -107,24 +107,24 @@
 		83CBBA001A601CBA00E9B192 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				13B07F961A680F5B00A75B9A /* CompanionApp.app */,
+				13B07F961A680F5B00A75B9A /* ATLAS00.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		944C8FF78CD9830D81B350B8 /* CompanionApp */ = {
+		944C8FF78CD9830D81B350B8 /* ATLAS */ = {
 			isa = PBXGroup;
 			children = (
 				8E6CC2969297C41056B943D6 /* ExpoModulesProvider.swift */,
 			);
-			name = CompanionApp;
+			name = ATLAS00;
 			sourceTree = "<group>";
 		};
 		BBD78D7AC51CEA395F1C20DB /* Pods */ = {
 			isa = PBXGroup;
 			children = (
-				3B4392A12AC88292D35C810B /* Pods-CompanionApp.debug.xcconfig */,
-				5709B34CF0A7D63546082F79 /* Pods-CompanionApp.release.xcconfig */,
+				3B4392A12AC88292D35C810B /* Pods-ATLAS00.debug.xcconfig */,
+				5709B34CF0A7D63546082F79 /* Pods-ATLAS00.release.xcconfig */,
 			);
 			path = Pods;
 			sourceTree = "<group>";
@@ -142,9 +142,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		13B07F861A680F5B00A75B9A /* CompanionApp */ = {
+		13B07F861A680F5B00A75B9A /* ATLAS */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "CompanionApp" */;
+			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "ATLAS00" */;
 			buildPhases = (
 				C38B50BA6285516D6DCD4F65 /* [CP] Check Pods Manifest.lock */,
 				60CB248BBA3F1F8702745538 /* [Expo] Configure project */,
@@ -162,12 +162,12 @@
 			);
 			dependencies = (
 			);
-			name = CompanionApp;
+			name = ATLAS00;
 			packageProductDependencies = (
 				ESPK001A2B3C4D5E6F7890AC /* libespeak-ng */,
 			);
-			productName = CompanionApp;
-			productReference = 13B07F961A680F5B00A75B9A /* CompanionApp.app */;
+			productName = ATLAS00;
+			productReference = 13B07F961A680F5B00A75B9A /* ATLAS00.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -183,7 +183,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "CompanionApp" */;
+			buildConfigurationList = 83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "ATLAS00" */;
 			compatibilityVersion = "Xcode 12.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -199,7 +199,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				13B07F861A680F5B00A75B9A /* CompanionApp */,
+				13B07F861A680F5B00A75B9A /* ATLAS */,
 			);
 		};
 /* End PBXProject section */
@@ -240,15 +240,15 @@
 			files = (
 			);
 			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-CompanionApp/Pods-CompanionApp-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+				"${PODS_ROOT}/Target Support Files/Pods-ATLAS00/Pods-ATLAS00-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-CompanionApp/Pods-CompanionApp-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+				"${PODS_ROOT}/Target Support Files/Pods-ATLAS00/Pods-ATLAS00-frameworks-${CONFIGURATION}-output-files.xcfilelist",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-CompanionApp/Pods-CompanionApp-frameworks.sh\"\n";
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-ATLAS00/Pods-ATLAS00-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 		60CB248BBA3F1F8702745538 /* [Expo] Configure project */ = {
@@ -262,18 +262,18 @@
 			inputPaths = (
 				"$(SRCROOT)/.xcode.env",
 				"$(SRCROOT)/.xcode.env.local",
-				"$(SRCROOT)/CompanionApp/CompanionApp.entitlements",
-				"$(SRCROOT)/Pods/Target Support Files/Pods-CompanionApp/expo-configure-project.sh",
+				"$(SRCROOT)/ATLAS00/ATLAS00.entitlements",
+				"$(SRCROOT)/Pods/Target Support Files/Pods-ATLAS00/expo-configure-project.sh",
 			);
 			name = "[Expo] Configure project";
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(SRCROOT)/Pods/Target Support Files/Pods-CompanionApp/ExpoModulesProvider.swift",
+				"$(SRCROOT)/Pods/Target Support Files/Pods-ATLAS00/ExpoModulesProvider.swift",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-CompanionApp/expo-configure-project.sh\"\n";
+			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-ATLAS00/expo-configure-project.sh\"\n";
 		};
 		A1B2C3D4E5F60718293A4B5C /* Copy Piper TTS model */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -320,7 +320,7 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-CompanionApp-checkManifestLockResult.txt",
+				"$(DERIVED_FILE_DIR)/Pods-ATLAS00-checkManifestLockResult.txt",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -333,15 +333,15 @@
 			files = (
 			);
 			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-CompanionApp/Pods-CompanionApp-resources-${CONFIGURATION}-input-files.xcfilelist",
+				"${PODS_ROOT}/Target Support Files/Pods-ATLAS00/Pods-ATLAS00-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-CompanionApp/Pods-CompanionApp-resources-${CONFIGURATION}-output-files.xcfilelist",
+				"${PODS_ROOT}/Target Support Files/Pods-ATLAS00/Pods-ATLAS00-resources-${CONFIGURATION}-output-files.xcfilelist",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-CompanionApp/Pods-CompanionApp-resources.sh\"\n";
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-ATLAS00/Pods-ATLAS00-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 		RAGPACKCOPY001A2B3C4D5E6F7 /* Copy content pack */ = {
@@ -377,17 +377,17 @@
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 3B4392A12AC88292D35C810B /* Pods-CompanionApp.debug.xcconfig */;
+			baseConfigurationReference = 3B4392A12AC88292D35C810B /* Pods-ATLAS00.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = CompanionApp/CompanionApp.entitlements;
+				CODE_SIGN_ENTITLEMENTS = ATLAS00/ATLAS00.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = R79S56RM2K;
 				ENABLE_BITCODE = NO;
-				INFOPLIST_FILE = CompanionApp/Info.plist;
+				INFOPLIST_FILE = ATLAS00/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -400,8 +400,8 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
-				PRODUCT_BUNDLE_IDENTIFIER = com.wpdildine.CompanionApp;
-				PRODUCT_NAME = CompanionApp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.atlas00.app;
+				PRODUCT_NAME = ATLAS00;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -413,16 +413,16 @@
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 5709B34CF0A7D63546082F79 /* Pods-CompanionApp.release.xcconfig */;
+			baseConfigurationReference = 5709B34CF0A7D63546082F79 /* Pods-ATLAS00.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = CompanionApp/CompanionApp.entitlements;
+				CODE_SIGN_ENTITLEMENTS = ATLAS00/ATLAS00.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = R79S56RM2K;
-				INFOPLIST_FILE = CompanionApp/Info.plist;
+				INFOPLIST_FILE = ATLAS00/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -435,8 +435,8 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = com.wpdildine.CompanionApp;
-				PRODUCT_NAME = CompanionApp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.atlas00.app;
+				PRODUCT_NAME = ATLAS00;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;
@@ -604,7 +604,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "CompanionApp" */ = {
+		13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "ATLAS00" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				13B07F941A680F5B00A75B9A /* Debug */,
@@ -613,7 +613,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "CompanionApp" */ = {
+		83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "ATLAS00" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				83CBBA201A601CBA00E9B192 /* Debug */,

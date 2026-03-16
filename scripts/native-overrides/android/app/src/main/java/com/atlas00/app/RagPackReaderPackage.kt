@@ -1,4 +1,4 @@
-package com.companionapp
+package com.atlas00.app
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule

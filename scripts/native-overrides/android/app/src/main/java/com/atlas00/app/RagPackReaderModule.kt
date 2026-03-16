@@ -1,4 +1,4 @@
-package com.companionapp
+package com.atlas00.app
 
 import android.util.Base64
 import android.util.Log

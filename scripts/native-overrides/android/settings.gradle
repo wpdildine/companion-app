@@ -13,6 +13,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = 'com.companionapp'
+rootProject.name = 'ATLAS00'
 include ':app'
 includeBuild('../node_modules/@react-native/gradle-plugin')
