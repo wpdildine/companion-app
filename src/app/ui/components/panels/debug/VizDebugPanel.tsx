@@ -11,6 +11,7 @@ import { DevPanel } from '../../../../../visualization';
 import { NameShapingDebugOverlay } from '../../../../nameShaping';
 import type { NameShapingActions } from '../../../../nameShaping';
 import type { NameShapingState } from '../../../../nameShaping';
+import { PanelHeaderAction } from '../../controls';
 
 const PANEL_WIDTH = 360;
 const BG = 'rgba(15,17,21,0.9)';
@@ -57,9 +58,7 @@ export function VizDebugPanel({
 
   return (
     <View style={[styles.panel, { width: panelWidth, maxHeight: panelMaxHeight }]}>
-      <Pressable style={styles.closeBtn} onPress={onClose}>
-        <Text style={styles.closeText}>Close</Text>
-      </Pressable>
+      <PanelHeaderAction variant="close" onPress={onClose} surface="debug" />
       <Text style={styles.mainTitle}>Viz Debug</Text>
       <ScrollView style={[styles.scroll, { maxHeight: scrollMaxHeight }]} contentContainerStyle={styles.scrollContent}>
         <Pressable
@@ -113,18 +112,6 @@ const styles = StyleSheet.create({
     padding: 10,
     paddingTop: 8,
     overflow: 'hidden',
-  },
-  closeBtn: {
-    alignSelf: 'flex-end',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    marginBottom: 6,
-  },
-  closeText: {
-    color: TEXT_PRIMARY,
-    fontSize: 14,
-    fontFamily: fontMono,
-    fontWeight: '600',
   },
   mainTitle: {
     color: TEXT_PRIMARY,

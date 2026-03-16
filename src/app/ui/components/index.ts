@@ -1,6 +1,19 @@
 /**
- * App UI components barrel. Role-based: content/, panels/, overlays/.
+ * App UI components barrel. Role-based: controls/, content/, panels/, overlays/.
  */
+
+export {
+  Button,
+  PanelHeaderAction,
+  RevealChip,
+} from './controls';
+export type {
+  ButtonProps,
+  ButtonVariant,
+  PanelHeaderActionProps,
+  PanelHeaderActionVariant,
+  RevealChipProps,
+} from './controls';
 
 export { ContentPanel } from './panels';
 export type {

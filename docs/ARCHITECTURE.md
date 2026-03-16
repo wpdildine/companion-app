@@ -20,7 +20,7 @@ Canonical "where do I go?" doc; reference from README.
 
 **Repo map** (short)
 
-- **src/app** — app entry + navigation. AgentSurface = composition root; agent/ = AgentOrchestrator (useAgentOrchestrator), VisualizationController (useVisualizationController), ResultsOverlay. See docs/APP_ARCHITECTURE.md.
+- **src/app** — app entry + navigation. AgentSurface = composition root; agent/ = AgentOrchestrator (useAgentOrchestrator), VisualizationController (useVisualizationController), ResultsOverlay. See docs/APP_ARCHITECTURE.md. **Normalized UI controls** live in src/app/ui/components/controls/ and remain presentation/composition-only.
 - **src/rag/** — RAG feature (`ask.ts`, runtime/context/provider logic, pack IO, types.ts).
 - **src/visualization/** — Pure visualization layer (runtime/, scene/, render/, interaction/, materials/, utils/). VisualizationCanvas, VisualizationSurface, VisualizationCanvasR3F, InteractionBand, DevPanel. No app state or theme import; receives injected theme primitives + runtime ref. **GL canvas draw order:** (1) background field, (2) spine light core, (3) spine (base + shards + rot layer), (4) links/glyphs, (5) TouchZones (debug overlay), (6) post FX pass. Runtime ref / viz state validation: visualization/runtime/validateVizState; scene contract: visualization/scene/validateSceneSpec.
 - **src/shared/** — platform-agnostic core: `types/`, `native/`, `feedback/`, `config/` (app-wide shared config e.g. endpointConfig).

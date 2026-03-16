@@ -10,6 +10,7 @@ import {
   Pressable,
   ScrollView,
 } from 'react-native';
+import { PanelHeaderAction } from '../../../app/ui/components/controls';
 import { useCallback, useEffect, useState } from 'react';
 import {
   type VisualizationEngineRef,
@@ -246,9 +247,7 @@ export function DevPanel({
         <View style={styles.header}>
           <Text style={[styles.title, { color: textColor }]}>DevPanel</Text>
           {showClose && (
-            <Pressable onPress={onClose} style={styles.closeBtn}>
-              <Text style={{ color: textColor }}>Close</Text>
-            </Pressable>
+            <PanelHeaderAction variant="close" onPress={onClose} surface="debug" />
           )}
         </View>
         <ScrollView style={styles.scroll}>
@@ -925,9 +924,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '600',
-  },
-  closeBtn: {
-    padding: 8,
   },
   scroll: {
     maxHeight: 400,

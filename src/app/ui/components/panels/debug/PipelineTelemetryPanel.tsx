@@ -7,6 +7,7 @@
 import React, { useMemo } from 'react';
 import { Dimensions, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { RequestDebugState, RequestDebugEvent } from '../../../../agent/requestDebugTypes';
+import { PanelHeaderAction } from '../../controls';
 
 const PANEL_WIDTH = 360;
 const TRUNCATE_PREVIEW = 200;
@@ -87,9 +88,7 @@ export function PipelineTelemetryPanel({ state, onClose, maxHeight, maxWidth }: 
   if (snapshot == null) {
     return (
       <View style={styles.panel}>
-        <Pressable style={styles.closeBtn} onPress={onClose}>
-          <Text style={styles.closeText}>Close</Text>
-        </Pressable>
+        <PanelHeaderAction variant="close" onPress={onClose} surface="debug" />
         <Text style={styles.placeholder}>No request data. Start a request to see telemetry.</Text>
       </View>
     );
@@ -116,9 +115,7 @@ export function PipelineTelemetryPanel({ state, onClose, maxHeight, maxWidth }: 
 
   return (
     <View style={[styles.panel, { width: panelWidth, maxHeight: panelMaxHeight }]}>
-      <Pressable style={styles.closeBtn} onPress={onClose}>
-        <Text style={styles.closeText}>Close</Text>
-      </Pressable>
+      <PanelHeaderAction variant="close" onPress={onClose} surface="debug" />
       <Text style={styles.mainTitle}>Pipeline Telemetry</Text>
       <ScrollView
         style={[styles.scroll, { maxHeight: scrollMaxHeight }]}
@@ -264,18 +261,6 @@ const styles = StyleSheet.create({
     padding: 10,
     paddingTop: 8,
     overflow: 'hidden',
-  },
-  closeBtn: {
-    alignSelf: 'flex-end',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    marginBottom: 6,
-  },
-  closeText: {
-    color: TEXT_PRIMARY,
-    fontSize: 14,
-    fontFamily: fontMono,
-    fontWeight: '600',
   },
   mainTitle: {
     color: TEXT_MUTED,

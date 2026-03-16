@@ -24,6 +24,7 @@ import type { CardRef } from '../content/CardReferenceSection';
 import { CardReferenceSection } from '../content/CardReferenceSection';
 import type { SelectedRule } from '../content/SelectedRulesSection';
 import { SelectedRulesSection } from '../content/SelectedRulesSection';
+import { RevealChip } from '../controls';
 import { ContentPanel } from '../panels';
 
 export interface ResultsOverlayRevealedBlocks {
@@ -104,18 +105,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-  },
-  revealChip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-  },
-  revealChipLabel: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '600',
   },
   askTriggerRow: {
     marginBottom: 16,
@@ -319,44 +308,32 @@ export function ResultsOverlay({
           {showRevealChips && (
             <View style={styles.revealDock}>
               {!revealedBlocks.answer && (
-                <Pressable
-                  style={[styles.revealChip, { borderColor }]}
+                <RevealChip
+                  label="Reveal Answer"
                   onPress={() => revealBlock('answer')}
-                >
-                  <Text style={[styles.revealChipLabel, { color: textColor }]}>
-                    Reveal Answer
-                  </Text>
-                </Pressable>
+                  surface="product"
+                />
               )}
               {!revealedBlocks.cards && cardsCount > 0 && (
-                <Pressable
-                  style={[styles.revealChip, { borderColor }]}
+                <RevealChip
+                  label="Reveal Cards"
                   onPress={() => revealBlock('cards')}
-                >
-                  <Text style={[styles.revealChipLabel, { color: textColor }]}>
-                    Reveal Cards
-                  </Text>
-                </Pressable>
+                  surface="product"
+                />
               )}
               {!revealedBlocks.rules && rulesCount > 0 && (
-                <Pressable
-                  style={[styles.revealChip, { borderColor }]}
+                <RevealChip
+                  label="Reveal Rules"
                   onPress={() => revealBlock('rules')}
-                >
-                  <Text style={[styles.revealChipLabel, { color: textColor }]}>
-                    Reveal Rules
-                  </Text>
-                </Pressable>
+                  surface="product"
+                />
               )}
               {!revealedBlocks.sources && sourcesCount > 0 && (
-                <Pressable
-                  style={[styles.revealChip, { borderColor }]}
+                <RevealChip
+                  label="Reveal Sources"
                   onPress={() => revealBlock('sources')}
-                >
-                  <Text style={[styles.revealChipLabel, { color: textColor }]}>
-                    Reveal Sources
-                  </Text>
-                </Pressable>
+                  surface="product"
+                />
               )}
             </View>
           )}

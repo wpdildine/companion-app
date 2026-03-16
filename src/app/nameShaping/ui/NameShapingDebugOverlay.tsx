@@ -6,6 +6,7 @@
 
 import React, { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Button } from '../../ui/components/controls';
 import { logInfo } from '../../../shared/logging';
 import type { NameShapingActions } from '../runtime/useNameShapingState';
 import type { NameShapingState } from '../foundation/nameShapingTypes';
@@ -145,15 +146,9 @@ export function NameShapingDebugOverlay({
     <View style={styles.wrap}>
       <SectionTitle theme={theme} title="Controls" />
       <View style={styles.buttonRow}>
-        <Pressable style={[styles.btn, styles.btnEnable]} onPress={handleEnable}>
-          <Text style={styles.btnText}>Enable</Text>
-        </Pressable>
-        <Pressable style={[styles.btn, styles.btnDisable]} onPress={handleDisable}>
-          <Text style={styles.btnText}>Disable</Text>
-        </Pressable>
-        <Pressable style={[styles.btn, styles.btnClear]} onPress={handleClear}>
-          <Text style={styles.btnText}>Clear</Text>
-        </Pressable>
+        <Button label="Enable" onPress={handleEnable} surface="debug" tone="success" />
+        <Button label="Disable" onPress={handleDisable} surface="debug" tone="danger" />
+        <Button label="Clear" onPress={handleClear} surface="debug" tone="muted" />
       </View>
       <View style={styles.buttonRow}>
         {SELECTOR_ORDER.filter((selector) => selector !== 'BREAK').map((selector) => (
@@ -167,31 +162,26 @@ export function NameShapingDebugOverlay({
         ))}
       </View>
       <View style={styles.buttonRow}>
-        <Pressable style={[styles.btn, styles.btnBreak]} onPress={handleAppendBreak}>
-          <Text style={styles.btnText}>Append BREAK</Text>
-        </Pressable>
-        <Pressable
-          style={[
-            styles.btn,
-            styles.btnCommit,
-            state.normalizedSignature.length === 0 && styles.btnDisabled,
-          ]}
+        <Button
+          label="Append BREAK"
+          onPress={handleAppendBreak}
+          surface="debug"
+          tone="accent"
+        />
+        <Button
+          label="Commit"
           onPress={handleCommit}
           disabled={state.normalizedSignature.length === 0}
-        >
-          <Text style={styles.btnText}>Commit</Text>
-        </Pressable>
-        <Pressable
-          style={[
-            styles.btn,
-            styles.btnSelect,
-            state.resolverCandidates.length === 0 && styles.btnDisabled,
-          ]}
+          surface="debug"
+          tone="success"
+        />
+        <Button
+          label="Select top"
           onPress={handleSelectTopCandidate}
           disabled={state.resolverCandidates.length === 0}
-        >
-          <Text style={styles.btnText}>Select top</Text>
-        </Pressable>
+          surface="debug"
+          tone="warning"
+        />
       </View>
       <Pressable
         style={styles.pipelineToggle}
@@ -320,11 +310,7 @@ export function NameShapingDebugOverlay({
           </Pressable>
         ))}
       </View>
-      <Pressable style={styles.inspectBtn} onPress={handleInspect}>
-        <Text style={[styles.inspectBtnText, { color: theme.text }]}>
-          Inspect
-        </Text>
-      </Pressable>
+      <Button label="Inspect" onPress={handleInspect} surface="debug" tone="default" />
       {reverseResult && (
         <>
           <Row theme={theme} label="normalized" value={reverseResult.normalizedName} />
@@ -368,13 +354,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 4,
   },
-  btnEnable: { backgroundColor: '#238636' },
-  btnDisable: { backgroundColor: '#da3633' },
-  btnClear: { backgroundColor: '#6e7681' },
   btnSelector: { backgroundColor: '#30363d' },
-  btnBreak: { backgroundColor: '#8957e5' },
-  btnCommit: { backgroundColor: '#0f766e' },
-  btnSelect: { backgroundColor: '#9a6700' },
   btnDisabled: { opacity: 0.45 },
   btnText: { color: '#fff', fontSize: 12, fontFamily: fontMono, fontWeight: '600' },
   pipelineToggle: { paddingVertical: 4, marginBottom: 4 },
@@ -411,11 +391,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   sampleChipText: { fontSize: 11, fontFamily: fontMono },
-  inspectBtn: {
-    alignSelf: 'flex-start',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    marginBottom: 8,
-  },
-  inspectBtnText: { fontSize: 12, fontFamily: fontMono, fontWeight: '600' },
 });
