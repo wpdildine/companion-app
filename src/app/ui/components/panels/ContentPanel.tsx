@@ -189,6 +189,7 @@ export function ContentPanel({
             dismissEnabled && styles.headerDismissZone,
             dismissArmed && styles.headerArmed,
           ]}
+          onStartShouldSetResponderCapture={dismissEnabled ? () => true : undefined}
           onTouchStart={dismissEnabled ? handleHeaderTouchStart : undefined}
           onTouchMove={dismissEnabled ? handleHeaderTouchMove : undefined}
           onTouchEnd={dismissEnabled ? handleHeaderTouchEnd : undefined}

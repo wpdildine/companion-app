@@ -22,7 +22,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { LayoutChangeEvent } from 'react-native';
 import { Animated, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { runOnJS } from 'react-native-reanimated';
+import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import { isCenterHoldEligible } from '../../app/nameShaping/layout/nameShapingInteractionRouting';
 import { isVoiceLaneNdc } from '../../app/nameShaping/layout/nameShapingTouchRegions';
 import { logInfo } from '../../shared/logging';
@@ -35,7 +35,7 @@ import { getZoneFromNdcX } from './zoneLayout';
 /** Canonical center-hold threshold: press in center for this long to start hold-to-speak. */
 const CENTER_HOLD_THRESHOLD_MS = 450;
 /** Move beyond this (px) or leave center zone cancels the pending center hold. */
-const CENTER_HOLD_MOVE_CANCEL_PX = 12;
+const CENTER_HOLD_MOVE_CANCEL_PX = 24;
 
 /** When present, band invokes these with NDC and suppresses hold-to-speak and cluster release (debug capture priority). */
 export type NameShapingCaptureHandlers = {
@@ -60,6 +60,8 @@ export type InteractionBandProps = {
   ) => void;
   /** Center spine hold: called when touch ends only if that touch's attempt was accepted. */
   onCenterHoldEnd?: () => void;
+  /** Center short tap: early release before hold threshold. */
+  onCenterHoldShortTap?: () => void;
   /** When provided, touch NDC is forwarded to these handlers and band semantic actions (center hold, cluster release) are suppressed. */
   nameShapingCapture?: NameShapingCaptureHandlers;
   topInsetOverridePx?: number;
@@ -78,6 +80,7 @@ export function InteractionBand({
   onClusterTap,
   onCenterHoldAttempt,
   onCenterHoldEnd,
+  onCenterHoldShortTap,
   nameShapingCapture,
   topInsetOverridePx,
   enabled = true,
@@ -92,16 +95,21 @@ export function InteractionBand({
     w: number;
     h: number;
   } | null>(null);
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number; timestamp: number } | null>(null);
+  const shortTapEligibleRef = useRef(false);
   const centerHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Set only when Surface calls reportAccepted(true); cleared on touch end/cancel. Only this drives onCenterHoldEnd. */
   const centerHoldAcceptedRef = useRef(false);
   /** Monotonic token for the current logical attempt so late callbacks cannot bless a later touch. */
   const centerHoldAttemptIdRef = useRef(0);
   const touchEndSequenceIdRef = useRef(0);
+  const centerHoldPendingRef = useRef(false);
 
   const [debugState, setDebugState] = useState<InteractionProbeDebugState | null>(null);
   const [layoutSize, setLayoutSize] = useState({ w: 0, h: 0 });
+  // Tracks whether the current gesture was activated on the UI thread.
+  // onTouchesUp sets it false after calling handleTouchEnd so onFinalize knows not to cancel.
+  const touchActivated = useSharedValue(false);
 
   const clearCenterHoldState = useCallback(() => {
     if (centerHoldTimerRef.current) {
@@ -109,8 +117,10 @@ export function InteractionBand({
       centerHoldTimerRef.current = null;
     }
     centerHoldAcceptedRef.current = false;
+    centerHoldPendingRef.current = false;
     centerHoldAttemptIdRef.current += 1;
     touchStartRef.current = null;
+    shortTapEligibleRef.current = false;
   }, []);
 
   /** Creates a one-shot resolver bound to a single logical attempt. */
@@ -118,10 +128,12 @@ export function InteractionBand({
     const attemptId = centerHoldAttemptIdRef.current + 1;
     centerHoldAttemptIdRef.current = attemptId;
     let resolved = false;
+    centerHoldPendingRef.current = true;
 
     return (accepted: boolean) => {
       if (resolved) return;
       resolved = true;
+      centerHoldPendingRef.current = false;
       if (centerHoldAttemptIdRef.current !== attemptId) return;
       if (accepted) {
         centerHoldAcceptedRef.current = true;
@@ -236,12 +248,14 @@ export function InteractionBand({
     (locationX: number, locationY: number) => {
       if (!enabled) return;
       const v = visualizationRef.current;
+      touchStartRef.current = { x: locationX, y: locationY, timestamp: Date.now() };
+      shortTapEligibleRef.current = true;
       if (!v) return;
+
       const ndc = toNdc(locationX, locationY);
       const bandNdc = toBandNdc(locationX, locationY);
       const nameShapingActive = nameShapingCapture != null;
       if (ndc) {
-        touchStartRef.current = { x: locationX, y: locationY };
         if (!nameShapingActive) {
           v.touchFieldActive = true;
           v.touchFieldNdc = ndc;
@@ -313,12 +327,12 @@ export function InteractionBand({
           inVoiceLaneFromLayout,
           zone,
         );
-        if (
-          centerHoldTimerRef.current &&
-          (!inVoiceLane || movedBeyond)
-        ) {
+        if (centerHoldTimerRef.current && (!inVoiceLane || movedBeyond)) {
           clearTimeout(centerHoldTimerRef.current);
           centerHoldTimerRef.current = null;
+        }
+        if (movedBeyond) {
+          shortTapEligibleRef.current = false;
         }
         if (!nameShapingActive) {
           v.touchFieldNdc = ndc;
@@ -349,8 +363,10 @@ export function InteractionBand({
       const timestamp = Date.now();
       const v = visualizationRef.current;
       const holdWasAccepted = centerHoldAcceptedRef.current;
+      const start = touchStartRef.current;
+      const durationMs = start ? timestamp - start.timestamp : 0;
+      const isShortTap = shortTapEligibleRef.current && durationMs < CENTER_HOLD_THRESHOLD_MS;
       nameShapingCapture?.onTouchEnd();
-      clearCenterHoldState();
       updateDebugState(false);
       if (v) {
         v.touchFieldActive = false;
@@ -359,7 +375,7 @@ export function InteractionBand({
         v.zoneArmed = null;
       }
       if (holdWasAccepted) {
-        logInfo('Interaction', 'touchEnd (Android diagnosis)', {
+        logInfo('Interaction', 'touchEnd (diagnosis)', {
           sequenceId,
           timestamp,
           holdWasAccepted: true,
@@ -367,10 +383,11 @@ export function InteractionBand({
           reachedClusterPath: false,
         });
         onCenterHoldEnd?.();
+        clearCenterHoldState();
         return;
       }
       if (nameShapingCapture != null) {
-        logInfo('Interaction', 'touchEnd (Android diagnosis)', {
+        logInfo('Interaction', 'touchEnd (diagnosis)', {
           sequenceId,
           timestamp,
           holdWasAccepted: false,
@@ -378,11 +395,12 @@ export function InteractionBand({
           reachedClusterPath: false,
           earlyExit: 'nameShapingCapture',
         });
+        clearCenterHoldState();
         return;
       }
       const ndc = toNdc(locationX, locationY);
       if (!ndc) {
-        logInfo('Interaction', 'touchEnd (Android diagnosis)', {
+        logInfo('Interaction', 'touchEnd (diagnosis)', {
           sequenceId,
           timestamp,
           holdWasAccepted: false,
@@ -390,10 +408,28 @@ export function InteractionBand({
           reachedClusterPath: false,
           earlyExit: 'noNdc',
         });
+        clearCenterHoldState();
         return;
       }
       const zone = getZoneFromNdcX(ndc[0]);
-      logInfo('Interaction', 'touchEnd (Android diagnosis)', {
+      if (isShortTap) {
+        logInfo('Interaction', 'touchEnd (diagnosis)', {
+          sequenceId,
+          timestamp,
+          holdWasAccepted: false,
+          returnedViaCenterHoldEnd: false,
+          reachedClusterPath: false,
+          earlyExit: 'shortTap',
+          zone,
+          locationX,
+          locationY,
+          ndcX: ndc[0],
+        });
+        onCenterHoldShortTap?.();
+        clearCenterHoldState();
+        return;
+      }
+      logInfo('Interaction', 'touchEnd (diagnosis)', {
         sequenceId,
         timestamp,
         holdWasAccepted: false,
@@ -407,6 +443,7 @@ export function InteractionBand({
       const onRelease = onClusterRelease ?? onClusterTap;
       if (zone === 'rules') onRelease?.('rules', sequenceId);
       else if (zone === 'cards') onRelease?.('cards', sequenceId);
+      clearCenterHoldState();
     },
     [
       visualizationRef,
@@ -414,6 +451,7 @@ export function InteractionBand({
       onClusterRelease,
       onClusterTap,
       onCenterHoldEnd,
+      onCenterHoldShortTap,
       enabled,
       clearCenterHoldState,
       nameShapingCapture,
@@ -442,30 +480,44 @@ export function InteractionBand({
   const panGesture = React.useMemo(() => {
     return Gesture.Pan()
       .manualActivation(true)
-      .onTouchesDown((_e, stateManager) => {
+      .onTouchesDown((e, stateManager) => {
         if (!enabled || blocked) {
+          touchActivated.value = false;
           stateManager.fail();
           return;
         }
+        touchActivated.value = true;
         stateManager.activate();
-      })
-      .onStart((e) => {
-        runOnJS(handleTouchStart)(e.x, e.y);
+        const touch = e.changedTouches[0];
+        if (touch) {
+          runOnJS(handleTouchStart)(touch.x, touch.y);
+        }
       })
       .onUpdate((e) => {
         runOnJS(handleTouchMove)(e.x, e.y);
       })
-      .onEnd((e, success) => {
-        if (!success) return;
-        runOnJS(handleTouchEnd)(e.x, e.y);
+      // onTouchesUp fires on every platform on finger-lift, regardless of Pan gesture success.
+      // On iOS, Gesture.Pan() fires onFinalize(success=false) for zero-movement taps even after
+      // stateManager.activate() — onEnd never fires. onTouchesUp is platform-agnostic.
+      .onTouchesUp((e) => {
+        if (!touchActivated.value) return;
+        touchActivated.value = false;
+        const touch = e.changedTouches[0];
+        if (touch) {
+          runOnJS(handleTouchEnd)(touch.x, touch.y);
+        }
       })
-      .onFinalize((_e, success) => {
-        if (success) return;
+      // onFinalize handles true cancellations (stateManager.fail() path, system interrupts).
+      // If touchActivated is already false, onTouchesUp already handled the end — skip cancel.
+      .onFinalize((_e, _success) => {
+        if (!touchActivated.value) return;
+        touchActivated.value = false;
         runOnJS(handleTouchCancel)();
       });
   }, [
     enabled,
     blocked,
+    touchActivated,
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,

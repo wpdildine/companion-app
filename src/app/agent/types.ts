@@ -79,5 +79,7 @@ export interface AgentOrchestratorState {
   ioBlockedReason?: string | null;
   /** Audio session phase; used to ignore duplicate hold-end while stopping/settling. */
   audioSessionState?: 'idleReady' | 'starting' | 'listening' | 'stopping' | 'settling';
+  /** Active recording session id when an STT session is in-flight; null otherwise. */
+  recordingSessionId?: string | null;
   metadata?: AgentStateMetadata;
 }

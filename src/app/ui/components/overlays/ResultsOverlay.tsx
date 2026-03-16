@@ -5,18 +5,26 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { logInfo } from '../../../../shared/logging';
-import { ContentPanel } from '../panels';
-import { CardReferenceSection } from '../content/CardReferenceSection';
-import { SelectedRulesSection } from '../content/SelectedRulesSection';
-import type { CardRef } from '../content/CardReferenceSection';
-import type { SelectedRule } from '../content/SelectedRulesSection';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import type { ValidationSummary } from '../../../../rag';
+import { logInfo } from '../../../../shared/logging';
+import type {
+  VisualizationIntensity,
+  VisualizationPanelRects,
+  VisualizationSignalEvent,
+} from '../../../../visualization';
 import type { ProcessingSubstate } from '../../../agent/types';
-import type { VisualizationIntensity } from '../../../../visualization';
-import type { VisualizationSignalEvent } from '../../../../visualization';
-import type { VisualizationPanelRects } from '../../../../visualization';
+import type { CardRef } from '../content/CardReferenceSection';
+import { CardReferenceSection } from '../content/CardReferenceSection';
+import type { SelectedRule } from '../content/SelectedRulesSection';
+import { SelectedRulesSection } from '../content/SelectedRulesSection';
+import { ContentPanel } from '../panels';
 
 export interface ResultsOverlayRevealedBlocks {
   answer: boolean;
@@ -47,7 +55,9 @@ export interface ResultsOverlayProps {
   /** Reveal state and handlers (owned by composition; overlay is purely presentational) */
   revealedBlocks: ResultsOverlayRevealedBlocks;
   revealBlock: (key: keyof ResultsOverlayRevealedBlocks) => void;
-  setRevealedBlocks: React.Dispatch<React.SetStateAction<ResultsOverlayRevealedBlocks>>;
+  setRevealedBlocks: React.Dispatch<
+    React.SetStateAction<ResultsOverlayRevealedBlocks>
+  >;
   /** Panel rect reporting for visualization interaction zones */
   updatePanelRect: (
     key: keyof VisualizationPanelRects,
@@ -235,14 +245,23 @@ export function ResultsOverlay({
 
   const mountedLoggedRef = useRef(false);
   const payloadLoggedRef = useRef(false);
-  const prevRevealedRef = useRef({ answer: false, cards: false, rules: false, sources: false });
+  const prevRevealedRef = useRef({
+    answer: false,
+    cards: false,
+    rules: false,
+    sources: false,
+  });
   useEffect(() => {
     if (!mountedLoggedRef.current && (canRevealPanels || showContentPanels)) {
       mountedLoggedRef.current = true;
       logInfo('ResultsOverlay', 'mounted');
     }
   }, [canRevealPanels, showContentPanels]);
-  const hasPayload = responseText != null || (validationSummary != null && (validationSummary.cards?.length > 0 || validationSummary.rules?.length > 0));
+  const hasPayload =
+    responseText != null ||
+    (validationSummary != null &&
+      (validationSummary.cards?.length > 0 ||
+        validationSummary.rules?.length > 0));
   useEffect(() => {
     if (hasPayload && !payloadLoggedRef.current) {
       payloadLoggedRef.current = true;
@@ -251,12 +270,26 @@ export function ResultsOverlay({
   }, [hasPayload]);
   useEffect(() => {
     const prev = prevRevealedRef.current;
-    const keys: Array<keyof typeof revealedBlocks> = ['answer', 'cards', 'rules', 'sources'];
+    const keys: Array<keyof typeof revealedBlocks> = [
+      'answer',
+      'cards',
+      'rules',
+      'sources',
+    ];
     for (const key of keys) {
       const next = revealedBlocks[key];
       if (prev[key] !== next) {
         if (next) {
-          logInfo('ResultsOverlay', key === 'answer' ? 'answer panel shown' : key === 'cards' ? 'cards panel shown' : key === 'rules' ? 'rules panel shown' : 'sources panel shown');
+          logInfo(
+            'ResultsOverlay',
+            key === 'answer'
+              ? 'answer panel shown'
+              : key === 'cards'
+              ? 'cards panel shown'
+              : key === 'rules'
+              ? 'rules panel shown'
+              : 'sources panel shown',
+          );
         } else {
           logInfo('ResultsOverlay', 'panel dismissed');
         }
@@ -475,7 +508,10 @@ export function ResultsOverlay({
                     <View style={styles.responseLoadingRow}>
                       <ActivityIndicator size="small" color={textColor} />
                       <Text
-                        style={[styles.responseLabelInline, { color: mutedColor }]}
+                        style={[
+                          styles.responseLabelInline,
+                          { color: mutedColor },
+                        ]}
                       >
                         Loading…
                       </Text>
@@ -492,15 +528,11 @@ export function ResultsOverlay({
                       (validationSummary.stats.unknownCardCount > 0 ||
                         validationSummary.stats.invalidRuleCount > 0) ? (
                         <Text
-                          style={[
-                            styles.validationHint,
-                            { color: mutedColor },
-                          ]}
+                          style={[styles.validationHint, { color: mutedColor }]}
                         >
-                          Corrected{' '}
-                          {validationSummary.stats.unknownCardCount} name(s),{' '}
-                          {validationSummary.stats.invalidRuleCount} rule(s)
-                          invalid.
+                          Corrected {validationSummary.stats.unknownCardCount}{' '}
+                          name(s), {validationSummary.stats.invalidRuleCount}{' '}
+                          rule(s) invalid.
                         </Text>
                       ) : null}
                     </>
@@ -517,7 +549,7 @@ export function ResultsOverlay({
                 </ContentPanel>
               )}
 
-              {revealedBlocks.cards && (
+              {revealedBlocks.cards &&
                 (() => {
                   if (cards.length === 0) {
                     return (
@@ -540,7 +572,12 @@ export function ResultsOverlay({
                           setRevealedBlocks(prev => ({ ...prev, cards: false }))
                         }
                       >
-                        <Text style={[styles.responsePlaceholder, { color: mutedColor }]}>
+                        <Text
+                          style={[
+                            styles.responsePlaceholder,
+                            { color: mutedColor },
+                          ]}
+                        >
                           No cards were selected for this response yet.
                         </Text>
                       </ContentPanel>
@@ -568,9 +605,8 @@ export function ResultsOverlay({
                       }
                     />
                   );
-                })()
-              )}
-              {revealedBlocks.rules && (
+                })()}
+              {revealedBlocks.rules &&
                 (() => {
                   if (rules.length === 0) {
                     return (
@@ -593,7 +629,12 @@ export function ResultsOverlay({
                           setRevealedBlocks(prev => ({ ...prev, rules: false }))
                         }
                       >
-                        <Text style={[styles.responsePlaceholder, { color: mutedColor }]}>
+                        <Text
+                          style={[
+                            styles.responsePlaceholder,
+                            { color: mutedColor },
+                          ]}
+                        >
                           No rules were selected for this response yet.
                         </Text>
                       </ContentPanel>
@@ -621,8 +662,7 @@ export function ResultsOverlay({
                       }
                     />
                   );
-                })()
-              )}
+                })()}
               {validationSummary && revealedBlocks.sources ? (
                 <ContentPanel
                   title="Sources"

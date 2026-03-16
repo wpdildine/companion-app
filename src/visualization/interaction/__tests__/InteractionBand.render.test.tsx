@@ -5,12 +5,13 @@ import { InteractionBand } from '../InteractionBand';
 
 type MockPanHandlers = {
   onTouchesDown?: (
-    event: unknown,
+    event: { changedTouches: Array<{ x: number; y: number }> },
     stateManager: { activate: () => void; fail: () => void },
   ) => void;
-  onStart?: (event: { x: number; y: number }) => void;
+  onTouchesUp?: (event: {
+    changedTouches: Array<{ x: number; y: number }>;
+  }) => void;
   onUpdate?: (event: { x: number; y: number }) => void;
-  onEnd?: (event: { x: number; y: number }, success: boolean) => void;
   onFinalize?: (event: unknown, success: boolean) => void;
 };
 
@@ -21,9 +22,10 @@ type MockPanGesture = {
   onTouchesDown: (
     cb: NonNullable<MockPanHandlers['onTouchesDown']>,
   ) => MockPanGesture;
-  onStart: (cb: NonNullable<MockPanHandlers['onStart']>) => MockPanGesture;
+  onTouchesUp: (
+    cb: NonNullable<MockPanHandlers['onTouchesUp']>,
+  ) => MockPanGesture;
   onUpdate: (cb: NonNullable<MockPanHandlers['onUpdate']>) => MockPanGesture;
-  onEnd: (cb: NonNullable<MockPanHandlers['onEnd']>) => MockPanGesture;
   onFinalize: (
     cb: NonNullable<MockPanHandlers['onFinalize']>,
   ) => MockPanGesture;
@@ -45,16 +47,12 @@ jest.mock('react-native-gesture-handler', () => {
         handlers.onTouchesDown = cb;
         return gesture;
       },
-      onStart: (cb) => {
-        handlers.onStart = cb;
+      onTouchesUp: (cb) => {
+        handlers.onTouchesUp = cb;
         return gesture;
       },
       onUpdate: (cb) => {
         handlers.onUpdate = cb;
-        return gesture;
-      },
-      onEnd: (cb) => {
-        handlers.onEnd = cb;
         return gesture;
       },
       onFinalize: (cb) => {
@@ -88,6 +86,7 @@ jest.mock('react-native-reanimated', () => ({
     (fn: (...args: unknown[]) => unknown) =>
     (...args: unknown[]) =>
       fn(...args),
+  useSharedValue: <T,>(value: T) => ({ value }),
 }));
 
 describe('InteractionBand render path', () => {
@@ -181,10 +180,14 @@ describe('InteractionBand render path', () => {
 
     const stateManager = { activate: jest.fn(), fail: jest.fn() };
     act(() => {
-      gesture!.handlers.onTouchesDown?.({}, stateManager);
-      gesture!.handlers.onStart?.({ x: 180, y: 100 });
-      gesture!.handlers.onEnd?.({ x: 180, y: 100 }, true);
-      gesture!.handlers.onFinalize?.({}, true);
+      gesture!.handlers.onTouchesDown?.(
+        { changedTouches: [{ x: 180, y: 100 }] },
+        stateManager,
+      );
+      gesture!.handlers.onTouchesUp?.({
+        changedTouches: [{ x: 180, y: 100 }],
+      });
+      gesture!.handlers.onFinalize?.({}, false);
     });
 
     expect(stateManager.activate).toHaveBeenCalledTimes(1);
@@ -215,13 +218,55 @@ describe('InteractionBand render path', () => {
 
     const gesture = lastGesture;
     expect(gesture).not.toBeNull();
+    const stateManager = { activate: jest.fn(), fail: jest.fn() };
 
     act(() => {
+      gesture!.handlers.onTouchesDown?.(
+        { changedTouches: [{ x: 180, y: 100 }] },
+        stateManager,
+      );
       gesture!.handlers.onFinalize?.({}, false);
     });
 
     expect(nameShapingCapture.onTouchCancel).toHaveBeenCalledTimes(1);
     expect(nameShapingCapture.onTouchEnd).not.toHaveBeenCalled();
+  });
+
+  it('does not cancel after touchesUp already handled the end', () => {
+    const visualizationRef = createVisualizationRef();
+    const nameShapingCapture = {
+      onTouchStart: jest.fn(),
+      onTouchMove: jest.fn(),
+      onTouchEnd: jest.fn(),
+      onTouchCancel: jest.fn(),
+    };
+
+    act(() => {
+      TestRenderer.create(
+        <InteractionBand
+          visualizationRef={visualizationRef}
+          nameShapingCapture={nameShapingCapture}
+        />,
+      );
+    });
+
+    const gesture = lastGesture;
+    expect(gesture).not.toBeNull();
+    const stateManager = { activate: jest.fn(), fail: jest.fn() };
+
+    act(() => {
+      gesture!.handlers.onTouchesDown?.(
+        { changedTouches: [{ x: 180, y: 100 }] },
+        stateManager,
+      );
+      gesture!.handlers.onTouchesUp?.({
+        changedTouches: [{ x: 180, y: 100 }],
+      });
+      gesture!.handlers.onFinalize?.({}, false);
+    });
+
+    expect(nameShapingCapture.onTouchEnd).toHaveBeenCalledTimes(1);
+    expect(nameShapingCapture.onTouchCancel).not.toHaveBeenCalled();
   });
 
   it('bypasses the hold delay for center-lane touches when busy-audio retry feedback is enabled', () => {
@@ -253,9 +298,13 @@ describe('InteractionBand render path', () => {
 
     const gesture = lastGesture;
     expect(gesture).not.toBeNull();
+    const stateManager = { activate: jest.fn(), fail: jest.fn() };
 
     act(() => {
-      gesture!.handlers.onStart?.({ x: 100, y: 100 });
+      gesture!.handlers.onTouchesDown?.(
+        { changedTouches: [{ x: 100, y: 100 }] },
+        stateManager,
+      );
     });
 
     expect(onCenterHoldAttempt).toHaveBeenCalledTimes(1);
@@ -293,6 +342,8 @@ describe('InteractionBand contract (attempt / acceptance / release)', () => {
     nativeEvent: { layout: { x: 0, y: 0, width: 200, height: 288 } },
   };
   const voiceLanePoint = { x: 100, y: 100 };
+  const downEvent = { changedTouches: [voiceLanePoint] };
+  const upEvent = { changedTouches: [voiceLanePoint] };
 
   beforeEach(() => {
     lastGesture = null;
@@ -321,11 +372,42 @@ describe('InteractionBand contract (attempt / acceptance / release)', () => {
     act(() => band!.props.onLayout(layoutEvent));
 
     const gesture = lastGesture!;
-    act(() => gesture.handlers.onStart?.(voiceLanePoint));
+    const stateManager = { activate: jest.fn(), fail: jest.fn() };
+    act(() => gesture.handlers.onTouchesDown?.(downEvent, stateManager));
     expect(onCenterHoldAttempt).toHaveBeenCalledTimes(1);
 
-    act(() => gesture.handlers.onEnd?.({ x: 100, y: 100 }, true));
+    act(() => gesture.handlers.onTouchesUp?.(upEvent));
     expect(onCenterHoldEnd).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
+  });
+
+  it('pending attempt does not cause semantic release on touch up', () => {
+    jest.useFakeTimers();
+    const visualizationRef = createVisualizationRef();
+    const onCenterHoldAttempt = jest.fn();
+    const onCenterHoldEnd = jest.fn();
+
+    let renderer: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(
+        <InteractionBand
+          visualizationRef={visualizationRef}
+          onCenterHoldAttempt={onCenterHoldAttempt}
+          onCenterHoldEnd={onCenterHoldEnd}
+          centerHoldShouldBypassDelay
+        />,
+      );
+    });
+    const band = renderer!.root.findAllByType(View).find((n) => n.props.onLayout != null);
+    act(() => band!.props.onLayout(layoutEvent));
+
+    const gesture = lastGesture!;
+    const stateManager = { activate: jest.fn(), fail: jest.fn() };
+    act(() => gesture.handlers.onTouchesDown?.(downEvent, stateManager));
+    expect(onCenterHoldAttempt).toHaveBeenCalledTimes(1);
+
+    act(() => gesture.handlers.onTouchesUp?.(upEvent));
+    expect(onCenterHoldEnd).not.toHaveBeenCalled();
     jest.useRealTimers();
   });
 
@@ -352,8 +434,9 @@ describe('InteractionBand contract (attempt / acceptance / release)', () => {
     act(() => band!.props.onLayout(layoutEvent));
 
     const gesture = lastGesture!;
-    act(() => gesture.handlers.onStart?.(voiceLanePoint));
-    act(() => gesture.handlers.onEnd?.(voiceLanePoint, true));
+    const stateManager = { activate: jest.fn(), fail: jest.fn() };
+    act(() => gesture.handlers.onTouchesDown?.(downEvent, stateManager));
+    act(() => gesture.handlers.onTouchesUp?.(upEvent));
 
     expect(onCenterHoldAttempt).toHaveBeenCalledTimes(1);
     expect(onCenterHoldEnd).not.toHaveBeenCalled();
@@ -380,9 +463,10 @@ describe('InteractionBand contract (attempt / acceptance / release)', () => {
     act(() => band!.props.onLayout(layoutEvent));
 
     const gesture = lastGesture!;
-    act(() => gesture.handlers.onStart?.(voiceLanePoint));
+    const stateManager = { activate: jest.fn(), fail: jest.fn() };
+    act(() => gesture.handlers.onTouchesDown?.(downEvent, stateManager));
     expect(onCenterHoldAttempt).not.toHaveBeenCalled();
-    act(() => gesture.handlers.onEnd?.(voiceLanePoint, true));
+    act(() => gesture.handlers.onTouchesUp?.(upEvent));
 
     expect(onCenterHoldEnd).not.toHaveBeenCalled();
     jest.useRealTimers();
@@ -411,8 +495,9 @@ describe('InteractionBand contract (attempt / acceptance / release)', () => {
     act(() => band!.props.onLayout(layoutEvent));
 
     const gesture = lastGesture!;
-    act(() => gesture.handlers.onStart?.(voiceLanePoint));
-    act(() => gesture.handlers.onEnd?.(voiceLanePoint, true));
+    const stateManager = { activate: jest.fn(), fail: jest.fn() };
+    act(() => gesture.handlers.onTouchesDown?.(downEvent, stateManager));
+    act(() => gesture.handlers.onTouchesUp?.(upEvent));
 
     expect(onCenterHoldEnd).not.toHaveBeenCalled();
     jest.useRealTimers();
@@ -440,13 +525,14 @@ describe('InteractionBand contract (attempt / acceptance / release)', () => {
     act(() => band!.props.onLayout(layoutEvent));
 
     const gesture = lastGesture!;
-    act(() => gesture.handlers.onStart?.(voiceLanePoint));
+    const stateManager = { activate: jest.fn(), fail: jest.fn() };
+    act(() => gesture.handlers.onTouchesDown?.(downEvent, stateManager));
     act(() => jest.advanceTimersByTime(450));
     expect(onCenterHoldAttempt).toHaveBeenCalledTimes(1);
     const reportAccepted = onCenterHoldAttempt.mock.calls[0][0];
     act(() => reportAccepted(true));
 
-    act(() => gesture.handlers.onEnd?.(voiceLanePoint, true));
+    act(() => gesture.handlers.onTouchesUp?.(upEvent));
     expect(onCenterHoldEnd).toHaveBeenCalledTimes(1);
     jest.useRealTimers();
   });
@@ -475,27 +561,28 @@ describe('InteractionBand contract (attempt / acceptance / release)', () => {
     act(() => band!.props.onLayout(layoutEvent));
 
     const gesture = lastGesture!;
-    act(() => gesture.handlers.onStart?.(voiceLanePoint));
+    const stateManager = { activate: jest.fn(), fail: jest.fn() };
+    act(() => gesture.handlers.onTouchesDown?.(downEvent, stateManager));
     expect(onCenterHoldAttempt).toHaveBeenCalledTimes(1);
     expect(capturedReportAccepted).toHaveLength(1);
 
-    act(() => gesture.handlers.onEnd?.(voiceLanePoint, true));
+    act(() => gesture.handlers.onTouchesUp?.(upEvent));
     expect(onCenterHoldEnd).not.toHaveBeenCalled();
 
-    act(() => gesture.handlers.onStart?.(voiceLanePoint));
+    act(() => gesture.handlers.onTouchesDown?.(downEvent, stateManager));
     expect(onCenterHoldAttempt).toHaveBeenCalledTimes(2);
     expect(capturedReportAccepted).toHaveLength(2);
 
     act(() => capturedReportAccepted[0](true));
-    act(() => gesture.handlers.onEnd?.(voiceLanePoint, true));
+    act(() => gesture.handlers.onTouchesUp?.(upEvent));
     expect(onCenterHoldEnd).not.toHaveBeenCalled();
 
-    act(() => gesture.handlers.onStart?.(voiceLanePoint));
+    act(() => gesture.handlers.onTouchesDown?.(downEvent, stateManager));
     expect(onCenterHoldAttempt).toHaveBeenCalledTimes(3);
     expect(capturedReportAccepted).toHaveLength(3);
 
     act(() => capturedReportAccepted[2](true));
-    act(() => gesture.handlers.onEnd?.(voiceLanePoint, true));
+    act(() => gesture.handlers.onTouchesUp?.(upEvent));
     expect(onCenterHoldEnd).toHaveBeenCalledTimes(1);
     jest.useRealTimers();
   });

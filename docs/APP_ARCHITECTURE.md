@@ -38,7 +38,7 @@ AgentSurface
 
 **Lifecycle semantics (error):**
 
-- **`error`** — True system/integration/runtime failure. Used for: voice module failure, playback subsystem failure, pack/runtime initialization failure, unexpected native/infrastructure faults. Shows the persistent error panel and requires user recovery (e.g. dismiss).
+- **`error`** — True system/integration/runtime failure. Used for: voice module failure, playback subsystem failure, pack/runtime initialization failure, unexpected native/infrastructure faults. Errors remain part of orchestrator and runtime state (lifecycle, error message, logging, telemetry). Errors are **not** rendered as dismissible overlay content; there is no error panel in ResultsOverlay. Do not reintroduce an error panel in the overlay.
 
 Recoverable attempt failures (e.g. no usable transcript) return to `idle` without entering a dedicated lifecycle state. A transient “soft fail” visual may still be emitted.
 
@@ -92,7 +92,7 @@ Recoverable attempt failures (e.g. no usable transcript) return to `idle` withou
 
 - **AgentOrchestrator** updates state and calls optional listeners (e.g. `onTranscriptUpdate`, `onGenerationEnd`).
 - **VisualizationController** subscribes to orchestrator state and populates those listeners. It maps state → VisualizationSignals / VisualizationEvents (e.g. setSignals, emitEvent) and, in listeners, calls `triggerPulseAtCenter` or `emitEvent('chunkAccepted')` as appropriate.
-- **ResultsOverlay** receives `responseText`, `validationSummary`, `error`, and reveal state from the surface; it reports panel rects and emits `tapCard` / `tapCitation` for visualization semantics.
+- **ResultsOverlay** receives `responseText`, `validationSummary`, and reveal state from the surface; it reports panel rects and emits `tapCard` / `tapCitation` for visualization semantics.
 
 No provider-specific events are fed directly into visualization code.
 
@@ -120,8 +120,8 @@ Do not put transient event logic into art-direction files. Per-layer render file
 - **Transcript settlement before submit** — For hold-to-speak release, submit runs only after transcript settlement. The surface calls `stopListeningAndRequestSubmit()`; the orchestrator waits for final result, speech end (with usable partial), or a bounded timeout, then invokes `onTranscriptReadyForSubmit` once. Submit must not be triggered by direct `stopListening()` + `submit()` on release.
 - **Single active ask** — Only one ask may be in flight. New submit attempts are blocked until the current request settles. Lifecycle transitions are request-scoped (active requestId); stale completions are ignored and logged.
 - **Post-stop speech errors** — Speech recognition errors that occur after stop has been requested (finalization underway) are treated as non-fatal and do not force lifecycle into error.
-- **Failed-request recovery** — `recoverFromRequestFailure()` clears finalization/request state and returns the app to idle. On request failure, result context (response/cards/rules) is cleared so swipe does not reveal stale content. Dismiss error uses this path.
-- **Recoverable failure (idle)** — Empty or no-usable transcript at settlement returns lifecycle to `idle` (not `error`). Stop finalization and cleanup run promptly. A transient soft-fail visual (red pulse) is emitted; no persistent error panel. The user can retry immediately.
+- **Failed-request recovery** — `recoverFromRequestFailure()` clears finalization/request state and returns the app to idle. On request failure, result context (response/cards/rules) is cleared so swipe does not reveal stale content.
+- **Recoverable failure (idle)** — Empty or no-usable transcript at settlement returns lifecycle to `idle` (not `error`). Stop finalization and cleanup run promptly. A transient soft-fail visual (red pulse) is emitted. The user can retry immediately.
 - **Interaction arbitration** — One interaction owner wins by priority: debug > overlay > holdToSpeak > swipeContext > playbackTap > none. Swipe reveals rules/cards only when valid current context exists; hold is blocked when a request is active or overlay/debug owns.
 
 ## Fallback policy

@@ -494,6 +494,20 @@ export function validateSceneSpec(
       return false;
     }
   }
+  if (transientEffects.shortTap != null) {
+    const st = transientEffects.shortTap;
+    const valid =
+      typeof st.decayMs === 'number' &&
+      typeof st.modulation?.hueShift === 'number' &&
+      typeof st.modulation?.opacityBias === 'number' &&
+      typeof st.modulation?.agitation === 'number';
+    if (!valid) {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[validateSceneSpec] scene.transientEffects.shortTap is invalid.');
+      }
+      return false;
+    }
+  }
   const rotPlanes = spineRot.planes;
   if (!Array.isArray(rotPlanes)) {
     if (typeof __DEV__ !== 'undefined' && __DEV__) {

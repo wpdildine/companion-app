@@ -8,7 +8,7 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { useOpenAIProxy } from './useOpenAIProxy';
 
 const mockGetEndpointBaseUrl = jest.fn();
-jest.mock('../../endpointConfig', () => ({
+jest.mock('../../../shared/config/endpointConfig', () => ({
   getEndpointBaseUrl: () => mockGetEndpointBaseUrl(),
 }));
 

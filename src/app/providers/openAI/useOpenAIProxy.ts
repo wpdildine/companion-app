@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useState } from 'react';
-import { getEndpointBaseUrl } from '../../endpointConfig';
+import { getEndpointBaseUrl } from '../../../shared/config/endpointConfig';
 import { logWarn } from '../../../shared/logging';
 import type {
   OpenAIProxyError,

@@ -11,5 +11,6 @@ export function buildTransientEffects(): GLSceneTransientEffects {
     softFail: getTransientEffect('softFail') ?? null,
     terminalFail: getTransientEffect('terminalFail') ?? null,
     firstToken: getTransientEffect('firstToken') ?? null,
+    shortTap: getTransientEffect('shortTap') ?? null,
   };
 }

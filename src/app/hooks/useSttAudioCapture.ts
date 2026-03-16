@@ -26,6 +26,22 @@ export interface CapturedSttAudio {
   debugPreservedUri?: string;
 }
 
+export type SttAudioCaptureFailureKind =
+  | 'stopFailed'
+  | 'missingFileAfterStop'
+  | 'finalizeFailed';
+
+export type SttAudioCaptureStopResult =
+  | {
+      ok: true;
+      capture: CapturedSttAudio;
+    }
+  | {
+      ok: false;
+      failureKind: SttAudioCaptureFailureKind;
+      message: string;
+    };
+
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === 'object' && error !== null && 'message' in error) {
@@ -180,25 +196,34 @@ export function useSttAudioCapture() {
   );
 
   const endCapture = useCallback(
-    async (recordingSessionId?: string): Promise<CapturedSttAudio | null> => {
+    async (recordingSessionId?: string): Promise<SttAudioCaptureStopResult> => {
+      let stopErrorMessage: string | null = null;
       try {
         await recorder.stop();
       } catch (error) {
+        stopErrorMessage = errorMessage(error);
         logWarn('AgentOrchestrator', 'stt audio capture stop raised', {
           recordingSessionId,
-          message: errorMessage(error),
+          message: stopErrorMessage,
         });
       }
       setIsCapturing(false);
       try {
         const uri = recorder.uri;
         if (!uri) {
+          const message =
+            stopErrorMessage ??
+            'Recorder stop completed without a readable capture URI';
           logWarn(
             'AgentOrchestrator',
             'stt audio capture missing file after stop',
-            { recordingSessionId },
+            { recordingSessionId, message },
           );
-          return null;
+          return {
+            ok: false,
+            failureKind: stopErrorMessage ? 'stopFailed' : 'missingFileAfterStop',
+            message,
+          };
         }
         const file = new File(uri);
         const audioBase64 = await file.base64();
@@ -229,13 +254,18 @@ export function useSttAudioCapture() {
           sizeBase64Chars: audioBase64.length,
           debugPreservedUri: debugPreservedUri ?? null,
         });
-        return payload;
+        return { ok: true, capture: payload };
       } catch (error) {
+        const message = errorMessage(error);
         logWarn('AgentOrchestrator', 'stt audio capture failed to finalize', {
           recordingSessionId,
-          message: errorMessage(error),
+          message,
         });
-        return null;
+        return {
+          ok: false,
+          failureKind: 'finalizeFailed',
+          message,
+        };
       } finally {
         captureStartedAtRef.current = null;
         try {

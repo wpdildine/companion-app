@@ -418,6 +418,7 @@ export type GLSceneTransientEffects = {
   softFail: GLSceneTransientEffect | null;
   terminalFail: GLSceneTransientEffect | null;
   firstToken: GLSceneTransientEffect | null;
+  shortTap: GLSceneTransientEffect | null;
 };
 
 export type GLSceneDescription = {

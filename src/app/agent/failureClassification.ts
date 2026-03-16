@@ -33,6 +33,20 @@ const RECOVERABLE_FAILURES: Record<string, FailureClassification> = {
     transientEvent: 'softFail',
     telemetryReason: 'speechNoTranscript',
   },
+  speechCaptureFailed: {
+    kind: 'speech_no_transcript',
+    stage: 'speech',
+    recoverability: 'recoverable',
+    transientEvent: 'softFail',
+    telemetryReason: 'speechCapture',
+  },
+  interactionRejected: {
+    kind: 'unknown',
+    stage: 'speech',
+    recoverability: 'recoverable',
+    transientEvent: 'softFail',
+    telemetryReason: 'interactionRejected',
+  },
 };
 
 const TERMINAL_FAILURES: Record<string, FailureClassification> = {

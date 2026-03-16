@@ -23,10 +23,11 @@ import {
   type ValidationSummary,
 } from '../../rag';
 import { logError, logInfo, logLifecycle, logWarn } from '../../shared/logging';
-import { getEndpointBaseUrl, getSttProvider } from '../endpointConfig';
+import { getEndpointBaseUrl, getSttProvider } from '../../shared/config/endpointConfig';
 import {
   useSttAudioCapture,
   type CapturedSttAudio,
+  type SttAudioCaptureFailureKind,
 } from '../hooks/useSttAudioCapture';
 import { useOpenAIProxy } from '../providers/openAI/useOpenAIProxy';
 import { classifyRecoverableFailure } from './failureClassification';
@@ -80,6 +81,14 @@ type TtsModule = {
   removeEventListener: (event: string, handler: () => void) => void;
 };
 
+type SurfacedFailureSeverity = 'recoverable' | 'terminal';
+
+type SessionFailureLedgerEntry = {
+  strongest: SurfacedFailureSeverity;
+  recoverableSurfaced: boolean;
+  terminalSurfaced: boolean;
+};
+
 /** Sink for request-scoped debug telemetry: (payload) => void. Payload must include type and requestId. */
 export type RequestDebugSink = (
   payload: RequestDebugEmitPayload & { type: string },
@@ -104,6 +113,10 @@ export interface AgentOrchestratorActions {
   cancelPlayback: () => void;
   setTranscribedText: (text: string) => void;
   clearError: () => void;
+  reportRecoverableFailure: (
+    reason: string,
+    details?: Record<string, unknown>,
+  ) => void;
   /** Single recovery path: clear finalization/request state, return to idle, stop listening if active. Call on dismiss error. */
   recoverFromRequestFailure: () => void;
 }
@@ -161,6 +174,9 @@ export function useAgentOrchestrator(
   const recordingSessionRef = useRef<string | null>(null);
   const recordingSessionSeqRef = useRef(0);
   const pendingCapturedAudioRef = useRef<CapturedSttAudio | null>(null);
+  const sessionFailureLedgerRef = useRef(
+    new Map<string, SessionFailureLedgerEntry>(),
+  );
   const recordingStartAtRef = useRef<number | null>(null);
   const firstPartialAtRef = useRef<number | null>(null);
   const firstFinalAtRef = useRef<number | null>(null);
@@ -187,9 +203,78 @@ export function useAgentOrchestrator(
   const playError = useCallback(() => {
     listenersRef?.current?.onError?.();
   }, [listenersRef]);
+  const getFailureLedgerKey = useCallback(
+    (recordingSessionId?: string) =>
+      recordingSessionId ?? recordingSessionRef.current ?? null,
+    [],
+  );
+  const updateSessionFailureLedger = useCallback(
+    (recordingSessionId: string | undefined, severity: SurfacedFailureSeverity) => {
+      const key = getFailureLedgerKey(recordingSessionId);
+      if (!key) {
+        return { shouldSurface: true, suppressedBy: null as SurfacedFailureSeverity | null };
+      }
+      const ledger = sessionFailureLedgerRef.current;
+      const current = ledger.get(key) ?? {
+        strongest: severity,
+        recoverableSurfaced: false,
+        terminalSurfaced: false,
+      };
+      let shouldSurface = true;
+      let suppressedBy: SurfacedFailureSeverity | null = null;
+
+      if (severity === 'recoverable') {
+        if (current.terminalSurfaced) {
+          shouldSurface = false;
+          suppressedBy = 'terminal';
+        } else if (current.recoverableSurfaced) {
+          shouldSurface = false;
+          suppressedBy = 'recoverable';
+        } else {
+          current.recoverableSurfaced = true;
+        }
+      } else {
+        if (current.terminalSurfaced) {
+          shouldSurface = false;
+          suppressedBy = 'terminal';
+        } else {
+          current.terminalSurfaced = true;
+        }
+      }
+
+      if (severity === 'terminal' || current.strongest !== 'terminal') {
+        current.strongest = severity;
+      }
+      ledger.set(key, current);
+      if (ledger.size > 24) {
+        const oldestKey = ledger.keys().next().value;
+        if (typeof oldestKey === 'string') {
+          ledger.delete(oldestKey);
+        }
+      }
+      return { shouldSurface, suppressedBy };
+    },
+    [getFailureLedgerKey],
+  );
   const emitRecoverableFailure = useCallback(
     (reason: string, details?: Record<string, unknown>) => {
       const classification = classifyRecoverableFailure(reason);
+      const recordingSessionId =
+        typeof details?.recordingSessionId === 'string'
+          ? details.recordingSessionId
+          : undefined;
+      const ledgerDecision = updateSessionFailureLedger(
+        recordingSessionId,
+        'recoverable',
+      );
+      if (!ledgerDecision.shouldSurface) {
+        logInfo('AgentOrchestrator', 'recoverable failure suppressed for session', {
+          recordingSessionId: recordingSessionId ?? null,
+          reason: classification.telemetryReason,
+          suppressedBy: ledgerDecision.suppressedBy,
+        });
+        return;
+      }
       listenersRef?.current?.onRecoverableFailure?.(classification.kind, {
         ...details,
         stage: classification.stage,
@@ -205,7 +290,42 @@ export function useAgentOrchestrator(
         timestamp: Date.now(),
       });
     },
-    [listenersRef, requestDebugSinkRef],
+    [listenersRef, requestDebugSinkRef, updateSessionFailureLedger],
+  );
+  const emitTerminalFailure = useCallback(
+    (
+      reason: string,
+      details?: Record<string, unknown>,
+      opts?: { allowAfterRecoverable?: boolean },
+    ) => {
+      const recordingSessionId =
+        typeof details?.recordingSessionId === 'string'
+          ? details.recordingSessionId
+          : undefined;
+      const ledgerDecision = updateSessionFailureLedger(
+        recordingSessionId,
+        'terminal',
+      );
+      if (!ledgerDecision.shouldSurface) {
+        logInfo('AgentOrchestrator', 'terminal failure suppressed for session', {
+          recordingSessionId: recordingSessionId ?? null,
+          reason,
+          suppressedBy: ledgerDecision.suppressedBy,
+        });
+        return false;
+      }
+      if (
+        ledgerDecision.suppressedBy == null ||
+        opts?.allowAfterRecoverable !== false
+      ) {
+        listenersRef?.current?.onError?.(reason, {
+          ...details,
+          transientEvent: 'terminalFail',
+        });
+      }
+      return true;
+    },
+    [listenersRef, updateSessionFailureLedger],
   );
 
   const onAudioStateChange = useCallback(
@@ -291,12 +411,11 @@ export function useAgentOrchestrator(
       setProcessingSubstate(null);
       setMode('idle');
       setLifecycle('error');
-      listenersRef?.current?.onError?.('sttProxyFailed', {
+      emitTerminalFailure('sttProxyFailed', {
         recordingSessionId,
         message,
         sttProvider,
         endpointBaseUrl: endpointBaseUrl ?? null,
-        transientEvent: 'terminalFail',
       });
       logError('AgentOrchestrator', 'remote stt transcription failed', {
         recordingSessionId,
@@ -305,7 +424,43 @@ export function useAgentOrchestrator(
         endpointBaseUrl: endpointBaseUrl ?? null,
       });
     },
-    [endpointBaseUrl, listenersRef, setAudioState, sttProvider],
+    [emitTerminalFailure, endpointBaseUrl, setAudioState, sttProvider],
+  );
+  const handleLocalCaptureFailure = useCallback(
+    (
+      failureKind: SttAudioCaptureFailureKind,
+      message: string,
+      recordingSessionId?: string,
+    ) => {
+      pendingCapturedAudioRef.current = null;
+      logWarn('AgentOrchestrator', 'local stt audio capture failed', {
+        recordingSessionId,
+        failureKind,
+        message,
+      });
+      emitRecoverableFailure('speechCaptureFailed', {
+        recordingSessionId,
+        captureFailureKind: failureKind,
+        message,
+      });
+      setAudioState('idleReady', {
+        recordingSessionId,
+        reason: failureKind,
+      });
+    },
+    [emitRecoverableFailure, setAudioState],
+  );
+  const reportRecoverableFailure = useCallback(
+    (reason: string, details?: Record<string, unknown>) => {
+      emitRecoverableFailure(reason, {
+        ...details,
+        recordingSessionId:
+          typeof details?.recordingSessionId === 'string'
+            ? details.recordingSessionId
+            : recordingSessionRef.current ?? undefined,
+      });
+    },
+    [emitRecoverableFailure],
   );
 
   const applyTranscriptForRemoteStt = useCallback(
@@ -661,9 +816,19 @@ export function useAgentOrchestrator(
     stopRequestedRef.current = true;
     setAudioState('stopping', { recordingSessionId, reason: 'stopForSubmit' });
     if (sttProvider === 'remote') {
-      pendingCapturedAudioRef.current = await sttAudioCapture.endCapture(
+      const captureResult = await sttAudioCapture.endCapture(
         recordingSessionId,
       );
+      if (!captureResult.ok) {
+        handleLocalCaptureFailure(
+          captureResult.failureKind,
+          captureResult.message,
+          recordingSessionId,
+        );
+        finalizeStop('remoteCaptureFailed', recordingSessionId);
+        return;
+      }
+      pendingCapturedAudioRef.current = captureResult.capture;
       setAudioState('settling', {
         recordingSessionId,
         reason: 'remoteCaptureComplete',
@@ -773,6 +938,7 @@ export function useAgentOrchestrator(
     emitRecoverableFailure,
     finalizeStop,
     failRemoteStt,
+    handleLocalCaptureFailure,
     listenersRef,
     resolveSettlement,
     runNativeStopWithLogging,
@@ -1967,6 +2133,7 @@ export function useAgentOrchestrator(
     ioBlockedUntil,
     ioBlockedReason,
     audioSessionState,
+    recordingSessionId: recordingSessionRef.current,
     metadata: undefined,
   };
 
@@ -1980,6 +2147,7 @@ export function useAgentOrchestrator(
       cancelPlayback,
       setTranscribedText,
       clearError,
+      reportRecoverableFailure,
       recoverFromRequestFailure,
     }),
     [
@@ -1991,6 +2159,7 @@ export function useAgentOrchestrator(
       cancelPlayback,
       setTranscribedText,
       clearError,
+      reportRecoverableFailure,
       recoverFromRequestFailure,
     ],
   );

@@ -22,6 +22,8 @@ export function computeTransientModulation(
         ? effects.terminalFail
       : eventId === 'firstToken'
         ? effects.firstToken
+      : eventId === 'shortTap'
+        ? effects.shortTap
         : null;
   if (!effect) return ZERO_MODULATION;
   const ageMs = (clockSeconds - eventTimeSeconds) * 1000;

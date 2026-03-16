@@ -20,8 +20,10 @@
 - **InteractionBand** owns **touch intent only** (attempt in flight / attempt dispatched). It does not claim semantic hold started; it calls `onCenterHoldAttempt(reportAccepted)` when the hold intent threshold is met (timer or bypass).
 - **AgentSurface** owns **semantic acceptance/rejection** (immediate or async). It calls `reportAccepted(true)` only when the hold is actually accepted (e.g. after `startListening` resolves with `result.ok`); otherwise `reportAccepted(false)`.
 - **Only accepted holds** can produce semantic release. The band calls `onCenterHoldEnd` only when the hold was accepted for that touch.
+- **Pending center-hold attempts are not semantic holds.** An attempt that has fired but has not yet been accepted must not emit semantic release.
 - **Busy retouches** are immediate reject + immediate softFail. Do not call `startListening(true)` on busy audio (`audioSessionState !== 'idleReady'`).
 - **Late acceptance callbacks** after touch end/cancel are ignored by the band (one-shot handshake). Resolutions after `clearCenterHoldState` have no effect.
+- **iOS finger-lift handling** uses `onTouchesUp`; `onFinalize` is cancel-only cleanup and must not duplicate a completed touch end.
 
 ---
 

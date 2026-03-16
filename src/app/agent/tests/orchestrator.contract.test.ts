@@ -6,6 +6,20 @@ import type { AgentOrchestratorListeners, AgentOrchestratorState } from '../type
 import Voice from '@react-native-voice/voice';
 import * as rag from '../../../rag';
 
+const mockGetSttProvider = jest.fn<'local' | 'remote', []>(() => 'local');
+const mockGetEndpointBaseUrl = jest.fn<string | null, []>(
+  () => 'http://192.168.1.54:8787',
+);
+const mockRecorderPrepareToRecordAsync = jest.fn(() => Promise.resolve());
+const mockRecorderRecord = jest.fn();
+const mockRecorderStop = jest.fn(() => Promise.resolve());
+let mockRecorderUri = 'file:///tmp/mock-recording.m4a';
+
+jest.mock('../../../shared/config/endpointConfig', () => ({
+  getSttProvider: () => mockGetSttProvider(),
+  getEndpointBaseUrl: () => mockGetEndpointBaseUrl(),
+}));
+
 jest.mock('react-native', () => ({
   Platform: { OS: 'ios' },
   AppState: {
@@ -61,10 +75,12 @@ jest.mock('react-native-tts', () => ({
 
 jest.mock('expo-audio', () => ({
   useAudioRecorder: jest.fn(() => ({
-    prepareToRecordAsync: jest.fn(() => Promise.resolve()),
-    record: jest.fn(),
-    stop: jest.fn(() => Promise.resolve()),
-    uri: 'file:///tmp/mock-recording.m4a',
+    prepareToRecordAsync: mockRecorderPrepareToRecordAsync,
+    record: mockRecorderRecord,
+    stop: mockRecorderStop,
+    get uri() {
+      return mockRecorderUri;
+    },
   })),
   requestRecordingPermissionsAsync: jest.fn(() =>
     Promise.resolve({ granted: true, status: 'granted' }),
@@ -138,10 +154,14 @@ const mockAskResult = () => ({
 type Harness = {
   actions: AgentOrchestratorActions;
   getState: () => AgentOrchestratorState;
+  listeners: AgentOrchestratorListeners;
   unmount: () => void;
 };
 
-function createHarness(recorder: ReturnType<typeof createEventRecorder>): Harness {
+function createHarness(
+  recorder: ReturnType<typeof createEventRecorder>,
+  listenerOverrides: Partial<AgentOrchestratorListeners> = {},
+): Harness {
   const listenersRef = React.createRef<AgentOrchestratorListeners | null>();
   const requestDebugSinkRef = React.createRef<((payload: {
     type: string;
@@ -174,6 +194,10 @@ function createHarness(recorder: ReturnType<typeof createEventRecorder>): Harnes
   };
 
   requestDebugSinkRef.current = recordDebugEvent;
+  const listeners: AgentOrchestratorListeners = {
+    ...listenerOverrides,
+  };
+  listenersRef.current = listeners;
 
   const HarnessComponent = () => {
     const orchestrator = useAgentOrchestrator({
@@ -203,6 +227,7 @@ function createHarness(recorder: ReturnType<typeof createEventRecorder>): Harnes
   return {
     actions: currentActions,
     getState: (): AgentOrchestratorState => currentState!,
+    listeners,
     unmount: () => {
       act(() => {
         renderer!.unmount();
@@ -232,6 +257,10 @@ const emitFinalTranscript = async (harness: Harness, text: string) => {
 describe('AgentOrchestrator contract events', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetSttProvider.mockReturnValue('local');
+    mockGetEndpointBaseUrl.mockReturnValue('http://192.168.1.54:8787');
+    mockRecorderStop.mockResolvedValue(undefined);
+    mockRecorderUri = 'file:///tmp/mock-recording.m4a';
     (rag.ask as jest.Mock).mockResolvedValue(mockAskResult());
   });
 
@@ -478,6 +507,7 @@ describe('AgentOrchestrator contract events', () => {
   });
 
   it('exposes audioSessionState changes reactively during stop-for-submit', async () => {
+    mockGetSttProvider.mockReturnValue('remote');
     let resolveTranscript: ((value: { text: string }) => void) | null = null;
     const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
       ok: true,
@@ -561,6 +591,7 @@ describe('AgentOrchestrator contract events', () => {
   });
 
   it('remote stt transcript is fetched and used after stopListeningAndRequestSubmit', async () => {
+    mockGetSttProvider.mockReturnValue('remote');
     const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
       json: async () => ({ text: 'Remote transcript' }),
@@ -600,6 +631,7 @@ describe('AgentOrchestrator contract events', () => {
   });
 
   it('returns audioSessionState to idleReady when remote stt transcript is empty', async () => {
+    mockGetSttProvider.mockReturnValue('remote');
     const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
       json: async () => ({ text: '   ' }),
@@ -624,5 +656,80 @@ describe('AgentOrchestrator contract events', () => {
 
     harness.unmount();
     fetchMock.mockRestore();
+  });
+
+  it('dedupes recoverable failures within one recording session', async () => {
+    const onRecoverableFailure = jest.fn();
+    const recorder = createEventRecorder();
+    const harness = createHarness(recorder, { onRecoverableFailure });
+
+    await act(async () => {
+      await harness.actions.startListening(true);
+      await flushPromises();
+    });
+
+    const voiceModule = Voice as unknown as {
+      onSpeechError?: (e: { error?: { message?: string } }) => void;
+    };
+    act(() => {
+      voiceModule.onSpeechError?.({ error: { message: 'no speech' } });
+    });
+
+    await act(async () => {
+      await new Promise<void>(resolve => setTimeout(resolve, 800));
+      await flushPromises();
+      await flushPromises();
+    });
+
+    expect(onRecoverableFailure).toHaveBeenCalledTimes(1);
+    expect(onRecoverableFailure).toHaveBeenCalledWith(
+      'speech_no_transcript',
+      expect.objectContaining({
+        telemetryReason: 'speechNoTranscript',
+      }),
+    );
+
+    harness.unmount();
+  });
+
+  it('classifies remote capture stop failures as local capture failures, not proxy failures', async () => {
+    mockGetSttProvider.mockReturnValue('remote');
+    mockRecorderStop.mockRejectedValueOnce(new Error('recorder stop exploded'));
+    mockRecorderUri = '';
+    const onRecoverableFailure = jest.fn();
+    const onError = jest.fn();
+    const recorder = createEventRecorder();
+    const harness = createHarness(recorder, {
+      onRecoverableFailure,
+      onError,
+    });
+
+    await act(async () => {
+      await harness.actions.startListening(true);
+      await flushPromises();
+    });
+
+    await act(async () => {
+      await harness.actions.stopListeningAndRequestSubmit();
+      await flushPromises();
+    });
+
+    expect(onRecoverableFailure).toHaveBeenCalledTimes(1);
+    expect(onRecoverableFailure).toHaveBeenCalledWith(
+      'speech_no_transcript',
+      expect.objectContaining({
+        telemetryReason: 'speechCapture',
+        captureFailureKind: 'stopFailed',
+        recordingSessionId: 'rec-1',
+      }),
+    );
+    expect(onError).not.toHaveBeenCalledWith(
+      'sttProxyFailed',
+      expect.anything(),
+    );
+    expect(harness.getState().audioSessionState).toBe('idleReady');
+    expect(harness.getState().lifecycle).toBe('idle');
+
+    harness.unmount();
   });
 });

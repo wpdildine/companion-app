@@ -121,10 +121,14 @@ describe('useSttAudioCapture', () => {
 
     expect(mockStop).toHaveBeenCalled();
     expect(result).toMatchObject({
-      audioBase64: 'YmFzZTY0',
-      mimeType: 'audio/mp4',
-      filename: 'sample-recording.m4a',
-      debugPreservedUri: 'file:///mock/file:///documents/debug-stt-captures/sample-recording-rec-1-1234567890.m4a',
+      ok: true,
+      capture: {
+        audioBase64: 'YmFzZTY0',
+        mimeType: 'audio/mp4',
+        filename: 'sample-recording.m4a',
+        debugPreservedUri:
+          'file:///mock/file:///documents/debug-stt-captures/sample-recording-rec-1-1234567890.m4a',
+      },
     });
     expect(mockDirectoryCreate).toHaveBeenCalledWith({ idempotent: true, intermediates: true });
     expect(mockFileCreate).toHaveBeenCalledWith({ overwrite: true, intermediates: true });

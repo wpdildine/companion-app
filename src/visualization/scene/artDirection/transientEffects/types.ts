@@ -8,6 +8,7 @@ export interface TransientModulation {
   intensity: number;
   agitation: number;
   opacityBias: number;
+  centerPulseOnly?: boolean;
 }
 
 /** Peak modulation and decay for one transient effect. Authored in shared definitions only. */

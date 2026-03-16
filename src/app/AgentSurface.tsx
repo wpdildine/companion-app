@@ -48,7 +48,6 @@ import type {
   VisualizationPanelRects,
   VisualizationSignalEvent,
 } from '../visualization';
-import { TRANSIENT_SIGNAL_SOFT_FAIL } from '../visualization';
 import { useVisualizationSignals } from './hooks/useVisualizationSignals';
 import {
   useAgentOrchestrator,
@@ -449,7 +448,9 @@ export default function AgentSurface() {
     reason?: string;
   }> | null>(null);
   const submitTriggeredForReleaseRef = useRef(false);
-  const releaseReasonRef = useRef<'hold release' | 'timeout'>('hold release');
+  const releaseReasonRef = useRef<
+    'hold release' | 'hold release delayed' | 'timeout' | null
+  >(null);
   const submitRef = useRef<(() => Promise<string | null>) | null>(null);
 
   const panelRectsLoggedRef = useRef(false);
@@ -554,7 +555,7 @@ export default function AgentSurface() {
   }, []);
 
   const playListeningEndFeedback = useCallback(
-    (reason: 'hold release' | 'timeout') => {
+    (reason: 'hold release' | 'hold release delayed' | 'timeout') => {
       playListeningEndEarcon();
       triggerListeningEndHaptic();
       logInfo('Interaction', 'listening stopped');
@@ -562,6 +563,8 @@ export default function AgentSurface() {
         'Interaction',
         reason === 'timeout'
           ? 'submit triggered from recording timeout'
+          : reason === 'hold release delayed'
+          ? 'submit triggered from delayed hold release'
           : 'submit triggered from hold release',
       );
     },
@@ -661,7 +664,7 @@ export default function AgentSurface() {
   }, [activeInteractionOwner]);
 
   const stopListeningAndSubmit = useCallback(
-    async (reason: 'hold release' | 'timeout') => {
+    async (reason: 'hold release' | 'hold release delayed' | 'timeout') => {
       if (holdCompletionInFlightRef.current) return;
       holdCompletionInFlightRef.current = true;
       centerHoldActiveRef.current = false;
@@ -688,9 +691,18 @@ export default function AgentSurface() {
 
   const handleCenterHoldAttempt = useCallback(
     (reportAccepted: (accepted: boolean) => void) => {
+      const reportRecoverableInteractionFailure = (
+        interactionReason: string,
+        details?: Record<string, unknown>,
+      ) => {
+        orchActions.reportRecoverableFailure('interactionRejected', {
+          ...details,
+          interactionReason,
+        });
+      };
       if (holdCompletionInFlightRef.current) {
         reportAccepted(false);
-        emitEvent(TRANSIENT_SIGNAL_SOFT_FAIL);
+        reportRecoverableInteractionFailure('holdCompletionInFlight');
         return;
       }
       if (!canHoldToSpeak) {
@@ -704,12 +716,22 @@ export default function AgentSurface() {
             : 'unknown',
         });
         reportAccepted(false);
-        emitEvent(TRANSIENT_SIGNAL_SOFT_FAIL);
+        reportRecoverableInteractionFailure('holdBlocked', {
+          blockedBy: isAsking
+            ? 'active request'
+            : anyPanelVisible
+            ? 'overlay'
+            : debugEnabled
+            ? 'debug'
+            : 'unknown',
+        });
         return;
       }
       if (orchState.audioSessionState !== 'idleReady') {
         reportAccepted(false);
-        emitEvent(TRANSIENT_SIGNAL_SOFT_FAIL);
+        reportRecoverableInteractionFailure('audioNotIdleReady', {
+          audioSessionState: orchState.audioSessionState,
+        });
         return;
       }
       logInfo('Interaction', 'hold attempt detected', { tMs: Date.now() });
@@ -730,7 +752,9 @@ export default function AgentSurface() {
         }
         if (!result.ok) {
           reportAccepted(false);
-          emitEvent(TRANSIENT_SIGNAL_SOFT_FAIL);
+          reportRecoverableInteractionFailure('startListeningRejected', {
+            startReason: result.reason ?? 'unknown',
+          });
           return;
         }
         centerHoldActiveRef.current = true;
@@ -748,7 +772,7 @@ export default function AgentSurface() {
         centerHoldActiveRef.current = false;
         holdStartPromiseRef.current = null;
         reportAccepted(false);
-        emitEvent(TRANSIENT_SIGNAL_SOFT_FAIL);
+        reportRecoverableInteractionFailure('startListeningThrew');
       });
     },
     [
@@ -761,13 +785,29 @@ export default function AgentSurface() {
       clearRecordingTimeout,
       stopListeningAndSubmit,
       playListeningStartFeedback,
-      emitEvent,
     ],
   );
 
   const handleCenterHoldEnd = useCallback(() => {
-    if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current)
+    if (holdCompletionInFlightRef.current) return;
+    
+    // If we're not active but there is a pending start promise, it means the user
+    // released while startListening was still resolving. We must wait for it to
+    // finish and then immediately stop to prevent a dangling recording session.
+    if (!centerHoldActiveRef.current) {
+      if (holdStartPromiseRef.current) {
+        logInfo('Interaction', 'center hold end detected during start resolution');
+        const pendingPromise = holdStartPromiseRef.current;
+        holdStartPromiseRef.current = null;
+        pendingPromise.then((result) => {
+          if (result.ok) {
+             stopListeningAndSubmit('hold release delayed').catch(() => {});
+          }
+        }).catch(() => {});
+      }
       return;
+    }
+
     logInfo('Interaction', 'center hold end detected');
     clearRecordingTimeout();
     if (releaseGraceTimerRef.current) {
@@ -836,7 +876,10 @@ export default function AgentSurface() {
       }
       if (!result.ok) {
         userModeLongPressActiveRef.current = false;
-        emitEvent(TRANSIENT_SIGNAL_SOFT_FAIL);
+        orchActions.reportRecoverableFailure('interactionRejected', {
+          interactionReason: 'userModeStartRejected',
+          startReason: result.reason ?? 'unknown',
+        });
         return;
       }
       if (
@@ -867,7 +910,6 @@ export default function AgentSurface() {
     clearRecordingTimeout,
     stopListeningAndSubmit,
     playListeningStartFeedback,
-    emitEvent,
   ]);
 
   const handleUserModeLongPressEnd = useCallback(() => {
@@ -1237,6 +1279,9 @@ export default function AgentSurface() {
           !debugEnabled ? handleCenterHoldAttempt : undefined
         }
         onCenterHoldEnd={!debugEnabled ? handleCenterHoldEnd : undefined}
+        onCenterHoldShortTap={
+          !debugEnabled ? () => emitEvent('shortTap') : undefined
+        }
         nameShapingCapture={
           nameShapingState.enabled && !debugEnabled
             ? nameShapingCapture
