@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 /**
- * Clean native build folders (Android only). For iOS we do not remove ios/build
- * because React Native codegen puts generated files there (e.g. RCTModuleProviders.mm)
- * that Pods depend on; removing ios/build causes "Build input file cannot be found".
- * For a full iOS clean, use Xcode: Product → Clean Build Folder (clears DerivedData).
+ * Safe native artifact cleanup.
+ * Removes Android build outputs only; iOS build folders are left intact because
+ * React Native codegen may place generated files there that Pods depend on.
+ *
+ * For a fuller iOS clean, use Xcode Product -> Clean Build Folder or clear
+ * DerivedData separately.
  */
 
 const path = require('path');
@@ -13,7 +15,6 @@ const root = path.resolve(__dirname, '..');
 const dirs = [
   path.join(root, 'android', 'app', 'build'),
   path.join(root, 'android', 'build'),
-  path.join(root, 'ios', 'build'),
 ];
 
 function rmRecursive(dir) {
@@ -28,4 +29,4 @@ dirs.forEach(dir => {
   }
 });
 
-console.log('Build folders cleaned. Run ios/android again to rebuild.');
+console.log('Native build artifacts cleaned. Run ios/android again to rebuild.');

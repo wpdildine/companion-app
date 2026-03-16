@@ -2,9 +2,12 @@
 'use strict';
 
 /**
- * Full nuclear wipe and rebuild: delete ios/ and android/, regenerate from RN CLI,
- * apply overrides, install deps, pod install, sync content pack.
- * Run from repo root: pnpm run nuclear-rebuild
+ * End-to-end native rebuild: delete ios/ and android/, regenerate from RN CLI,
+ * apply overrides, reinstall pods, and sync the small content pack.
+ * Dependency reinstalls are intentionally separate; use pnpm run deps:reset first
+ * when you want a true clean-folder rebuild.
+ *
+ * Run from repo root: pnpm run native:rebuild
  * Requires Node 22+ (nvm use 22).
  */
 
@@ -21,7 +24,7 @@ function run(cmd, opts = {}) {
 }
 
 function main() {
-  console.log('[nuclear-rebuild] 1/5 Wiping ios/ and android/...');
+  console.log('[nuclear-rebuild] 1/4 Wiping ios/ and android/...');
   if (fs.existsSync(IOS)) {
     fs.rmSync(IOS, { recursive: true, force: true });
     console.log('[nuclear-rebuild]   removed ios/');
@@ -31,17 +34,14 @@ function main() {
     console.log('[nuclear-rebuild]   removed android/');
   }
 
-  console.log('[nuclear-rebuild] 2/5 Regenerating native projects + overrides...');
+  console.log('[nuclear-rebuild] 2/4 Regenerating native projects + overrides...');
   run('node scripts/regen-native.js');
 
-  console.log('[nuclear-rebuild] 3/5 pnpm install...');
-  run('pnpm install');
+  console.log('[nuclear-rebuild] 3/4 Pod install (iOS)...');
+  run('pnpm run native:pods');
 
-  console.log('[nuclear-rebuild] 4/5 Pod install (iOS)...');
-  run('pnpm run pod-install');
-
-  console.log('[nuclear-rebuild] 5/5 Syncing content pack (sync-pack-small)...');
-  run('pnpm run sync-pack-small');
+  console.log('[nuclear-rebuild] 4/4 Syncing content pack (small pack)...');
+  run('pnpm run rag:pack');
 
   console.log('[nuclear-rebuild] Done. Run pnpm android or pnpm ios to build.');
 }

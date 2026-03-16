@@ -6,7 +6,7 @@
  * package.json file: ref and runs pnpm install so node_modules/@mtg/runtime
  * is fresh. Does not touch assets/content_pack.
  *
- * Usage: pnpm run update-runtime [path-to-mtg_rules]
+ * Usage: pnpm run rag:runtime:update [path-to-mtg_rules]
  * Default path: ../mtg_rules (or set MTG_RULES_PATH).
  */
 

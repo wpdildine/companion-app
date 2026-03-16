@@ -8,7 +8,7 @@
  * Usage:
  *   node scripts/sync-pack-full.js [path-to-mtg_rules]
  *   MTG_RULES_PATH=/path node scripts/sync-pack-full.js
- *   pnpm run sync-pack-full
+ *   pnpm run rag:pack:full
  *
  * Default source: ../mtg_rules/content_pack
  *
@@ -16,7 +16,7 @@
  * is in place. For a one-off Android build with the model on device: run this script,
  * then build Android; the app copies content_pack (including models/llm/model.gguf) to
  * files/content_pack. To run the gates anyway use ALLOW_PACK_WITH_MODELS=1. Run
- * sync-pack-small again before CI or release if you enforce that gate.
+ * rag:pack again before CI or release if you enforce that gate.
  */
 
 const fs = require('fs');
@@ -125,7 +125,7 @@ function run() {
   const identityPath = path.join(DEST, PACK_IDENTITY_FILE);
   fs.writeFileSync(identityPath, JSON.stringify(identity, null, 2) + '\n');
   console.log('Wrote', PACK_IDENTITY_FILE);
-  console.log('Next: build the app once; on first launch the app will copy this pack to device. For normal builds, run pnpm run sync-pack-small again.');
+  console.log('Next: build the app once; on first launch the app will copy this pack to device. For normal builds, run pnpm run rag:pack again.');
 }
 
 run();

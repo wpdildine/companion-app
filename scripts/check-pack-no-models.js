@@ -11,7 +11,7 @@
  *     Also greps for .gguf in the given path (e.g. build output); fails if any found.
  *
  * To allow a full pack (with models) for a one-off Android build: ALLOW_PACK_WITH_MODELS=1 node scripts/check-pack-no-models.js
- * Then build; the app will copy content_pack (including models/llm/model.gguf) to device. Run sync-pack-small again before CI.
+ * Then build; the app will copy content_pack (including models/llm/model.gguf) to device. Run rag:pack again before CI.
  *
  * Exit 0 if clean, 1 if models/ or .gguf detected (unless ALLOW_PACK_WITH_MODELS=1).
  */

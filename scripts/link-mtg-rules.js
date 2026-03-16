@@ -7,9 +7,9 @@
  *   - Ensures @mtg/runtime is linked to <mtg_rules>/runtime-ts (via package.json file: dep + pnpm install)
  *
  * Build contract: The app build always uses a real assets/content_pack directory. Run
- *   pnpm run sync-pack-small
+ *   pnpm run rag:pack
  * to materialize the stripped pack (no models) and pack_identity.json. Use this script's
- * "link" only for local dev convenience; CI and release should run sync-pack-small so
+ * "link" only for local dev convenience; CI and release should run rag:pack so
  * Gradle/Xcode see real files.
  *
  * Usage:
@@ -169,7 +169,7 @@ function link(mtgRoot) {
   console.log('');
   console.log('Done. Run "node scripts/link-mtg-rules.js status" to verify.');
   console.log('');
-  console.log('Packaging: For release build, run "pnpm run sync-pack-small" so assets/content_pack is a real directory (no models/). iOS build will fail if content_pack is still a symlink.');
+  console.log('Packaging: For release build, run "pnpm run rag:pack" so assets/content_pack is a real directory (no models/). iOS build will fail if content_pack is still a symlink.');
 }
 
 function unlink() {

@@ -77,10 +77,9 @@ function main() {
 
   console.log('[regen-native] done.');
   console.log('[regen-native] next steps:');
-  console.log('  1) pnpm install');
-  console.log('  2) pnpm run pod-install');
-  console.log('  3) pnpm run sync-pack-small');
+  console.log('  1) pnpm run native:pods');
+  console.log('  2) pnpm run rag:pack');
+  console.log('  3) Run pnpm run deps:reset first if you also need a dependency wipe');
 }
 
 main();
-

@@ -132,7 +132,7 @@ RCT_EXPORT_METHOD(copyBundlePackToDocuments:(RCTPromiseResolveBlock)resolve
   }
   NSString *srcPack = [bundlePack stringByAppendingPathComponent:@"content_pack"];
   if (![[NSFileManager defaultManager] fileExistsAtPath:srcPack]) {
-    reject(@"E_COPY", @"Bundle content_pack not found; run sync-pack-small or add content_pack to the app.", nil);
+    reject(@"E_COPY", @"Bundle content_pack not found; run rag:pack or add content_pack to the app.", nil);
     return;
   }
   NSFileManager *fm = [NSFileManager defaultManager];
