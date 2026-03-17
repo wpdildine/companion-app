@@ -6,7 +6,7 @@
  * commit-path profiling. Keep it out of the normal MTG assistant path.
  */
 
-import { logInfo } from '../../../shared/logging';
+import { logInfo } from '../../../../shared/logging';
 import type { NormalizedNameShapingSignature } from '../foundation/nameShapingTypes';
 
 const NAME_SHAPING_COMMIT_TRACE_ENABLED = false;

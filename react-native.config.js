@@ -9,6 +9,7 @@ const path = require('path');
  * and native builds use plugins/piper-tts (podspec, iOS/Android code, assets).
  */
 module.exports = {
+  assets: ['./assets/fonts/'],
   dependencies: {
     'piper-tts': {
       root: path.join(__dirname, 'plugins/piper-tts'),

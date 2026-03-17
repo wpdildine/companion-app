@@ -8,9 +8,9 @@ import { Dimensions, Platform, Pressable, ScrollView, StyleSheet, Text, View } f
 import type { RefObject } from 'react';
 import type { VisualizationEngineRef } from '../../../../../visualization';
 import { DevPanel } from '../../../../../visualization';
-import { NameShapingDebugOverlay } from '../../../../nameShaping';
-import type { NameShapingActions } from '../../../../nameShaping';
-import type { NameShapingState } from '../../../../nameShaping';
+import { NameShapingDebugOverlay } from '../../../../_experimental/nameShaping';
+import type { NameShapingActions } from '../../../../_experimental/nameShaping';
+import type { NameShapingState } from '../../../../_experimental/nameShaping';
 import { PanelHeaderAction } from '../../controls';
 
 const PANEL_WIDTH = 360;

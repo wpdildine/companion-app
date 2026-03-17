@@ -7,7 +7,7 @@
 import { useCallback, useRef } from 'react';
 import type { NameShapingActions } from './useNameShapingState';
 import { getSelectorFromNdc } from '../layout/nameShapingTouchRegions';
-import { logInfo } from '../../../shared/logging';
+import { logInfo } from '../../../../shared/logging';
 
 export interface NameShapingCaptureHandlers {
   onTouchStart: (ndc: [number, number]) => void;

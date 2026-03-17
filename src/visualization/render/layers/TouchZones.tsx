@@ -10,9 +10,9 @@ import * as THREE from 'three';
 import {
   NAME_SHAPING_OVERLAY_REGIONS,
   type NameShapingOverlayRegion,
-} from '../../../app/nameShaping/layout/nameShapingTouchRegions';
-import { ndcRegionToRenderDescriptor } from '../../../app/nameShaping/layout/nameShapingLayoutTransforms';
-import type { NameShapingSelector } from '../../../app/nameShaping/foundation/nameShapingConstants';
+} from '../../../app/_experimental/nameShaping/layout/nameShapingTouchRegions';
+import { ndcRegionToRenderDescriptor } from '../../../app/_experimental/nameShaping/layout/nameShapingLayoutTransforms';
+import type { NameShapingSelector } from '../../../app/_experimental/nameShaping/foundation/nameShapingConstants';
 import { getActiveBandVerticalEnvelope } from '../../interaction/activeBandEnvelope';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';

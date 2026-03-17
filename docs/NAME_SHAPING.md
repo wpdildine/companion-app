@@ -29,7 +29,7 @@ Resume point:
 
 Name Shaping provides an app-level way to represent proper names (and other text) as **sound-shape signatures**: ordered sequences of coarse phonetic/structure selectors. The goal is to support input capture (e.g. touch/gesture), a debug overlay, and a resolver that matches user input to card names by signature.
 
-**Where it lives:** `src/app/nameShaping/` is the canonical subsystem surface for shared vocabulary, types, and foundational pure transforms. Layout and touch interpretation extend from there; the **shared physical spine touch surface** lives in `src/visualization/interaction/` (grammar-agnostic).
+**Where it lives:** `src/app/_experimental/nameShaping/` is the canonical subsystem surface for shared vocabulary, types, and foundational pure transforms (under `_experimental`; see that folder’s README — to be ignored for now for development). Layout and touch interpretation extend from there; the **shared physical spine touch surface** lives in `src/visualization/interaction/` (grammar-agnostic).
 
 ## Architecture: touch and layout
 
@@ -64,12 +64,12 @@ Selectors are **coarse sound-shape families**, not letters. The fixed vocabulary
 
 ## Code surface
 
-- **Constants and types:** `src/app/nameShaping/nameShapingConstants.ts`, `src/app/nameShaping/nameShapingTypes.ts`.
-- **Barrel:** `src/app/nameShaping/index.ts` — import from here for shared truth.
+- **Constants and types:** `src/app/_experimental/nameShaping/nameShapingConstants.ts`, `src/app/_experimental/nameShaping/nameShapingTypes.ts`.
+- **Barrel:** `src/app/_experimental/nameShaping/index.ts` — import from here for shared truth.
 - **Shared physical surface:** `src/visualization/interaction/spineTouchSurfaceLayout.ts` (envelope + center strip).
-- **Name Shaping layout:** `src/app/nameShaping/nameShapingTouchLayout.ts` (7 regions over center strip).
-- **Semantic interpreter:** `src/app/nameShaping/nameShapingTouchRegions.ts` (`getSelectorFromNdc`, `isVoiceLaneNdc`).
-- **Transforms:** `src/app/nameShaping/nameShapingLayoutTransforms.ts` (NDC → overlay/render).
+- **Name Shaping layout:** `src/app/_experimental/nameShaping/nameShapingTouchLayout.ts` (7 regions over center strip).
+- **Semantic interpreter:** `src/app/_experimental/nameShaping/nameShapingTouchRegions.ts` (`getSelectorFromNdc`, `isVoiceLaneNdc`).
+- **Transforms:** `src/app/_experimental/nameShaping/nameShapingLayoutTransforms.ts` (NDC → overlay/render).
 - **Card-name-to-signature:** `buildCardNameSignature(cardName)` in `buildCardNameSignature.ts`.
 - **Runtime state shape:** `NameShapingState` (enabled, rawEmittedSequence, normalizedSignature, resolverCandidates, selectedCandidate, activeSelector).
 

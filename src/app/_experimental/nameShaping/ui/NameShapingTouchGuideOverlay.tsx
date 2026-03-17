@@ -17,7 +17,7 @@ import {
   NAME_SHAPING_OVERLAY_REGIONS,
   type NameShapingOverlayRegion,
 } from '../layout/nameShapingTouchRegions';
-import { getActiveBandVerticalEnvelope } from '../../../visualization/interaction/activeBandEnvelope';
+import { getActiveBandVerticalEnvelope } from '../../../../visualization/interaction/activeBandEnvelope';
 import { ndcRegionToScreenRect } from '../layout/nameShapingLayoutTransforms';
 
 const SELECTOR_COLORS: Record<NameShapingSelector, string> = {

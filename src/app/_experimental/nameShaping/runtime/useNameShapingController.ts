@@ -12,7 +12,7 @@ import type {
   NormalizedNameShapingSignature,
   ResolverIndex,
 } from '../foundation/nameShapingTypes';
-import { logInfo } from '../../../shared/logging';
+import { logInfo } from '../../../../shared/logging';
 import { getActiveNameShapingCommitTrace } from './nameShapingCommitTrace';
 import { resolveProperNounBySignature } from '../resolver/resolveProperNounBySignature';
 

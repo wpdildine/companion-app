@@ -5,7 +5,7 @@
  */
 
 import type { NameShapingSelector } from '../foundation/nameShapingConstants';
-import { isInsideCenterStrip } from '../../../visualization/interaction/spineTouchSurfaceLayout';
+import { isInsideCenterStrip } from '../../../../visualization/interaction/spineTouchSurfaceLayout';
 import {
   getVoiceRegion,
   NAME_SHAPING_LAYOUT_REGIONS,

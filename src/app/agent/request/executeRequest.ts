@@ -7,23 +7,16 @@
 
 import { Platform } from 'react-native';
 import {
-  copyBundlePackToDocuments,
-  createBundlePackReader,
-  createDocumentsPackReader,
-  createThrowReader,
-  getContentPackPathInDocuments,
-  getPackEmbedModelId,
-  getPackState,
   ask as ragAsk,
   init as ragInit,
   type PackFileReader,
   type ValidationSummary,
 } from '../../../rag';
-import { logInfo, logLifecycle, logWarn, logError } from '../../../shared/logging';
-import { classifyTerminalFailure } from '../failureClassification';
-import type { AgentOrchestratorListeners, ProcessingSubstate } from '../types';
-import type { RequestDebugEmitPayload } from '../requestDebugTypes';
+import { logError, logInfo, logWarn } from '../../../shared/logging';
 import type { FailureClassification } from '../failureClassification';
+import { classifyTerminalFailure } from '../failureClassification';
+import type { RequestDebugEmitPayload } from '../requestDebugTypes';
+import type { AgentOrchestratorListeners, ProcessingSubstate } from '../types';
 
 export const PARTIAL_EMIT_THROTTLE_MS = 400;
 export const RESPONSE_TEXT_UPDATE_THROTTLE_MS = 150;
@@ -53,7 +46,9 @@ export type Ref<T> = { current: T };
 export interface ExecuteRequestOptions {
   requestId: number;
   question: string;
-  requestDebugSink: ((payload: RequestDebugEmitPayload & { type: string }) => void) | undefined;
+  requestDebugSink:
+    | ((payload: RequestDebugEmitPayload & { type: string }) => void)
+    | undefined;
   activeRequestIdRef: Ref<number>;
   setResponseText: (t: string | null) => void;
   setValidationSummary: (v: ValidationSummary | null) => void;
@@ -66,7 +61,9 @@ export interface ExecuteRequestOptions {
   createBundlePackReader: () => PackFileReader | null;
   createThrowReader: (msg: string) => PackFileReader;
   getPackEmbedModelId: (reader: PackFileReader) => Promise<string>;
-  getOnDeviceModelPaths: (packRoot?: string) => Promise<{ embedModelPath: string; chatModelPath: string }>;
+  getOnDeviceModelPaths: (
+    packRoot?: string,
+  ) => Promise<{ embedModelPath: string; chatModelPath: string }>;
   previousCommittedResponseRef: Ref<string | null>;
   previousCommittedValidationRef: Ref<ValidationSummary | null>;
 }
@@ -92,7 +89,7 @@ export type ExecuteRequestResult =
  * The orchestrator remains the owner of lifecycle, request ids, and playback handoff.
  */
 export async function executeRequest(
-  options: ExecuteRequestOptions
+  options: ExecuteRequestOptions,
 ): Promise<ExecuteRequestResult> {
   const {
     requestId: reqId,
@@ -139,14 +136,19 @@ export async function executeRequest(
         (packRoot ? createDocumentsPackReader(packRoot) : null) ??
         createBundlePackReader() ??
         createThrowReader(
-          'Pack not configured. Add the content pack to assets/content_pack and rebuild the app.'
+          'Pack not configured. Add the content pack to assets/content_pack and rebuild the app.',
         );
       const embedModelId = await getPackEmbedModelId(reader);
       const { embedModelPath, chatModelPath } = await getOnDeviceModelPaths(
-        packRoot || undefined
+        packRoot || undefined,
       );
       await ragInit(
-        { embedModelId, embedModelPath, chatModelPath, packRoot: packRoot || '' },
+        {
+          embedModelId,
+          embedModelPath,
+          chatModelPath,
+          packRoot: packRoot || '',
+        },
         reader,
         { requestDebugSink: requestDebugSink ?? undefined },
       );
@@ -248,7 +250,9 @@ export async function executeRequest(
             firstTokenAt,
             timestamp: firstTokenAt,
           });
-          logInfo('AgentOrchestrator', 'first token received', { requestId: reqId });
+          logInfo('AgentOrchestrator', 'first token received', {
+            requestId: reqId,
+          });
           logInfo('ResponseSurface', 'response_surface_streaming_started', {
             requestId: reqId,
             lifecycle: 'processing',
@@ -257,7 +261,10 @@ export async function executeRequest(
           });
           listenersRef.current?.onFirstToken?.();
         } else {
-          if (now - lastResponseTextUpdateAt >= RESPONSE_TEXT_UPDATE_THROTTLE_MS) {
+          if (
+            now - lastResponseTextUpdateAt >=
+            RESPONSE_TEXT_UPDATE_THROTTLE_MS
+          ) {
             lastResponseTextUpdateAt = now;
             setResponseText(accumulatedText);
           }
@@ -276,10 +283,14 @@ export async function executeRequest(
     if (reqId !== activeRequestIdRef.current) {
       previousCommittedResponseRef.current = null;
       previousCommittedValidationRef.current = null;
-      logWarn('AgentOrchestrator', 'stale completion ignored (non-active request)', {
-        requestId: reqId,
-        activeRequestId: activeRequestIdRef.current,
-      });
+      logWarn(
+        'AgentOrchestrator',
+        'stale completion ignored (non-active request)',
+        {
+          requestId: reqId,
+          activeRequestId: activeRequestIdRef.current,
+        },
+      );
       return { status: 'stale' };
     }
     const nudgedRaw = result.nudged;
@@ -296,7 +307,9 @@ export async function executeRequest(
     setResponseText(committedText);
     setValidationSummary(result.validationSummary);
     if (!firstChunkSent) {
-      logInfo('AgentOrchestrator', 'first token received', { requestId: reqId });
+      logInfo('AgentOrchestrator', 'first token received', {
+        requestId: reqId,
+      });
       listenersRef.current?.onFirstToken?.();
     }
     const generationEndedAt = Date.now();
@@ -392,7 +405,9 @@ export async function executeRequest(
   } catch (e) {
     const msg = errorMessage(e);
     const code =
-      e && typeof e === 'object' && 'code' in e ? (e as { code: string }).code : '';
+      e && typeof e === 'object' && 'code' in e
+        ? (e as { code: string }).code
+        : '';
     const failureClassification = classifyTerminalFailure(e);
     let displayMsg = code ? `[${code}] ${msg}` : msg;
     if (code === 'E_MODEL_PATH' && Platform.OS === 'android') {
@@ -437,11 +452,15 @@ export async function executeRequest(
     }
     previousCommittedResponseRef.current = null;
     previousCommittedValidationRef.current = null;
-    logWarn('AgentOrchestrator', 'stale completion ignored (non-active request)', {
-      requestId: reqId,
-      activeRequestId: activeRequestIdRef.current,
-      message: displayMsg,
-    });
+    logWarn(
+      'AgentOrchestrator',
+      'stale completion ignored (non-active request)',
+      {
+        requestId: reqId,
+        activeRequestId: activeRequestIdRef.current,
+        message: displayMsg,
+      },
+    );
     return { status: 'stale' };
   }
 }

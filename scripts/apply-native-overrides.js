@@ -36,17 +36,15 @@ function overrideFiles() {
   ];
 }
 
-/** Directories to copy recursively (e.g. app icon assets). Override must exist. */
+/** Directories to copy recursively (e.g. app icon assets). Override must exist. Images.xcassets omitted so bootsplash output is not overwritten. */
 function overrideDirs() {
   const identity = getAppIdentity();
-  const iosTarget = identity.iosTargetName;
   return [
     'android/app/src/main/res/mipmap-mdpi',
     'android/app/src/main/res/mipmap-hdpi',
     'android/app/src/main/res/mipmap-xhdpi',
     'android/app/src/main/res/mipmap-xxhdpi',
     'android/app/src/main/res/mipmap-xxxhdpi',
-    `ios/${iosTarget}/Images.xcassets`,
   ];
 }
 

@@ -8,7 +8,7 @@ import {
   CENTER_STRIP_NDC,
   ENVELOPE_NDC,
   getCenterStripBounds,
-} from '../../../visualization/interaction/spineTouchSurfaceLayout';
+} from '../../../../visualization/interaction/spineTouchSurfaceLayout';
 import type { NameShapingSelector } from '../foundation/nameShapingConstants';
 
 const NDC_MIN = -1;

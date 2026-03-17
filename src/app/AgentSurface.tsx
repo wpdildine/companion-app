@@ -78,11 +78,11 @@ import {
   useSpineNameShapingCapture,
   NameShapingTouchGuideOverlay,
   type ResolverIndex,
-} from './nameShaping';
+} from './_experimental/nameShaping';
 import {
   endNameShapingCommitTrace,
   getActiveNameShapingCommitTrace,
-} from './nameShaping/runtime/nameShapingCommitTrace';
+} from './_experimental/nameShaping/runtime/nameShapingCommitTrace';
 
 /** Set true to show NameShaping debug affordances by default; enabling capture remains manual in the Viz debug panel. */
 const NAME_SHAPING_CAPTURE_DEBUG = false;

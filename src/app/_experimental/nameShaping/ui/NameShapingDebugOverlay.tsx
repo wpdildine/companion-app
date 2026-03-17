@@ -6,8 +6,8 @@
 
 import React, { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Button } from '../../ui/components/controls';
-import { logInfo } from '../../../shared/logging';
+import { Button } from '../../../ui/components/controls';
+import { logInfo } from '../../../../shared/logging';
 import type { NameShapingActions } from '../runtime/useNameShapingState';
 import type { NameShapingState } from '../foundation/nameShapingTypes';
 import { buildCardNameSignature } from '../foundation/buildCardNameSignature';
