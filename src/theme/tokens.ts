@@ -2,6 +2,9 @@
  * Raw color/layout tokens. Theme is built from these; no React/refs.
  */
 
+/** Default font family for theme (Roboto Mono). */
+export const DEFAULT_FONT_FAMILY = 'RobotoMono-Regular';
+
 export const RN_LIGHT = {
   text: '#1a1a1a',
   textMuted: '#666',

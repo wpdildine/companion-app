@@ -3,7 +3,7 @@
 
 /**
  * End-to-end native rebuild: delete ios/ and android/, regenerate from RN CLI,
- * apply overrides, reinstall pods, and sync the small content pack.
+ * apply overrides, reinstall pods, and sync the full content pack.
  * Dependency reinstalls are intentionally separate; use pnpm run deps:reset first
  * when you want a true clean-folder rebuild.
  *
@@ -40,7 +40,7 @@ function main() {
   console.log('[nuclear-rebuild] 3/4 Pod install (iOS)...');
   run('pnpm run native:pods');
 
-  console.log('[nuclear-rebuild] 4/4 Syncing content pack (small pack)...');
+  console.log('[nuclear-rebuild] 4/4 Syncing content pack (full pack)...');
   run('pnpm run rag:pack');
 
   console.log('[nuclear-rebuild] Done. Run pnpm android or pnpm ios to build.');

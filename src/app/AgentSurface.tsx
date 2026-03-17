@@ -790,20 +790,25 @@ export default function AgentSurface() {
 
   const handleCenterHoldEnd = useCallback(() => {
     if (holdCompletionInFlightRef.current) return;
-    
+
     // If we're not active but there is a pending start promise, it means the user
     // released while startListening was still resolving. We must wait for it to
     // finish and then immediately stop to prevent a dangling recording session.
     if (!centerHoldActiveRef.current) {
       if (holdStartPromiseRef.current) {
-        logInfo('Interaction', 'center hold end detected during start resolution');
+        logInfo(
+          'Interaction',
+          'center hold end detected during start resolution',
+        );
         const pendingPromise = holdStartPromiseRef.current;
         holdStartPromiseRef.current = null;
-        pendingPromise.then((result) => {
-          if (result.ok) {
-             stopListeningAndSubmit('hold release delayed').catch(() => {});
-          }
-        }).catch(() => {});
+        pendingPromise
+          .then(result => {
+            if (result.ok) {
+              stopListeningAndSubmit('hold release delayed').catch(() => {});
+            }
+          })
+          .catch(() => {});
       }
       return;
     }
@@ -1145,7 +1150,12 @@ export default function AgentSurface() {
   }, [clearHoldInteractionState]);
 
   if (!orchState.voiceReady && !orchState.error) {
-    return <SemanticChannelLoadingView theme={theme} paddingTop={insets.top} />;
+    return (
+      <SemanticChannelLoadingView
+        theme={getTheme(true)}
+        paddingTop={insets.top}
+      />
+    );
   }
 
   const holdToSpeakSlot = SHOW_HOLD_TO_SPEAK ? (

@@ -10,9 +10,9 @@ import { Platform } from 'react-native';
 
 export const fontFamilies = {
   body: Platform.select({
-    ios: 'System',
-    android: 'sans-serif',
-    default: 'System',
+    ios: 'RobotoMono-Regular',
+    android: 'RobotoMono-Regular',
+    default: 'monospace',
   }) as string,
 
   mono: Platform.select({

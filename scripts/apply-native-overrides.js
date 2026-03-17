@@ -33,10 +33,11 @@ function overrideFiles() {
     [`${androidJavaRoot}/MainApplication.kt`, `${androidJavaRoot}/MainApplication.kt`],
     [`${androidJavaRoot}/RagPackReaderModule.kt`, `${androidJavaRoot}/RagPackReaderModule.kt`],
     [`${androidJavaRoot}/RagPackReaderPackage.kt`, `${androidJavaRoot}/RagPackReaderPackage.kt`],
+    ['android/app/src/main/res/values/colors.xml', 'android/app/src/main/res/values/colors.xml'],
   ];
 }
 
-/** Directories to copy recursively (e.g. app icon assets). Override must exist. Images.xcassets omitted so bootsplash output is not overwritten. */
+/** Directories to copy recursively (e.g. app icon assets). Override must exist. */
 function overrideDirs() {
   const identity = getAppIdentity();
   return [
@@ -45,6 +46,8 @@ function overrideDirs() {
     'android/app/src/main/res/mipmap-xhdpi',
     'android/app/src/main/res/mipmap-xxhdpi',
     'android/app/src/main/res/mipmap-xxxhdpi',
+    'android/app/src/main/res/mipmap-anydpi-v26',
+    `ios/${identity.iosTargetName}/Images.xcassets/AppIcon.appiconset`,
   ];
 }
 

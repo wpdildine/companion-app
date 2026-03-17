@@ -6,6 +6,7 @@
 import {
   RN_LIGHT,
   RN_DARK,
+  DEFAULT_FONT_FAMILY,
   VIZ_CANVAS_BACKGROUND,
   VIZ_PALETTE_A,
   VIZ_PALETTE_B,
@@ -13,6 +14,7 @@ import {
 } from './tokens';
 
 export type Theme = {
+  fontFamily: string;
   text: string;
   textMuted: string;
   background: string;
@@ -33,6 +35,7 @@ export type Theme = {
 export function getTheme(isDark: boolean): Theme {
   const rn = isDark ? RN_DARK : RN_LIGHT;
   return {
+    fontFamily: DEFAULT_FONT_FAMILY,
     ...rn,
     viz: {
       canvasBackground: VIZ_CANVAS_BACKGROUND,

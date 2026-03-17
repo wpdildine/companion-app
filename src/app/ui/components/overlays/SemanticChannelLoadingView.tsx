@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import type { Theme } from '../../../../theme';
 
 export type SemanticChannelLoadingViewProps = {
@@ -23,15 +23,13 @@ export function SemanticChannelLoadingView({
         { paddingTop, backgroundColor: theme.background },
       ]}
     >
-      <Text style={[styles.title, { color: theme.text }]}>Voice</Text>
-      <ActivityIndicator
-        size="large"
-        color={theme.primary}
-        style={styles.loader}
-      />
-      <Text style={[styles.hint, { color: theme.textMuted }]}>
-        Loading speech recognition…
-      </Text>
+      <View style={styles.centered}>
+        <ActivityIndicator
+          size="large"
+          color={theme.primary}
+          style={styles.loader}
+        />
+      </View>
     </View>
   );
 }
@@ -40,13 +38,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: 16,
-    paddingTop: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  centered: {
+    alignItems: 'center',
   },
   loader: {
-    marginTop: 24,
+    marginBottom: 12,
   },
   hint: {
-    marginTop: 12,
     fontSize: 15,
   },
   title: {
