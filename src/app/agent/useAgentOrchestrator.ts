@@ -288,7 +288,7 @@ export function useAgentOrchestrator(
           'AgentOrchestrator',
           'recoverable failure suppressed for session',
           {
-            recordingSessionId: recordingSessionId ?? null,
+            recordingSessionId,
             reason: classification.telemetryReason,
             suppressedBy: ledgerDecision.suppressedBy,
           },
@@ -331,7 +331,7 @@ export function useAgentOrchestrator(
           'AgentOrchestrator',
           'terminal failure suppressed for session',
           {
-            recordingSessionId: recordingSessionId ?? null,
+            recordingSessionId,
             reason,
             suppressedBy: ledgerDecision.suppressedBy,
           },
