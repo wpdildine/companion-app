@@ -12,6 +12,7 @@ import {
 } from '../../materials/links/connections';
 import { getLayerRuntimeInputs } from '../../runtime/runtimeLayerInputs';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 import { useVizIsolationGate } from '../../runtime/VizRuntimeIsolationContext';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
@@ -204,6 +205,7 @@ export function ContextLinks({
   const r3fFrameOn = useVizIsolationGate('r3f_frame');
   useFrame((_, delta) => {
     if (!r3fFrameOn) return;
+    if (!getVizSubsystemEnabled('materialUniforms')) return;
     const v = visualizationRef.current;
     if (!v) return;
     const runtime = getLayerRuntimeInputs(v);

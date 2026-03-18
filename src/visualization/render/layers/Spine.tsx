@@ -29,6 +29,8 @@ import type { CanonicalSpineMode, SpineSceneSpec } from '../../scene/builders/sp
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { validateSceneSpec } from '../../scene/validateSceneSpec';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
+import { logVizSubsystemPerf } from '../../runtime/vizSubsystemPerf';
 import { useVizIsolationGate } from '../../runtime/VizRuntimeIsolationContext';
 import {
   easeModeTransition,
@@ -203,6 +205,9 @@ export function Spine({
     }
     const v = visualizationRef.current;
     if (!v) return;
+    const spineFrameT0 =
+      typeof performance !== 'undefined' ? performance.now() : 0;
+    const materialUniformsOn = getVizSubsystemEnabled('materialUniforms');
     const scene = v.scene;
     const spine = scene?.spine;
     if (!spine) return;
@@ -280,9 +285,8 @@ export function Spine({
       edgeGlowColorRef.current.set(
         spine.style.edgeGlowColor ?? spine.style.color,
       );
-      planeColorsRef.current = (spine.style.planeColors ?? []).map(
-        c => new THREE.Color(c),
-      );
+      planeColorsRef.current = (spine.style.planeColors ?? []).map(c => new THREE.Color(c));
+      if (materialUniformsOn) {
       const updateStaticUniforms = (mat: THREE.ShaderMaterial | null) => {
         if (!mat) return;
         mat.uniforms.uDebugFlat.value = spine.style.halftoneDebugFlat ? 1 : 0;
@@ -323,6 +327,7 @@ export function Spine({
         updateStaticUniforms(rightMat);
         rightMat.uniforms.uColor.value.copy(spineColorRef.current);
         rightMat.uniforms.uFadeMode.value = 0;
+      }
       }
     }
 
@@ -604,6 +609,10 @@ export function Spine({
       if (targetMat && mesh.material !== targetMat) {
         mesh.material = targetMat;
       }
+      if (!materialUniformsOn) {
+        mesh.visible = planeUsesHalftone ? halftonePrimedRef.current : true;
+        continue;
+      }
       const planeColor = planeColorsRef.current[i] ?? spineColorRef.current;
       const targetPlaneOpacity =
         spine.style.opacity * opacityScale * dynamicOpacityBoost;
@@ -810,7 +819,7 @@ export function Spine({
         unitHeight * shard.heightScale,
         1,
       );
-      if (mesh.material) {
+      if (materialUniformsOn && mesh.material) {
         const mat = mesh.material as THREE.MeshBasicMaterial;
         mat.blending = THREE.NormalBlending;
         mat.color.set('#050913');
@@ -841,16 +850,32 @@ export function Spine({
       }
     }
 
-    for (const matRef of [leftEdgeMatRef, rightEdgeMatRef]) {
-      const mat = matRef.current;
-      if (!mat) continue;
-      mat.uniforms.uOpacity.value = edgeVisible ? spine.style.edgeOpacity : 0;
-      mat.uniforms.uIntensity.value = edgeIntensity;
-      mat.uniforms.uDensity.value = halftoneProfile.density;
-      mat.uniforms.uTime.value = v.clock;
-      mat.uniforms.uResolution.value.set(resX, resY);
-      mat.uniforms.uPlanePhase.value = 0;
-      mat.uniforms.uPlaneSize.value.set(edgeWidth, edgeHeight);
+    if (materialUniformsOn) {
+      for (const matRef of [leftEdgeMatRef, rightEdgeMatRef]) {
+        const mat = matRef.current;
+        if (!mat) continue;
+        mat.uniforms.uOpacity.value = edgeVisible ? spine.style.edgeOpacity : 0;
+        mat.uniforms.uIntensity.value = edgeIntensity;
+        mat.uniforms.uDensity.value = halftoneProfile.density;
+        mat.uniforms.uTime.value = v.clock;
+        mat.uniforms.uResolution.value.set(resX, resY);
+        mat.uniforms.uPlanePhase.value = 0;
+        mat.uniforms.uPlaneSize.value.set(edgeWidth, edgeHeight);
+      }
+    }
+
+    if (
+      typeof __DEV__ !== 'undefined' &&
+      __DEV__ &&
+      typeof performance !== 'undefined'
+    ) {
+      const fm = performance.now() - spineFrameT0;
+      if (fm >= 8) {
+        logVizSubsystemPerf('spineStep', 'start', v.bisectRequestId);
+        logVizSubsystemPerf('spineStep', 'end', v.bisectRequestId, {
+          frameMs: Math.round(fm * 10) / 10,
+        });
+      }
     }
   });
 

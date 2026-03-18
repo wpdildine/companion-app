@@ -34,6 +34,7 @@ import {
 } from '../interaction/zoneLayout';
 import { createMotionGrammarEngine } from './MotionGrammarEngine';
 import { MOTION_GRAMMAR } from '../scene/artDirection/motionGrammar';
+import { logVizSubsystemPerf } from './vizSubsystemPerf';
 
 const DT_CAP = 0.1;
 const APP_STATE_CYCLE_MS = 1300;
@@ -154,6 +155,9 @@ export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefO
     }
     const v = visualizationRef.current;
     if (!v) return;
+
+    const orchestrationT0 =
+      typeof performance !== 'undefined' ? performance.now() : 0;
 
     const now = Date.now();
     const previousFrameAtMs = lastTickTimeRef.current;
@@ -577,6 +581,16 @@ export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefO
             node.position[1] += dy * inv * repulse;
           }
         }
+      }
+    }
+
+    if (typeof __DEV__ !== 'undefined' && __DEV__ && typeof performance !== 'undefined') {
+      const tickMs = performance.now() - orchestrationT0;
+      if (tickMs >= 8) {
+        logVizSubsystemPerf('runtimeLoopOrchestration', 'start', v.bisectRequestId);
+        logVizSubsystemPerf('runtimeLoopOrchestration', 'end', v.bisectRequestId, {
+          tickDurationMs: Math.round(tickMs * 10) / 10,
+        });
       }
     }
 

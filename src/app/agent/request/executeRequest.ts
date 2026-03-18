@@ -19,8 +19,8 @@ import {
   DIAG_SETTLE_RESPONSE_TEXT_ONLY,
   DIAG_SETTLE_VALIDATION_ONLY,
   DIAG_SKIP_SET_RESPONSE_TEXT_STATE,
-  DIAG_SKIP_SETTLEMENT_CONTROL_STATE,
   DIAG_SKIP_SETTLED_PAYLOAD_PUBLICATION,
+  DIAG_SKIP_SETTLEMENT_CONTROL_STATE,
   traceResponseSurfaceSettledEvent,
 } from '../../ui/components/overlays/responseRenderBisectFlags';
 import type { FailureClassification } from '../failureClassification';
@@ -219,7 +219,9 @@ export async function executeRequest(
       },
       onValidationStart: () => {
         if (activeRequestIdRef.current !== reqId) return;
-        perfTrace('AgentOrchestrator', 'validation start', { requestId: reqId });
+        perfTrace('AgentOrchestrator', 'validation start', {
+          requestId: reqId,
+        });
         const validationStartedAt = Date.now();
         setProcessingSubstate('validating');
         requestDebugSink?.({
@@ -327,16 +329,15 @@ export async function executeRequest(
       deferValidationSummaryOneRaf,
       deferResponseTextOneRaf,
     ].filter(Boolean).length;
-    const selectedBranch =
-      settleResponseTextOnly
-        ? 'response_text_only'
-        : settleValidationOnly
-          ? 'validation_only'
-          : deferValidationSummaryOneRaf
-            ? 'defer_validation_one_raf'
-            : deferResponseTextOneRaf
-              ? 'defer_response_text_one_raf'
-              : 'default_both_same_tick';
+    const selectedBranch = settleResponseTextOnly
+      ? 'response_text_only'
+      : settleValidationOnly
+      ? 'validation_only'
+      : deferValidationSummaryOneRaf
+      ? 'defer_validation_one_raf'
+      : deferResponseTextOneRaf
+      ? 'defer_response_text_one_raf'
+      : 'default_both_same_tick';
     if (settleFlagsTrue > 1) {
       logWarn('Runtime', 'multiple settle flags true; using priority order', {
         requestId: reqId,
@@ -382,41 +383,73 @@ export async function executeRequest(
             committedTextLength: committedText.length,
           });
         } else {
-          perfTrace('Runtime', 'before setResponseText (response settled)', { requestId: reqId });
+          perfTrace('Runtime', 'before setResponseText (response settled)', {
+            requestId: reqId,
+          });
           setResponseText(committedText);
-          perfTrace('Runtime', 'after setResponseText (response settled)', { requestId: reqId });
+          perfTrace('Runtime', 'after setResponseText (response settled)', {
+            requestId: reqId,
+          });
         }
       } else if (selectedBranch === 'validation_only') {
-        perfTrace('Runtime', 'before setValidationSummary (response settled)', { requestId: reqId });
+        perfTrace('Runtime', 'before setValidationSummary (response settled)', {
+          requestId: reqId,
+        });
         setValidationSummary(result.validationSummary);
-        perfTrace('Runtime', 'after setValidationSummary (response settled)', { requestId: reqId });
+        perfTrace('Runtime', 'after setValidationSummary (response settled)', {
+          requestId: reqId,
+        });
       } else if (selectedBranch === 'defer_validation_one_raf') {
-        perfTrace('Runtime', 'before setResponseText (response settled)', { requestId: reqId });
+        perfTrace('Runtime', 'before setResponseText (response settled)', {
+          requestId: reqId,
+        });
         setResponseText(committedText);
-        perfTrace('Runtime', 'after setResponseText (response settled)', { requestId: reqId });
+        perfTrace('Runtime', 'after setResponseText (response settled)', {
+          requestId: reqId,
+        });
         requestAnimationFrame(() => {
-          perfTrace('Runtime', 'before setValidationSummary (deferred rAF)', { requestId: reqId });
+          perfTrace('Runtime', 'before setValidationSummary (deferred rAF)', {
+            requestId: reqId,
+          });
           setValidationSummary(result.validationSummary);
-          perfTrace('Runtime', 'after setValidationSummary (deferred rAF)', { requestId: reqId });
+          perfTrace('Runtime', 'after setValidationSummary (deferred rAF)', {
+            requestId: reqId,
+          });
         });
       } else if (selectedBranch === 'defer_response_text_one_raf') {
-        perfTrace('Runtime', 'before setValidationSummary (response settled)', { requestId: reqId });
+        perfTrace('Runtime', 'before setValidationSummary (response settled)', {
+          requestId: reqId,
+        });
         setValidationSummary(result.validationSummary);
-        perfTrace('Runtime', 'after setValidationSummary (response settled)', { requestId: reqId });
+        perfTrace('Runtime', 'after setValidationSummary (response settled)', {
+          requestId: reqId,
+        });
         requestAnimationFrame(() => {
-          perfTrace('Runtime', 'before setResponseText (deferred rAF)', { requestId: reqId });
+          perfTrace('Runtime', 'before setResponseText (deferred rAF)', {
+            requestId: reqId,
+          });
           setResponseText(committedText);
-          perfTrace('Runtime', 'after setResponseText (deferred rAF)', { requestId: reqId });
+          perfTrace('Runtime', 'after setResponseText (deferred rAF)', {
+            requestId: reqId,
+          });
         });
       } else {
-        perfTrace('Runtime', 'before setResponseText/setValidationSummary (response settled)', {
-          requestId: reqId,
-        });
+        perfTrace(
+          'Runtime',
+          'before setResponseText/setValidationSummary (response settled)',
+          {
+            requestId: reqId,
+          },
+        );
         setResponseText(committedText);
         setValidationSummary(result.validationSummary);
-        perfTrace('Runtime', 'after setResponseText/setValidationSummary (response settled)', {
-          requestId: reqId,
-        });
+        perfTrace(
+          'Runtime',
+          'after setResponseText/setValidationSummary (response settled)',
+          {
+            requestId: reqId,
+          },
+        );
         requestAnimationFrame(() => {
           perfTrace('Runtime', 'rAF after setState (response settled)', {
             requestId: reqId,

@@ -6,13 +6,13 @@
 
 import { useEffect, useRef, type RefObject } from 'react';
 import { logInfo, perfTrace } from '../../shared/logging';
+import type { VisualizationEngineRef } from '../../visualization';
 import {
-  triggerPulseAtCenter,
   TRANSIENT_SIGNAL_FIRST_TOKEN,
   TRANSIENT_SIGNAL_SOFT_FAIL,
   TRANSIENT_SIGNAL_TERMINAL_FAIL,
+  triggerPulseAtCenter,
 } from '../../visualization';
-import type { VisualizationEngineRef } from '../../visualization';
 import { useVisualizationSignals } from '../hooks/useVisualizationSignals';
 import {
   DIAG_SKIP_LATE_PROCESSING_VIZ_UPDATES,
@@ -20,8 +20,8 @@ import {
   traceLateProcessingVizUpdate,
 } from '../ui/components/overlays/responseRenderBisectFlags';
 import type {
-  AgentOrchestratorState,
   AgentOrchestratorListeners,
+  AgentOrchestratorState,
   ProcessingSubstate,
 } from './types';
 
@@ -176,17 +176,24 @@ export function useVisualizationController(
       return;
     }
 
-    const mode = effectiveMode(state.lifecycle, state.audioSessionState, releaseInProgressRef);
+    const mode = effectiveMode(
+      state.lifecycle,
+      state.audioSessionState,
+      releaseInProgressRef,
+    );
     const phase =
       state.lifecycle === 'processing'
         ? 'processing'
         : state.lifecycle === 'speaking'
-          ? 'resolved'
-          : 'idle';
+        ? 'resolved'
+        : 'idle';
 
     if (lastLoggedLifecycleRef.current !== state.lifecycle) {
       lastLoggedLifecycleRef.current = state.lifecycle;
-      logInfo('VisualizationController', `received lifecycle state ${state.lifecycle}`);
+      logInfo(
+        'VisualizationController',
+        `received lifecycle state ${state.lifecycle}`,
+      );
     }
     if (state.lifecycle === 'speaking') {
       perfTrace('VisualizationController', 'lifecycle speaking received', {
@@ -202,7 +209,10 @@ export function useVisualizationController(
       const substate = state.processingSubstate;
       if (lastLoggedSubstateRef.current !== substate) {
         lastLoggedSubstateRef.current = substate;
-        logInfo('VisualizationController', `processingSubstate changed to ${substate}`);
+        logInfo(
+          'VisualizationController',
+          `processingSubstate changed to ${substate}`,
+        );
       }
     } else {
       lastLoggedSubstateRef.current = null;
@@ -214,9 +224,9 @@ export function useVisualizationController(
         : true;
     const confidence = grounded ? 0.9 : 0.5;
     const retrievalDepth =
-      phase === 'processing' ? 0 : (state.validationSummary?.rules?.length ?? 0);
+      phase === 'processing' ? 0 : state.validationSummary?.rules?.length ?? 0;
     const cardRefsCount =
-      phase === 'processing' ? 0 : (state.validationSummary?.cards?.length ?? 0);
+      phase === 'processing' ? 0 : state.validationSummary?.cards?.length ?? 0;
 
     const signalPayload = {
       phase: phase as 'idle' | 'processing' | 'resolved',
@@ -247,18 +257,32 @@ export function useVisualizationController(
     const finishAttached = () => {
       if (!attachedLoggedRef.current) {
         attachedLoggedRef.current = true;
-        perfTrace('VisualizationController', 'attached to visualization signal pipeline');
-        logInfo('VisualizationController', 'attached to visualization signal pipeline');
+        perfTrace(
+          'VisualizationController',
+          'attached to visualization signal pipeline',
+        );
+        logInfo(
+          'VisualizationController',
+          'attached to visualization signal pipeline',
+        );
       }
     };
 
     if (state.lifecycle === 'processing' && sub === 'validating') {
       if (prevLate !== 'validating') {
-        traceLateProcessingVizUpdate(undefined, 'processingSubstate_validating', () => {});
+        traceLateProcessingVizUpdate(
+          undefined,
+          'processingSubstate_validating',
+          () => {},
+        );
       }
-      traceLateProcessingVizUpdate(undefined, 'visualization_signal_apply_validating', () => {
-        setSignals(withOptionalMode(signalPayload));
-      });
+      traceLateProcessingVizUpdate(
+        undefined,
+        'visualization_signal_apply_validating',
+        () => {
+          setSignals(withOptionalMode(signalPayload));
+        },
+      );
       prevLateVizSubRef.current = sub;
       finishAttached();
       return;
@@ -266,11 +290,19 @@ export function useVisualizationController(
 
     if (state.lifecycle === 'processing' && sub === 'settling') {
       if (prevLate !== 'settling') {
-        traceLateProcessingVizUpdate(undefined, 'processingSubstate_settling', () => {});
+        traceLateProcessingVizUpdate(
+          undefined,
+          'processingSubstate_settling',
+          () => {},
+        );
       }
-      traceLateProcessingVizUpdate(undefined, 'visualization_signal_apply_settling', () => {
-        setSignals(withOptionalMode(signalPayload));
-      });
+      traceLateProcessingVizUpdate(
+        undefined,
+        'visualization_signal_apply_settling',
+        () => {
+          setSignals(withOptionalMode(signalPayload));
+        },
+      );
       prevLateVizSubRef.current = sub;
       finishAttached();
       return;
@@ -290,18 +322,26 @@ export function useVisualizationController(
           op: 'visualization_speaking_transition',
         });
       } else {
-        perfTrace('VisualizationController', 'before applying visualization signals for speaking', {
-          mode,
-          phase,
-        });
+        perfTrace(
+          'VisualizationController',
+          'before applying visualization signals for speaking',
+          {
+            mode,
+            phase,
+          },
+        );
       }
     }
     setSignals(withOptionalMode(signalPayload));
     if (mode === 'speaking' && !DIAG_SKIP_PLAYBACK_TRANSITION_STATE) {
-      perfTrace('VisualizationController', 'after applying visualization signals for speaking', {
-        mode,
-        phase,
-      });
+      perfTrace(
+        'VisualizationController',
+        'after applying visualization signals for speaking',
+        {
+          mode,
+          phase,
+        },
+      );
       perfTrace('Runtime', 'playback transition state executed', {
         requestId: undefined,
         op: 'visualization_speaking_transition',

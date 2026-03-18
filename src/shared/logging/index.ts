@@ -9,6 +9,7 @@ export {
 export {
   perfTrace,
   clearRequestTiming,
+  isPerfTraceEnabled,
   type PerfTraceDetails,
 } from './perfTrace';
 export {

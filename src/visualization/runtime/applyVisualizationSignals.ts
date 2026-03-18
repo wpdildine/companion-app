@@ -5,23 +5,14 @@
  */
 
 import type { RefObject } from 'react';
-import { logInfo, perfTrace } from '../../shared/logging';
-import {
-  DIAG_VISUALIZATION_RUNTIME_ISOLATION_MODE,
-  DIAG_FREEZE_VISUALIZATION_RUNTIME_UPDATES,
-  effectiveSignalApplyEnabled,
-} from '../../app/ui/components/overlays/responseRenderBisectFlags';
+import { logInfo } from '../../shared/logging';
 import type {
   VisualizationEngineRef,
   VisualizationMode,
   VisualizationPanelRects,
 } from './runtimeTypes';
 import type { VisualizationSignals } from './visualizationSignals';
-import { isTransientVisualSignal } from './visualizationSignals';
 import { TARGET_ACTIVITY_BY_MODE } from './createDefaultRef';
-
-/** Cooldown (ms) before the same transient event can retrigger; prevents stuck/retriggered decay. */
-const TRANSIENT_EVENT_COOLDOWN_MS = 80;
 
 const PHASE_TO_MODE: Record<VisualizationSignals['phase'], VisualizationMode> = {
   idle: 'idle',
@@ -43,45 +34,6 @@ export function applyVisualizationSignals(
 ): void {
   const v = visualizationRef.current;
   if (!v) return;
-  const signalOn = effectiveSignalApplyEnabled(
-    v.bisectFreezeRuntimeUpdates === true,
-  );
-  if (!signalOn) {
-    if (!v.bisectSignalApplySkipLogged) {
-      v.bisectSignalApplySkipLogged = true;
-      perfTrace('Runtime', 'visualization layer decision', {
-        requestId: v.bisectRequestId,
-        lifecycle: v.bisectLifecycle ?? null,
-        layer: 'signal_apply',
-        isolationMode: DIAG_VISUALIZATION_RUNTIME_ISOLATION_MODE,
-        enabled: false,
-        freezeVisualizationRuntimeUpdates: DIAG_FREEZE_VISUALIZATION_RUNTIME_UPDATES,
-      });
-      perfTrace('Runtime', 'skipped visualization layer', {
-        requestId: v.bisectRequestId,
-        lifecycle: v.bisectLifecycle ?? null,
-        layer: 'signal_apply',
-      });
-    }
-    return;
-  }
-  v.bisectSignalApplySkipLogged = false;
-  if (!v.bisectSignalApplyExecLogged) {
-    v.bisectSignalApplyExecLogged = true;
-    perfTrace('Runtime', 'visualization layer decision', {
-      requestId: v.bisectRequestId,
-      lifecycle: v.bisectLifecycle ?? null,
-      layer: 'signal_apply',
-      isolationMode: DIAG_VISUALIZATION_RUNTIME_ISOLATION_MODE,
-      enabled: true,
-      freezeVisualizationRuntimeUpdates: DIAG_FREEZE_VISUALIZATION_RUNTIME_UPDATES,
-    });
-    perfTrace('Runtime', 'visualization layer executed', {
-      requestId: v.bisectRequestId,
-      lifecycle: v.bisectLifecycle ?? null,
-      layer: 'signal_apply',
-    });
-  }
   const { panelRects, ...uiSignals } = signals;
   const mergedSignals = {
     ...(v.signalsSnapshot ?? ({} as VisualizationSignals)),
@@ -95,25 +47,11 @@ export function applyVisualizationSignals(
   const prevTargetActivity = v.targetActivity;
   if (!devModeOwned && signals.mode != null) {
     const mode = signals.mode;
-    if (mode === 'speaking') {
-      perfTrace('VisualizationRuntime', 'before mode transition starts (speaking)', {
-        fromMode: prevMode,
-        toMode: mode,
-        displayMode: v.displayMode,
-      });
-    }
     v.currentMode = mode;
     const target = TARGET_ACTIVITY_BY_MODE[mode];
     v.targetActivity = target;
   } else if (!devModeOwned && signals.phase != null) {
     const mode = PHASE_TO_MODE[signals.phase];
-    if (mode === 'speaking') {
-      perfTrace('VisualizationRuntime', 'before mode transition starts (speaking)', {
-        fromMode: prevMode,
-        toMode: mode,
-        displayMode: v.displayMode,
-      });
-    }
     v.currentMode = mode;
     const target = TARGET_ACTIVITY_BY_MODE[mode];
     v.targetActivity = target;
@@ -129,30 +67,11 @@ export function applyVisualizationSignals(
       toTargetActivity: v.targetActivity,
     });
   }
-  if (!devModeOwned && (signals.mode != null || signals.phase != null)) {
-    v.lastPerfMilestoneName = 'signal_applied';
-    v.lastPerfMilestoneAtMs = Date.now();
-  }
 
   if (signals.event != null) {
-    const isTransient = isTransientVisualSignal(signals.event);
-    const sameEvent = signals.event === v.lastEvent;
-    const ageMs = Number.isFinite(v.clock) && Number.isFinite(v.lastEventTime)
-      ? (v.clock - v.lastEventTime) * 1000
-      : Infinity;
-    const withinCooldown = isTransient && sameEvent && ageMs >= 0 && ageMs < TRANSIENT_EVENT_COOLDOWN_MS;
-    if (withinCooldown) {
-      if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        logInfo('VisualizationRuntime', '[VizTrace] transient retrigger suppressed', {
-          event: signals.event,
-          ageMs: Math.round(ageMs),
-        });
-      }
-    } else {
-      v.lastEvent = signals.event;
-      v.lastEventTime = v.clock;
-      logInfo('VisualizationRuntime', `applied visualization event: ${signals.event}`);
-    }
+    v.lastEvent = signals.event;
+    v.lastEventTime = v.clock;
+    logInfo('VisualizationRuntime', `applied visualization event: ${signals.event}`);
   }
 
   if (panelRects != null) {

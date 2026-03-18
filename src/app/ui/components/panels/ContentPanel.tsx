@@ -3,9 +3,13 @@
  * Header treatment is optional and never affects body layout.
  */
 
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { logInfo, perfTrace } from '../../../../shared/logging';
-import { DIAG_RENDER_MINIMAL_PANEL_BODY } from '../overlays/responseRenderBisectFlags';
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   StyleSheet,
   Text,
@@ -15,9 +19,16 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { logInfo, perfTrace } from '../../../../shared/logging';
+import { DIAG_RENDER_MINIMAL_PANEL_BODY } from '../overlays/responseRenderBisectFlags';
 
 export type ContentPanelIntensity = 'off' | 'subtle' | 'full';
-export type ContentPanelVariant = 'answer' | 'cards' | 'rules' | 'neutral' | 'warning';
+export type ContentPanelVariant =
+  | 'answer'
+  | 'cards'
+  | 'rules'
+  | 'neutral'
+  | 'warning';
 
 export type ContentPanelProps = {
   title?: string;
@@ -205,7 +216,9 @@ export function ContentPanel({
   return (
     <View style={[styles.panel, panelStyle, style]} onLayout={onLayout}>
       {variant === 'warning' ? (
-        <View style={[styles.warningBar, { backgroundColor: withAlpha(warn, 0.6) }]} />
+        <View
+          style={[styles.warningBar, { backgroundColor: withAlpha(warn, 0.6) }]}
+        />
       ) : null}
       {(title || subtitle) && (
         <View
@@ -214,7 +227,9 @@ export function ContentPanel({
             dismissEnabled && styles.headerDismissZone,
             dismissArmed && styles.headerArmed,
           ]}
-          onStartShouldSetResponderCapture={dismissEnabled ? () => true : undefined}
+          onStartShouldSetResponderCapture={
+            dismissEnabled ? () => true : undefined
+          }
           onTouchStart={dismissEnabled ? handleHeaderTouchStart : undefined}
           onTouchMove={dismissEnabled ? handleHeaderTouchMove : undefined}
           onTouchEnd={dismissEnabled ? handleHeaderTouchEnd : undefined}
@@ -222,7 +237,12 @@ export function ContentPanel({
         >
           {dismissEnabled ? (
             <View style={styles.dismissHintRow}>
-              <Text style={[styles.dismissHintText, { color: withAlpha(mutedInk, 0.9) }]}>
+              <Text
+                style={[
+                  styles.dismissHintText,
+                  { color: withAlpha(mutedInk, 0.9) },
+                ]}
+              >
                 hold + swipe left or right to hide
               </Text>
             </View>
@@ -260,7 +280,9 @@ export function ContentPanel({
             </View>
           ) : null}
           {subtitle ? (
-            <Text style={[styles.subtitle, { color: mutedInk }]}>{subtitle}</Text>
+            <Text style={[styles.subtitle, { color: mutedInk }]}>
+              {subtitle}
+            </Text>
           ) : null}
         </View>
       )}

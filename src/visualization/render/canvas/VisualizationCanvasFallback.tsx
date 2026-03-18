@@ -4,10 +4,8 @@
  * Never returns an empty View (plan: fallback must render a minimal field).
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
-import { effectiveFallbackIntervalEnabled } from '../../../app/ui/components/overlays/responseRenderBisectFlags';
-import { perfTrace } from '../../../shared/logging';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 
 const DEFAULT_FALLBACK_BG = '#000000';
@@ -56,58 +54,22 @@ const POLL_MS = 120;
 export function VisualizationCanvasFallback({
   visualizationRef,
   canvasBackground = DEFAULT_FALLBACK_BG,
-  freezeVisualizationRuntimeUpdates = false,
-  runtimeBisectRequestId,
-  runtimeBisectLifecycle,
 }: {
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
   canvasBackground?: string;
-  freezeVisualizationRuntimeUpdates?: boolean;
-  runtimeBisectRequestId?: number | undefined;
-  runtimeBisectLifecycle?: string;
 }) {
   const { width, height } = useWindowDimensions();
   const [activity, setActivity] = useState(0.15);
   const [tick, setTick] = useState(0);
-  const fallbackSkipLoggedRef = useRef(false);
-  const fallbackExecLoggedRef = useRef(false);
-  const intervalOn = effectiveFallbackIntervalEnabled(
-    freezeVisualizationRuntimeUpdates === true,
-  );
 
   useEffect(() => {
-    if (!intervalOn) {
-      if (!fallbackSkipLoggedRef.current) {
-        fallbackSkipLoggedRef.current = true;
-        perfTrace('Runtime', 'skipped visualization layer', {
-          layer: 'fallback_interval',
-          requestId: runtimeBisectRequestId,
-          lifecycle: runtimeBisectLifecycle ?? null,
-        });
-      }
-      return;
-    }
-    fallbackSkipLoggedRef.current = false;
-    if (!fallbackExecLoggedRef.current) {
-      fallbackExecLoggedRef.current = true;
-      perfTrace('Runtime', 'visualization layer executed', {
-        layer: 'fallback_interval',
-        requestId: runtimeBisectRequestId,
-        lifecycle: runtimeBisectLifecycle ?? null,
-      });
-    }
     const id = setInterval(() => {
       const target = visualizationRef?.current?.targetActivity ?? 0.1;
       setActivity((a) => a * 0.85 + target * 0.15);
       setTick((n) => n + 1);
     }, POLL_MS);
     return () => clearInterval(id);
-  }, [
-    intervalOn,
-    visualizationRef,
-    runtimeBisectRequestId,
-    runtimeBisectLifecycle,
-  ]);
+  }, [visualizationRef]);
 
   // Minimal field: render dots so fallback is never an empty View
   const opacity = 0.3 + activity * 0.5;

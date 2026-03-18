@@ -8,6 +8,7 @@ import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 import { useVizIsolationGate } from '../../runtime/VizRuntimeIsolationContext';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { createBasicPlaneMaterial } from '../../materials/basicPlaneMaterial';
@@ -38,6 +39,7 @@ export function SpineRotLayer({
   const r3fFrameOn = useVizIsolationGate('r3f_frame');
   useFrame(state => {
     if (!r3fFrameOn) return;
+    if (!getVizSubsystemEnabled('materialUniforms')) return;
     const v = visualizationRef.current;
     const sceneNow = v?.scene;
     const spineRotNow = sceneNow?.spineRot;

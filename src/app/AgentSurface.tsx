@@ -19,15 +19,13 @@ import {
   View,
 } from 'react-native';
 import {
-  DIAG_DROP_RESPONSE_TEXT_PROP,
-  DIAG_FREEZE_RESPONSE_TEXT_PROP_DURING_PROCESSING,
-  DIAG_SKIP_RESPONSE_CHANNEL_BRANCH,
-  DIAG_SKIP_RESULTS_OVERLAY_ELEMENT,
-  DIAG_DISABLE_VISUALIZATION_RUNTIME_CONTENT,
-  DIAG_FREEZE_VISUALIZATION_RUNTIME_UPDATES,
-  DIAG_SKIP_VISUALIZATION_SURFACE_BRANCH,
-  DIAG_SKIP_SETTLED_PAYLOAD_PUBLICATION,
-} from './ui/components/overlays/responseRenderBisectFlags';
+  getVizRuntimeMode,
+  setVizRuntimeMode,
+} from './ui/components/overlays/VisualizationRuntimeMode';
+import {
+  resetVizSubsystems,
+  setVizSubsystem,
+} from './ui/components/overlays/vizSubsystemToggles';
 import { logInfo, perfTrace } from '../shared/logging';
 import {
   cleanupEarcons,
@@ -213,6 +211,15 @@ export default function AgentSurface() {
     debugEnabled,
     debugScenario: DEBUG_SCENARIO,
   });
+
+  useEffect(() => {
+    if (typeof __DEV__ === 'undefined' || !__DEV__) return;
+    const g = globalThis as Record<string, unknown>;
+    g.setVizRuntimeMode = setVizRuntimeMode;
+    g.getVizRuntimeMode = getVizRuntimeMode;
+    g.setVizSubsystem = setVizSubsystem;
+    g.resetVizSubsystems = resetVizSubsystems;
+  }, []);
 
   const { state: nameShapingState, actions: nameShapingActions } =
     useNameShapingState();
@@ -429,9 +436,6 @@ export default function AgentSurface() {
   }, [nameShapingState.enabled]);
 
   useEffect(() => {
-    perfTrace('AgentSurface', 'AgentSurface mount', {
-      skipSettledPayloadPublication: DIAG_SKIP_SETTLED_PAYLOAD_PUBLICATION,
-    });
     logInfo('AgentSurface', 'mounted as active composition root');
     if (typeof globalThis !== 'undefined') {
       (globalThis as { __LOG_SCOPES__?: string[] }).__LOG_SCOPES__ =
@@ -457,9 +461,6 @@ export default function AgentSurface() {
   );
   const centerHoldActiveRef = useRef(false);
   const renderWithoutResponseTextLoggedRef = useRef(false);
-  const resultsOverlaySkipMountLoggedRef = useRef(false);
-  const responseChannelBranchSkipMountLoggedRef = useRef(false);
-  const visualizationSurfaceBranchSkipMountLoggedRef = useRef(false);
   const holdCompletionInFlightRef = useRef(false);
   const holdStartPromiseRef = useRef<Promise<{
     ok: boolean;
@@ -1249,185 +1250,60 @@ export default function AgentSurface() {
 
   return (
     <View style={localStyles.screenWrapper}>
-      {(() => {
-        const vizBranchRequestId =
-          requestDebugState.activeRequestId ??
-          requestDebugState.recentRequestIds[
-            requestDebugState.recentRequestIds.length - 1
-          ] ??
-          undefined;
-        const skipVisualizationSurfaceBranch =
-          DIAG_SKIP_VISUALIZATION_SURFACE_BRANCH;
-        perfTrace('Runtime', 'visualization surface branch decision', {
-          requestId: vizBranchRequestId,
-          lifecycle: orchState.lifecycle,
-          skipVisualizationSurfaceBranch,
-          renderedVisualizationSurfaceBranch: !skipVisualizationSurfaceBranch,
-        });
-        if (skipVisualizationSurfaceBranch) {
-          if (!visualizationSurfaceBranchSkipMountLoggedRef.current) {
-            visualizationSurfaceBranchSkipMountLoggedRef.current = true;
-            perfTrace('Runtime', 'skipped visualization surface branch mount', {
-              requestId: vizBranchRequestId,
-              lifecycle: orchState.lifecycle,
-            });
-          }
-          return null;
+      <VisualizationSurface
+        visualizationRef={visualizationRef}
+        controlsEnabled={debugEnabled}
+        inputEnabled
+        clusterZoneHighlights={!debugEnabled && !anyPanelVisible}
+        canvasBackground={theme.viz.canvasBackground}
+        onShortTap={!debugEnabled ? handleUserModeTap : undefined}
+        onLongPressStart={
+          !debugEnabled ? handleUserModeLongPressStart : undefined
         }
-        visualizationSurfaceBranchSkipMountLoggedRef.current = false;
-        return (
-          <VisualizationSurface
-            visualizationRef={visualizationRef}
-            controlsEnabled={debugEnabled}
-            inputEnabled
-            clusterZoneHighlights={!debugEnabled && !anyPanelVisible}
-            canvasBackground={theme.viz.canvasBackground}
-            disableVisualizationRuntimeContent={
-              DIAG_DISABLE_VISUALIZATION_RUNTIME_CONTENT
-            }
-            freezeVisualizationRuntimeUpdates={
-              DIAG_FREEZE_VISUALIZATION_RUNTIME_UPDATES
-            }
-            runtimeBisectRequestId={vizBranchRequestId}
-            runtimeBisectLifecycle={orchState.lifecycle}
-            onShortTap={!debugEnabled ? handleUserModeTap : undefined}
-            onLongPressStart={
-              !debugEnabled ? handleUserModeLongPressStart : undefined
-            }
-            onLongPressEnd={!debugEnabled ? handleUserModeLongPressEnd : undefined}
-            onClusterRelease={!debugEnabled ? handleClusterTap : undefined}
-          >
-            {(() => {
-              const channelRequestId =
-            requestDebugState.activeRequestId ??
-            requestDebugState.recentRequestIds[
-              requestDebugState.recentRequestIds.length - 1
-            ] ??
-            undefined;
-          const skipResponseChannelBranch = DIAG_SKIP_RESPONSE_CHANNEL_BRANCH;
-          perfTrace('Runtime', 'response channel branch decision', {
-            requestId: channelRequestId,
-            lifecycle: orchState.lifecycle,
-            skipResponseChannelBranch,
-            renderedResponseChannelBranch: !skipResponseChannelBranch,
-          });
-          if (skipResponseChannelBranch) {
-            if (!responseChannelBranchSkipMountLoggedRef.current) {
-              responseChannelBranchSkipMountLoggedRef.current = true;
-              perfTrace('Runtime', 'skipped response channel branch mount', {
-                requestId: channelRequestId,
-                lifecycle: orchState.lifecycle,
-              });
-            }
-            return null;
-          }
-          responseChannelBranchSkipMountLoggedRef.current = false;
-          return (
-            <SemanticChannelView
-              contentPaddingTop={insets.top}
-              contentPaddingBottom={insets.bottom}
-              onScroll={handleOverlayScroll}
-            >
-              {(() => {
-                const skipResultsOverlayElement =
-                  DIAG_SKIP_RESULTS_OVERLAY_ELEMENT;
-                const resultsOverlayRequestId =
-                  requestDebugState.activeRequestId ??
-                  requestDebugState.recentRequestIds[
-                    requestDebugState.recentRequestIds.length - 1
-                  ] ??
-                  undefined;
-                perfTrace('Runtime', 'results overlay element decision', {
-                  requestId: resultsOverlayRequestId,
-                  lifecycle: orchState.lifecycle,
-                  skipResultsOverlayElement,
-                  renderedResultsOverlayElement: !skipResultsOverlayElement,
-                });
-                if (skipResultsOverlayElement) {
-                  if (!resultsOverlaySkipMountLoggedRef.current) {
-                    resultsOverlaySkipMountLoggedRef.current = true;
-                    perfTrace('Runtime', 'skipped ResultsOverlay element mount', {
-                      requestId: resultsOverlayRequestId,
-                      lifecycle: orchState.lifecycle,
-                    });
-                  }
-                  return null;
-                }
-                resultsOverlaySkipMountLoggedRef.current = false;
-                return (
-                  <ResultsOverlay
-                responseText={(() => {
-                  const hadResponseText = orchState.responseText != null;
-                  const frozeForProcessing =
-                    DIAG_FREEZE_RESPONSE_TEXT_PROP_DURING_PROCESSING &&
-                    orchState.lifecycle === 'processing';
-                  perfTrace('Runtime', 'responseText prop freeze decision', {
-                    lifecycle: orchState.lifecycle,
-                    hadResponseText,
-                    frozeForProcessing,
-                  });
-                  if (frozeForProcessing && hadResponseText) {
-                    perfTrace('Runtime', 'responseText prop frozen during processing', {
-                      textLength: orchState.responseText!.length,
-                      lifecycle: orchState.lifecycle,
-                    });
-                  }
-                  if (frozeForProcessing) {
-                    return null;
-                  }
-                  if (orchState.responseText != null) {
-                    perfTrace('Runtime', 'AgentSurface saw responseText before overlay prop gate', {
-                      textLength: orchState.responseText.length,
-                      droppedAtPropGate: DIAG_DROP_RESPONSE_TEXT_PROP,
-                    });
-                    if (DIAG_DROP_RESPONSE_TEXT_PROP) {
-                      perfTrace('Runtime', 'responseText prop dropped before ResultsOverlay', {
-                        textLength: orchState.responseText.length,
-                      });
-                    }
-                  }
-                  return DIAG_DROP_RESPONSE_TEXT_PROP ? null : orchState.responseText;
-                })()}
-                validationSummary={orchState.validationSummary}
-                error={orchState.lifecycle === 'error' ? orchState.error : null}
-                onClearError={handleClearError}
-                isAsking={isAsking}
-                processingSubstate={orchState.processingSubstate ?? null}
-                revealedBlocks={revealedBlocks}
-                revealBlock={revealBlock}
-                setRevealedBlocks={setRevealedBlocks}
-                updatePanelRect={updatePanelRect}
-                clearPanelRect={clearPanelRect}
-                theme={{
-                  text: textColor,
-                  textMuted: mutedColor,
-                  background: theme.background,
-                  border: borderColor,
-                  primary: theme.primary,
-                  warning: theme.warning,
-                }}
-                intensity={visualizationRef.current?.vizIntensity ?? 'subtle'}
-                reduceMotion={visualizationRef.current?.reduceMotion ?? false}
-                emitEvent={emitEvent}
-                showContentPanels={!!(DEBUG_SCENARIO || showContentPanels)}
-                canRevealPanels={canRevealPanels}
-                debugScenario={DEBUG_SCENARIO}
-                dummyAnswer={dummyAnswer}
-                dummyCards={dummyCards}
-                dummyRules={dummyRules}
-                stubCards={stubCards}
-                stubRules={stubRules}
-                showRevealChips={SHOW_REVEAL_CHIPS}
-                holdToSpeakSlot={holdToSpeakSlot}
-                  />
-                );
-              })()}
-            </SemanticChannelView>
-          );
-            })()}
-          </VisualizationSurface>
-        );
-      })()}
+        onLongPressEnd={!debugEnabled ? handleUserModeLongPressEnd : undefined}
+        onClusterRelease={!debugEnabled ? handleClusterTap : undefined}
+      >
+        <SemanticChannelView
+          contentPaddingTop={insets.top}
+          contentPaddingBottom={insets.bottom}
+          onScroll={handleOverlayScroll}
+        >
+          <ResultsOverlay
+            responseText={orchState.responseText}
+            validationSummary={orchState.validationSummary}
+            error={orchState.lifecycle === 'error' ? orchState.error : null}
+            onClearError={handleClearError}
+            isAsking={isAsking}
+            processingSubstate={orchState.processingSubstate ?? null}
+            revealedBlocks={revealedBlocks}
+            revealBlock={revealBlock}
+            setRevealedBlocks={setRevealedBlocks}
+            updatePanelRect={updatePanelRect}
+            clearPanelRect={clearPanelRect}
+            theme={{
+              text: textColor,
+              textMuted: mutedColor,
+              background: theme.background,
+              border: borderColor,
+              primary: theme.primary,
+              warning: theme.warning,
+            }}
+            intensity={visualizationRef.current?.vizIntensity ?? 'subtle'}
+            reduceMotion={visualizationRef.current?.reduceMotion ?? false}
+            emitEvent={emitEvent}
+            showContentPanels={!!(DEBUG_SCENARIO || showContentPanels)}
+            canRevealPanels={canRevealPanels}
+            debugScenario={DEBUG_SCENARIO}
+            dummyAnswer={dummyAnswer}
+            dummyCards={dummyCards}
+            dummyRules={dummyRules}
+            stubCards={stubCards}
+            stubRules={stubRules}
+            showRevealChips={SHOW_REVEAL_CHIPS}
+            holdToSpeakSlot={holdToSpeakSlot}
+          />
+        </SemanticChannelView>
+      </VisualizationSurface>
       <NameShapingTouchGuideOverlay
         visible={nameShapingState.enabled && NAME_SHAPING_VISUAL_DEBUG_ENABLED}
         bandTopInsetPx={

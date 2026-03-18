@@ -19,6 +19,17 @@ let perfBufferWriterInstanceLogged = false;
 let perfBufferPushDebugCount = 0;
 const PERF_BUFFER_PUSH_DEBUG_MAX = 5;
 
+/**
+ * When false, perfTrace is a no-op (no logs, no milestone buffer writes).
+ * Default: on in __DEV__. In release, set `globalThis.__ATLAS_PERF_TRACE__ = true` to enable.
+ */
+export function isPerfTraceEnabled(): boolean {
+  const g = globalThis as typeof globalThis & { __ATLAS_PERF_TRACE__?: boolean };
+  if (g.__ATLAS_PERF_TRACE__ === true) return true;
+  if (g.__ATLAS_PERF_TRACE__ === false) return false;
+  return typeof __DEV__ !== 'undefined' && __DEV__;
+}
+
 export interface PerfTraceDetails extends LogDetails {
   /** Set when tracing "request started" so subsequent traces get elapsedMsSinceRequest. */
   requestStartTime?: number;
@@ -37,6 +48,15 @@ export function perfTrace(
   milestone: string,
   details?: PerfTraceDetails,
 ): void {
+  if (!isPerfTraceEnabled()) {
+    if (details?.requestStartTime != null) {
+      requestStartTime = details.requestStartTime;
+    }
+    if (details?.requestEnd === true) {
+      requestStartTime = null;
+    }
+    return;
+  }
   const now = Date.now();
   const elapsedMsSincePrev = lastMilestoneTime > 0 ? now - lastMilestoneTime : 0;
   lastMilestoneTime = now;

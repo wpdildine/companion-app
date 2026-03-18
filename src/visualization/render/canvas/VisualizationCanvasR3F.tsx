@@ -14,7 +14,7 @@
  */
 
 import { Canvas } from '@react-three/fiber/native';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { GestureResponderEvent, LayoutChangeEvent } from 'react-native';
 import { StyleSheet, View } from 'react-native';
 import * as THREE from 'three';
@@ -24,9 +24,14 @@ import {
 } from '../../interaction/touchHandlers';
 import { TouchRaycaster } from '../../interaction/TouchRaycaster';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
-import { buildR3fVizIsolationGates } from '../../../app/ui/components/overlays/responseRenderBisectFlags';
 import { subscribeVisualizationScene } from '../../runtime/applySceneUpdates';
 import { VizRuntimeIsolationContext } from '../../runtime/VizRuntimeIsolationContext';
+
+const R3F_VIZ_GATES_ALL_ON = {
+  spine_step: true,
+  r3f_frame: true,
+  runtime_loop: true,
+} as const;
 import { CameraOrbit } from './CameraOrbit';
 import {
   LAYER_REGISTRY,
@@ -53,7 +58,6 @@ export type VisualizationCanvasR3FProps = {
   inputEnabled: boolean;
   canvasBackground?: string;
   clusterZoneHighlights?: boolean;
-  freezeVisualizationRuntimeUpdates?: boolean;
 } & TouchCallbacks;
 
 export function VisualizationCanvasR3F({
@@ -68,13 +72,7 @@ export function VisualizationCanvasR3F({
   onDragStart,
   onDragMove,
   onDragEnd,
-  freezeVisualizationRuntimeUpdates = false,
 }: VisualizationCanvasR3FProps) {
-  const isolationGates = useMemo(
-    () =>
-      buildR3fVizIsolationGates(freezeVisualizationRuntimeUpdates === true),
-    [freezeVisualizationRuntimeUpdates],
-  );
   const touch = withTouchStubs({
     onShortTap,
     onDoubleTap,
@@ -237,7 +235,7 @@ export function VisualizationCanvasR3F({
           preserveDrawingBuffer: false,
         }}
       >
-        <VizRuntimeIsolationContext.Provider value={isolationGates}>
+        <VizRuntimeIsolationContext.Provider value={R3F_VIZ_GATES_ALL_ON}>
           <color attach="background" args={[canvasBackground]} />
           {(visualizationRef.current?.scene?.layerDescriptors ??
             DEFAULT_LAYER_DESCRIPTORS)

@@ -6,13 +6,9 @@
 import React, {
   Component,
   useEffect,
-  useLayoutEffect,
-  useRef,
   useState,
 } from 'react';
 import { NativeModules, Platform } from 'react-native';
-import { DIAG_VISUALIZATION_RUNTIME_ISOLATION_MODE } from '../../../app/ui/components/overlays/responseRenderBisectFlags';
-import { perfTrace } from '../../../shared/logging';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { TouchCallbacks } from '../../interaction/touchHandlers';
 import { VisualizationCanvasFallback } from './VisualizationCanvasFallback';
@@ -28,9 +24,6 @@ type VisualizationCanvasProps = {
   inputEnabled: boolean;
   canvasBackground?: string;
   clusterZoneHighlights?: boolean;
-  freezeVisualizationRuntimeUpdates?: boolean;
-  runtimeBisectRequestId?: number | undefined;
-  runtimeBisectLifecycle?: string;
 } & TouchCallbacks;
 
 type R3FComponentType = React.ComponentType<VisualizationCanvasProps>;
@@ -73,9 +66,6 @@ export function VisualizationCanvas({
   inputEnabled,
   canvasBackground,
   clusterZoneHighlights = false,
-  freezeVisualizationRuntimeUpdates = false,
-  runtimeBisectRequestId,
-  runtimeBisectLifecycle,
   onShortTap,
   onClusterTap,
   onDoubleTap,
@@ -87,29 +77,6 @@ export function VisualizationCanvas({
 }: VisualizationCanvasProps) {
   const [R3FComponent, setR3FComponent] = useState<R3FComponentType | null>(null);
   const [r3fFailed, setR3FFailed] = useState(false);
-  const freezeUpdatesSkipLoggedRef = useRef(false);
-  const freeze = freezeVisualizationRuntimeUpdates === true;
-
-  useLayoutEffect(() => {
-    perfTrace('Runtime', 'visualization runtime updates decision', {
-      requestId: runtimeBisectRequestId,
-      lifecycle: runtimeBisectLifecycle ?? null,
-      freezeVisualizationRuntimeUpdates: freeze,
-      executedVisualizationRuntimeUpdates: !freeze,
-      visualizationRuntimeIsolationMode: DIAG_VISUALIZATION_RUNTIME_ISOLATION_MODE,
-    });
-    if (freeze) {
-      if (!freezeUpdatesSkipLoggedRef.current) {
-        freezeUpdatesSkipLoggedRef.current = true;
-        perfTrace('Runtime', 'skipped visualization runtime updates', {
-          requestId: runtimeBisectRequestId,
-          lifecycle: runtimeBisectLifecycle ?? null,
-        });
-      }
-    } else {
-      freezeUpdatesSkipLoggedRef.current = false;
-    }
-  }, [freeze, runtimeBisectRequestId, runtimeBisectLifecycle]);
 
   useEffect(() => {
     if (r3fFailed) {
@@ -189,9 +156,6 @@ export function VisualizationCanvas({
     <VisualizationCanvasFallback
       visualizationRef={visualizationRef}
       canvasBackground={canvasBackground}
-      freezeVisualizationRuntimeUpdates={freezeVisualizationRuntimeUpdates}
-      runtimeBisectRequestId={runtimeBisectRequestId}
-      runtimeBisectLifecycle={runtimeBisectLifecycle}
     />
   );
   const fallback = dotsOnlyFallback;
@@ -211,9 +175,6 @@ export function VisualizationCanvas({
         inputEnabled={inputEnabled}
         canvasBackground={canvasBackground}
         clusterZoneHighlights={clusterZoneHighlights}
-        freezeVisualizationRuntimeUpdates={freezeVisualizationRuntimeUpdates}
-        runtimeBisectRequestId={runtimeBisectRequestId}
-        runtimeBisectLifecycle={runtimeBisectLifecycle}
         onShortTap={onShortTap}
         onClusterTap={onClusterTap}
         onDoubleTap={onDoubleTap}

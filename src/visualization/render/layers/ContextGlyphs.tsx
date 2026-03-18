@@ -10,6 +10,7 @@ import { nodeVertex, nodeFragment } from '../../materials/glyphs/nodes';
 import { logInfo } from '../../../shared/logging';
 import { getLayerRuntimeInputs } from '../../runtime/runtimeLayerInputs';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 import { useVizIsolationGate } from '../../runtime/VizRuntimeIsolationContext';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
@@ -241,6 +242,7 @@ export function ContextGlyphs({
 
   useFrame((state, delta) => {
     if (!r3fFrameOn) return;
+    if (!getVizSubsystemEnabled('materialUniforms')) return;
     const v = visualizationRef.current;
     if (!v) return;
     const runtime = getLayerRuntimeInputs(v);

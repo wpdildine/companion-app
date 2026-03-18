@@ -9,6 +9,7 @@ import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { getLayerRuntimeInputs } from '../../runtime/runtimeLayerInputs';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 import { useVizIsolationGate } from '../../runtime/VizRuntimeIsolationContext';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { createBackgroundDetailMaterial } from '../../materials/background/backgroundDetailMaterial';
@@ -213,6 +214,7 @@ export function BackgroundLayer({
   const r3fFrameOn = useVizIsolationGate('r3f_frame');
   useFrame((state, delta) => {
     if (!r3fFrameOn) return;
+    if (!getVizSubsystemEnabled('materialUniforms')) return;
     const v = visualizationRef.current;
     if (!v) return;
     const runtime = getLayerRuntimeInputs(v);

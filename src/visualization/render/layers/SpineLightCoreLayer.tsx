@@ -7,6 +7,7 @@ import { useFrame } from '@react-three/fiber/native';
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 import { useVizIsolationGate } from '../../runtime/VizRuntimeIsolationContext';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { getActiveBandVerticalEnvelope } from '../../interaction/activeBandEnvelope';
@@ -121,6 +122,7 @@ export function SpineLightCoreLayer({
   const r3fFrameOn = useVizIsolationGate('r3f_frame');
   useFrame(state => {
     if (!r3fFrameOn) return;
+    if (!getVizSubsystemEnabled('materialUniforms')) return;
     const v = visualizationRef.current;
     const scene = v?.scene;
     const spine = scene?.spine;

@@ -15,6 +15,7 @@ import { ndcRegionToRenderDescriptor } from '../../../app/_experimental/nameShap
 import type { NameShapingSelector } from '../../../app/_experimental/nameShaping/foundation/nameShapingConstants';
 import { getActiveBandVerticalEnvelope } from '../../interaction/activeBandEnvelope';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 import { useVizIsolationGate } from '../../runtime/VizRuntimeIsolationContext';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
@@ -84,6 +85,7 @@ export function TouchZones({
 
   useFrame(state => {
     if (!r3fFrameOn) return;
+    if (!getVizSubsystemEnabled('materialUniforms')) return;
     const v = visualizationRef.current;
     if (!v) return;
     const scene = v.scene;
