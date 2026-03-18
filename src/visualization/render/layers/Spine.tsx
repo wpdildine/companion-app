@@ -186,8 +186,7 @@ export function Spine({
     if (!spineStepOn) {
       if (!spineStepFreezeLoggedRef.current) {
         spineStepFreezeLoggedRef.current = true;
-        perfTrace('Runtime', 'skipped visualization layer', {
-          layer: 'spine_step',
+        perfTrace('VisualizationRuntime', 'viz.spine_step.skip', {
           requestId: v0?.bisectRequestId,
           lifecycle: v0?.bisectLifecycle ?? null,
         });
@@ -197,8 +196,7 @@ export function Spine({
     spineStepFreezeLoggedRef.current = false;
     if (!spineStepExecLoggedRef.current) {
       spineStepExecLoggedRef.current = true;
-      perfTrace('Runtime', 'visualization layer executed', {
-        layer: 'spine_step',
+      perfTrace('VisualizationRuntime', 'viz.spine_step.run', {
         requestId: v0?.bisectRequestId,
         lifecycle: v0?.bisectLifecycle ?? null,
       });

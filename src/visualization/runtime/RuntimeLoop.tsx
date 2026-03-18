@@ -136,8 +136,7 @@ export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefO
     if (!runtimeLoopOn) {
       if (!runtimeLoopSkipLoggedRef.current) {
         runtimeLoopSkipLoggedRef.current = true;
-        perfTrace('Runtime', 'skipped visualization layer', {
-          layer: 'runtime_loop',
+        perfTrace('VisualizationRuntime', 'viz.runtime_loop.skip', {
           requestId: rid,
           lifecycle: lc,
         });
@@ -147,8 +146,7 @@ export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefO
     runtimeLoopSkipLoggedRef.current = false;
     if (!runtimeLoopExecLoggedRef.current) {
       runtimeLoopExecLoggedRef.current = true;
-      perfTrace('Runtime', 'visualization layer executed', {
-        layer: 'runtime_loop',
+      perfTrace('VisualizationRuntime', 'viz.runtime_loop.run', {
         requestId: rid,
         lifecycle: lc,
       });

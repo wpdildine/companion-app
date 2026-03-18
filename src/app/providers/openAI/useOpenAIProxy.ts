@@ -244,7 +244,7 @@ export function useOpenAIProxy(): {
     }
     setLastError(null);
     setIsTranscribing(true);
-    perfTrace('OpenAIProxy', 'remote STT request start');
+    perfTrace('OpenAIProxy', 'stt.remote.request_start');
     const controller = new AbortController();
     let timeoutId: ReturnType<typeof setTimeout>;
     try {
@@ -278,7 +278,7 @@ export function useOpenAIProxy(): {
         throwNormalizedError(ERR_REQUEST_FAILED, 'E_JSON');
       }
       const { text } = parseSttResponse(data);
-      perfTrace('OpenAIProxy', 'proxy response received', {
+      perfTrace('OpenAIProxy', 'stt.remote.response', {
         transcriptChars: text.length,
       });
       setLastError(null);

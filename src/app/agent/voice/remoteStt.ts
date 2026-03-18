@@ -113,7 +113,7 @@ export function createRemoteSttCoordinator(deps: RemoteSttDeps): {
         return false;
       }
       clearPendingCapture();
-      perfTrace('AgentOrchestrator', 'transcript accepted', {
+      perfTrace('RemoteSTT', 'stt.transcript.accepted', {
         recordingSessionId,
         transcriptChars: normalized.length,
       });

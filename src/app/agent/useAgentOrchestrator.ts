@@ -913,9 +913,8 @@ export function useAgentOrchestrator(
         }
         return;
       }
-      perfTrace('AgentOrchestrator', 'submit triggered', {
+      perfTrace('AgentOrchestrator', 'submit.remote_transcript_ready', {
         recordingSessionId,
-        source: 'remote_stt',
       });
       logInfo(
         'AgentOrchestrator',
@@ -1096,8 +1095,9 @@ export function useAgentOrchestrator(
           clearIoBlock();
           recordingSessionRef.current = recordingSessionId;
           speechEndedRef.current = false;
-          perfTrace('AgentOrchestrator', 'voice active', {
+          perfTrace('AgentOrchestrator', 'voice.listen_active', {
             recordingSessionId,
+            sttPath: 'remote',
             startLatencyMs:
               recordingStartAtRef.current != null
                 ? Date.now() - recordingStartAtRef.current
@@ -1134,8 +1134,9 @@ export function useAgentOrchestrator(
         clearIoBlock();
         recordingSessionRef.current = recordingSessionId;
         speechEndedRef.current = false;
-        perfTrace('AgentOrchestrator', 'voice active', {
+        perfTrace('AgentOrchestrator', 'voice.listen_active', {
           recordingSessionId,
+          sttPath: 'on_device',
           startLatencyMs:
             recordingStartAtRef.current != null
               ? Date.now() - recordingStartAtRef.current
@@ -1253,9 +1254,8 @@ export function useAgentOrchestrator(
     }
     requestIdRef.current += 1;
     const reqId = requestIdRef.current;
-    perfTrace('AgentOrchestrator', 'submit triggered', {
+    perfTrace('AgentOrchestrator', 'submit.run_request', {
       requestId: reqId,
-      source: 'submit',
     });
     previousCommittedResponseRef.current = responseTextRef.current;
     previousCommittedValidationRef.current = validationSummaryRef.current;

@@ -3,7 +3,7 @@
  * Stable excerpt text.
  */
 
-import React, { useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -12,7 +12,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { logInfo, perfTrace } from '../../../../shared/logging';
+import { logInfo } from '../../../../shared/logging';
 import { ContentPanel, type ContentPanelIntensity } from '../panels';
 
 export type SelectedRule = {
@@ -65,14 +65,10 @@ export function SelectedRulesSection({
   textColor,
   mutedColor,
 }: SelectedRulesSectionProps) {
-  useEffect(() => {
-    perfTrace('ResultsOverlay', 'SelectedRulesSection mounted', {});
-  }, []);
   const firstRenderLoggedRef = useRef(false);
   useLayoutEffect(() => {
     if (!firstRenderLoggedRef.current) {
       firstRenderLoggedRef.current = true;
-      perfTrace('ResultsOverlay', 'SelectedRulesSection first render', { count: rules.length });
       logInfo('ResultsOverlay', 'SelectedRulesSection first render', { count: rules.length });
     }
   }, [rules.length]);

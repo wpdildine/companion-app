@@ -272,7 +272,7 @@ export function InteractionBand({
         );
         if (inVoiceLane) {
           const fireHoldAttempt = () => {
-            perfTrace('Interaction', 'hold start');
+            perfTrace('Interaction', 'interaction.hold.start');
             onCenterHoldAttempt?.(createAttemptReporter());
           };
           if (centerHoldShouldBypassDelay) {

@@ -1,27 +1,23 @@
 /**
- * Sparse, high-signal performance trace. Used for latency attribution only.
- * Each trace logs: timestamp, elapsed since previous milestone, elapsed since request start (if request-scoped),
- * and requestId/recordingSessionId when available.
- * Also pushes to a shared in-memory ring buffer for frame-gap attribution (starvation detector).
- * Do not use in per-frame or hot paths; starvation detector uses its own guarded log.
+ * Sparse performance milestones for latency attribution. When enabled: logs + ring buffer for frame-gap tools.
+ * Ownership (typical): AgentOrchestrator (request/voice), RemoteSTT/OpenAIProxy (STT transport), RAG (retrieval/generation),
+ * VisualizationRuntime (viz tick layers), Interaction (gesture). Prefer scope matching the owning module.
+ * Do not use in per-frame steady state; viz layers log at most once per skip/run edge.
+ * When disabled: no logs or buffer writes; requestStartTime/requestEnd in details still update internal request timing.
  */
 
 import { logInfo, type LogScope, type LogDetails } from './logger';
 import {
   getPerfBufferInstanceId,
-  getPerfMilestoneBufferDebugState,
   pushPerfMilestone,
 } from './perfMilestoneBuffer';
 
 let lastMilestoneTime = 0;
 let requestStartTime: number | null = null;
 let perfBufferWriterInstanceLogged = false;
-let perfBufferPushDebugCount = 0;
-const PERF_BUFFER_PUSH_DEBUG_MAX = 5;
 
 /**
- * When false, perfTrace is a no-op (no logs, no milestone buffer writes).
- * Default: on in __DEV__. In release, set `globalThis.__ATLAS_PERF_TRACE__ = true` to enable.
+ * When false: no logs or buffer pushes. Default on in __DEV__; release: `globalThis.__ATLAS_PERF_TRACE__ === true`.
  */
 export function isPerfTraceEnabled(): boolean {
   const g = globalThis as typeof globalThis & { __ATLAS_PERF_TRACE__?: boolean };
@@ -91,19 +87,6 @@ export function perfTrace(
 
   const requestId = details && typeof (details as LogDetails).requestId === 'number' ? (details as LogDetails).requestId : undefined;
   pushPerfMilestone({ name: milestone, timestamp: now, scope, requestId });
-
-  if (perfBufferPushDebugCount < PERF_BUFFER_PUSH_DEBUG_MAX) {
-    perfBufferPushDebugCount++;
-    const debugState = getPerfMilestoneBufferDebugState();
-    logInfo('Runtime', 'perf buffer push debug', {
-      instanceId: debugState.instanceId,
-      count: debugState.count,
-      writeIndex: debugState.writeIndex,
-      capacity: debugState.capacity,
-      pushedMilestone: milestone,
-      pushedTimestamp: now,
-    });
-  }
 }
 
 /** Clear request-scoped timing (e.g. on reset). */

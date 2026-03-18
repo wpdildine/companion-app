@@ -22,6 +22,7 @@ export type LogScope =
   | 'Runtime'
   | 'RAG'
   | 'Playback'
+  | 'RemoteSTT'
   | 'Interaction'
   | 'NameShapingCapture'
   | 'AppBoot';
