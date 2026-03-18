@@ -2,6 +2,7 @@ import { useFrame, useThree } from '@react-three/fiber/native';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 import { SHADER_DEBUG_FLAGS } from './shaderDebugFlags';
 
 /** Set to false to re-enable vignette / grain / chromatic (cinematic). */
@@ -19,6 +20,8 @@ const POSTFX_CHROMA_REF_MIN_RES = 1080;
 
 /** Layer index for background-only pass (vignette/grain). Foreground stays on layer 0. */
 export const BACKGROUND_LAYER = 1;
+
+let postFxPassDiagLastMs = 0;
 
 const postVertex = `
   varying vec2 vUv;
@@ -212,21 +215,63 @@ export function PostFXPass({
   const postReadyRef = useRef(false);
   const postWarmupFramesRef = useRef(0);
   const lastRtSizeRef = useRef({ w: 0, h: 0 });
+  /** TEMP diagnostic: unthrottled proof postFx toggle reached this pass (remove after validation). */
+  const postOnPrevRef = useRef<boolean | null>(null);
 
   useFrame((_state, delta) => {
+    const nowMs =
+      typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
+    const pixelRatio = Math.max(1, gl.getPixelRatio?.() ?? 1);
+    const expectedW = Math.max(1, Math.floor(size.width * pixelRatio));
+    const expectedH = Math.max(1, Math.floor(size.height * pixelRatio));
+    const rtW = (renderTarget as unknown as { width?: number }).width ?? 0;
+    const rtH = (renderTarget as unknown as { height?: number }).height ?? 0;
     const v = visualizationRef.current;
+    const postOn =
+      getVizSubsystemEnabled('postFx') && (v?.postFxEnabled ?? true);
+    if (
+      typeof __DEV__ !== 'undefined' &&
+      __DEV__ &&
+      postOnPrevRef.current !== null &&
+      postOnPrevRef.current !== postOn
+    ) {
+      console.log('[PostFXPass:flip]', {
+        wasOn: postOnPrevRef.current,
+        postOn,
+      });
+    }
+    postOnPrevRef.current = postOn;
+
+    const emitPostFxDiag = (branch: string) => {
+      if (nowMs - postFxPassDiagLastMs < 1000) return;
+      postFxPassDiagLastMs = nowMs;
+      console.log('[PostFXPass:runtime]', {
+        postOn,
+        branch,
+        rtW,
+        rtH,
+        expectedW,
+        expectedH,
+      });
+    };
+
+    if (!postOn) {
+      emitPostFxDiag('bypass-postFx-off');
+      gl.setRenderTarget(null);
+      gl.clear();
+      gl.render(scene, camera);
+      return;
+    }
     if (!v || POST_FX_DISABLED || !SHADER_DEBUG_FLAGS.postFx) {
+      emitPostFxDiag('bypass-flags-or-no-ref');
       gl.setRenderTarget(null);
       gl.clear();
       gl.render(scene, camera);
       return;
     }
 
-    const pixelRatio = Math.max(1, gl.getPixelRatio?.() ?? 1);
-    const expectedW = Math.max(1, Math.floor(size.width * pixelRatio));
-    const expectedH = Math.max(1, Math.floor(size.height * pixelRatio));
-    const rtW = (renderTarget as unknown as { width?: number }).width ?? 0;
-    const rtH = (renderTarget as unknown as { height?: number }).height ?? 0;
     const sizeChanged =
       expectedW !== lastRtSizeRef.current.w ||
       expectedH !== lastRtSizeRef.current.h;
@@ -236,6 +281,7 @@ export function PostFXPass({
       postWarmupFramesRef.current = 0;
     }
     if (rtW !== expectedW || rtH !== expectedH) {
+      emitPostFxDiag('bypass-rt-size');
       gl.setRenderTarget(null);
       gl.clear();
       gl.render(scene, camera);
@@ -244,6 +290,7 @@ export function PostFXPass({
     if (!postReadyRef.current) {
       postWarmupFramesRef.current += 1;
       if (postWarmupFramesRef.current < 3) {
+        emitPostFxDiag('bypass-warmup');
         gl.setRenderTarget(null);
         gl.clear();
         gl.render(scene, camera);
@@ -251,6 +298,8 @@ export function PostFXPass({
       }
       postReadyRef.current = true;
     }
+
+    emitPostFxDiag('post-full');
 
     material.uniforms.uScene.value = renderTarget.texture;
     material.uniforms.uTime.value = _state.clock.getElapsedTime();

@@ -34,9 +34,13 @@ import {
 import { RuntimeLoop } from '../../runtime/RuntimeLoop';
 import {
   VizRuntimeIsolationContext,
-  VIZ_RUNTIME_ISOLATION_ALL_ON,
+  getVizIsolationGatesForMode,
 } from '../../runtime/VizRuntimeIsolationContext';
 import { PostFXPass } from './PostFXPass';
+import {
+  getVizRuntimeMode,
+  subscribeVizRuntimeMode,
+} from '../../../app/ui/components/overlays/VisualizationRuntimeMode';
 
 const TAP_MAX_MS = 300;
 const TAP_MAX_MOVE = 15;
@@ -87,6 +91,11 @@ export function VisualizationCanvasR3F({
   const lastTap = useRef<{ x: number; y: number; t: number } | null>(null);
   const dragActive = useRef(false);
   const [, setSceneRevision] = useState(0);
+  const [vizRuntimeMode, setVizRuntimeModeState] = useState(getVizRuntimeMode);
+  useEffect(
+    () => subscribeVizRuntimeMode(() => setVizRuntimeModeState(getVizRuntimeMode())),
+    [],
+  );
 
   useEffect(() => {
     return subscribeVisualizationScene(visualizationRef, () => {
@@ -213,6 +222,7 @@ export function VisualizationCanvasR3F({
     },
     [canvasBackground],
   );
+  const isolationGates = getVizIsolationGatesForMode(vizRuntimeMode);
 
   return (
     <View
@@ -232,7 +242,7 @@ export function VisualizationCanvasR3F({
           preserveDrawingBuffer: false,
         }}
       >
-        <VizRuntimeIsolationContext.Provider value={VIZ_RUNTIME_ISOLATION_ALL_ON}>
+        <VizRuntimeIsolationContext.Provider value={isolationGates}>
           <color attach="background" args={[canvasBackground]} />
           {(visualizationRef.current?.scene?.layerDescriptors ??
             DEFAULT_LAYER_DESCRIPTORS)

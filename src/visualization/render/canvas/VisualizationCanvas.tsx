@@ -24,6 +24,9 @@ type VisualizationCanvasProps = {
 
 type R3FComponentType = React.ComponentType<VisualizationCanvasProps>;
 
+/** One-shot path log per session (diagnostic-v2 PostFX / R3F audit). */
+let visualizationCanvasPathLogged = false;
+
 type ErrorBoundaryState = { hasError: boolean };
 
 class VisualizationErrorBoundary extends Component<
@@ -88,6 +91,13 @@ export function VisualizationCanvas({
       try {
         const mod = require('./VisualizationCanvasR3F');
         if (mod?.VisualizationCanvasR3F) {
+          if (!visualizationCanvasPathLogged) {
+            visualizationCanvasPathLogged = true;
+            console.log('[VisualizationCanvas]', 'R3F', {
+              r3fFailed: false,
+              hasR3FComponent: true,
+            });
+          }
           setR3FComponent(() => mod.VisualizationCanvasR3F);
         } else {
           console.warn('[Visualization] R3F module missing VisualizationCanvasR3F export');
@@ -97,6 +107,14 @@ export function VisualizationCanvas({
           '[Visualization] R3F canvas unavailable (load), using fallback:',
           e instanceof Error ? e.message : String(e),
         );
+        if (!visualizationCanvasPathLogged) {
+          visualizationCanvasPathLogged = true;
+          console.log('[VisualizationCanvas]', 'FALLBACK', {
+            r3fFailed: false,
+            hasR3FComponent: false,
+            note: 'r3f_require_failed',
+          });
+        }
       }
     };
 
@@ -123,6 +141,14 @@ export function VisualizationCanvas({
           console.warn(
             `[Visualization] Expo EventEmitter not ready after ${R3F_EXPO_WAIT_TIMEOUT_MS}ms; staying on fallback`,
           );
+          if (!visualizationCanvasPathLogged) {
+            visualizationCanvasPathLogged = true;
+            console.log('[VisualizationCanvas]', 'FALLBACK', {
+              r3fFailed: false,
+              hasR3FComponent: false,
+              note: 'expo_eventemitter_timeout',
+            });
+          }
           return true;
         }
         return false;
@@ -160,7 +186,17 @@ export function VisualizationCanvas({
   return (
     <VisualizationErrorBoundary
       fallback={fallback}
-      onCaught={() => setR3FFailed(true)}
+      onCaught={() => {
+        if (!visualizationCanvasPathLogged) {
+          visualizationCanvasPathLogged = true;
+          console.log('[VisualizationCanvas]', 'FALLBACK', {
+            r3fFailed: true,
+            hasR3FComponent: !!R3FComponent,
+            note: 'error_boundary',
+          });
+        }
+        setR3FFailed(true);
+      }}
     >
       <R3FComponent
         visualizationRef={visualizationRef}

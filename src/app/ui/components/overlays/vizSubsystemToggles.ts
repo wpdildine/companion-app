@@ -11,7 +11,8 @@ export type VizSubsystemKey =
   | 'r3fFrame'
   | 'materialUniforms'
   | 'runtimeLoopOrchestration'
-  | 'fallbackInterval';
+  | 'fallbackInterval'
+  | 'postFx';
 
 export type VizSubsystemMap = Partial<Record<VizSubsystemKey, boolean>>;
 
@@ -57,7 +58,8 @@ export function setVizSubsystem(key: VizSubsystemKey, enabled: boolean): void {
   }
   g.__ATLAS_VIZ_SUBSYSTEMS__ = Object.keys(cur).length > 0 ? cur : undefined;
   if (typeof __DEV__ !== 'undefined' && __DEV__) {
-    console.log('[VizSubsystem]', key, enabled ? 'on' : 'off');
+    const stored = g.__ATLAS_VIZ_SUBSYSTEMS__;
+    console.log('[VizSubsystem:set]', key, { ...(stored ?? {}) });
   }
   notify();
 }
@@ -73,7 +75,9 @@ export function resetVizSubsystems(): void {
   notify();
 }
 
+/** postFx first: keeps the only currently wired visual toggle above the fold in the debug panel. */
 export const VIZ_SUBSYSTEM_KEYS: VizSubsystemKey[] = [
+  'postFx',
   'signalApply',
   'lifecycleMode',
   'spineStep',

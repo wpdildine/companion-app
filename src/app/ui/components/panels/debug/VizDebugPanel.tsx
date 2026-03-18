@@ -143,9 +143,16 @@ export function VizDebugPanel({
             ))}
             <Text style={styles.sectionTitle}>Viz subsystems (all_on + toggle)</Text>
             <Text style={styles.modeCurrent}>
-              Tap row to toggle. Use all_on mode first.
+              Tap row to toggle. Only `postFx` is wired to a consumer right now.
             </Text>
-            <Pressable style={styles.modeRow} onPress={() => resetVizSubsystems()}>
+            <Pressable
+              style={styles.modeRow}
+              onPress={() => {
+                resetVizSubsystems();
+                const eng = visualizationRef.current;
+                if (eng) eng.postFxEnabled = true;
+              }}
+            >
               <Text style={styles.modeRowActive}>Reset all subsystems ON</Text>
             </Pressable>
             {VIZ_SUBSYSTEM_KEYS.map((k: VizSubsystemKey) => {
@@ -154,7 +161,19 @@ export function VizDebugPanel({
                 <Pressable
                   key={k}
                   style={styles.modeRow}
-                  onPress={() => setVizSubsystem(k, !on)}
+                  onPress={() => {
+                    const nextEnabled = !on;
+                    console.log(
+                      `[VizDebugPanel:press] ${k} prevOn=${on} nextEnabled=${nextEnabled}`,
+                    );
+                    setVizSubsystem(k, nextEnabled);
+                    if (k === 'postFx') {
+                      const eng = visualizationRef.current;
+                      if (eng) {
+                        eng.postFxEnabled = nextEnabled;
+                      }
+                    }
+                  }}
                 >
                   <Text style={on ? styles.modeRowLabel : styles.modeRowActive}>
                     [{on ? 'ON' : 'OFF'}] {k}
