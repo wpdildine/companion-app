@@ -22,8 +22,16 @@ import {
   getPackState,
   type ValidationSummary,
 } from '../../rag';
-import { logError, logInfo, logLifecycle, logWarn } from '../../shared/logging';
-import { getEndpointBaseUrl, getSttProvider } from '../../shared/config/endpointConfig';
+import {
+  getEndpointBaseUrl,
+  getSttProvider,
+} from '../../shared/config/endpointConfig';
+import {
+  logError,
+  logInfo,
+  logLifecycle,
+  logWarn,
+} from '../../shared/logging';
 import {
   useSttAudioCapture,
   type CapturedSttAudio,
@@ -171,6 +179,7 @@ export function useAgentOrchestrator(
   /** Tracks whether onFirstToken was fired for the current request (streaming); must not refire on late chunks. */
   /** RequestId for the request whose response is currently playing (for tts_start/tts_end). */
   const playbackRequestIdRef = useRef<number | null>(null);
+
   const recordingSessionRef = useRef<string | null>(null);
   const recordingSessionSeqRef = useRef(0);
   const pendingCapturedAudioRef = useRef<CapturedSttAudio | null>(null);
@@ -209,10 +218,16 @@ export function useAgentOrchestrator(
     [],
   );
   const updateSessionFailureLedger = useCallback(
-    (recordingSessionId: string | undefined, severity: SurfacedFailureSeverity) => {
+    (
+      recordingSessionId: string | undefined,
+      severity: SurfacedFailureSeverity,
+    ) => {
       const key = getFailureLedgerKey(recordingSessionId);
       if (!key) {
-        return { shouldSurface: true, suppressedBy: null as SurfacedFailureSeverity | null };
+        return {
+          shouldSurface: true,
+          suppressedBy: null as SurfacedFailureSeverity | null,
+        };
       }
       const ledger = sessionFailureLedgerRef.current;
       const current = ledger.get(key) ?? {
@@ -268,11 +283,15 @@ export function useAgentOrchestrator(
         'recoverable',
       );
       if (!ledgerDecision.shouldSurface) {
-        logInfo('AgentOrchestrator', 'recoverable failure suppressed for session', {
-          recordingSessionId: recordingSessionId ?? null,
-          reason: classification.telemetryReason,
-          suppressedBy: ledgerDecision.suppressedBy,
-        });
+        logInfo(
+          'AgentOrchestrator',
+          'recoverable failure suppressed for session',
+          {
+            recordingSessionId: recordingSessionId ?? null,
+            reason: classification.telemetryReason,
+            suppressedBy: ledgerDecision.suppressedBy,
+          },
+        );
         return;
       }
       listenersRef?.current?.onRecoverableFailure?.(classification.kind, {
@@ -307,11 +326,15 @@ export function useAgentOrchestrator(
         'terminal',
       );
       if (!ledgerDecision.shouldSurface) {
-        logInfo('AgentOrchestrator', 'terminal failure suppressed for session', {
-          recordingSessionId: recordingSessionId ?? null,
-          reason,
-          suppressedBy: ledgerDecision.suppressedBy,
-        });
+        logInfo(
+          'AgentOrchestrator',
+          'terminal failure suppressed for session',
+          {
+            recordingSessionId: recordingSessionId ?? null,
+            reason,
+            suppressedBy: ledgerDecision.suppressedBy,
+          },
+        );
         return false;
       }
       if (
@@ -329,11 +352,7 @@ export function useAgentOrchestrator(
   );
 
   const onAudioStateChange = useCallback(
-    (
-      prev: AudioSessionState,
-      next: AudioSessionState,
-      context?: object,
-    ) => {
+    (prev: AudioSessionState, next: AudioSessionState, context?: object) => {
       setAudioSessionState(next);
       logInfo('AgentOrchestrator', 'audio session transition', {
         from: prev,
@@ -849,10 +868,14 @@ export function useAgentOrchestrator(
           e instanceof Error &&
           e.message === 'ORCHESTRATOR_STT_SETTLE_TIMEOUT'
         ) {
-          logWarn('AgentOrchestrator', 'orchestrator-level STT settle timeout fired', {
-            recordingSessionId,
-            timeoutMs: ORCHESTRATOR_STT_SETTLE_TIMEOUT_MS,
-          });
+          logWarn(
+            'AgentOrchestrator',
+            'orchestrator-level STT settle timeout fired',
+            {
+              recordingSessionId,
+              timeoutMs: ORCHESTRATOR_STT_SETTLE_TIMEOUT_MS,
+            },
+          );
           failRemoteStt(
             'Remote STT request timed out (orchestrator)',
             recordingSessionId,
@@ -1338,8 +1361,6 @@ export function useAgentOrchestrator(
       processingSubstate: null,
       timestamp: Date.now(),
     });
-    setMode('idle');
-    setLifecycle('idle');
     if (runResult.shouldPlay) {
       playbackRequestIdRef.current = reqId;
       logInfo(
@@ -1354,6 +1375,9 @@ export function useAgentOrchestrator(
       playTextRef.current?.(runResult.committedText).catch(() => undefined);
       return runResult.committedText;
     }
+    // When not playing: transition to idle. When shouldPlay we skip this so playText() sets speaking (avoids processing->idle->speaking and idle fan-out cost).
+    setMode('idle');
+    setLifecycle('idle');
     if (!runResult.shouldPlay) {
       activeRequestIdRef.current = 0;
       const completedAt = Date.now();

@@ -3,7 +3,13 @@
  * Header treatment is optional and never affects body layout.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   StyleSheet,
   Text,
@@ -13,9 +19,15 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { logInfo } from '../../../../shared/logging';
 
 export type ContentPanelIntensity = 'off' | 'subtle' | 'full';
-export type ContentPanelVariant = 'answer' | 'cards' | 'rules' | 'neutral' | 'warning';
+export type ContentPanelVariant =
+  | 'answer'
+  | 'cards'
+  | 'rules'
+  | 'neutral'
+  | 'warning';
 
 export type ContentPanelProps = {
   title?: string;
@@ -115,6 +127,14 @@ export function ContentPanel({
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dismissTriggeredRef = useRef(false);
   const [dismissArmed, setDismissArmed] = useState(false);
+  const firstRenderLoggedRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!firstRenderLoggedRef.current) {
+      firstRenderLoggedRef.current = true;
+      logInfo('ResultsOverlay', 'ContentPanel first render', { variant });
+    }
+  }, [variant]);
+
 
   const titleStyle = variant === 'answer' ? styles.titleH1 : styles.titleH2;
 
@@ -177,10 +197,13 @@ export function ContentPanel({
     dismissTriggeredRef.current = false;
   };
 
+  const bodyContent = children;
   return (
     <View style={[styles.panel, panelStyle, style]} onLayout={onLayout}>
       {variant === 'warning' ? (
-        <View style={[styles.warningBar, { backgroundColor: withAlpha(warn, 0.6) }]} />
+        <View
+          style={[styles.warningBar, { backgroundColor: withAlpha(warn, 0.6) }]}
+        />
       ) : null}
       {(title || subtitle) && (
         <View
@@ -189,7 +212,9 @@ export function ContentPanel({
             dismissEnabled && styles.headerDismissZone,
             dismissArmed && styles.headerArmed,
           ]}
-          onStartShouldSetResponderCapture={dismissEnabled ? () => true : undefined}
+          onStartShouldSetResponderCapture={
+            dismissEnabled ? () => true : undefined
+          }
           onTouchStart={dismissEnabled ? handleHeaderTouchStart : undefined}
           onTouchMove={dismissEnabled ? handleHeaderTouchMove : undefined}
           onTouchEnd={dismissEnabled ? handleHeaderTouchEnd : undefined}
@@ -197,7 +222,12 @@ export function ContentPanel({
         >
           {dismissEnabled ? (
             <View style={styles.dismissHintRow}>
-              <Text style={[styles.dismissHintText, { color: withAlpha(mutedInk, 0.9) }]}>
+              <Text
+                style={[
+                  styles.dismissHintText,
+                  { color: withAlpha(mutedInk, 0.9) },
+                ]}
+              >
                 hold + swipe left or right to hide
               </Text>
             </View>
@@ -235,11 +265,13 @@ export function ContentPanel({
             </View>
           ) : null}
           {subtitle ? (
-            <Text style={[styles.subtitle, { color: mutedInk }]}>{subtitle}</Text>
+            <Text style={[styles.subtitle, { color: mutedInk }]}>
+              {subtitle}
+            </Text>
           ) : null}
         </View>
       )}
-      <View>{children}</View>
+      <View>{bodyContent}</View>
     </View>
   );
 }

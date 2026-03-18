@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  AppState,
   Dimensions,
   Modal,
   Pressable,
@@ -17,6 +18,14 @@ import {
   useColorScheme,
   View,
 } from 'react-native';
+import {
+  getVizRuntimeMode,
+  setVizRuntimeMode,
+} from './ui/components/overlays/VisualizationRuntimeMode';
+import {
+  resetVizSubsystems,
+  setVizSubsystem,
+} from './ui/components/overlays/vizSubsystemToggles';
 import { logInfo } from '../shared/logging';
 import {
   cleanupEarcons,
@@ -202,6 +211,15 @@ export default function AgentSurface() {
     debugEnabled,
     debugScenario: DEBUG_SCENARIO,
   });
+
+  useEffect(() => {
+    if (typeof __DEV__ === 'undefined' || !__DEV__) return;
+    const g = globalThis as Record<string, unknown>;
+    g.setVizRuntimeMode = setVizRuntimeMode;
+    g.getVizRuntimeMode = getVizRuntimeMode;
+    g.setVizSubsystem = setVizSubsystem;
+    g.resetVizSubsystems = resetVizSubsystems;
+  }, []);
 
   const { state: nameShapingState, actions: nameShapingActions } =
     useNameShapingState();
@@ -948,45 +966,9 @@ export default function AgentSurface() {
     }
   }, [handleUserModeLongPressEnd]);
 
-  // Refs for diagnostic log only so handleClusterTap identity stays stable (avoids invariant on Android when deps churn).
-  const clusterTapDiagnosticRef = useRef({
-    canRevealPanels: false,
-    interactionBandEnabled: false,
-    canSwipeContext: false,
-    lifecycle: '' as string,
-    hasResultContext: false,
-    hasReferenceStubs: false,
-    hasResponseText: false,
-    hasValidationSummary: false,
-  });
-  clusterTapDiagnosticRef.current = {
-    canRevealPanels,
-    interactionBandEnabled,
-    canSwipeContext,
-    lifecycle: orchState.lifecycle,
-    hasResultContext,
-    hasReferenceStubs,
-    hasResponseText: orchState.responseText != null,
-    hasValidationSummary: orchState.validationSummary != null,
-  };
-
   const handleClusterTap = useCallback(
-    (cluster: 'rules' | 'cards', diagnosticTouchEndId?: number) => {
+    (cluster: 'rules' | 'cards') => {
       if (!canSwipeContext) {
-        // TODO(android): augmented log for touch-end diagnosis; remove when no longer needed
-        const d = clusterTapDiagnosticRef.current;
-        logInfo('Interaction', 'swipe blocked due to no valid context', {
-          timestamp: Date.now(),
-          touchEndSequenceId: diagnosticTouchEndId,
-          canRevealPanels: d.canRevealPanels,
-          interactionBandEnabled: d.interactionBandEnabled,
-          canSwipeContext: d.canSwipeContext,
-          lifecycle: d.lifecycle,
-          hasResultContext: d.hasResultContext,
-          hasReferenceStubs: d.hasReferenceStubs,
-          hasResponseText: d.hasResponseText,
-          hasValidationSummary: d.hasValidationSummary,
-        });
         return;
       }
       if (cluster === 'rules') {
@@ -1136,6 +1118,19 @@ export default function AgentSurface() {
 
   useEffect(() => {
     copyBundlePackToDocuments().catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      logInfo('AgentSurface', `[Lifecycle] AppState changed to ${nextAppState}`);
+      if (visualizationRef.current) {
+        visualizationRef.current.appState = nextAppState;
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
   }, []);
 
   useEffect(() => {
