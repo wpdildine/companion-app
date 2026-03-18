@@ -15,6 +15,9 @@ export function computeTransientModulation(
   effects: GLSceneTransientEffects | undefined,
 ): TransientModulation {
   if (!effects || !eventId) return ZERO_MODULATION;
+  if (!Number.isFinite(clockSeconds) || !Number.isFinite(eventTimeSeconds)) {
+    return ZERO_MODULATION;
+  }
   const effect =
     eventId === 'softFail'
       ? effects.softFail

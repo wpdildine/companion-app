@@ -3,7 +3,7 @@
  * Does not own lifecycle/mode; orchestrator provides callbacks for apply and onFailure.
  */
 
-import { logError, logInfo, logWarn } from '../../../shared/logging';
+import { logError, logInfo, logWarn, perfTrace } from '../../../shared/logging';
 import type { CapturedSttAudio } from '../../hooks/useSttAudioCapture';
 import { normalizeTranscript, transcriptPreview } from './transcriptSettlement';
 
@@ -113,6 +113,10 @@ export function createRemoteSttCoordinator(deps: RemoteSttDeps): {
         return false;
       }
       clearPendingCapture();
+      perfTrace('AgentOrchestrator', 'transcript accepted', {
+        recordingSessionId,
+        transcriptChars: normalized.length,
+      });
       applyTranscript(normalized);
       logInfo('AgentOrchestrator', 'remote stt transcription succeeded', {
         recordingSessionId,

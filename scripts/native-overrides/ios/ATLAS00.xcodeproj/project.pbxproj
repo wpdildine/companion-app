@@ -356,7 +356,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\nPACK_SRC=\"${SRCROOT}/../assets/content_pack\"\nDST=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nif [ ! -e \"$PACK_SRC\" ]; then echo \"warning: content_pack missing at $PACK_SRC\"; exit 0; fi\nif [ -L \"$PACK_SRC\" ]; then echo \"error: assets/content_pack is a symlink. Run 'pnpm run rag:pack' to materialize a real directory (no models/) before building.\"; exit 1; fi\nif [ ! -f \"${PACK_SRC}/manifest.json\" ]; then echo \"warning: manifest.json not found in $PACK_SRC\"; exit 0; fi\nmkdir -p \"${DST}/content_pack\"\ncp -R \"${PACK_SRC}\"/* \"${DST}/content_pack/\"\necho \"content_pack copied to ${DST}/content_pack\"\n";
+			shellScript = "set -e\nPACK_SRC=\"${SRCROOT}/../assets/content_pack\"\nDST=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\nif [ ! -e \"$PACK_SRC\" ]; then echo \"warning: content_pack missing at $PACK_SRC\"; exit 0; fi\nif [ -L \"$PACK_SRC\" ]; then echo \"error: assets/content_pack is a symlink. Run 'pnpm run rag:pack' to materialize a real directory (no models/) before building.\"; exit 1; fi\nif [ ! -f \"${PACK_SRC}/manifest.json\" ]; then echo \"warning: manifest.json not found in $PACK_SRC\"; exit 0; fi\nrm -rf \"${DST}/content_pack\"\nditto \"${PACK_SRC}\" \"${DST}/content_pack\"\necho \"content_pack copied to ${DST}/content_pack\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */

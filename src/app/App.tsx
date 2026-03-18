@@ -8,7 +8,8 @@
 import { useEffect } from 'react';
 import { StatusBar, useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { logInfo } from '../shared/logging';
+import { perfTrace } from '../shared/logging';
+import { prewarmQuickSQLite } from '../rag/packDbRN';
 import AgentSurface from './AgentSurface';
 
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -17,7 +18,8 @@ function App() {
   const isDarkMode = useColorScheme() === 'dark';
 
   useEffect(() => {
-    logInfo('AppBoot', 'application boot started');
+    perfTrace('AppBoot', 'app boot start');
+    prewarmQuickSQLite();
   }, []);
 
   return (

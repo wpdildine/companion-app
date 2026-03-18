@@ -8,6 +8,7 @@ import { useFrame } from '@react-three/fiber/native';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { useVizIsolationGate } from '../../runtime/VizRuntimeIsolationContext';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { createBackPlaneMaterial } from '../../materials/backPlane/backPlaneMaterial';
 import { createBackPlaneGlitchMaterial } from '../../materials/backPlane/backPlaneGlitchMaterial';
@@ -67,7 +68,9 @@ export function BackPlaneLayer({
     [materials],
   );
 
+  const r3fFrameOn = useVizIsolationGate('r3f_frame');
   useFrame((state) => {
+    if (!r3fFrameOn) return;
     const v = visualizationRef.current;
     if (!v?.scene?.backPlane?.planes.length) return;
     const bp = v.scene.backPlane;

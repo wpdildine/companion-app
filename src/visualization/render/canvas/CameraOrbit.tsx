@@ -5,6 +5,7 @@
 import { useFrame, useThree } from '@react-three/fiber/native';
 import { useRef } from 'react';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { useVizIsolationGate } from '../../runtime/VizRuntimeIsolationContext';
 
 const RADIUS = 13.5;
 
@@ -14,9 +15,11 @@ export function CameraOrbit({
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
 }) {
   const { camera } = useThree();
+  const r3fFrameOn = useVizIsolationGate('r3f_frame');
   const prevPhi = useRef(0.4);
 
   useFrame(() => {
+    if (!r3fFrameOn) return;
     const v = visualizationRef.current;
     if (!v) return;
 

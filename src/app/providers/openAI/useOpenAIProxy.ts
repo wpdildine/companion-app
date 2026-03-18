@@ -7,7 +7,7 @@
 
 import { useCallback, useState } from 'react';
 import { getEndpointBaseUrl } from '../../../shared/config/endpointConfig';
-import { logWarn } from '../../../shared/logging';
+import { logWarn, perfTrace } from '../../../shared/logging';
 import type {
   OpenAIProxyError,
   RespondParams,
@@ -244,6 +244,7 @@ export function useOpenAIProxy(): {
     }
     setLastError(null);
     setIsTranscribing(true);
+    perfTrace('OpenAIProxy', 'remote STT request start');
     const controller = new AbortController();
     let timeoutId: ReturnType<typeof setTimeout>;
     try {
@@ -277,6 +278,9 @@ export function useOpenAIProxy(): {
         throwNormalizedError(ERR_REQUEST_FAILED, 'E_JSON');
       }
       const { text } = parseSttResponse(data);
+      perfTrace('OpenAIProxy', 'proxy response received', {
+        transcriptChars: text.length,
+      });
       setLastError(null);
       const result: TranscribeAudioResult = { text, raw: data };
       return result;

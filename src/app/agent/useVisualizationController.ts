@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useRef, type RefObject } from 'react';
-import { logInfo } from '../../shared/logging';
+import { logInfo, perfTrace } from '../../shared/logging';
 import {
   triggerPulseAtCenter,
   TRANSIENT_SIGNAL_FIRST_TOKEN,
@@ -14,7 +14,16 @@ import {
 } from '../../visualization';
 import type { VisualizationEngineRef } from '../../visualization';
 import { useVisualizationSignals } from '../hooks/useVisualizationSignals';
-import type { AgentOrchestratorState, AgentOrchestratorListeners } from './types';
+import {
+  DIAG_SKIP_LATE_PROCESSING_VIZ_UPDATES,
+  DIAG_SKIP_PLAYBACK_TRANSITION_STATE,
+  traceLateProcessingVizUpdate,
+} from '../ui/components/overlays/responseRenderBisectFlags';
+import type {
+  AgentOrchestratorState,
+  AgentOrchestratorListeners,
+  ProcessingSubstate,
+} from './types';
 
 /** Maps AgentLifecycleState to VisualizationMode (engine contract). */
 function lifecycleToMode(
@@ -37,19 +46,28 @@ function lifecycleToMode(
 /**
  * When lifecycle is listening but audio session is stopping/settling (post-release, awaiting STT),
  * project as idle so the surface does not read as actively listening.
+ * Uses releaseInProgressRef to avoid oscillation: once we project idle during release, we stay idle
+ * until lifecycle leaves listening or user starts again (audioSessionState === 'listening').
  */
 function effectiveMode(
   lifecycle: AgentOrchestratorState['lifecycle'],
   audioSessionState: AgentOrchestratorState['audioSessionState'],
+  releaseInProgressRef: { current: boolean },
 ): 'idle' | 'listening' | 'processing' | 'speaking' {
-  const base = lifecycleToMode(lifecycle);
-  if (
-    base === 'listening' &&
-    (audioSessionState === 'stopping' || audioSessionState === 'settling')
-  ) {
+  if (lifecycle !== 'listening') {
+    releaseInProgressRef.current = false;
+    return lifecycleToMode(lifecycle);
+  }
+  if (audioSessionState === 'stopping' || audioSessionState === 'settling') {
+    releaseInProgressRef.current = true;
     return 'idle';
   }
-  return base;
+  if (audioSessionState === 'listening' || audioSessionState === 'starting') {
+    releaseInProgressRef.current = false;
+    return 'listening';
+  }
+  // idleReady (or undefined): stay idle if we're in the release path to avoid listening→idle→listening
+  return releaseInProgressRef.current ? 'idle' : 'listening';
 }
 
 export interface UseVisualizationControllerOptions {
@@ -86,6 +104,7 @@ export function useVisualizationController(
 
   // Populate listeners so orchestrator can drive pulses and semantic events
   useEffect(() => {
+    perfTrace('VisualizationController', 'VisualizationController initialized');
     logInfo('VisualizationController', 'initialized');
     const ref = visualizationRef;
     const listeners = {
@@ -103,8 +122,10 @@ export function useVisualizationController(
         emitEventRef.current(TRANSIENT_SIGNAL_FIRST_TOKEN);
       },
       onGenerationEnd: () => {
-        logInfo('VisualizationController', 'emitted event: chunkAccepted');
-        emitEventRef.current('chunkAccepted');
+        traceLateProcessingVizUpdate(undefined, 'chunkAccepted_event', () => {
+          logInfo('VisualizationController', 'emitted event: chunkAccepted');
+          emitEventRef.current('chunkAccepted');
+        });
       },
       onPlaybackStart: () => {},
       onPlaybackEnd: () => {},
@@ -130,6 +151,9 @@ export function useVisualizationController(
   const lastLoggedModeRef = useRef<string | null>(null);
   const lastLoggedLifecycleRef = useRef<string | null>(null);
   const lastLoggedSubstateRef = useRef<string | null>(null);
+  /** Stabilizes projected mode during release: avoid listening→idle→listening when audioSessionState goes stopping→settling→idleReady. */
+  const releaseInProgressRef = useRef(false);
+  const prevLateVizSubRef = useRef<ProcessingSubstate | null>(null);
 
   // Map normalized agent state → visualization signals (mode, phase, grounded, etc.)
   useEffect(() => {
@@ -152,7 +176,7 @@ export function useVisualizationController(
       return;
     }
 
-    const mode = effectiveMode(state.lifecycle, state.audioSessionState);
+    const mode = effectiveMode(state.lifecycle, state.audioSessionState, releaseInProgressRef);
     const phase =
       state.lifecycle === 'processing'
         ? 'processing'
@@ -163,6 +187,12 @@ export function useVisualizationController(
     if (lastLoggedLifecycleRef.current !== state.lifecycle) {
       lastLoggedLifecycleRef.current = state.lifecycle;
       logInfo('VisualizationController', `received lifecycle state ${state.lifecycle}`);
+    }
+    if (state.lifecycle === 'speaking') {
+      perfTrace('VisualizationController', 'lifecycle speaking received', {
+        mode,
+        displayMode: visualizationRef.current?.displayMode ?? null,
+      });
     }
     if (lastLoggedModeRef.current !== mode) {
       lastLoggedModeRef.current = mode;
@@ -188,6 +218,17 @@ export function useVisualizationController(
     const cardRefsCount =
       phase === 'processing' ? 0 : (state.validationSummary?.cards?.length ?? 0);
 
+    const signalPayload = {
+      phase: phase as 'idle' | 'processing' | 'resolved',
+      grounded,
+      confidence,
+      retrievalDepth,
+      cardRefsCount,
+    };
+
+    const prevLate = prevLateVizSubRef.current;
+    const sub = state.processingSubstate;
+
     const withOptionalMode = <T extends object>(payload: T): T => {
       if (debugEnabled) {
         const stripped = {
@@ -203,19 +244,70 @@ export function useVisualizationController(
       return { ...payload, mode } as T;
     };
 
-    setSignals(
-      withOptionalMode({
-        phase,
-        grounded,
-        confidence,
-        retrievalDepth,
-        cardRefsCount,
-      }),
-    );
-    if (!attachedLoggedRef.current) {
-      attachedLoggedRef.current = true;
-      logInfo('VisualizationController', 'attached to visualization signal pipeline');
+    const finishAttached = () => {
+      if (!attachedLoggedRef.current) {
+        attachedLoggedRef.current = true;
+        perfTrace('VisualizationController', 'attached to visualization signal pipeline');
+        logInfo('VisualizationController', 'attached to visualization signal pipeline');
+      }
+    };
+
+    if (state.lifecycle === 'processing' && sub === 'validating') {
+      if (prevLate !== 'validating') {
+        traceLateProcessingVizUpdate(undefined, 'processingSubstate_validating', () => {});
+      }
+      traceLateProcessingVizUpdate(undefined, 'visualization_signal_apply_validating', () => {
+        setSignals(withOptionalMode(signalPayload));
+      });
+      prevLateVizSubRef.current = sub;
+      finishAttached();
+      return;
     }
+
+    if (state.lifecycle === 'processing' && sub === 'settling') {
+      if (prevLate !== 'settling') {
+        traceLateProcessingVizUpdate(undefined, 'processingSubstate_settling', () => {});
+      }
+      traceLateProcessingVizUpdate(undefined, 'visualization_signal_apply_settling', () => {
+        setSignals(withOptionalMode(signalPayload));
+      });
+      prevLateVizSubRef.current = sub;
+      finishAttached();
+      return;
+    }
+
+    prevLateVizSubRef.current = sub;
+
+    if (mode === 'speaking') {
+      perfTrace('Runtime', 'playback transition state decision', {
+        requestId: undefined,
+        skipPlaybackTransitionState: DIAG_SKIP_PLAYBACK_TRANSITION_STATE,
+        op: 'visualization_speaking_transition',
+      });
+      if (DIAG_SKIP_PLAYBACK_TRANSITION_STATE) {
+        perfTrace('Runtime', 'skipped playback transition state', {
+          requestId: undefined,
+          op: 'visualization_speaking_transition',
+        });
+      } else {
+        perfTrace('VisualizationController', 'before applying visualization signals for speaking', {
+          mode,
+          phase,
+        });
+      }
+    }
+    setSignals(withOptionalMode(signalPayload));
+    if (mode === 'speaking' && !DIAG_SKIP_PLAYBACK_TRANSITION_STATE) {
+      perfTrace('VisualizationController', 'after applying visualization signals for speaking', {
+        mode,
+        phase,
+      });
+      perfTrace('Runtime', 'playback transition state executed', {
+        requestId: undefined,
+        op: 'visualization_speaking_transition',
+      });
+    }
+    finishAttached();
   }, [
     state.lifecycle,
     state.audioSessionState,
@@ -224,5 +316,7 @@ export function useVisualizationController(
     setSignals,
     debugEnabled,
     debugScenario,
+    DIAG_SKIP_PLAYBACK_TRANSITION_STATE,
+    DIAG_SKIP_LATE_PROCESSING_VIZ_UPDATES,
   ]);
 }

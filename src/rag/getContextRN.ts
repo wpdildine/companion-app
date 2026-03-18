@@ -26,6 +26,7 @@ import { openCardsDb, openRulesDb, type DbRow } from './packDbRN';
 import type { PackFileReader } from './types';
 import { RAG_CONFIG } from './config';
 import { logInfo, logWarn } from '../shared/logging/logger';
+import { perfTrace } from '../shared/logging';
 
 const SECTION_702 = 702;
 const MIN_TOKEN_LENGTH = 3;
@@ -173,8 +174,10 @@ export async function getContextRN(
     // optional
   }
 
+  perfTrace('RAG', 'getContextRN before open DBs', {});
   const cardsDb = openCardsDb(packRoot);
   const rulesDb = openRulesDb(packRoot);
+  perfTrace('RAG', 'getContextRN after open DBs', {});
   try {
     const analysis = analyzeQuery(queryText, routerMap, spec);
     const normalized = analysis.q_norm.trim();

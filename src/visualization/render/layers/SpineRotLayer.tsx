@@ -8,6 +8,7 @@ import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { useVizIsolationGate } from '../../runtime/VizRuntimeIsolationContext';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { createBasicPlaneMaterial } from '../../materials/basicPlaneMaterial';
 import { createHalftoneMaterial } from '../../materials/halftone/halftonePlaneMaterial';
@@ -34,7 +35,9 @@ export function SpineRotLayer({
     ghostMatsRef.current.push(createBasicPlaneMaterial('#6ea8ff'));
   }
 
+  const r3fFrameOn = useVizIsolationGate('r3f_frame');
   useFrame(state => {
+    if (!r3fFrameOn) return;
     const v = visualizationRef.current;
     const sceneNow = v?.scene;
     const spineRotNow = sceneNow?.spineRot;

@@ -14,7 +14,7 @@
  */
 
 import { Canvas } from '@react-three/fiber/native';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GestureResponderEvent, LayoutChangeEvent } from 'react-native';
 import { StyleSheet, View } from 'react-native';
 import * as THREE from 'three';
@@ -24,7 +24,9 @@ import {
 } from '../../interaction/touchHandlers';
 import { TouchRaycaster } from '../../interaction/TouchRaycaster';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { buildR3fVizIsolationGates } from '../../../app/ui/components/overlays/responseRenderBisectFlags';
 import { subscribeVisualizationScene } from '../../runtime/applySceneUpdates';
+import { VizRuntimeIsolationContext } from '../../runtime/VizRuntimeIsolationContext';
 import { CameraOrbit } from './CameraOrbit';
 import {
   LAYER_REGISTRY,
@@ -51,6 +53,7 @@ export type VisualizationCanvasR3FProps = {
   inputEnabled: boolean;
   canvasBackground?: string;
   clusterZoneHighlights?: boolean;
+  freezeVisualizationRuntimeUpdates?: boolean;
 } & TouchCallbacks;
 
 export function VisualizationCanvasR3F({
@@ -65,7 +68,13 @@ export function VisualizationCanvasR3F({
   onDragStart,
   onDragMove,
   onDragEnd,
+  freezeVisualizationRuntimeUpdates = false,
 }: VisualizationCanvasR3FProps) {
+  const isolationGates = useMemo(
+    () =>
+      buildR3fVizIsolationGates(freezeVisualizationRuntimeUpdates === true),
+    [freezeVisualizationRuntimeUpdates],
+  );
   const touch = withTouchStubs({
     onShortTap,
     onDoubleTap,
@@ -228,26 +237,28 @@ export function VisualizationCanvasR3F({
           preserveDrawingBuffer: false,
         }}
       >
-        <color attach="background" args={[canvasBackground]} />
-        {(visualizationRef.current?.scene?.layerDescriptors ??
-          DEFAULT_LAYER_DESCRIPTORS)
-          .filter(
-            d => d.enabled !== false && isMountIdInRegistry(d.id),
-          )
-          .map(d => {
-            const Comp = LAYER_REGISTRY[d.id];
-            return Comp ? (
-              <Comp
-                key={d.id}
-                visualizationRef={visualizationRef}
-                descriptor={d}
-              />
-            ) : null;
-          })}
-        <RuntimeLoop visualizationRef={visualizationRef} />
-        <TouchRaycaster visualizationRef={visualizationRef} />
-        <CameraOrbit visualizationRef={visualizationRef} />
-        <PostFXPass visualizationRef={visualizationRef} />
+        <VizRuntimeIsolationContext.Provider value={isolationGates}>
+          <color attach="background" args={[canvasBackground]} />
+          {(visualizationRef.current?.scene?.layerDescriptors ??
+            DEFAULT_LAYER_DESCRIPTORS)
+            .filter(
+              d => d.enabled !== false && isMountIdInRegistry(d.id),
+            )
+            .map(d => {
+              const Comp = LAYER_REGISTRY[d.id];
+              return Comp ? (
+                <Comp
+                  key={d.id}
+                  visualizationRef={visualizationRef}
+                  descriptor={d}
+                />
+              ) : null;
+            })}
+          <RuntimeLoop visualizationRef={visualizationRef} />
+          <TouchRaycaster visualizationRef={visualizationRef} />
+          <CameraOrbit visualizationRef={visualizationRef} />
+          <PostFXPass visualizationRef={visualizationRef} />
+        </VizRuntimeIsolationContext.Provider>
       </Canvas>
     </View>
   );

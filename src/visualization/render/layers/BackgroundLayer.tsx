@@ -9,6 +9,7 @@ import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { getLayerRuntimeInputs } from '../../runtime/runtimeLayerInputs';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { useVizIsolationGate } from '../../runtime/VizRuntimeIsolationContext';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { createBackgroundDetailMaterial } from '../../materials/background/backgroundDetailMaterial';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
@@ -209,7 +210,9 @@ export function BackgroundLayer({
     mesh.visible = true;
   };
 
+  const r3fFrameOn = useVizIsolationGate('r3f_frame');
   useFrame((state, delta) => {
+    if (!r3fFrameOn) return;
     const v = visualizationRef.current;
     if (!v) return;
     const runtime = getLayerRuntimeInputs(v);

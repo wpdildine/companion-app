@@ -15,6 +15,7 @@ import { ndcRegionToRenderDescriptor } from '../../../app/_experimental/nameShap
 import type { NameShapingSelector } from '../../../app/_experimental/nameShaping/foundation/nameShapingConstants';
 import { getActiveBandVerticalEnvelope } from '../../interaction/activeBandEnvelope';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { useVizIsolationGate } from '../../runtime/VizRuntimeIsolationContext';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 
@@ -79,8 +80,10 @@ export function TouchZones({
   const zoneEdgeRefs = useRef<Array<THREE.LineSegments | null>>([]);
   const cameraPosRef = useRef(new THREE.Vector3());
   const cameraDirRef = useRef(new THREE.Vector3());
+  const r3fFrameOn = useVizIsolationGate('r3f_frame');
 
   useFrame(state => {
+    if (!r3fFrameOn) return;
     const v = visualizationRef.current;
     if (!v) return;
     const scene = v.scene;

@@ -8,15 +8,19 @@
  * Requires native module to be linked: iOS run `cd ios && pod install && cd ..`, then rebuild. Android: clean & rebuild.
  */
 
+import { perfTrace } from '../shared/logging';
+
 let _QuickSQLite: typeof import('react-native-quick-sqlite').QuickSQLite | null = null;
 
 function getQuickSQLite(): typeof import('react-native-quick-sqlite').QuickSQLite {
   if (_QuickSQLite != null) return _QuickSQLite;
+  perfTrace('RAG', 'QuickSQLite getQuickSQLite enter (lazy require)', {});
   try {
     const mod = require('react-native-quick-sqlite');
     const Q = mod?.QuickSQLite ?? mod?.default?.QuickSQLite;
     if (Q) {
       _QuickSQLite = Q;
+      perfTrace('RAG', 'QuickSQLite getQuickSQLite after require', {});
       return Q;
     }
   } catch (e) {
@@ -31,6 +35,18 @@ function getQuickSQLite(): typeof import('react-native-quick-sqlite').QuickSQLit
   throw new Error(
     'RAG needs the native SQLite module. Rebuild the app: iOS: run `cd ios && pod install && cd ..` then build. Android: clean and rebuild.'
   );
+}
+
+/** Lightweight prewarm: load QuickSQLite native module so first getContextRN does not pay lazy-init cost. Call at app boot or when pack is ready. */
+export function prewarmQuickSQLite(): void {
+  if (_QuickSQLite != null) return;
+  perfTrace('RAG', 'QuickSQLite prewarm start', {});
+  try {
+    getQuickSQLite();
+    perfTrace('RAG', 'QuickSQLite prewarm end', {});
+  } catch {
+    // Module not linked; first getContextRN will throw. No-op here.
+  }
 }
 
 export type DbRow = Record<string, unknown>;
@@ -69,10 +85,12 @@ function relativeLocationForDb(packRoot: string, subdir: 'cards' | 'rules'): str
 }
 
 export function openCardsDb(packRoot: string): CardsDb {
+  perfTrace('RAG', 'QuickSQLite openCardsDb start', {});
   const QuickSQLite = getQuickSQLite();
   const location = relativeLocationForDb(packRoot, 'cards');
   const name = 'cards.db';
   QuickSQLite.open(name, location);
+  perfTrace('RAG', 'QuickSQLite openCardsDb after open', {});
   return {
     cardByNameNorm(nameNorm: string): DbRow | null {
       const r = QuickSQLite.execute(name, 'SELECT * FROM cards WHERE name_norm = ?', [nameNorm]);
@@ -112,10 +130,12 @@ export function openCardsDb(packRoot: string): CardsDb {
 }
 
 export function openRulesDb(packRoot: string): RulesDb {
+  perfTrace('RAG', 'QuickSQLite openRulesDb start', {});
   const QuickSQLite = getQuickSQLite();
   const location = relativeLocationForDb(packRoot, 'rules');
   const name = 'rules.db';
   QuickSQLite.open(name, location);
+  perfTrace('RAG', 'QuickSQLite openRulesDb after open', {});
   return {
     rulesBySection(section: number): DbRow[] {
       const r = QuickSQLite.execute(name, 'SELECT * FROM rules WHERE section = ? ORDER BY rule_id ASC', [section]);

@@ -3,7 +3,7 @@
  * Tap to expand oracle (optional).
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -14,6 +14,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { logInfo, perfTrace } from '../../../../shared/logging';
 import { ContentPanel, type ContentPanelIntensity } from '../panels';
 
 const CARD_BACK_IMAGE = require('../../../../../assets/images/card_back.png');
@@ -78,6 +79,17 @@ export function CardReferenceSection({
   textColor,
   mutedColor,
 }: CardReferenceSectionProps) {
+  useEffect(() => {
+    perfTrace('ResultsOverlay', 'CardReferenceSection mounted', {});
+  }, []);
+  const firstRenderLoggedRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!firstRenderLoggedRef.current) {
+      firstRenderLoggedRef.current = true;
+      perfTrace('ResultsOverlay', 'CardReferenceSection first render', { count: cards.length });
+      logInfo('ResultsOverlay', 'CardReferenceSection first render', { count: cards.length });
+    }
+  }, [cards.length]);
   if (cards.length === 0) return null;
   const primaryText = ink ?? textColor ?? '#e5e5e5';
   const secondaryText = mutedInk ?? mutedColor ?? '#9a9aa2';

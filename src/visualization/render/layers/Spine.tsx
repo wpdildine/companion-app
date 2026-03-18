@@ -16,10 +16,20 @@
 import { useFrame } from '@react-three/fiber/native';
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import type { CanonicalSpineMode } from '../../scene/builders/spine';
+import {
+  logInfo,
+  perfTrace,
+  getMilestonesBetween,
+  getRecentMilestonesBefore,
+  getPerfBufferInstanceId,
+  getPerfMilestoneBufferDebugState,
+  getLastNMilestonesRaw,
+} from '../../../shared/logging';
+import type { CanonicalSpineMode, SpineSceneSpec } from '../../scene/builders/spine';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { validateSceneSpec } from '../../scene/validateSceneSpec';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { useVizIsolationGate } from '../../runtime/VizRuntimeIsolationContext';
 import {
   easeModeTransition,
   getModeTransitionState,
@@ -98,6 +108,9 @@ export function Spine({
     },
     [],
   );
+  const spineStepOn = useVizIsolationGate('spine_step');
+  const spineStepFreezeLoggedRef = useRef(false);
+  const spineStepExecLoggedRef = useRef(false);
   const shardRefs = useRef<(THREE.Mesh | null)[]>([]);
   const leftEdgeRef = useRef<THREE.Mesh>(null);
   const rightEdgeRef = useRef<THREE.Mesh>(null);
@@ -157,22 +170,181 @@ export function Spine({
   const halftonePrimedRef = useRef(false);
   const bootStableFramesRef = useRef(0);
   const lastBootResRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const lastSpineRef = useRef<SpineSceneSpec | null>(null);
+  const planeColorsRef = useRef<THREE.Color[]>([]);
+  const edgeGlowColorRef = useRef(new THREE.Color());
+  const spineColorRef = useRef(new THREE.Color());
+
+  // Perf: lifecycle and starvation (guarded, no per-frame spam)
+  const lastFrameTimeRef = useRef(0);
+  const SPINE_STARVATION_THRESHOLDS_MS = [100, 250, 500, 1000];
+
   useFrame((state, delta) => {
+    const v0 = visualizationRef.current;
+    if (!spineStepOn) {
+      if (!spineStepFreezeLoggedRef.current) {
+        spineStepFreezeLoggedRef.current = true;
+        perfTrace('Runtime', 'skipped visualization layer', {
+          layer: 'spine_step',
+          requestId: v0?.bisectRequestId,
+          lifecycle: v0?.bisectLifecycle ?? null,
+        });
+      }
+      return;
+    }
+    spineStepFreezeLoggedRef.current = false;
+    if (!spineStepExecLoggedRef.current) {
+      spineStepExecLoggedRef.current = true;
+      perfTrace('Runtime', 'visualization layer executed', {
+        layer: 'spine_step',
+        requestId: v0?.bisectRequestId,
+        lifecycle: v0?.bisectLifecycle ?? null,
+      });
+    }
     const v = visualizationRef.current;
     if (!v) return;
     const scene = v.scene;
     const spine = scene?.spine;
     if (!spine) return;
 
+    const now = Date.now();
+    const previousFrameAtMs = lastFrameTimeRef.current;
+    const timeSinceLastFrameMs = previousFrameAtMs > 0 ? now - previousFrameAtMs : 0;
+    if (timeSinceLastFrameMs > 0) {
+      const matchedTiers = SPINE_STARVATION_THRESHOLDS_MS.filter(t => timeSinceLastFrameMs >= t);
+      const tierMs = matchedTiers.length > 0 ? Math.max(...matchedTiers) : 0;
+      if (tierMs > 0 && typeof __DEV__ !== 'undefined' && __DEV__) {
+        const milestonesDuringGap = getMilestonesBetween(previousFrameAtMs, now);
+        const recentMilestonesBeforeFrame = getRecentMilestonesBefore(now, 5).map(m => ({
+          name: m.name,
+          scope: m.scope,
+          timestamp: m.timestamp,
+          ...(m.requestId != null && { requestId: m.requestId }),
+        }));
+        logInfo('VisualizationRuntime', '[Perf] Spine frame starvation', {
+          previousFrameAtMs,
+          currentFrameAtMs: now,
+          timeSinceLastFrameMs,
+          gapMs: timeSinceLastFrameMs,
+          tierMs,
+          perfBufferInstanceId: getPerfBufferInstanceId(),
+          perfBufferDebugState: getPerfMilestoneBufferDebugState(),
+          recentMilestonesBeforeFrameCount: recentMilestonesBeforeFrame.length,
+          milestonesDuringGapCount: milestonesDuringGap.length,
+          lastMilestonesRaw: getLastNMilestonesRaw(5).map(m => ({ name: m.name, timestamp: m.timestamp })),
+          milestonesDuringGap: milestonesDuringGap.map(m => ({ name: m.name, scope: m.scope, timestamp: m.timestamp, requestId: m.requestId })),
+          noMilestonesDuringGap: milestonesDuringGap.length === 0,
+          recentMilestonesBeforeFrame,
+          currentMode: v.currentMode,
+          displayMode: v.displayMode,
+          vizIntensity: v.vizIntensity,
+          appState: v.appState,
+          lastEvent: v.lastEvent ?? undefined,
+          attributionNote:
+            'timeSinceLastFrameMs is time since previous frame; milestonesDuringGap lists perf milestones that occurred during the gap',
+        });
+      }
+      if (timeSinceLastFrameMs > 500) {
+        const milestonesDuringGap = getMilestonesBetween(previousFrameAtMs, now);
+        const recentMilestonesBeforeFrame = getRecentMilestonesBefore(now, 5).map(m => ({
+          name: m.name,
+          scope: m.scope,
+          timestamp: m.timestamp,
+          ...(m.requestId != null && { requestId: m.requestId }),
+        }));
+        perfTrace('VisualizationRuntime', 'first Spine frame after long gap', {
+          previousFrameAtMs,
+          currentFrameAtMs: now,
+          timeSinceLastFrameMs,
+          gapMs: timeSinceLastFrameMs,
+          perfBufferInstanceId: getPerfBufferInstanceId(),
+          perfBufferDebugState: getPerfMilestoneBufferDebugState(),
+          recentMilestonesBeforeFrameCount: recentMilestonesBeforeFrame.length,
+          milestonesDuringGapCount: milestonesDuringGap.length,
+          lastMilestonesRaw: getLastNMilestonesRaw(5).map(m => ({ name: m.name, timestamp: m.timestamp })),
+          appState: v.appState,
+          currentMode: v.currentMode,
+          milestonesDuringGap: milestonesDuringGap.map(m => ({ name: m.name, scope: m.scope, timestamp: m.timestamp, requestId: m.requestId })),
+          noMilestonesDuringGap: milestonesDuringGap.length === 0,
+          recentMilestonesBeforeFrame,
+        });
+      }
+    } else {
+      perfTrace('VisualizationRuntime', 'first Spine frame');
+    }
+    lastFrameTimeRef.current = now;
+
+    if (spine !== lastSpineRef.current) {
+      lastSpineRef.current = spine;
+      spineColorRef.current.set(spine.style.color);
+      edgeGlowColorRef.current.set(
+        spine.style.edgeGlowColor ?? spine.style.color,
+      );
+      planeColorsRef.current = (spine.style.planeColors ?? []).map(
+        c => new THREE.Color(c),
+      );
+      const updateStaticUniforms = (mat: THREE.ShaderMaterial | null) => {
+        if (!mat) return;
+        mat.uniforms.uDebugFlat.value = spine.style.halftoneDebugFlat ? 1 : 0;
+        const fadeMode =
+          spine.style.halftoneFadeMode === 'none'
+            ? 0
+            : spine.style.halftoneFadeMode === 'radial'
+            ? 1
+            : spine.style.halftoneFadeMode === 'linear'
+            ? 2
+            : 3;
+        mat.uniforms.uFadeMode.value = fadeMode;
+        mat.uniforms.uFadeInner.value = spine.style.halftoneFadeInner ?? 0.35;
+        mat.uniforms.uFadeOuter.value = spine.style.halftoneFadeOuter ?? 0.65;
+        mat.uniforms.uFadePower.value = spine.style.halftoneFadePower ?? 1.5;
+        mat.uniforms.uFadeAngle.value = spine.style.halftoneFadeAngle ?? 0.0;
+        mat.uniforms.uFadeOffset.value = spine.style.halftoneFadeOffset ?? 0.0;
+        mat.uniforms.uFadeCenter.value.set(
+          spine.style.halftoneFadeCenterX ?? 0.5,
+          spine.style.halftoneFadeCenterY ?? 0.5,
+        );
+        mat.uniforms.uFadeLevels.value = spine.style.halftoneFadeLevels ?? 1.0;
+        mat.uniforms.uFadeStepMix.value =
+          spine.style.halftoneFadeStepMix ?? 0.0;
+        mat.uniforms.uFadeOneSided.value = spine.style.halftoneFadeOneSided
+          ? 1
+          : 0;
+      };
+      updateStaticUniforms(halftoneMat);
+      const leftMat = leftEdgeMatRef.current;
+      if (leftMat) {
+        updateStaticUniforms(leftMat);
+        leftMat.uniforms.uColor.value.copy(spineColorRef.current);
+        leftMat.uniforms.uFadeMode.value = 0;
+      }
+      const rightMat = rightEdgeMatRef.current;
+      if (rightMat) {
+        updateStaticUniforms(rightMat);
+        rightMat.uniforms.uColor.value.copy(spineColorRef.current);
+        rightMat.uniforms.uFadeMode.value = 0;
+      }
+    }
+
     const show = v.vizIntensity !== 'off';
     if (!groupRef.current) return;
     groupRef.current.visible = false;
-    if (!show) return;
+    if (!show) {
+      if (v.appState === 'active' && lastFrameTimeRef.current > 0) {
+         logInfo('Spine', '[Lifecycle] Early return: show=false');
+      }
+      return;
+    }
 
     const w = v.canvasWidth > 0 ? v.canvasWidth : state.size.width;
     const h = v.canvasHeight > 0 ? v.canvasHeight : state.size.height;
     const hasSize = w > 0 && h > 0;
-    if (!hasSize) return;
+    if (!hasSize) {
+      if (v.appState === 'active' && lastFrameTimeRef.current > 0) {
+        logInfo('Spine', '[Lifecycle] Early return: hasSize=false');
+      }
+      return;
+    }
 
     const { layout } = scene.zones;
     const { activeHeightRatio, centerNdcY } = getActiveBandVerticalEnvelope(
@@ -432,7 +604,7 @@ export function Spine({
       if (targetMat && mesh.material !== targetMat) {
         mesh.material = targetMat;
       }
-      const planeColor = spine.style.planeColors?.[i] ?? spine.style.color;
+      const planeColor = planeColorsRef.current[i] ?? spineColorRef.current;
       const targetPlaneOpacity =
         spine.style.opacity * opacityScale * dynamicOpacityBoost;
       if (smoothPlaneOpacityRef.current[i] == null) {
@@ -454,7 +626,7 @@ export function Spine({
         if (!halftoneMat) continue;
         mesh.visible = halftonePrimedRef.current;
         if (!halftonePrimedRef.current) continue;
-        halftoneMat.uniforms.uColor.value.set(planeColor);
+        halftoneMat.uniforms.uColor.value.copy(planeColor);
         // Opacity is the membrane visibility; intensity should NOT zero the membrane.
         // Keep opacity scene-driven and use uIntensity only to shape the dots.
         halftoneMat.uniforms.uOpacity.value = Math.min(
@@ -512,40 +684,6 @@ export function Spine({
         const planeW = envelopeWidthWorld * widthScale;
         const planeH = unitHeight * heightScale;
         halftoneMat.uniforms.uPlaneSize.value.set(planeW, planeH);
-        halftoneMat.uniforms.uDebugFlat.value = spine.style.halftoneDebugFlat
-          ? 1
-          : 0;
-        const fadeMode =
-          spine.style.halftoneFadeMode === 'none'
-            ? 0
-            : spine.style.halftoneFadeMode === 'radial'
-            ? 1
-            : spine.style.halftoneFadeMode === 'linear'
-            ? 2
-            : 3;
-        halftoneMat.uniforms.uFadeMode.value = fadeMode;
-        halftoneMat.uniforms.uFadeInner.value =
-          spine.style.halftoneFadeInner ?? 0.35;
-        halftoneMat.uniforms.uFadeOuter.value =
-          spine.style.halftoneFadeOuter ?? 0.65;
-        halftoneMat.uniforms.uFadePower.value =
-          spine.style.halftoneFadePower ?? 1.5;
-        halftoneMat.uniforms.uFadeAngle.value =
-          spine.style.halftoneFadeAngle ?? 0.0;
-        halftoneMat.uniforms.uFadeOffset.value =
-          spine.style.halftoneFadeOffset ?? 0.0;
-        halftoneMat.uniforms.uFadeCenter.value.set(
-          spine.style.halftoneFadeCenterX ?? 0.5,
-          spine.style.halftoneFadeCenterY ?? 0.5,
-        );
-        halftoneMat.uniforms.uFadeLevels.value =
-          spine.style.halftoneFadeLevels ?? 1.0;
-        halftoneMat.uniforms.uFadeStepMix.value =
-          spine.style.halftoneFadeStepMix ?? 0.0;
-        halftoneMat.uniforms.uFadeOneSided.value = spine.style
-          .halftoneFadeOneSided
-          ? 1
-          : 0;
       } else {
         mesh.visible = true;
         const mat = planeMats[i];
@@ -575,19 +713,19 @@ export function Spine({
         );
         const glowSide =
           Math.abs(planeX) < beamHalfWidth * 0.12 ? 0 : planeX > 0 ? -1 : 1;
-        mat.uniforms.uColor.value.set(planeColor);
+        mat.uniforms.uColor.value.copy(planeColor);
         mat.uniforms.uOpacity.value = nextOpacity;
         mat.uniforms.uEdgeGlowStrength.value =
           spine.style.edgeGlowStrength ?? 0.0;
         mat.uniforms.uEdgeGlowWidth.value =
           spine.style.edgeGlowWidth ?? 0.05;
         mat.uniforms.uRimColor.value
-          .set(planeColor)
+          .copy(planeColor)
           .lerp(whiteColorRef.current, 0.14);
         edgeGlowTargetColorRef.current.set(spine.style.edgeGlowColor ?? planeColor);
         mat.uniforms.uEdgeGlowColor.value
-          .set(planeColor)
-          .lerp(edgeGlowTargetColorRef.current, 0.2);
+          .copy(planeColor)
+          .lerp(edgeGlowColorRef.current, 0.2);
         mat.uniforms.uBeamVis.value = beamVis;
         mat.uniforms.uGlowSide.value = glowSide;
         mat.uniforms.uEdgeYWeight.value = spine.style.edgeYWeight ?? 0.12;
@@ -706,7 +844,6 @@ export function Spine({
     for (const matRef of [leftEdgeMatRef, rightEdgeMatRef]) {
       const mat = matRef.current;
       if (!mat) continue;
-      mat.uniforms.uColor.value.set(spine.style.color);
       mat.uniforms.uOpacity.value = edgeVisible ? spine.style.edgeOpacity : 0;
       mat.uniforms.uIntensity.value = edgeIntensity;
       mat.uniforms.uDensity.value = halftoneProfile.density;
@@ -714,22 +851,6 @@ export function Spine({
       mat.uniforms.uResolution.value.set(resX, resY);
       mat.uniforms.uPlanePhase.value = 0;
       mat.uniforms.uPlaneSize.value.set(edgeWidth, edgeHeight);
-      mat.uniforms.uDebugFlat.value = spine.style.halftoneDebugFlat ? 1 : 0;
-      mat.uniforms.uFadeMode.value = 0;
-      mat.uniforms.uFadeInner.value = spine.style.halftoneFadeInner ?? 0.35;
-      mat.uniforms.uFadeOuter.value = spine.style.halftoneFadeOuter ?? 0.65;
-      mat.uniforms.uFadePower.value = spine.style.halftoneFadePower ?? 1.5;
-      mat.uniforms.uFadeAngle.value = spine.style.halftoneFadeAngle ?? 0.0;
-      mat.uniforms.uFadeOffset.value = spine.style.halftoneFadeOffset ?? 0.0;
-      mat.uniforms.uFadeCenter.value.set(
-        spine.style.halftoneFadeCenterX ?? 0.5,
-        spine.style.halftoneFadeCenterY ?? 0.5,
-      );
-      mat.uniforms.uFadeLevels.value = spine.style.halftoneFadeLevels ?? 1.0;
-      mat.uniforms.uFadeStepMix.value = spine.style.halftoneFadeStepMix ?? 0.0;
-      mat.uniforms.uFadeOneSided.value = spine.style.halftoneFadeOneSided
-        ? 1
-        : 0;
     }
   });
 
@@ -813,9 +934,11 @@ export function Spine({
                   el.material = mat;
                   if ('uniforms' in mat) {
                     const supportMat = mat as THREE.ShaderMaterial;
-                    supportMat.uniforms.uColor.value.set(
-                      spine.style.planeColors?.[i] ?? spine.style.color,
-                    );
+                    const color =
+                      planeColorsRef.current[i] ?? spineColorRef.current;
+                    if (color) {
+                      supportMat.uniforms.uColor.value.copy(color);
+                    }
                     supportMat.uniforms.uOpacity.value =
                       spine.style.opacity *
                       (spine.style.planeOpacityScale?.[i] ?? 1);

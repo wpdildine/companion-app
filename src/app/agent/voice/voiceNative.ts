@@ -139,6 +139,8 @@ export async function getOnDeviceModelPaths(
   let embedModelPath = '';
   let chatModelPath = '';
   let modelsDir = '';
+  let embedLocation: 'documents' | 'bundle' | 'app-models' | undefined;
+  let chatLocation: 'documents' | 'bundle' | 'app-models' | undefined;
 
   const fileExists = async (absolutePath: string): Promise<boolean> => {
     if (!absolutePath || typeof absolutePath !== 'string') return false;
@@ -173,18 +175,28 @@ export async function getOnDeviceModelPaths(
         };
         const llmFile = manifest?.models?.llm?.file;
         const embedFile = manifest?.models?.embed?.file;
-        if (llmFile && (await fileExists(`${root}/${llmFile}`)))
+        if (llmFile && (await fileExists(`${root}/${llmFile}`))) {
           chatModelPath = `${root}/${llmFile}`;
-        if (embedFile && (await fileExists(`${root}/${embedFile}`)))
+          chatLocation = 'documents';
+        }
+        if (embedFile && (await fileExists(`${root}/${embedFile}`))) {
           embedModelPath = `${root}/${embedFile}`;
+          embedLocation = 'documents';
+        }
       } catch {
         /* use fallbacks */
       }
     }
     const packEmbed = `${root}/models/embed/embed.gguf`;
     const packLlm = `${root}/models/llm/model.gguf`;
-    if (!embedModelPath && (await fileExists(packEmbed))) embedModelPath = packEmbed;
-    if (!chatModelPath && (await fileExists(packLlm))) chatModelPath = packLlm;
+    if (!embedModelPath && (await fileExists(packEmbed))) {
+      embedModelPath = packEmbed;
+      embedLocation = 'documents';
+    }
+    if (!chatModelPath && (await fileExists(packLlm))) {
+      chatModelPath = packLlm;
+      chatLocation = 'documents';
+    }
   }
 
   if (!embedModelPath || !chatModelPath) {
@@ -193,8 +205,14 @@ export async function getOnDeviceModelPaths(
         resolveBundleModelPath(BUNDLE_EMBED_PATH_CANDIDATES),
         resolveBundleModelPath(BUNDLE_LLM_PATH_CANDIDATES),
       ]);
-      if (embedPath && !embedModelPath) embedModelPath = embedPath;
-      if (llmPath && !chatModelPath) chatModelPath = llmPath;
+      if (embedPath && !embedModelPath) {
+        embedModelPath = embedPath;
+        embedLocation = 'bundle';
+      }
+      if (llmPath && !chatModelPath) {
+        chatModelPath = llmPath;
+        chatLocation = 'bundle';
+      }
     } catch {
       /* bundle not available */
     }
@@ -206,10 +224,14 @@ export async function getOnDeviceModelPaths(
         modelsDir = await RagPackReader.getAppModelsPath();
         if (modelsDir && typeof modelsDir === 'string') {
           const dir = modelsDir.replace(/\/+$/, '');
-          if (!embedModelPath && (await fileExists(`${dir}/${EMBED_MODEL_FILENAME}`)))
+          if (!embedModelPath && (await fileExists(`${dir}/${EMBED_MODEL_FILENAME}`))) {
             embedModelPath = `${dir}/${EMBED_MODEL_FILENAME}`;
-          if (!chatModelPath && (await fileExists(`${dir}/${CHAT_MODEL_FILENAME}`)))
+            embedLocation = 'app-models';
+          }
+          if (!chatModelPath && (await fileExists(`${dir}/${CHAT_MODEL_FILENAME}`))) {
             chatModelPath = `${dir}/${CHAT_MODEL_FILENAME}`;
+            chatLocation = 'app-models';
+          }
         }
       }
     } catch {
@@ -220,5 +242,28 @@ export async function getOnDeviceModelPaths(
   if (embedModelPath || chatModelPath) {
     logInfo('Runtime', 'Model paths', { embed: embedModelPath || null, chat: chatModelPath || null });
   }
+
+  // Diagnostics: resolved path, exists, location (size requires native helper; omit for now)
+  if (embedModelPath) {
+    const exists = await fileExists(embedModelPath);
+    logInfo('Runtime', 'model path resolved', {
+      kind: 'embed',
+      path: embedModelPath,
+      exists,
+      sizeBytes: undefined,
+      location: embedLocation ?? undefined,
+    });
+  }
+  if (chatModelPath) {
+    const exists = await fileExists(chatModelPath);
+    logInfo('Runtime', 'model path resolved', {
+      kind: 'chat',
+      path: chatModelPath,
+      exists,
+      sizeBytes: undefined,
+      location: chatLocation ?? undefined,
+    });
+  }
+
   return { embedModelPath, chatModelPath };
 }

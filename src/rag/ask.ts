@@ -3,7 +3,8 @@
  * Supports either on-device llama.rn (GGUF paths) or Ollama HTTP API.
  */
 
-import { logError, logInfo, logWarn } from '../shared/logging';
+import { File } from 'expo-file-system';
+import { logError, logInfo, logWarn, perfTrace } from '../shared/logging';
 import { RAG_CONFIG } from './config';
 import { ragError } from './errors';
 import { loadChunksForRows, loadVectors, searchL2 } from './retrieval';
@@ -13,6 +14,33 @@ import { RAG_USE_DETERMINISTIC_CONTEXT_ONLY } from './types';
 
 /** Llama 3 stop sequences (not exported from @mtg/runtime RN entrypoint; define here to avoid passing undefined to native). */
 const LLAMA3_STOP_SEQUENCES = ['<|eot_id|>', '<|end_of_text|>'];
+
+/** Timeout for initLlama (diagnostic: distinguishes hang vs reject). */
+const MODEL_LOAD_TIMEOUT_MS = 90_000;
+
+function withLoadTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+  path: string,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => {
+      logWarn('RAG', `${label} timeout`, { path, timeoutMs });
+      reject(new Error(`Model load timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+    promise.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
 
 export interface RunRagFlowResult {
   raw: string;
@@ -90,27 +118,65 @@ async function getEmbedContext(
 ): Promise<import('llama.rn').LlamaContext> {
   if (embedContext) return embedContext;
   const { initLlama } = require('llama.rn');
-  const ctx = await initLlama({
-    model: embedModelPath,
-    embedding: true,
-    pooling_type: 'mean',
-    n_ctx: RAG_CONFIG.embed_n_ctx,
-  });
-  embedContext = ctx;
-  return ctx;
+  const n_ctx = RAG_CONFIG.embed_n_ctx;
+  logInfo('RAG', 'starting embed model load', { path: embedModelPath, n_ctx });
+  try {
+    const ctx = await withLoadTimeout(
+      initLlama({
+        model: embedModelPath,
+        embedding: true,
+        pooling_type: 'mean',
+        n_ctx,
+      }),
+      MODEL_LOAD_TIMEOUT_MS,
+      'embed model load timeout',
+      embedModelPath,
+    );
+    logInfo('RAG', 'embed model load returned', { path: embedModelPath });
+    embedContext = ctx;
+    return ctx;
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    const stack = e instanceof Error ? e.stack : undefined;
+    logError('RAG', 'embed model load failed', { path: embedModelPath, message, stack });
+    throw e;
+  }
 }
 
 async function getChatContext(
   chatModelPath: string,
 ): Promise<import('llama.rn').LlamaContext> {
   if (chatContext) return chatContext;
+  const n_ctx = RAG_CONFIG.chat_n_ctx;
+  let sizeBytes: number | null = null;
+  try {
+    const uri = chatModelPath.startsWith('file://') ? chatModelPath : `file://${chatModelPath}`;
+    const f = new File(uri);
+    if (f.exists) sizeBytes = f.size;
+  } catch {
+    /* ignore */
+  }
+  logInfo('RAG', 'starting chat model load', { path: chatModelPath, n_ctx, sizeBytes });
   const { initLlama } = require('llama.rn');
-  const ctx = await initLlama({
-    model: chatModelPath,
-    n_ctx: RAG_CONFIG.chat_n_ctx,
-  });
-  chatContext = ctx;
-  return ctx;
+  try {
+    const ctx = await withLoadTimeout(
+      initLlama({
+        model: chatModelPath,
+        n_ctx,
+      }),
+      MODEL_LOAD_TIMEOUT_MS,
+      'chat model load timeout',
+      chatModelPath,
+    );
+    logInfo('RAG', 'chat model load returned', { path: chatModelPath });
+    chatContext = ctx;
+    return ctx;
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    const stack = e instanceof Error ? e.stack : undefined;
+    logError('RAG', 'chat model load failed', { path: chatModelPath, message, stack });
+    throw e;
+  }
 }
 
 /** Chunk shape used for prompt (for debug logging). */
@@ -318,6 +384,7 @@ export async function runRagFlow(
     ]);
     mark('vectors load end');
     mark('retrieval start');
+    if (requestId != null) perfTrace('RAG', 'retrieval start', { requestId });
     const rulesTopK = Math.min(
       RAG_CONFIG.retrieval.top_k_rules,
       rulesIndex.nRows,
@@ -331,6 +398,7 @@ export async function runRagFlow(
     const merged = mergeHits(rulesHits, cardsHits);
     const topMerged = merged.slice(0, RAG_CONFIG.retrieval.top_k_merge);
     mark('retrieval end');
+    if (requestId != null) perfTrace('RAG', 'retrieval end', { requestId });
     if (requestId != null && requestDebugSink) {
       emitRag('rag_retrieval_mode', { retrievalMode: 'vector' });
     }
@@ -360,6 +428,7 @@ export async function runRagFlow(
     mark('context build start');
     const { prompt, contextBlock } = trimChunksToFitPrompt(chunksForPrompt, question);
     mark('context build end');
+    if (requestId != null) perfTrace('RAG', 'prompt build complete', { requestId });
     if (requestId != null && requestDebugSink) {
       emitRag('rag_retrieval_mode', { retrievalMode: 'vector' });
       emitRag('rag_context_bundle_selected', {
@@ -402,9 +471,11 @@ export async function runRagFlow(
     );
     options?.onGenerationStart?.();
     mark('completion start');
+    if (requestId != null) perfTrace('RAG', 'completion start', { requestId });
     const completionStartedAt = Date.now();
     raw = await ollamaGenerate(host, chatModel, prompt);
     mark('completion end');
+    if (requestId != null) perfTrace('RAG', 'completion end', { requestId });
     if (requestId != null && requestDebugSink) {
       emitRag('rag_generation_complete', {
         finalLength: raw.length,
@@ -538,6 +609,7 @@ export async function runRagFlow(
       mark('context build start');
       const prompt = buildPrompt(bundleText, question);
       mark('context build end');
+      if (requestId != null) perfTrace('RAG', 'prompt build complete', { requestId });
       if (requestId != null && requestDebugSink) {
         emitRag('rag_retrieval_mode', { retrievalMode: 'deterministic' });
         emitRag('rag_context_bundle_selected', {
@@ -587,6 +659,7 @@ export async function runRagFlow(
       const chatContextWasWarm = !!chatContext;
       options?.onModelLoadStart?.();
       mark('chat model load start');
+      if (requestId != null) perfTrace('RAG', 'chat model load start', { requestId });
       if (requestId != null && requestDebugSink) {
         emitRag('rag_model_load_start', {
           modelPath: params.chatModelPath ?? undefined,
@@ -595,6 +668,7 @@ export async function runRagFlow(
       }
       const chatCtx = await getChatContext(params.chatModelPath);
       mark('chat model load end');
+      if (requestId != null) perfTrace('RAG', 'chat model load end', { requestId });
       if (requestId != null && requestDebugSink) {
         emitRag('rag_model_load_end', {
           modelPath: params.chatModelPath ?? undefined,
@@ -612,6 +686,7 @@ export async function runRagFlow(
         emitRag('rag_inference_start', {});
       }
       mark('completion start');
+      if (requestId != null) perfTrace('RAG', 'completion start', { requestId });
       const completionStartedAt = Date.now();
       let completionTotalTokens: number | undefined;
       if (options?.onPartial) {
@@ -667,6 +742,7 @@ export async function runRagFlow(
           '';
       }
       mark('completion end');
+      if (requestId != null) perfTrace('RAG', 'completion end', { requestId });
       if (requestId != null && requestDebugSink) {
         emitRag('rag_generation_complete', {
           finalLength: raw.length,
@@ -720,6 +796,7 @@ export async function runRagFlow(
     mark('vectors load end');
 
     mark('retrieval start');
+    if (requestId != null) perfTrace('RAG', 'retrieval start', { requestId });
     const rulesTopK = Math.min(
       RAG_CONFIG.retrieval.top_k_rules,
       rulesIndex.nRows,
@@ -733,6 +810,7 @@ export async function runRagFlow(
     const merged = mergeHits(rulesHits, cardsHits);
     const topMerged = merged.slice(0, RAG_CONFIG.retrieval.top_k_merge);
     mark('retrieval end');
+    if (requestId != null) perfTrace('RAG', 'retrieval end', { requestId });
 
     const rulesRowIds = topMerged
       .filter(h => h.source_type === 'rules')
@@ -761,6 +839,7 @@ export async function runRagFlow(
     options?.onRetrievalComplete?.();
     const { prompt, contextBlock } = trimChunksToFitPrompt(chunksForPrompt, question);
     mark('context build end');
+    if (requestId != null) perfTrace('RAG', 'prompt build complete', { requestId });
     if (requestId != null && requestDebugSink) {
       emitRag('rag_context_bundle_selected', {
         contextLength: contextBlock.length,
@@ -801,6 +880,7 @@ export async function runRagFlow(
     const chatContextWasWarm = !!chatContext;
     options?.onModelLoadStart?.();
     mark('chat model load start');
+    if (requestId != null) perfTrace('RAG', 'chat model load start', { requestId });
     let chatCtx: import('llama.rn').LlamaContext;
     try {
       if (requestId != null && requestDebugSink) {
@@ -811,6 +891,7 @@ export async function runRagFlow(
       }
       chatCtx = await getChatContext(params.chatModelPath);
       mark('chat model load end');
+      if (requestId != null) perfTrace('RAG', 'chat model load end', { requestId });
       if (requestId != null && requestDebugSink) {
         emitRag('rag_model_load_end', {
           modelPath: params.chatModelPath ?? undefined,
@@ -837,6 +918,7 @@ export async function runRagFlow(
       emitRag('rag_inference_start', {});
     }
     mark('completion start');
+    if (requestId != null) perfTrace('RAG', 'completion start', { requestId });
     const completionStartedAt = Date.now();
     let completionTotalTokens: number | undefined;
     if (options?.onPartial) {
@@ -869,6 +951,7 @@ export async function runRagFlow(
       raw = result?.text ?? result?.content ?? '';
     }
     mark('completion end');
+    if (requestId != null) perfTrace('RAG', 'completion end', { requestId });
     if (requestId != null && requestDebugSink) {
       emitRag('rag_generation_complete', {
         finalLength: raw.length,

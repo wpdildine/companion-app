@@ -7,8 +7,17 @@
 
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber/native';
+import { useVizIsolationGate } from './VizRuntimeIsolationContext';
 import * as THREE from 'three';
-import { logInfo } from '../../shared/logging/logger';
+import {
+  logInfo,
+  perfTrace,
+  getMilestonesBetween,
+  getRecentMilestonesBefore,
+  getPerfBufferInstanceId,
+  getPerfMilestoneBufferDebugState,
+  getLastNMilestonesRaw,
+} from '../../shared/logging';
 import type { VisualizationEngineRef, VisualizationMode } from './runtimeTypes';
 import { getPulseColorWithHue } from './getPulseColor';
 import { TARGET_ACTIVITY_BY_MODE } from './createDefaultRef';
@@ -84,6 +93,9 @@ function applyDevCycleState(v: VisualizationEngineRef, mode: VisualizationMode):
 }
 
 export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefObject<VisualizationEngineRef | null> }) {
+  const runtimeLoopOn = useVizIsolationGate('runtime_loop');
+  const runtimeLoopSkipLoggedRef = useRef(false);
+  const runtimeLoopExecLoggedRef = useRef(false);
   const didLog = useRef(false);
   const touchNdcVec = useRef(new THREE.Vector2());
   const raycaster = useRef(new THREE.Raycaster());
@@ -111,12 +123,108 @@ export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefO
   }
   const motionGrammar = motionGrammarRef.current;
 
+  // Perf: lifecycle and starvation (guarded, no per-frame spam)
+  const lastTickTimeRef = useRef(0);
+  const resumeLogRef = useRef(false);
+  const STARVATION_THRESHOLDS_MS = [100, 250, 500, 1000];
+
   useFrame((state, delta) => {
+    const v0 = visualizationRef.current;
+    const rid = v0?.bisectRequestId;
+    const lc = v0?.bisectLifecycle ?? null;
+    if (!runtimeLoopOn) {
+      if (!runtimeLoopSkipLoggedRef.current) {
+        runtimeLoopSkipLoggedRef.current = true;
+        perfTrace('Runtime', 'skipped visualization layer', {
+          layer: 'runtime_loop',
+          requestId: rid,
+          lifecycle: lc,
+        });
+      }
+      return;
+    }
+    runtimeLoopSkipLoggedRef.current = false;
+    if (!runtimeLoopExecLoggedRef.current) {
+      runtimeLoopExecLoggedRef.current = true;
+      perfTrace('Runtime', 'visualization layer executed', {
+        layer: 'runtime_loop',
+        requestId: rid,
+        lifecycle: lc,
+      });
+    }
     const v = visualizationRef.current;
     if (!v) return;
+
+    const now = Date.now();
+    const previousFrameAtMs = lastTickTimeRef.current;
+    const timeSinceLastFrameMs = previousFrameAtMs > 0 ? now - previousFrameAtMs : 0;
+    if (timeSinceLastFrameMs > 0) {
+      const matchedTiers = STARVATION_THRESHOLDS_MS.filter(t => timeSinceLastFrameMs >= t);
+      const tierMs = matchedTiers.length > 0 ? Math.max(...matchedTiers) : 0;
+      if (tierMs > 0 && typeof __DEV__ !== 'undefined' && __DEV__) {
+        const milestonesDuringGap = getMilestonesBetween(previousFrameAtMs, now);
+        const recentMilestonesBeforeFrame = getRecentMilestonesBefore(now, 5).map(m => ({
+          name: m.name,
+          scope: m.scope,
+          timestamp: m.timestamp,
+          ...(m.requestId != null && { requestId: m.requestId }),
+        }));
+        logInfo('VisualizationRuntime', '[Perf] viz frame starvation', {
+          previousFrameAtMs,
+          currentFrameAtMs: now,
+          timeSinceLastFrameMs,
+          gapMs: timeSinceLastFrameMs,
+          tierMs,
+          perfBufferInstanceId: getPerfBufferInstanceId(),
+          perfBufferDebugState: getPerfMilestoneBufferDebugState(),
+          recentMilestonesBeforeFrameCount: recentMilestonesBeforeFrame.length,
+          milestonesDuringGapCount: milestonesDuringGap.length,
+          lastMilestonesRaw: getLastNMilestonesRaw(5).map(m => ({ name: m.name, timestamp: m.timestamp })),
+          milestonesDuringGap: milestonesDuringGap.map(m => ({ name: m.name, scope: m.scope, timestamp: m.timestamp, requestId: m.requestId })),
+          noMilestonesDuringGap: milestonesDuringGap.length === 0,
+          recentMilestonesBeforeFrame,
+          currentMode: v.currentMode,
+          displayMode: v.displayMode,
+          vizIntensity: v.vizIntensity,
+          appState: v.appState,
+          lastEvent: v.lastEvent ?? undefined,
+          attributionNote:
+            'timeSinceLastFrameMs is time since previous frame; milestonesDuringGap lists perf milestones that occurred during the gap',
+        });
+      }
+      if (timeSinceLastFrameMs > 500) {
+        const milestonesDuringGap = getMilestonesBetween(previousFrameAtMs, now);
+        const recentMilestonesBeforeFrame = getRecentMilestonesBefore(now, 5).map(m => ({
+          name: m.name,
+          scope: m.scope,
+          timestamp: m.timestamp,
+          ...(m.requestId != null && { requestId: m.requestId }),
+        }));
+        perfTrace('VisualizationRuntime', 'first RuntimeLoop tick after long gap', {
+          previousFrameAtMs,
+          currentFrameAtMs: now,
+          timeSinceLastFrameMs,
+          gapMs: timeSinceLastFrameMs,
+          perfBufferInstanceId: getPerfBufferInstanceId(),
+          perfBufferDebugState: getPerfMilestoneBufferDebugState(),
+          recentMilestonesBeforeFrameCount: recentMilestonesBeforeFrame.length,
+          milestonesDuringGapCount: milestonesDuringGap.length,
+          lastMilestonesRaw: getLastNMilestonesRaw(5).map(m => ({ name: m.name, timestamp: m.timestamp })),
+          appState: v.appState,
+          currentMode: v.currentMode,
+          milestonesDuringGap: milestonesDuringGap.map(m => ({ name: m.name, scope: m.scope, timestamp: m.timestamp, requestId: m.requestId })),
+          noMilestonesDuringGap: milestonesDuringGap.length === 0,
+          recentMilestonesBeforeFrame,
+        });
+        resumeLogRef.current = true;
+      }
+    } else {
+      perfTrace('VisualizationRuntime', 'first RuntimeLoop tick');
+    }
+    lastTickTimeRef.current = now;
+
     didLog.current = true;
     v.clock = state.clock.getElapsedTime();
-    const now = Date.now();
     if (
       v.debugPulseLoopOn &&
       now - v.debugLastPulseAtMs >= Math.max(120, v.debugPulseIntervalMs)
@@ -202,6 +310,16 @@ export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefO
     const canonicalMode = toCanonicalMotionMode(v.currentMode);
     const transitionTarget = toCanonicalVisualizationMode(v.modeTransitionTo);
     if (canonicalMode !== transitionTarget) {
+      const transitionWasActive = v.modeTransitionT > 0 && v.modeTransitionT < 1;
+      if (transitionWasActive && typeof __DEV__ !== 'undefined' && __DEV__) {
+        logInfo('VisualizationRuntime', '[VizTrace] mode transition reset while active', {
+          currentMode: v.currentMode,
+          incomingCanonical: canonicalMode,
+          priorFrom: v.modeTransitionFrom,
+          priorTo: v.modeTransitionTo,
+          priorT: Number(v.modeTransitionT.toFixed(3)),
+        });
+      }
       v.modeTransitionFrom = transitionTarget;
       v.modeTransitionTo = canonicalMode;
       v.modeTransitionT = 0;
@@ -235,6 +353,12 @@ export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefO
             activity: Number(v.activity.toFixed(3)),
             targetActivity: Number(v.targetActivity.toFixed(3)),
           });
+          if (canonicalMode === 'speaking') {
+            perfTrace('VisualizationRuntime', 'after mode transition settles (speaking)', {
+              currentMode: v.currentMode,
+              displayMode: v.displayMode,
+            });
+          }
         }
       }
     } else {

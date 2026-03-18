@@ -25,7 +25,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS, useSharedValue } from 'react-native-reanimated';
 import { isCenterHoldEligible } from '../../app/_experimental/nameShaping/layout/nameShapingInteractionRouting';
 import { isVoiceLaneNdc } from '../../app/_experimental/nameShaping/layout/nameShapingTouchRegions';
-import { logInfo } from '../../shared/logging';
+import { logInfo, perfTrace } from '../../shared/logging';
 import type { VisualizationEngineRef } from '../runtime/runtimeTypes';
 import { hasMovedBeyondThreshold } from './fastMath';
 import { InteractionProbe } from './InteractionProbe';
@@ -271,12 +271,16 @@ export function InteractionBand({
           zone,
         );
         if (inVoiceLane) {
-          if (centerHoldShouldBypassDelay) {
+          const fireHoldAttempt = () => {
+            perfTrace('Interaction', 'hold start');
             onCenterHoldAttempt?.(createAttemptReporter());
+          };
+          if (centerHoldShouldBypassDelay) {
+            fireHoldAttempt();
           } else {
             centerHoldTimerRef.current = setTimeout(() => {
               centerHoldTimerRef.current = null;
-              onCenterHoldAttempt?.(createAttemptReporter());
+              fireHoldAttempt();
             }, CENTER_HOLD_THRESHOLD_MS);
           }
         }

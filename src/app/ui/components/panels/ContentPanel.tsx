@@ -3,7 +3,9 @@
  * Header treatment is optional and never affects body layout.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { logInfo, perfTrace } from '../../../../shared/logging';
+import { DIAG_RENDER_MINIMAL_PANEL_BODY } from '../overlays/responseRenderBisectFlags';
 import {
   StyleSheet,
   Text,
@@ -114,7 +116,19 @@ export function ContentPanel({
   const dismissStartXRef = useRef(0);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dismissTriggeredRef = useRef(false);
+  const diagMinimalBodyLoggedRef = useRef(false);
   const [dismissArmed, setDismissArmed] = useState(false);
+
+  useEffect(() => {
+    perfTrace('ResultsOverlay', 'ContentPanel mounted', { variant });
+  }, [variant]);
+  const firstRenderLoggedRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!firstRenderLoggedRef.current) {
+      firstRenderLoggedRef.current = true;
+      logInfo('ResultsOverlay', 'ContentPanel first render', { variant });
+    }
+  }, [variant]);
 
   const titleStyle = variant === 'answer' ? styles.titleH1 : styles.titleH2;
 
@@ -177,6 +191,17 @@ export function ContentPanel({
     dismissTriggeredRef.current = false;
   };
 
+  if (DIAG_RENDER_MINIMAL_PANEL_BODY) {
+    if (!diagMinimalBodyLoggedRef.current) {
+      diagMinimalBodyLoggedRef.current = true;
+      perfTrace('ResultsOverlay', 'minimal panel body active', {});
+    }
+  }
+  const bodyContent = DIAG_RENDER_MINIMAL_PANEL_BODY ? (
+    <View style={{ minHeight: 20 }} />
+  ) : (
+    children
+  );
   return (
     <View style={[styles.panel, panelStyle, style]} onLayout={onLayout}>
       {variant === 'warning' ? (
@@ -239,7 +264,7 @@ export function ContentPanel({
           ) : null}
         </View>
       )}
-      <View>{children}</View>
+      <View>{bodyContent}</View>
     </View>
   );
 }

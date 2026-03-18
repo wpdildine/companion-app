@@ -1,7 +1,9 @@
 import { useFrame, useThree } from '@react-three/fiber/native';
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
+import { perfTrace } from '../../../shared/logging';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { useVizIsolationGate } from '../../runtime/VizRuntimeIsolationContext';
 import { SHADER_DEBUG_FLAGS } from './shaderDebugFlags';
 
 /** Set to false to re-enable vignette / grain / chromatic (cinematic). */
@@ -86,6 +88,9 @@ export function PostFXPass({
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
 }) {
   const { gl, scene, camera, size } = useThree();
+  const r3fFrameOn = useVizIsolationGate('r3f_frame');
+  const postFxSkipLoggedRef = useRef(false);
+  const postFxExecLoggedRef = useRef(false);
   useEffect(() => {
     type GLContextWithPixelStore = {
       pixelStorei: (pname: number, param: number) => void;
@@ -214,6 +219,32 @@ export function PostFXPass({
   const lastRtSizeRef = useRef({ w: 0, h: 0 });
 
   useFrame((_state, delta) => {
+    const v0 = visualizationRef.current;
+    if (!r3fFrameOn) {
+      if (!postFxSkipLoggedRef.current) {
+        postFxSkipLoggedRef.current = true;
+        perfTrace('Runtime', 'skipped visualization layer', {
+          layer: 'r3f_frame',
+          scope: 'post_fx',
+          requestId: v0?.bisectRequestId,
+          lifecycle: v0?.bisectLifecycle ?? null,
+        });
+      }
+      gl.setRenderTarget(null);
+      gl.clear();
+      gl.render(scene, camera);
+      return;
+    }
+    postFxSkipLoggedRef.current = false;
+    if (!postFxExecLoggedRef.current) {
+      postFxExecLoggedRef.current = true;
+      perfTrace('Runtime', 'visualization layer executed', {
+        layer: 'r3f_frame',
+        scope: 'post_fx',
+        requestId: v0?.bisectRequestId,
+        lifecycle: v0?.bisectLifecycle ?? null,
+      });
+    }
     const v = visualizationRef.current;
     if (!v || POST_FX_DISABLED || !SHADER_DEBUG_FLAGS.postFx) {
       gl.setRenderTarget(null);

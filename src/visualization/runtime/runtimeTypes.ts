@@ -153,4 +153,17 @@ export interface VisualizationEngineRef {
   /** Dev: when true, app signal mode/phase writes are ignored and mode stays pinned. */
   modePinActive: boolean;
   modePin: VisualizationMode | null;
+  /** Current React Native app state (active, background, inactive). */
+  appState?: string;
+  /** Optional: last major perf milestone name (e.g. signal_applied) for starvation attribution. Set by applyVisualizationSignals. */
+  lastPerfMilestoneName?: string;
+  /** Optional: timestamp (Date.now()) when last milestone was set. */
+  lastPerfMilestoneAtMs?: number;
+  /** Bisect: mirrored from VisualizationSurface for layer trace payloads. */
+  bisectRequestId?: number;
+  bisectLifecycle?: string;
+  /** Bisect: VisualizationSurface freeze prop mirrors here for signal_apply gating. */
+  bisectFreezeRuntimeUpdates?: boolean;
+  bisectSignalApplySkipLogged?: boolean;
+  bisectSignalApplyExecLogged?: boolean;
 }
