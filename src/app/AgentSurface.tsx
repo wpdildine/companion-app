@@ -5,7 +5,7 @@
  * Does not own provider/runtime logic; that lives in AgentOrchestrator.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -26,7 +26,7 @@ import {
   resetVizSubsystems,
   setVizSubsystem,
 } from './ui/components/overlays/vizSubsystemToggles';
-import { logInfo, perfTrace } from '../shared/logging';
+import { logInfo } from '../shared/logging';
 import {
   cleanupEarcons,
   playListeningStartEarcon,
@@ -460,7 +460,6 @@ export default function AgentSurface() {
     null,
   );
   const centerHoldActiveRef = useRef(false);
-  const renderWithoutResponseTextLoggedRef = useRef(false);
   const holdCompletionInFlightRef = useRef(false);
   const holdStartPromiseRef = useRef<Promise<{
     ok: boolean;
@@ -1009,27 +1008,19 @@ export default function AgentSurface() {
         return;
       }
       if (cluster === 'rules') {
-        perfTrace('AgentSurface', 'before reveal state update', { key: 'rules' });
         setRevealedBlocks({
           answer: false,
           cards: false,
           rules: true,
           sources: false,
         });
-        perfTrace('AgentSurface', 'after reveal state update issued', {
-          key: 'rules',
-        });
         emitEvent('tapCitation');
       } else {
-        perfTrace('AgentSurface', 'before reveal state update', { key: 'cards' });
         setRevealedBlocks({
           answer: false,
           cards: true,
           rules: false,
           sources: false,
-        });
-        perfTrace('AgentSurface', 'after reveal state update issued', {
-          key: 'cards',
         });
         emitEvent('tapCard');
       }
@@ -1039,9 +1030,7 @@ export default function AgentSurface() {
 
   const revealBlock = useCallback(
     (key: keyof ResultsOverlayRevealedBlocks) => {
-      perfTrace('AgentSurface', 'before reveal state update', { key });
       setRevealedBlocks(prev => ({ ...prev, [key]: true }));
-      perfTrace('AgentSurface', 'after reveal state update issued', { key });
       const requestId =
         requestDebugState.activeRequestId ??
         (requestDebugState.recentRequestIds.length > 0
@@ -1111,20 +1100,6 @@ export default function AgentSurface() {
     resetInteractionSurface();
   }, [orchState.error, resetInteractionSurface]);
 
-  const speakingConsumerPrevRef = useRef(orchState.lifecycle);
-  useLayoutEffect(() => {
-    const prev = speakingConsumerPrevRef.current;
-    const next = orchState.lifecycle;
-    if (prev !== 'speaking' && next === 'speaking') {
-      perfTrace('Runtime', 'speaking transition consumer render', {
-        lifecycle: orchState.lifecycle,
-        mode: orchState.lifecycle,
-        processingSubstate: orchState.processingSubstate,
-      });
-    }
-    speakingConsumerPrevRef.current = next;
-  }, [orchState.lifecycle, orchState.processingSubstate]);
-
   const prevLifecycleRef = useRef(orchState.lifecycle);
   useEffect(() => {
     const prev = prevLifecycleRef.current;
@@ -1183,7 +1158,6 @@ export default function AgentSurface() {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
-      perfTrace('AgentSurface', nextAppState === 'active' ? 'foreground' : nextAppState === 'background' ? 'background' : `AppState ${nextAppState}`);
       logInfo('AgentSurface', `[Lifecycle] AppState changed to ${nextAppState}`);
       if (visualizationRef.current) {
         visualizationRef.current.appState = nextAppState;
@@ -1213,20 +1187,6 @@ export default function AgentSurface() {
         paddingTop={insets.top}
       />
     );
-  }
-
-  if (
-    orchState.responseText == null &&
-    (orchState.lifecycle === 'processing' || orchState.lifecycle === 'speaking')
-  ) {
-    if (!renderWithoutResponseTextLoggedRef.current) {
-      renderWithoutResponseTextLoggedRef.current = true;
-      perfTrace('Runtime', 'AgentSurface render without responseText state', {
-        lifecycle: orchState.lifecycle,
-      });
-    }
-  } else {
-    renderWithoutResponseTextLoggedRef.current = false;
   }
 
   const holdToSpeakSlot = SHOW_HOLD_TO_SPEAK ? (

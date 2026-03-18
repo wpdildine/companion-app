@@ -39,13 +39,6 @@ import {
   type SttAudioCaptureFailureKind,
 } from '../hooks/useSttAudioCapture';
 import { useOpenAIProxy } from '../providers/openAI/useOpenAIProxy';
-import {
-  DIAG_SKIP_PLAYBACK_TRANSITION_STATE,
-  DIAG_SKIP_RESPONSE_SURFACE_SETTLED_EVENTS,
-  DIAG_SKIP_SET_RESPONSE_TEXT_STATE,
-  DIAG_SKIP_SETTLED_PAYLOAD_PUBLICATION,
-  DIAG_SKIP_SETTLEMENT_CONTROL_STATE,
-} from '../ui/components/overlays/responseRenderBisectFlags';
 import { classifyRecoverableFailure } from './failureClassification';
 import { emitRequestDebug } from './orchestrator/telemetry';
 import { executeRequest } from './request/executeRequest';
@@ -98,38 +91,6 @@ type TtsModule = {
 };
 
 type SurfacedFailureSeverity = 'recoverable' | 'terminal';
-
-type PlaybackTransitionOp =
-  | 'setMode_speaking'
-  | 'setLifecycle_speaking'
-  | 'onPlaybackStart'
-  | 'responseSurface_playing_state'
-  | 'visualization_speaking_transition';
-
-function tracePlaybackTransitionState(
-  requestId: number | undefined,
-  op: PlaybackTransitionOp,
-  skipPlaybackTransitionState: boolean,
-  execute: () => void,
-): void {
-  perfTrace('Runtime', 'playback transition state decision', {
-    requestId,
-    skipPlaybackTransitionState,
-    op,
-  });
-  if (skipPlaybackTransitionState) {
-    perfTrace('Runtime', 'skipped playback transition state', {
-      requestId,
-      op,
-    });
-  } else {
-    execute();
-    perfTrace('Runtime', 'playback transition state executed', {
-      requestId,
-      op,
-    });
-  }
-}
 
 type SessionFailureLedgerEntry = {
   strongest: SurfacedFailureSeverity;
@@ -220,10 +181,6 @@ export function useAgentOrchestrator(
   /** RequestId for the request whose response is currently playing (for tts_start/tts_end). */
   const playbackRequestIdRef = useRef<number | null>(null);
 
-  /** DIAGNOSIS ONLY: when true, call PiperTts.speak() first then defer setLifecycle/setMode to next frame (rAF). Set to false for normal behavior. */
-  const DEFER_SPEAKING_TRANSITION_FOR_DIAGNOSIS = true;
-  /** DIAGNOSIS: when true, defer entire playText() to next frame to test if 875ms gap is commit (before playText) or playText/native (after). */
-  const DEFER_PLAYBACK_ONE_FRAME = true;
   const recordingSessionRef = useRef<string | null>(null);
   const recordingSessionSeqRef = useRef(0);
   const pendingCapturedAudioRef = useRef<CapturedSttAudio | null>(null);
@@ -1440,160 +1397,33 @@ export function useAgentOrchestrator(
       });
       return null;
     }
-    perfTrace(
-      'AgentOrchestrator',
-      'submit success path: before orchestrator state updates',
-      {
-        requestId: reqId,
-      },
-    );
-    perfTrace('Runtime', 'pre-playback settlement control summary', {
-      requestId: reqId,
-      skipSettlementControlState: DIAG_SKIP_SETTLEMENT_CONTROL_STATE,
-    });
     requestInFlightRef.current = false;
-    perfTrace('Runtime', 'settlement control state decision', {
+    setError(null);
+    setProcessingSubstate(null);
+    emitRequestDebug(requestDebugSinkRef, {
+      type: 'processing_substate',
       requestId: reqId,
-      skipSettlementControlState: DIAG_SKIP_SETTLEMENT_CONTROL_STATE,
-      op: 'setError_null',
+      processingSubstate: null,
+      timestamp: Date.now(),
     });
-    if (DIAG_SKIP_SETTLEMENT_CONTROL_STATE) {
-      perfTrace('Runtime', 'skipped settlement control state', {
-        requestId: reqId,
-        op: 'setError_null',
-      });
-    } else {
-      setError(null);
-    }
-    perfTrace('Runtime', 'settlement control state decision', {
-      requestId: reqId,
-      skipSettlementControlState: DIAG_SKIP_SETTLEMENT_CONTROL_STATE,
-      op: 'setProcessingSubstate_null',
-    });
-    if (DIAG_SKIP_SETTLEMENT_CONTROL_STATE) {
-      perfTrace('Runtime', 'skipped settlement control state', {
-        requestId: reqId,
-        op: 'setProcessingSubstate_null',
-      });
-    } else {
-      setProcessingSubstate(null);
-      emitRequestDebug(requestDebugSinkRef, {
-        type: 'processing_substate',
-        requestId: reqId,
-        processingSubstate: null,
-        timestamp: Date.now(),
-      });
-    }
-    perfTrace(
-      'AgentOrchestrator',
-      'playback handoff: response settled (orchestrator)',
-      {
-        requestId: reqId,
-        shouldPlay: runResult.shouldPlay,
-      },
-    );
     if (runResult.shouldPlay) {
-      perfTrace(
-        'AgentOrchestrator',
-        'playback handoff: before playback binding',
-        {
-          requestId: reqId,
-        },
-      );
       playbackRequestIdRef.current = reqId;
-      perfTrace('Runtime', 'response surface settled event decision', {
-        requestId: reqId,
-        skipResponseSurfaceSettledEvents:
-          DIAG_SKIP_RESPONSE_SURFACE_SETTLED_EVENTS,
-        op: 'response_surface_playback_bound_to_committed_response',
-      });
-      if (DIAG_SKIP_RESPONSE_SURFACE_SETTLED_EVENTS) {
-        perfTrace('Runtime', 'skipped response surface settled event', {
-          requestId: reqId,
-          op: 'response_surface_playback_bound_to_committed_response',
-        });
-      } else if (!DIAG_SKIP_PLAYBACK_TRANSITION_STATE) {
-        logInfo(
-          'ResponseSurface',
-          'response_surface_playback_bound_to_committed_response',
-          {
-            requestId: reqId,
-            speakingBoundToCommittedResponse: true,
-            committedChars: runResult.committedText.length,
-          },
-        );
-        perfTrace('Runtime', 'response surface settled event executed', {
-          requestId: reqId,
-          op: 'response_surface_playback_bound_to_committed_response',
-        });
-      }
-      tracePlaybackTransitionState(
-        reqId,
-        'responseSurface_playing_state',
-        DIAG_SKIP_PLAYBACK_TRANSITION_STATE,
-        () => {},
-      );
-      perfTrace(
-        'AgentOrchestrator',
-        'playback handoff: after playback binding, calling playText',
+      logInfo(
+        'ResponseSurface',
+        'response_surface_playback_bound_to_committed_response',
         {
           requestId: reqId,
+          speakingBoundToCommittedResponse: true,
+          committedChars: runResult.committedText.length,
         },
       );
-      perfTrace('Playback', 'playback text source resolved', {
-        requestId: reqId,
-        source: DIAG_SKIP_SET_RESPONSE_TEXT_STATE
-          ? 'committedText_local'
-          : 'responseText_state_or_committedText',
-        textLength: runResult.committedText.length,
-      });
-      if (DIAG_SKIP_SETTLED_PAYLOAD_PUBLICATION) {
-        perfTrace(
-          'Runtime',
-          'playback preserved while settled payload skipped',
-          {
-            requestId: reqId,
-            textLength: runResult.committedText.length,
-          },
-        );
-      }
-      if (DEFER_PLAYBACK_ONE_FRAME) {
-        perfTrace(
-          'Playback',
-          'playback handoff: deferring playText to next rAF',
-          {
-            requestId: reqId,
-          },
-        );
-        requestAnimationFrame(() => {
-          perfTrace('Playback', 'deferred rAF fired, calling playText', {
-            requestId: reqId,
-          });
-          playTextRef.current?.(runResult.committedText).catch(() => undefined);
-        });
-      } else {
-        playTextRef.current?.(runResult.committedText).catch(() => undefined);
-        perfTrace('Playback', 'playText call returned (fire-and-forget)', {
-          requestId: reqId,
-        });
-      }
+      playTextRef.current?.(runResult.committedText).catch(() => undefined);
       return runResult.committedText;
     }
-    // When not playing: transition to idle. When shouldPlay we skip this so playText() sets speaking (avoids processing->idle->speaking and the ~900ms freeze from idle fan-out).
-    perfTrace('AgentOrchestrator', 'before setMode(idle) setLifecycle(idle)', {
-      requestId: reqId,
-      reason: 'no shouldPlay',
-    });
+    // When not playing: transition to idle. When shouldPlay we skip this so playText() sets speaking (avoids processing->idle->speaking and idle fan-out cost).
     setMode('idle');
     setLifecycle('idle');
-    perfTrace('AgentOrchestrator', 'after setMode(idle) setLifecycle(idle)', {
-      requestId: reqId,
-    });
     if (!runResult.shouldPlay) {
-      perfTrace('AgentOrchestrator', 'request complete', {
-        requestId: reqId,
-        requestEnd: true,
-      });
       activeRequestIdRef.current = 0;
       const completedAt = Date.now();
       emitRequestDebug(requestDebugSinkRef, {
@@ -1614,9 +1444,6 @@ export function useAgentOrchestrator(
 
   const playText = useCallback(
     async (text: string) => {
-      perfTrace('Playback', 'playText (entry)', {
-        requestId: playbackRequestIdRef.current ?? undefined,
-      });
       const normalized = text.trim();
       if (!normalized) {
         logWarn('AgentOrchestrator', 'playback skipped: empty text');
@@ -1635,28 +1462,10 @@ export function useAgentOrchestrator(
         }
       }
       if (canUsePiper) {
-        perfTrace('Playback', 'provider selected', {
-          provider: 'piper',
-          requestId: playbackRequestIdRef.current ?? undefined,
-        });
         logInfo('Playback', 'tts path selected', {
           provider: 'piper',
           textChars: normalized.length,
         });
-        if (DIAG_SKIP_PLAYBACK_TRANSITION_STATE) {
-          perfTrace(
-            'Runtime',
-            'playback audio preserved while transition state skipped',
-            {
-              requestId: playbackRequestIdRef.current ?? undefined,
-              textLength: normalized.length,
-            },
-          );
-        }
-        perfTrace('Playback', 'Piper setOptions start', {
-          requestId: playbackRequestIdRef.current ?? undefined,
-        });
-        const setOptionsStart = Date.now();
         PiperTts.setOptions({
           lengthScale: 1.08,
           noiseScale: 0.62,
@@ -1665,227 +1474,21 @@ export function useAgentOrchestrator(
           interSentenceSilenceMs: 250,
           interCommaSilenceMs: 125,
         });
-        perfTrace('Playback', 'Piper setOptions end', {
-          elapsedMs: Date.now() - setOptionsStart,
-          requestId: playbackRequestIdRef.current ?? undefined,
-        });
-        if (DEFER_SPEAKING_TRANSITION_FOR_DIAGNOSIS) {
-          // DIAGNOSIS: call speak() first, defer lifecycle/mode to next frame to isolate transition cost.
-          perfTrace(
-            'Playback',
-            'Piper speak() call (deferred-transition experiment)',
-            {
-              requestId: playbackRequestIdRef.current ?? undefined,
-              textChars: normalized.length,
-            },
-          );
-          const speakPromise = PiperTts.speak(normalized);
-          perfTrace(
-            'Playback',
-            'Piper speak() returned promise (same-tick if native returns quickly)',
-            {
-              requestId: playbackRequestIdRef.current ?? undefined,
-            },
-          );
-          perfTrace('Playback', 'rAF scheduled', {
-            requestId: playbackRequestIdRef.current ?? undefined,
-          });
-          requestAnimationFrame(() => {
-            perfTrace(
-              'Playback',
-              'rAF fired (deferred setMode/setLifecycle speaking)',
-              {
-                requestId: playbackRequestIdRef.current ?? undefined,
-              },
-            );
-            const rid = playbackRequestIdRef.current ?? undefined;
-            const skipTr = DIAG_SKIP_PLAYBACK_TRANSITION_STATE;
-            setProcessingSubstate(null);
-            tracePlaybackTransitionState(
-              rid,
-              'setMode_speaking',
-              skipTr,
-              () => {
-                perfTrace('AgentOrchestrator', 'before setMode(speaking)', {
-                  requestId: rid,
-                });
-                setMode('speaking');
-                perfTrace('AgentOrchestrator', 'after setMode(speaking)', {
-                  requestId: rid,
-                });
-              },
-            );
-            tracePlaybackTransitionState(
-              rid,
-              'setLifecycle_speaking',
-              skipTr,
-              () => {
-                perfTrace(
-                  'AgentOrchestrator',
-                  'before setLifecycle(speaking)',
-                  {
-                    requestId: rid,
-                  },
-                );
-                setLifecycle('speaking');
-                perfTrace('AgentOrchestrator', 'after setLifecycle(speaking)', {
-                  requestId: rid,
-                });
-                const ttsStartedAt = Date.now();
-                emitRequestDebug(requestDebugSinkRef, {
-                  type: 'tts_start',
-                  requestId: playbackRequestIdRef.current,
-                  ttsStartedAt,
-                  timestamp: ttsStartedAt,
-                  lifecycle: 'speaking',
-                });
-                perfTrace('Playback', 'playback started', {
-                  requestId: rid,
-                });
-                logInfo('AgentOrchestrator', 'playback started', {
-                  provider: 'piper',
-                });
-              },
-            );
-            tracePlaybackTransitionState(rid, 'onPlaybackStart', skipTr, () => {
-              perfTrace('AgentOrchestrator', 'before onPlaybackStart', {
-                requestId: rid,
-              });
-              listenersRef?.current?.onPlaybackStart?.();
-              perfTrace('AgentOrchestrator', 'after onPlaybackStart', {
-                requestId: rid,
-              });
-            });
-            if (skipTr) {
-              tracePlaybackTransitionState(
-                rid,
-                'visualization_speaking_transition',
-                true,
-                () => {},
-              );
-            }
-          });
-          perfTrace(
-            'Playback',
-            'playText yielding (await speakPromise); rAF scheduled',
-            {
-              requestId: playbackRequestIdRef.current ?? undefined,
-            },
-          );
-          try {
-            await speakPromise;
-          } catch (e) {
-            if (!playbackInterruptedRef.current) {
-              const message =
-                e instanceof Error ? e.message : 'Piper playback failed';
-              setError(message);
-              logError('Playback', 'piper playback failed', {
-                message,
-                textChars: normalized.length,
-              });
-            }
-          } finally {
-            const ttsEndedAt = Date.now();
-            const reqIdForLog = playbackRequestIdRef.current;
-            perfTrace('Playback', 'Piper speak end', {
-              requestId: reqIdForLog ?? undefined,
-            });
-            emitRequestDebug(requestDebugSinkRef, {
-              type: 'tts_end',
-              requestId: reqIdForLog,
-              ttsEndedAt,
-              timestamp: ttsEndedAt,
-              lifecycle: 'idle',
-            });
-            if (reqIdForLog != null) {
-              pendingPlaybackCompleteRef.current = {
-                requestId: reqIdForLog,
-                endedAt: ttsEndedAt,
-              };
-            }
-            playbackRequestIdRef.current = null;
-            perfTrace('Playback', 'playback complete', {
-              requestId: reqIdForLog ?? undefined,
-            });
-            perfTrace('AgentOrchestrator', 'request complete', {
-              requestId: reqIdForLog ?? undefined,
-              requestEnd: true,
-            });
-            setProcessingSubstate(null);
-            setMode('idle');
-            setLifecycle('idle');
-            setAudioState('idleReady', { reason: 'playbackComplete' });
-            logInfo('AgentOrchestrator', 'playback completed');
-            listenersRef?.current?.onPlaybackEnd?.();
-          }
-          return;
-        }
-        const rid2 = playbackRequestIdRef.current ?? undefined;
-        const skipTr2 = DIAG_SKIP_PLAYBACK_TRANSITION_STATE;
         setProcessingSubstate(null);
-        tracePlaybackTransitionState(rid2, 'setMode_speaking', skipTr2, () => {
-          perfTrace('AgentOrchestrator', 'before setMode(speaking)', {
-            requestId: rid2,
-          });
-          setMode('speaking');
-          perfTrace('AgentOrchestrator', 'after setMode(speaking)', {
-            requestId: rid2,
-          });
+        setMode('speaking');
+        setLifecycle('speaking');
+        const ttsStartedAt = Date.now();
+        emitRequestDebug(requestDebugSinkRef, {
+          type: 'tts_start',
+          requestId: playbackRequestIdRef.current,
+          ttsStartedAt,
+          timestamp: ttsStartedAt,
+          lifecycle: 'speaking',
         });
-        tracePlaybackTransitionState(
-          rid2,
-          'setLifecycle_speaking',
-          skipTr2,
-          () => {
-            perfTrace('AgentOrchestrator', 'before setLifecycle(speaking)', {
-              requestId: rid2,
-            });
-            setLifecycle('speaking');
-            perfTrace('AgentOrchestrator', 'after setLifecycle(speaking)', {
-              requestId: rid2,
-            });
-            const ttsStartedAt = Date.now();
-            emitRequestDebug(requestDebugSinkRef, {
-              type: 'tts_start',
-              requestId: playbackRequestIdRef.current,
-              ttsStartedAt,
-              timestamp: ttsStartedAt,
-              lifecycle: 'speaking',
-            });
-            perfTrace('Playback', 'playback started', {
-              requestId: rid2,
-            });
-            logInfo('AgentOrchestrator', 'playback started', {
-              provider: 'piper',
-            });
-          },
-        );
-        tracePlaybackTransitionState(rid2, 'onPlaybackStart', skipTr2, () => {
-          perfTrace('AgentOrchestrator', 'before onPlaybackStart', {
-            requestId: rid2,
-          });
-          listenersRef?.current?.onPlaybackStart?.();
-          perfTrace('AgentOrchestrator', 'after onPlaybackStart', {
-            requestId: rid2,
-          });
-        });
-        if (skipTr2) {
-          tracePlaybackTransitionState(
-            rid2,
-            'visualization_speaking_transition',
-            true,
-            () => {},
-          );
-        }
-        perfTrace('Playback', 'Piper speak() call', {
-          requestId: playbackRequestIdRef.current ?? undefined,
-          textChars: normalized.length,
-        });
+        logInfo('AgentOrchestrator', 'playback started', { provider: 'piper' });
+        listenersRef?.current?.onPlaybackStart?.();
         try {
           await PiperTts.speak(normalized);
-          perfTrace('Playback', 'Piper speak() returned', {
-            requestId: playbackRequestIdRef.current ?? undefined,
-          });
         } catch (e) {
           if (!playbackInterruptedRef.current) {
             const message =
@@ -1899,9 +1502,6 @@ export function useAgentOrchestrator(
         } finally {
           const ttsEndedAt = Date.now();
           const reqIdForLog = playbackRequestIdRef.current;
-          perfTrace('Playback', 'Piper speak end', {
-            requestId: reqIdForLog ?? undefined,
-          });
           emitRequestDebug(requestDebugSinkRef, {
             type: 'tts_end',
             requestId: reqIdForLog,
@@ -1916,13 +1516,6 @@ export function useAgentOrchestrator(
             };
           }
           playbackRequestIdRef.current = null;
-          perfTrace('Playback', 'playback complete', {
-            requestId: reqIdForLog ?? undefined,
-          });
-          perfTrace('AgentOrchestrator', 'request complete', {
-            requestId: reqIdForLog ?? undefined,
-            requestEnd: true,
-          });
           setProcessingSubstate(null);
           setMode('idle');
           setLifecycle('idle');
@@ -1945,31 +1538,13 @@ export function useAgentOrchestrator(
       try {
         await Tts.getInitStatus();
         if (Platform.OS === 'android') Tts.stop();
-        perfTrace('Playback', 'provider selected', {
-          provider: 'react-native-tts',
-          requestId: playbackRequestIdRef.current ?? undefined,
-        });
         logInfo('Playback', 'tts path selected', {
           provider: 'react-native-tts',
           textChars: normalized.length,
         });
-        if (DIAG_SKIP_PLAYBACK_TRANSITION_STATE) {
-          perfTrace(
-            'Runtime',
-            'playback audio preserved while transition state skipped',
-            {
-              requestId: playbackRequestIdRef.current ?? undefined,
-              textLength: normalized.length,
-            },
-          );
-        }
         const reqIdForTts = playbackRequestIdRef.current;
         const onFinish = () => {
           const ttsEndedAt = Date.now();
-          perfTrace('Playback', 'playback complete', {
-            provider: 'react-native-tts',
-            requestId: reqIdForTts ?? undefined,
-          });
           emitRequestDebug(requestDebugSinkRef, {
             type: 'tts_end',
             requestId: reqIdForTts,
@@ -1984,10 +1559,6 @@ export function useAgentOrchestrator(
             };
           }
           playbackRequestIdRef.current = null;
-          perfTrace('AgentOrchestrator', 'request complete', {
-            requestId: reqIdForTts ?? undefined,
-            requestEnd: true,
-          });
           setProcessingSubstate(null);
           setMode('idle');
           setLifecycle('idle');
@@ -2005,55 +1576,21 @@ export function useAgentOrchestrator(
         };
         Tts.addEventListener('tts-finish', onFinish);
         Tts.addEventListener('tts-cancel', onFinish);
-        const skipTts = DIAG_SKIP_PLAYBACK_TRANSITION_STATE;
         setProcessingSubstate(null);
-        tracePlaybackTransitionState(
-          reqIdForTts ?? undefined,
-          'setMode_speaking',
-          skipTts,
-          () => {
-            setMode('speaking');
-          },
-        );
-        tracePlaybackTransitionState(
-          reqIdForTts ?? undefined,
-          'setLifecycle_speaking',
-          skipTts,
-          () => {
-            setLifecycle('speaking');
-            const ttsStartedAt = Date.now();
-            perfTrace('Playback', 'TTS speak start', {
-              provider: 'react-native-tts',
-              requestId: reqIdForTts ?? undefined,
-            });
-            emitRequestDebug(requestDebugSinkRef, {
-              type: 'tts_start',
-              requestId: reqIdForTts,
-              ttsStartedAt,
-              timestamp: ttsStartedAt,
-              lifecycle: 'speaking',
-            });
-            logInfo('AgentOrchestrator', 'playback started', {
-              provider: 'react-native-tts',
-            });
-          },
-        );
-        tracePlaybackTransitionState(
-          reqIdForTts ?? undefined,
-          'onPlaybackStart',
-          skipTts,
-          () => {
-            listenersRef?.current?.onPlaybackStart?.();
-          },
-        );
-        if (skipTts) {
-          tracePlaybackTransitionState(
-            reqIdForTts ?? undefined,
-            'visualization_speaking_transition',
-            true,
-            () => {},
-          );
-        }
+        setMode('speaking');
+        setLifecycle('speaking');
+        const ttsStartedAt = Date.now();
+        emitRequestDebug(requestDebugSinkRef, {
+          type: 'tts_start',
+          requestId: reqIdForTts,
+          ttsStartedAt,
+          timestamp: ttsStartedAt,
+          lifecycle: 'speaking',
+        });
+        logInfo('AgentOrchestrator', 'playback started', {
+          provider: 'react-native-tts',
+        });
+        listenersRef?.current?.onPlaybackStart?.();
         Tts.speak(normalized);
       } catch (e) {
         if (!playbackInterruptedRef.current) {
@@ -2649,37 +2186,6 @@ export function useAgentOrchestrator(
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  // Piper event subscription: [Perf] native speak_start / native speak_end for startup timeline
-  useEffect(() => {
-    try {
-      const PiperTts = require('piper-tts').default;
-      if (typeof PiperTts?.subscribe !== 'function') return;
-      const unsub = PiperTts.subscribe(
-        (event: { type: string; data?: Record<string, unknown> }) => {
-          if (event.type === 'speak_start') {
-            perfTrace('Playback', 'subscribe callback speak_start (entry)', {
-              requestId: playbackRequestIdRef.current ?? undefined,
-            });
-            perfTrace('Playback', 'native speak_start', {
-              requestId: playbackRequestIdRef.current ?? undefined,
-              ...event.data,
-            });
-            perfTrace('Playback', 'subscribe callback speak_start (exit)', {
-              requestId: playbackRequestIdRef.current ?? undefined,
-            });
-          } else if (event.type === 'speak_end') {
-            perfTrace('Playback', 'native speak_end', {
-              requestId: playbackRequestIdRef.current ?? undefined,
-            });
-          }
-        },
-      );
-      return unsub;
-    } catch {
-      return undefined;
-    }
   }, []);
 
   const emittedLifecycle: AgentLifecycleState = error ? 'error' : lifecycle;

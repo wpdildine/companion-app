@@ -12,17 +12,7 @@ import {
   type PackFileReader,
   type ValidationSummary,
 } from '../../../rag';
-import { logError, logInfo, logWarn, perfTrace } from '../../../shared/logging';
-import {
-  DIAG_DEFER_RESPONSE_TEXT_ONE_RAF,
-  DIAG_DEFER_VALIDATION_SUMMARY_ONE_RAF,
-  DIAG_SETTLE_RESPONSE_TEXT_ONLY,
-  DIAG_SETTLE_VALIDATION_ONLY,
-  DIAG_SKIP_SET_RESPONSE_TEXT_STATE,
-  DIAG_SKIP_SETTLED_PAYLOAD_PUBLICATION,
-  DIAG_SKIP_SETTLEMENT_CONTROL_STATE,
-  traceResponseSurfaceSettledEvent,
-} from '../../ui/components/overlays/responseRenderBisectFlags';
+import { logError, logInfo, logWarn } from '../../../shared/logging';
 import type { FailureClassification } from '../failureClassification';
 import { classifyTerminalFailure } from '../failureClassification';
 import type { RequestDebugEmitPayload } from '../requestDebugTypes';
@@ -128,7 +118,6 @@ export async function executeRequest(
 
   try {
     if (!getPackStateFn()) {
-      perfTrace('Runtime', 'pack init start', { requestId: reqId });
       let packRoot: string;
       try {
         packRoot = await copyBundlePackToDocumentsFn();
@@ -163,7 +152,6 @@ export async function executeRequest(
         reader,
         { requestDebugSink: requestDebugSink ?? undefined },
       );
-      perfTrace('Runtime', 'pack init end', { requestId: reqId });
     }
     const retrievalEndedAt = Date.now();
     requestDebugSink?.({
@@ -219,9 +207,6 @@ export async function executeRequest(
       },
       onValidationStart: () => {
         if (activeRequestIdRef.current !== reqId) return;
-        perfTrace('AgentOrchestrator', 'validation start', {
-          requestId: reqId,
-        });
         const validationStartedAt = Date.now();
         setProcessingSubstate('validating');
         requestDebugSink?.({
@@ -319,152 +304,8 @@ export async function executeRequest(
         disposition: 'empty',
       });
     }
-    const settleResponseTextOnly = DIAG_SETTLE_RESPONSE_TEXT_ONLY;
-    const settleValidationOnly = DIAG_SETTLE_VALIDATION_ONLY;
-    const deferValidationSummaryOneRaf = DIAG_DEFER_VALIDATION_SUMMARY_ONE_RAF;
-    const deferResponseTextOneRaf = DIAG_DEFER_RESPONSE_TEXT_ONE_RAF;
-    const settleFlagsTrue = [
-      settleResponseTextOnly,
-      settleValidationOnly,
-      deferValidationSummaryOneRaf,
-      deferResponseTextOneRaf,
-    ].filter(Boolean).length;
-    const selectedBranch = settleResponseTextOnly
-      ? 'response_text_only'
-      : settleValidationOnly
-      ? 'validation_only'
-      : deferValidationSummaryOneRaf
-      ? 'defer_validation_one_raf'
-      : deferResponseTextOneRaf
-      ? 'defer_response_text_one_raf'
-      : 'default_both_same_tick';
-    if (settleFlagsTrue > 1) {
-      logWarn('Runtime', 'multiple settle flags true; using priority order', {
-        requestId: reqId,
-        settleResponseTextOnly,
-        settleValidationOnly,
-        deferValidationSummaryOneRaf,
-        deferResponseTextOneRaf,
-        selectedBranch,
-      });
-    }
-    perfTrace('Runtime', 'response settled branch selected', {
-      requestId: reqId,
-      settleResponseTextOnly,
-      settleValidationOnly,
-      deferValidationSummaryOneRaf,
-      deferResponseTextOneRaf,
-      selectedBranch,
-    });
-    perfTrace('Runtime', 'settled payload publication decision', {
-      requestId: reqId,
-      skipSettledPayloadPublication: DIAG_SKIP_SETTLED_PAYLOAD_PUBLICATION,
-    });
-    if (DIAG_SKIP_SETTLED_PAYLOAD_PUBLICATION) {
-      perfTrace('Runtime', 'skipped settled payload publication', {
-        requestId: reqId,
-        skippedCommittedResponseText: true,
-        skippedCards: true,
-        skippedRules: true,
-        skippedValidationSummary: true,
-        skippedPlaybackBindingState: false,
-      });
-    } else {
-      perfTrace('Runtime', 'responseText state write decision', {
-        requestId: reqId,
-        skipSetResponseTextState: DIAG_SKIP_SET_RESPONSE_TEXT_STATE,
-        selectedBranch,
-        committedTextLength: committedText.length,
-      });
-      if (selectedBranch === 'response_text_only') {
-        if (DIAG_SKIP_SET_RESPONSE_TEXT_STATE) {
-          perfTrace('Runtime', 'skipped setResponseText (response settled)', {
-            requestId: reqId,
-            committedTextLength: committedText.length,
-          });
-        } else {
-          perfTrace('Runtime', 'before setResponseText (response settled)', {
-            requestId: reqId,
-          });
-          setResponseText(committedText);
-          perfTrace('Runtime', 'after setResponseText (response settled)', {
-            requestId: reqId,
-          });
-        }
-      } else if (selectedBranch === 'validation_only') {
-        perfTrace('Runtime', 'before setValidationSummary (response settled)', {
-          requestId: reqId,
-        });
-        setValidationSummary(result.validationSummary);
-        perfTrace('Runtime', 'after setValidationSummary (response settled)', {
-          requestId: reqId,
-        });
-      } else if (selectedBranch === 'defer_validation_one_raf') {
-        perfTrace('Runtime', 'before setResponseText (response settled)', {
-          requestId: reqId,
-        });
-        setResponseText(committedText);
-        perfTrace('Runtime', 'after setResponseText (response settled)', {
-          requestId: reqId,
-        });
-        requestAnimationFrame(() => {
-          perfTrace('Runtime', 'before setValidationSummary (deferred rAF)', {
-            requestId: reqId,
-          });
-          setValidationSummary(result.validationSummary);
-          perfTrace('Runtime', 'after setValidationSummary (deferred rAF)', {
-            requestId: reqId,
-          });
-        });
-      } else if (selectedBranch === 'defer_response_text_one_raf') {
-        perfTrace('Runtime', 'before setValidationSummary (response settled)', {
-          requestId: reqId,
-        });
-        setValidationSummary(result.validationSummary);
-        perfTrace('Runtime', 'after setValidationSummary (response settled)', {
-          requestId: reqId,
-        });
-        requestAnimationFrame(() => {
-          perfTrace('Runtime', 'before setResponseText (deferred rAF)', {
-            requestId: reqId,
-          });
-          setResponseText(committedText);
-          perfTrace('Runtime', 'after setResponseText (deferred rAF)', {
-            requestId: reqId,
-          });
-        });
-      } else {
-        perfTrace(
-          'Runtime',
-          'before setResponseText/setValidationSummary (response settled)',
-          {
-            requestId: reqId,
-          },
-        );
-        setResponseText(committedText);
-        setValidationSummary(result.validationSummary);
-        perfTrace(
-          'Runtime',
-          'after setResponseText/setValidationSummary (response settled)',
-          {
-            requestId: reqId,
-          },
-        );
-        requestAnimationFrame(() => {
-          perfTrace('Runtime', 'rAF after setState (response settled)', {
-            requestId: reqId,
-          });
-        });
-      }
-      const vs = result.validationSummary;
-      perfTrace('Runtime', 'settled payload publication executed', {
-        requestId: reqId,
-        committedResponseTextLength: committedText.length,
-        cardsCount: vs.cards?.length ?? 0,
-        rulesCount: vs.rules?.length ?? 0,
-        hasValidationSummary: vs != null,
-      });
-    }
+    setResponseText(committedText);
+    setValidationSummary(result.validationSummary);
     if (!firstChunkSent) {
       logInfo('AgentOrchestrator', 'first token received', {
         requestId: reqId,
@@ -496,22 +337,8 @@ export async function executeRequest(
     listenersRef.current?.onGenerationEnd?.();
     listenersRef.current?.onComplete?.();
     const validationEndedAt = Date.now();
-    perfTrace('AgentOrchestrator', 'validation end', { requestId: reqId });
     const settlingStartedAt = validationEndedAt;
-    perfTrace('Runtime', 'settlement control state decision', {
-      requestId: reqId,
-      skipSettlementControlState: DIAG_SKIP_SETTLEMENT_CONTROL_STATE,
-      op: 'processingSubstate_settling',
-    });
-    if (DIAG_SKIP_SETTLEMENT_CONTROL_STATE) {
-      perfTrace('Runtime', 'skipped settlement control state', {
-        requestId: reqId,
-        op: 'processingSubstate_settling',
-      });
-    } else {
-      setProcessingSubstate('settling');
-    }
-    perfTrace('AgentOrchestrator', 'settling start', { requestId: reqId });
+    setProcessingSubstate('settling');
     requestDebugSink?.({
       type: 'validation_end',
       requestId: reqId,
@@ -542,35 +369,30 @@ export async function executeRequest(
       timestamp: settlingStartedAt,
     });
     const settledAt = Date.now();
-    perfTrace('AgentOrchestrator', 'settling end', { requestId: reqId });
-    traceResponseSurfaceSettledEvent(reqId, 'response_settled', () => {
-      requestDebugSink?.({
-        type: 'response_settled',
-        requestId: reqId,
-        lifecycle: 'processing',
-        processingSubstate: 'settling',
-        committedChars: committedText.length,
-        rulesCount: result.validationSummary.rules.length,
-        cardsCount: result.validationSummary.cards.length,
-        finalSettledOutput: committedText,
-        validationSummary: result.validationSummary,
-        timestamp: settledAt,
-      });
-      logInfo('ResponseSurface', 'response_settled', {
-        requestId: reqId,
-        lifecycle: 'processing',
-        processingSubstate: 'settling',
-        committedChars: committedText.length,
-        rulesCount: result.validationSummary.rules.length,
-        cardsCount: result.validationSummary.cards.length,
-      });
+    requestDebugSink?.({
+      type: 'response_settled',
+      requestId: reqId,
+      lifecycle: 'processing',
+      processingSubstate: 'settling',
+      committedChars: committedText.length,
+      rulesCount: result.validationSummary.rules.length,
+      cardsCount: result.validationSummary.cards.length,
+      finalSettledOutput: committedText,
+      validationSummary: result.validationSummary,
+      timestamp: settledAt,
     });
-    traceResponseSurfaceSettledEvent(reqId, 'response_settled_payload', () => {
-      logInfo('ResponseSurface', 'response_settled_payload', {
-        requestId: reqId,
-        committedResponseText: committedText,
-        ...summarizeValidationSummary(result.validationSummary),
-      });
+    logInfo('ResponseSurface', 'response_settled', {
+      requestId: reqId,
+      lifecycle: 'processing',
+      processingSubstate: 'settling',
+      committedChars: committedText.length,
+      rulesCount: result.validationSummary.rules.length,
+      cardsCount: result.validationSummary.cards.length,
+    });
+    logInfo('ResponseSurface', 'response_settled_payload', {
+      requestId: reqId,
+      committedResponseText: committedText,
+      ...summarizeValidationSummary(result.validationSummary),
     });
     previousCommittedResponseRef.current = null;
     previousCommittedValidationRef.current = null;

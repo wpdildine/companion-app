@@ -1,5 +1,5 @@
 /**
- * Diagnostic bisect: per-layer gates from responseRenderBisectFlags isolation mode.
+ * Optional per-subsystem gates for viz runtime isolation (defaults: all enabled).
  * TouchRaycaster / CameraSync are not gated here (input + projection shell).
  */
 

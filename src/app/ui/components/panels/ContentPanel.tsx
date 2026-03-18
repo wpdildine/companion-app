@@ -19,8 +19,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { logInfo, perfTrace } from '../../../../shared/logging';
-import { DIAG_RENDER_MINIMAL_PANEL_BODY } from '../overlays/responseRenderBisectFlags';
+import { logInfo } from '../../../../shared/logging';
 
 export type ContentPanelIntensity = 'off' | 'subtle' | 'full';
 export type ContentPanelVariant =
@@ -127,12 +126,7 @@ export function ContentPanel({
   const dismissStartXRef = useRef(0);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dismissTriggeredRef = useRef(false);
-  const diagMinimalBodyLoggedRef = useRef(false);
   const [dismissArmed, setDismissArmed] = useState(false);
-
-  useEffect(() => {
-    perfTrace('ResultsOverlay', 'ContentPanel mounted', { variant });
-  }, [variant]);
   const firstRenderLoggedRef = useRef(false);
   useLayoutEffect(() => {
     if (!firstRenderLoggedRef.current) {
@@ -202,17 +196,7 @@ export function ContentPanel({
     dismissTriggeredRef.current = false;
   };
 
-  if (DIAG_RENDER_MINIMAL_PANEL_BODY) {
-    if (!diagMinimalBodyLoggedRef.current) {
-      diagMinimalBodyLoggedRef.current = true;
-      perfTrace('ResultsOverlay', 'minimal panel body active', {});
-    }
-  }
-  const bodyContent = DIAG_RENDER_MINIMAL_PANEL_BODY ? (
-    <View style={{ minHeight: 20 }} />
-  ) : (
-    children
-  );
+  const bodyContent = children;
   return (
     <View style={[styles.panel, panelStyle, style]} onLayout={onLayout}>
       {variant === 'warning' ? (
