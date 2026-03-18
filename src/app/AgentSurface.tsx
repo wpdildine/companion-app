@@ -18,14 +18,6 @@ import {
   useColorScheme,
   View,
 } from 'react-native';
-import {
-  getVizRuntimeMode,
-  setVizRuntimeMode,
-} from './ui/components/overlays/VisualizationRuntimeMode';
-import {
-  resetVizSubsystems,
-  setVizSubsystem,
-} from './ui/components/overlays/vizSubsystemToggles';
 import { logInfo } from '../shared/logging';
 import {
   cleanupEarcons,
@@ -211,15 +203,6 @@ export default function AgentSurface() {
     debugEnabled,
     debugScenario: DEBUG_SCENARIO,
   });
-
-  useEffect(() => {
-    if (typeof __DEV__ === 'undefined' || !__DEV__) return;
-    const g = globalThis as Record<string, unknown>;
-    g.setVizRuntimeMode = setVizRuntimeMode;
-    g.getVizRuntimeMode = getVizRuntimeMode;
-    g.setVizSubsystem = setVizSubsystem;
-    g.resetVizSubsystems = resetVizSubsystems;
-  }, []);
 
   const { state: nameShapingState, actions: nameShapingActions } =
     useNameShapingState();
@@ -1122,7 +1105,10 @@ export default function AgentSurface() {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
-      logInfo('AgentSurface', `[Lifecycle] AppState changed to ${nextAppState}`);
+      logInfo(
+        'AgentSurface',
+        `[Lifecycle] AppState changed to ${nextAppState}`,
+      );
       if (visualizationRef.current) {
         visualizationRef.current.appState = nextAppState;
       }
