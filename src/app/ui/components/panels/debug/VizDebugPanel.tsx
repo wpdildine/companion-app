@@ -3,7 +3,7 @@
  * inside the same styling as the pipeline telemetry panel.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Dimensions, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { RefObject } from 'react';
 import type { VisualizationEngineRef } from '../../../../../visualization';
@@ -12,6 +12,30 @@ import { NameShapingDebugOverlay } from '../../../../_experimental/nameShaping';
 import type { NameShapingActions } from '../../../../_experimental/nameShaping';
 import type { NameShapingState } from '../../../../_experimental/nameShaping';
 import { PanelHeaderAction } from '../../controls';
+import {
+  getVizRuntimeMode,
+  setVizRuntimeMode,
+  subscribeVizRuntimeMode,
+  type VizRuntimeMode,
+} from '../../overlays/VisualizationRuntimeMode';
+import {
+  VIZ_SUBSYSTEM_KEYS,
+  getVizSubsystemEnabled,
+  resetVizSubsystems,
+  setVizSubsystem,
+  subscribeVizSubsystemChange,
+  type VizSubsystemKey,
+} from '../../overlays/vizSubsystemToggles';
+
+const VIZ_RUNTIME_MODE_OPTIONS: VizRuntimeMode[] = [
+  'all_on',
+  'all_off',
+  'signal_apply_only',
+  'spine_only',
+  'r3f_only',
+  'runtime_loop_only',
+  'fallback_only',
+];
 
 const PANEL_WIDTH = 360;
 const BG = 'rgba(15,17,21,0.9)';
@@ -48,6 +72,16 @@ export function VizDebugPanel({
   nameShapingActions,
 }: VizDebugPanelProps) {
   const [showVisualizationDev, setShowVisualizationDev] = useState(false);
+  const [vizRuntimeMode, setVizRuntimeModeState] = useState(getVizRuntimeMode);
+  useEffect(
+    () => subscribeVizRuntimeMode(() => setVizRuntimeModeState(getVizRuntimeMode())),
+    [],
+  );
+  const [, bumpSub] = useState(0);
+  useEffect(
+    () => subscribeVizSubsystemChange(() => bumpSub(n => n + 1)),
+    [],
+  );
   const window = Dimensions.get('window');
   const panelWidth = Math.min(PANEL_WIDTH, Math.max(240, (maxWidth ?? window.width) - 24));
   const panelMaxHeight = Math.max(240, (maxHeight ?? window.height) - 24);
@@ -88,6 +122,48 @@ export function VizDebugPanel({
           <Text style={styles.stubCheck}>{stubRulesEnabled ? '[x]' : '[ ]'}</Text>
           <Text style={styles.stubLabel}>Rules</Text>
         </Pressable>
+        {typeof __DEV__ !== 'undefined' && __DEV__ && (
+          <>
+            <Text style={styles.sectionTitle}>Viz runtime isolation</Text>
+            <Text style={styles.modeCurrent}>current: {vizRuntimeMode}</Text>
+            {VIZ_RUNTIME_MODE_OPTIONS.map(m => (
+              <Pressable
+                key={m}
+                style={styles.modeRow}
+                onPress={() => setVizRuntimeMode(m)}
+              >
+                <Text
+                  style={
+                    m === vizRuntimeMode ? styles.modeRowActive : styles.modeRowLabel
+                  }
+                >
+                  {m}
+                </Text>
+              </Pressable>
+            ))}
+            <Text style={styles.sectionTitle}>Viz subsystems (all_on + toggle)</Text>
+            <Text style={styles.modeCurrent}>
+              Tap row to toggle. Use all_on mode first.
+            </Text>
+            <Pressable style={styles.modeRow} onPress={() => resetVizSubsystems()}>
+              <Text style={styles.modeRowActive}>Reset all subsystems ON</Text>
+            </Pressable>
+            {VIZ_SUBSYSTEM_KEYS.map((k: VizSubsystemKey) => {
+              const on = getVizSubsystemEnabled(k);
+              return (
+                <Pressable
+                  key={k}
+                  style={styles.modeRow}
+                  onPress={() => setVizSubsystem(k, !on)}
+                >
+                  <Text style={on ? styles.modeRowLabel : styles.modeRowActive}>
+                    [{on ? 'ON' : 'OFF'}] {k}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </>
+        )}
         {showNameShapingSection && (
           <>
             <Text style={styles.sectionTitle}>NameShaping</Text>
@@ -166,5 +242,25 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontFamily: fontMono,
     color: TEXT_MUTED,
+  },
+  modeCurrent: {
+    color: TEXT_MUTED,
+    fontSize: 11,
+    fontFamily: fontMono,
+    marginBottom: 6,
+  },
+  modeRow: {
+    paddingVertical: 4,
+  },
+  modeRowLabel: {
+    color: TEXT_MUTED,
+    fontSize: 12,
+    fontFamily: fontMono,
+  },
+  modeRowActive: {
+    color: '#7ee787',
+    fontSize: 12,
+    fontFamily: fontMono,
+    fontWeight: '600',
   },
 });

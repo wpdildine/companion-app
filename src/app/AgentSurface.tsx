@@ -65,6 +65,14 @@ import {
   type ResultsOverlayRevealedBlocks,
 } from './ui';
 import {
+  getVizRuntimeMode,
+  setVizRuntimeMode,
+} from './ui/components/overlays/VisualizationRuntimeMode';
+import {
+  resetVizSubsystems,
+  setVizSubsystem,
+} from './ui/components/overlays/vizSubsystemToggles';
+import {
   createBundlePackReader,
   createDocumentsPackReader,
   copyBundlePackToDocuments,
@@ -203,6 +211,15 @@ export default function AgentSurface() {
     debugEnabled,
     debugScenario: DEBUG_SCENARIO,
   });
+
+  useEffect(() => {
+    if (typeof __DEV__ === 'undefined' || !__DEV__) return;
+    const g = globalThis as Record<string, unknown>;
+    g.setVizRuntimeMode = setVizRuntimeMode;
+    g.getVizRuntimeMode = getVizRuntimeMode;
+    g.setVizSubsystem = setVizSubsystem;
+    g.resetVizSubsystems = resetVizSubsystems;
+  }, []);
 
   const { state: nameShapingState, actions: nameShapingActions } =
     useNameShapingState();

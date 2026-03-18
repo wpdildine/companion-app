@@ -32,6 +32,10 @@ import {
   isMountIdInRegistry,
 } from '../layers/layerRegistry';
 import { RuntimeLoop } from '../../runtime/RuntimeLoop';
+import {
+  VizRuntimeIsolationContext,
+  VIZ_RUNTIME_ISOLATION_ALL_ON,
+} from '../../runtime/VizRuntimeIsolationContext';
 import { PostFXPass } from './PostFXPass';
 
 const TAP_MAX_MS = 300;
@@ -228,26 +232,28 @@ export function VisualizationCanvasR3F({
           preserveDrawingBuffer: false,
         }}
       >
-        <color attach="background" args={[canvasBackground]} />
-        {(visualizationRef.current?.scene?.layerDescriptors ??
-          DEFAULT_LAYER_DESCRIPTORS)
-          .filter(
-            d => d.enabled !== false && isMountIdInRegistry(d.id),
-          )
-          .map(d => {
-            const Comp = LAYER_REGISTRY[d.id];
-            return Comp ? (
-              <Comp
-                key={d.id}
-                visualizationRef={visualizationRef}
-                descriptor={d}
-              />
-            ) : null;
-          })}
-        <RuntimeLoop visualizationRef={visualizationRef} />
-        <TouchRaycaster visualizationRef={visualizationRef} />
-        <CameraOrbit visualizationRef={visualizationRef} />
-        <PostFXPass visualizationRef={visualizationRef} />
+        <VizRuntimeIsolationContext.Provider value={VIZ_RUNTIME_ISOLATION_ALL_ON}>
+          <color attach="background" args={[canvasBackground]} />
+          {(visualizationRef.current?.scene?.layerDescriptors ??
+            DEFAULT_LAYER_DESCRIPTORS)
+            .filter(
+              d => d.enabled !== false && isMountIdInRegistry(d.id),
+            )
+            .map(d => {
+              const Comp = LAYER_REGISTRY[d.id];
+              return Comp ? (
+                <Comp
+                  key={d.id}
+                  visualizationRef={visualizationRef}
+                  descriptor={d}
+                />
+              ) : null;
+            })}
+          <RuntimeLoop visualizationRef={visualizationRef} />
+          <TouchRaycaster visualizationRef={visualizationRef} />
+          <CameraOrbit visualizationRef={visualizationRef} />
+          <PostFXPass visualizationRef={visualizationRef} />
+        </VizRuntimeIsolationContext.Provider>
       </Canvas>
     </View>
   );

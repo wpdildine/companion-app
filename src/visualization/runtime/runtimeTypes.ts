@@ -153,4 +153,6 @@ export interface VisualizationEngineRef {
   /** Dev: when true, app signal mode/phase writes are ignored and mode stays pinned. */
   modePinActive: boolean;
   modePin: VisualizationMode | null;
+  /** React Native AppState string mirror (AgentSurface); optional for viz/perf consumers. */
+  appState?: string;
 }
