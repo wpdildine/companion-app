@@ -158,7 +158,7 @@ export function Spine({
   const halftonePrimedRef = useRef(false);
   const bootStableFramesRef = useRef(0);
   const lastBootResRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  useFrame((state, delta) => {
+  useFrame((state, _delta) => {
     const v = visualizationRef.current;
     if (!v) return;
     const scene = v.scene;
@@ -344,10 +344,7 @@ export function Spine({
     const halfHeight = totalHeight / 2;
     const dynamicOpacityBoost =
       1 + halftoneProfile.intensity * spine.style.opacityBoostFromHalftone;
-    const kOpacity = 1.0 - Math.exp(-Math.max(0, delta) / 0.18);
-    const maxOpacityStep = Math.max(0.008, delta * 2.4);
-    const maxIntensityStep = Math.max(0.01, delta * 2.8);
-
+    // Bypass smoothing: use target values directly each frame (no kOpacity / maxOpacityStep / maxIntensityStep).
     const halftonePlaneIndex = Math.floor((planeCount - 1) / 2);
     const pixelRatio = Math.max(1, state.gl.getPixelRatio?.() ?? 1);
     const resX = w * pixelRatio;
@@ -439,20 +436,8 @@ export function Spine({
       const planeColor = spine.style.planeColors?.[i] ?? spine.style.color;
       const targetPlaneOpacity =
         spine.style.opacity * opacityScale * dynamicOpacityBoost;
-      if (smoothPlaneOpacityRef.current[i] == null) {
-        smoothPlaneOpacityRef.current[i] = targetPlaneOpacity;
-      }
-      const currentOpacity = smoothPlaneOpacityRef.current[i];
-      const nextOpacityRaw =
-        currentOpacity + (targetPlaneOpacity - currentOpacity) * kOpacity;
-      const nextOpacity =
-        currentOpacity +
-        THREE.MathUtils.clamp(
-          nextOpacityRaw - currentOpacity,
-          -maxOpacityStep,
-          maxOpacityStep,
-        );
-      smoothPlaneOpacityRef.current[i] = nextOpacity;
+      smoothPlaneOpacityRef.current[i] = targetPlaneOpacity;
+      const nextOpacity = targetPlaneOpacity;
 
       if (planeUsesHalftone) {
         if (!halftoneMat) continue;
@@ -467,20 +452,8 @@ export function Spine({
           nextOpacity * spine.style.halftoneOpacityScale,
         );
         const targetIntensity = edgeIntensity;
-        if (smoothPlaneIntensityRef.current[i] == null) {
-          smoothPlaneIntensityRef.current[i] = targetIntensity;
-        }
-        const currentIntensity = smoothPlaneIntensityRef.current[i];
-        const nextIntensityRaw =
-          currentIntensity + (targetIntensity - currentIntensity) * kOpacity;
-        const nextIntensity =
-          currentIntensity +
-          THREE.MathUtils.clamp(
-            nextIntensityRaw - currentIntensity,
-            -maxIntensityStep,
-            maxIntensityStep,
-          );
-        smoothPlaneIntensityRef.current[i] = nextIntensity;
+        smoothPlaneIntensityRef.current[i] = targetIntensity;
+        const nextIntensity = targetIntensity;
         const organism = scene.organism;
         const motion = scene.motion;
         const organismIntensityK = organism && !v.reduceMotion ? organism.presence * 0.1 : 0;
@@ -692,21 +665,8 @@ export function Spine({
           spine.style.shardOpacityScale *
           0.92 *
           (1 + motionOpenness * 0.14 + motionEnergy * 0.12 - motionSettle * 0.12);
-        if (smoothShardOpacityRef.current[s] == null) {
-          smoothShardOpacityRef.current[s] = targetShardOpacity;
-        }
-        const currentShardOpacity = smoothShardOpacityRef.current[s];
-        const nextShardOpacityRaw =
-          currentShardOpacity +
-          (targetShardOpacity - currentShardOpacity) * kOpacity;
-        const nextShardOpacity =
-          currentShardOpacity +
-          THREE.MathUtils.clamp(
-            nextShardOpacityRaw - currentShardOpacity,
-            -maxOpacityStep,
-            maxOpacityStep,
-          );
-        smoothShardOpacityRef.current[s] = nextShardOpacity;
+        smoothShardOpacityRef.current[s] = targetShardOpacity;
+        const nextShardOpacity = targetShardOpacity;
         mat.opacity = THREE.MathUtils.clamp(nextShardOpacity, 0, 0.9);
       }
     }
