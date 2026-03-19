@@ -2,9 +2,14 @@
  * Touch callback types and stub map. Visualization consumes these; no theme import.
  * If touch begins to alter mode / analytics / haptics, move contract upward (e.g. src/interaction).
  *
- * "Canvas" callbacks below apply when `VisualizationCanvasR3F`'s outer View is touch-targetable.
- * With default `VisualizationSurface` (`pointerEvents="none"` on the canvas wrapper), they are
- * not invoked. Cluster release from touch is normally `InteractionBand` → `onClusterRelease`.
+ * **Default app shell:** `InteractionBand` owns band-region gestures; `VisualizationSurface` keeps
+ * the GL layer non-interactive and passes `canvasTouchPolicy="none"` so direct-mount canvas
+ * handlers are not attached. Use {@link DirectMountCanvasTouchCallbacks} when documenting
+ * touch-targetable `VisualizationCanvas` / `VisualizationCanvasR3F` usage.
+ *
+ * "Canvas" callbacks in {@link TouchCallbacks} apply when the R3F outer `View` is touch-targetable
+ * and `canvasTouchPolicy === 'full'`. Cluster release from touch in the shell is
+ * `InteractionBand` → `onClusterRelease` (not forwarded through Surface to the canvas).
  */
 
 export interface TouchCallbacks {
@@ -48,6 +53,22 @@ export interface TouchCallbacks {
   /** Drag end from R3F canvas wrapper (when touchable). */
   onDragEnd?: () => void;
 }
+
+/**
+ * Subset of {@link TouchCallbacks} used only when the canvas wrapper receives touches
+ * (direct-mount / `canvasTouchPolicy: 'full'`). Does not include `onClusterRelease` /
+ * `onClusterTap` — those are band-oriented; the R3F canvas path does not emit cluster commit.
+ */
+export type DirectMountCanvasTouchCallbacks = Pick<
+  TouchCallbacks,
+  | 'onShortTap'
+  | 'onDoubleTap'
+  | 'onLongPressStart'
+  | 'onLongPressEnd'
+  | 'onDragStart'
+  | 'onDragMove'
+  | 'onDragEnd'
+>;
 
 const noop = () => {};
 const noopCluster = (_cluster: 'rules' | 'cards') => {};

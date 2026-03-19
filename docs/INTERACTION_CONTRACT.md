@@ -3,7 +3,7 @@
 **Scope:** `src/visualization/interaction/InteractionBand.tsx`, `src/app/AgentSurface.tsx`  
 **Purpose:** Baseline description of the center-hold contract after the touch-intent vs semantic-acceptance refactor. Use this for regression checks and when changing either layer.
 
-**Physical input (default shell):** In `AgentSurface`, visualization uses `VisualizationSurface`, which sets `pointerEvents="none"` on the canvas layer. Band gestures are **not** delivered through the GL view; **`InteractionBand`** (and RN overlays) own hit testing. See **docs/APP_ARCHITECTURE.md** (Touch Path) and **docs/VISUALIZATION_COMPONENT_REFERENCE.md** (Touch Ownership Contract).
+**Physical input (default shell):** In `AgentSurface`, visualization uses `VisualizationSurface`, which sets `pointerEvents="none"` on the canvas layer and `canvasTouchPolicy="none"` on the canvas. Band gestures are **not** delivered through the GL view; **`InteractionBand`** (and RN overlays) own hit testing. Center short tap on the band sets `pendingTapNdc` for `TouchRaycaster` (localized pulse) while `onCenterHoldShortTap` still drives transient `shortTap` via `AgentSurface`. See **docs/APP_ARCHITECTURE.md** (Touch Path) and **docs/VISUALIZATION_COMPONENT_REFERENCE.md** (Touch Ownership Contract).
 
 ---
 

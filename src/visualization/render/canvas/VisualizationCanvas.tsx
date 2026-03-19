@@ -11,6 +11,7 @@ import React, { Component, useEffect, useState } from 'react';
 import { NativeModules, Platform } from 'react-native';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { TouchCallbacks } from '../../interaction/touchHandlers';
+import type { CanvasTouchPolicy } from './directMountCanvasTouch';
 import { VisualizationCanvasFallback } from './VisualizationCanvasFallback';
 
 /** Skip loading R3F on Android; set false to try R3F + expo-gl on Android. */
@@ -24,6 +25,8 @@ type VisualizationCanvasProps = {
   inputEnabled: boolean;
   canvasBackground?: string;
   clusterZoneHighlights?: boolean;
+  /** @default 'full' for direct-mount; `VisualizationSurface` passes `none`. */
+  canvasTouchPolicy?: CanvasTouchPolicy;
 } & TouchCallbacks;
 
 type R3FComponentType = React.ComponentType<VisualizationCanvasProps>;
@@ -66,6 +69,7 @@ export function VisualizationCanvas({
   inputEnabled,
   canvasBackground,
   clusterZoneHighlights = false,
+  canvasTouchPolicy = 'full',
   onShortTap,
   onClusterTap,
   onDoubleTap,
@@ -172,6 +176,7 @@ export function VisualizationCanvas({
         inputEnabled={inputEnabled}
         canvasBackground={canvasBackground}
         clusterZoneHighlights={clusterZoneHighlights}
+        canvasTouchPolicy={canvasTouchPolicy}
         onShortTap={onShortTap}
         onClusterTap={onClusterTap}
         onDoubleTap={onDoubleTap}

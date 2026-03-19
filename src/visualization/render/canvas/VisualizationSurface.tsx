@@ -10,6 +10,10 @@
  *
  * `TouchCallbacks` includes `onClusterRelease`, but this component does not destructure or
  * forward it to `VisualizationCanvas` (live cluster release is `InteractionBand` in AgentSurface).
+ *
+ * This surface passes `canvasTouchPolicy="none"` so the R3F wrapper does not attach direct-mount
+ * touch handlers. Optional {@link TouchCallbacks} remain on the public props type for
+ * direct-mount / API compatibility; shell apps (e.g. `AgentSurface`) omit them.
  */
 
 import React from 'react';
@@ -21,6 +25,7 @@ import { VisualizationCanvas } from './VisualizationCanvas';
 /**
  * Props extend `TouchCallbacks` for API compatibility; `onClusterRelease` is not forwarded
  * to the canvas child (see file comment). Prefer wiring cluster release on `InteractionBand`.
+ * Optional direct-mount gesture props match `DirectMountCanvasTouchCallbacks` in `touchHandlers.ts`.
  */
 export type VisualizationSurfaceProps = {
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
@@ -56,6 +61,7 @@ export function VisualizationSurface({
           inputEnabled={inputEnabled}
           canvasBackground={canvasBackground}
           clusterZoneHighlights={clusterZoneHighlights}
+          canvasTouchPolicy="none"
           onShortTap={onShortTap}
           onClusterTap={onClusterTap}
           onDoubleTap={onDoubleTap}

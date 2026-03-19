@@ -2,9 +2,9 @@
  * Processes pending tap from canvas: raycast to plane at scene center,
  * triggers pulse at 3D intersection (reference: triggerPulse(clientX, clientY)).
  *
- * Runs only when something sets `pendingTapNdc` (typically a short tap on the R3F canvas
- * wrapper). Default `VisualizationSurface` blocks canvas touches (`pointerEvents="none"`), so
- * this path is dormant there.
+ * Runs when something sets `pendingTapNdc`: direct-mount short tap on the R3F wrapper, or
+ * center short tap on `InteractionBand` (active-region NDC). The GL layer under
+ * `VisualizationSurface` stays `pointerEvents="none"`, so canvas wrapper taps never set it there.
  *
  * Discrete tap pulse (canvas/raycast), not InteractionBand release-commit. InteractionBand
  * owns continuous touchField* and cluster release semantics separately.

@@ -6,8 +6,11 @@ jest.mock('./VisualizationCanvas', () => {
   const React = require('react');
   const { View } = require('react-native');
   return {
-    VisualizationCanvas: () =>
-      React.createElement(View, { testID: 'mock-visualization-canvas' }),
+    VisualizationCanvas: (props: Record<string, unknown>) =>
+      React.createElement(View, {
+        testID: 'mock-visualization-canvas',
+        ...props,
+      }),
   };
 });
 
@@ -50,6 +53,34 @@ describe('VisualizationSurface', () => {
       p = p.parent;
     }
     expect(foundNone).toBe(true);
+
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  it('passes canvasTouchPolicy="none" to VisualizationCanvas (shell path)', () => {
+    const ref = createRef<VisualizationEngineRef | null>();
+    ref.current = createDefaultVisualizationRef();
+
+    let tree!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      tree = TestRenderer.create(
+        <VisualizationSurface
+          visualizationRef={ref}
+          controlsEnabled={false}
+          inputEnabled
+          clusterZoneHighlights={false}
+        >
+          <Text>child</Text>
+        </VisualizationSurface>,
+      );
+    });
+
+    const mockCanvas = tree.root.findByProps({
+      testID: 'mock-visualization-canvas',
+    });
+    expect(mockCanvas.props.canvasTouchPolicy).toBe('none');
 
     act(() => {
       tree.unmount();
