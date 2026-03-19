@@ -14,7 +14,16 @@ export {
 } from './runtime/applySceneUpdates';
 export { triggerPulseAtCenter } from './runtime/triggerPulse';
 export { validateVizState, type ValidationResult, type ValidateVizStateOptions } from './runtime/validateVizState';
-export { withTouchStubs, type TouchCallbacks } from './interaction/touchHandlers';
+export {
+  withTouchStubs,
+  type TouchCallbacks,
+  type DirectMountCanvasTouchCallbacks,
+} from './interaction/touchHandlers';
+export {
+  isBandClusterSide,
+  type BandActiveRegionNdc,
+  type BandSemanticPhase,
+} from './interaction/bandInteractionContract';
 
 export type {
   VisualizationEngineRef,
@@ -39,10 +48,18 @@ export {
 
 export { VisualizationCanvas } from './render/canvas/VisualizationCanvas';
 export { VisualizationSurface } from './render/canvas/VisualizationSurface';
-export { VisualizationCanvasR3F, type VisualizationCanvasR3FProps } from './render/canvas/VisualizationCanvasR3F';
+export {
+  VisualizationCanvasR3F,
+  type VisualizationCanvasR3FProps,
+} from './render/canvas/VisualizationCanvasR3F';
+export type { CanvasTouchPolicy } from './render/canvas/directMountCanvasTouch';
 export {
   DebugZoneOverlay,
   type DebugZoneOverlayProps,
 } from './render/dev/DebugZoneOverlay';
-export { InteractionBand, type InteractionBandProps } from './interaction/InteractionBand';
+export {
+  InteractionBand,
+  type InteractionBandProps,
+  type InteractionBandSemanticCallbacks,
+} from './interaction/InteractionBand';
 export { DevPanel, type DevPanelTheme } from './render/dev/DevPanel';

@@ -1167,18 +1167,17 @@ export default function AgentSurface() {
 
   return (
     <View style={localStyles.screenWrapper}>
+      {/*
+        Shell: canvas is non-interactive (pointerEvents="none"); do not pass direct-mount canvas
+        callbacks — they never fire here. Playback tap / double-tap: ask Pressable; hold-to-speak:
+        InteractionBand + Pressable ask slot. Cluster release: InteractionBand only.
+      */}
       <VisualizationSurface
         visualizationRef={visualizationRef}
         controlsEnabled={debugEnabled}
         inputEnabled
         clusterZoneHighlights={!debugEnabled && !anyPanelVisible}
         canvasBackground={theme.viz.canvasBackground}
-        onShortTap={!debugEnabled ? handleUserModeTap : undefined}
-        onLongPressStart={
-          !debugEnabled ? handleUserModeLongPressStart : undefined
-        }
-        onLongPressEnd={!debugEnabled ? handleUserModeLongPressEnd : undefined}
-        onClusterRelease={!debugEnabled ? handleClusterTap : undefined}
       >
         <SemanticChannelView
           contentPaddingTop={insets.top}

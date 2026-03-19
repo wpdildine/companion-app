@@ -134,7 +134,11 @@ The high-level interaction contract is still the same, but the implementation is
 
 Current code path:
 
-- `VisualizationSurface` keeps the canvas at `pointerEvents="none"` and continues to expose discrete canvas callbacks (`onShortTap`, `onLongPressStart`, `onLongPressEnd`, legacy `onClusterTap` wiring).
+- `VisualizationSurface` keeps the canvas at `pointerEvents="none"` and passes `canvasTouchPolicy="none"` into `VisualizationCanvas`, so the GL subtree does **not** receive touches and the R3F wrapper does **not** attach direct-mount `onTouch*` handlers. **`TouchRaycaster`** still runs when `pendingTapNdc` is set (center short tap on **`InteractionBand`** uses active-region NDC, same consume-once contract as direct-mount canvas taps).
+- The surface still accepts `TouchCallbacks` on its props type (e.g. `onShortTap`, long-press, legacy `onClusterTap`) for **latent / direct-mount** use; the additive type `DirectMountCanvasTouchCallbacks` documents the gesture subset. Those handlers are **not invoked** in the default shell (`canvasTouchPolicy="none"` + non-interactive canvas). **`onClusterRelease` is not destructured or forwarded** from `VisualizationSurface` to `VisualizationCanvas`—live **cluster release** is **`InteractionBand` → `onClusterRelease`** only.
+- **`controlsEnabled`:** intended for **direct-mount** drag-to-orbit when `canvasTouchPolicy="full"` and the canvas receives touches. With the default shell, canvas touches are blocked, so orbit does **not** activate from `debugEnabled` alone—treat as legacy/direct-mount unless a future PR explicitly pairs debug with touch arbitration.
+- **`inputEnabled`:** when `canvasTouchPolicy="full"`, gates whether RN touch handlers run on the R3F wrapper; shell typically keeps defaults but canvas remains non-interactive.
+- **`canvasTouchPolicy`:** `none` (shell) vs `full` (direct-mount gestures: tap pulse, long-press, orbit).
 - `InteractionBand` is the dedicated touch layer for the continuous touch field and release-commit semantics. In current code it uses `react-native-gesture-handler` `Gesture.Pan()` with `manualActivation(true)`.
 - The band mounts the detector on a non-collapsable host view (`collapsable={false}`), reflecting the current native-fast migration/workaround path.
 - Native touch remains the authoritative physical input path inside the band. Tap-like and hold-like semantics are preserved by JS callbacks (`runOnJS`) off the pan lifecycle.

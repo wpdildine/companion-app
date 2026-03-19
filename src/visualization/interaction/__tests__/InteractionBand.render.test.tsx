@@ -94,6 +94,7 @@ describe('InteractionBand render path', () => {
     current: {
       canvasWidth: 200,
       canvasHeight: 400,
+      pendingTapNdc: null,
       touchFieldActive: false,
       touchFieldNdc: null,
       touchFieldStrength: 0,
@@ -317,6 +318,90 @@ describe('InteractionBand render path', () => {
     expect(onCenterHoldAttempt).toHaveBeenCalledTimes(1);
     jest.useRealTimers();
   });
+
+  it('sets pendingTapNdc only for center short tap', () => {
+    jest.useFakeTimers();
+    const visualizationRef = createVisualizationRef();
+    const onCenterHoldShortTap = jest.fn();
+
+    let renderer: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(
+        <InteractionBand
+          visualizationRef={visualizationRef}
+          onCenterHoldShortTap={onCenterHoldShortTap}
+        />,
+      );
+    });
+
+    const band = renderer!.root
+      .findAllByType(View)
+      .find((node) => node.props.onLayout != null);
+    act(() => {
+      band!.props.onLayout({
+        nativeEvent: { layout: { x: 0, y: 0, width: 200, height: 288 } },
+      });
+    });
+
+    const gesture = lastGesture!;
+    const stateManager = { activate: jest.fn(), fail: jest.fn() };
+    act(() => {
+      gesture.handlers.onTouchesDown?.(
+        { changedTouches: [{ x: 100, y: 144 }] },
+        stateManager,
+      );
+      jest.advanceTimersByTime(100);
+      gesture.handlers.onTouchesUp?.({
+        changedTouches: [{ x: 100, y: 144 }],
+      });
+    });
+
+    expect(onCenterHoldShortTap).toHaveBeenCalledTimes(1);
+    expect(visualizationRef.current.pendingTapNdc).toEqual([0, 0.28]);
+    jest.useRealTimers();
+  });
+
+  it('does not set pendingTapNdc for non-center short tap', () => {
+    jest.useFakeTimers();
+    const visualizationRef = createVisualizationRef();
+    const onCenterHoldShortTap = jest.fn();
+
+    let renderer: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(
+        <InteractionBand
+          visualizationRef={visualizationRef}
+          onCenterHoldShortTap={onCenterHoldShortTap}
+        />,
+      );
+    });
+
+    const band = renderer!.root
+      .findAllByType(View)
+      .find((node) => node.props.onLayout != null);
+    act(() => {
+      band!.props.onLayout({
+        nativeEvent: { layout: { x: 0, y: 0, width: 200, height: 288 } },
+      });
+    });
+
+    const gesture = lastGesture!;
+    const stateManager = { activate: jest.fn(), fail: jest.fn() };
+    act(() => {
+      gesture.handlers.onTouchesDown?.(
+        { changedTouches: [{ x: 160, y: 100 }] },
+        stateManager,
+      );
+      jest.advanceTimersByTime(100);
+      gesture.handlers.onTouchesUp?.({
+        changedTouches: [{ x: 160, y: 100 }],
+      });
+    });
+
+    expect(onCenterHoldShortTap).toHaveBeenCalledTimes(1);
+    expect(visualizationRef.current.pendingTapNdc).toBeNull();
+    jest.useRealTimers();
+  });
 });
 
 describe('InteractionBand contract (attempt / acceptance / release)', () => {
@@ -324,6 +409,7 @@ describe('InteractionBand contract (attempt / acceptance / release)', () => {
     current: {
       canvasWidth: 200,
       canvasHeight: 400,
+      pendingTapNdc: null,
       touchFieldActive: false,
       touchFieldNdc: null,
       touchFieldStrength: 0,

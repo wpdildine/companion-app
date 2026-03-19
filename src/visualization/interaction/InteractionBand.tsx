@@ -15,6 +15,8 @@
  *
  * Invariant: Native touch remains the authoritative input path. Pan is the sole physical
  * gesture owner; tap-like and hold-like semantics are preserved via JS handlers (runOnJS).
+ *
+ * Outbound semantic phases are documented in `bandInteractionContract.ts` (types only).
  */
 
 import type { RefObject } from 'react';
@@ -69,6 +71,16 @@ export type InteractionBandProps = {
   /** When true, center-lane touches bypass the hold delay and route directly into the existing hold-start path. */
   centerHoldShouldBypassDelay?: boolean;
 };
+
+/** Semantic callbacks the band invokes toward the app shell; see `bandInteractionContract.ts` for phase docs. */
+export type InteractionBandSemanticCallbacks = Pick<
+  InteractionBandProps,
+  | 'onClusterRelease'
+  | 'onClusterTap'
+  | 'onCenterHoldAttempt'
+  | 'onCenterHoldEnd'
+  | 'onCenterHoldShortTap'
+>;
 
 export function InteractionBand({
   visualizationRef,
@@ -370,6 +382,9 @@ export function InteractionBand({
         return;
       }
       const zone = getZoneFromNdcX(ndc[0]);
+      const bandNdc = toBandNdc(locationX, locationY);
+      const isCenterShortTap =
+        bandNdc != null && isVoiceLaneNdc(bandNdc[0], bandNdc[1]);
       if (isShortTap) {
         logInfo('Interaction', 'touchEnd (diagnosis)', {
           sequenceId,
@@ -383,6 +398,12 @@ export function InteractionBand({
           locationY,
           ndcX: ndc[0],
         });
+        // Localized 3D tap pulse is center/voice-lane only; transient `shortTap` still comes
+        // from AgentSurface via onCenterHoldShortTap → emitEvent.
+        const vr = visualizationRef.current;
+        if (vr && isCenterShortTap) {
+          vr.pendingTapNdc = ndc;
+        }
         onCenterHoldShortTap?.();
         clearCenterHoldState();
         return;
@@ -406,6 +427,7 @@ export function InteractionBand({
     [
       visualizationRef,
       toNdc,
+      toBandNdc,
       onClusterRelease,
       onClusterTap,
       onCenterHoldEnd,

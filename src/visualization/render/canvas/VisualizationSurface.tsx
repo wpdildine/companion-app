@@ -2,6 +2,18 @@
  * Wrapper that layers the GL canvas behind content. Canvas uses absolute fill;
  * content (e.g. ScrollView) is rendered above and receives touches.
  * Use for seamless layering: canvas = animated field, UI = readable panels on top.
+ *
+ * Touch policy (default app shell): the canvas wrapper uses `pointerEvents="none"`, so the
+ * GL subtree does not receive touches. Discrete `TouchCallbacks` (short tap, long press,
+ * drag, etc.) are for latent / direct-mount use when consumers mount `VisualizationCanvas` or
+ * `VisualizationCanvasR3F` without blocking pointer events—here they are dormant.
+ *
+ * `TouchCallbacks` includes `onClusterRelease`, but this component does not destructure or
+ * forward it to `VisualizationCanvas` (live cluster release is `InteractionBand` in AgentSurface).
+ *
+ * This surface passes `canvasTouchPolicy="none"` so the R3F wrapper does not attach direct-mount
+ * touch handlers. Optional {@link TouchCallbacks} remain on the public props type for
+ * direct-mount / API compatibility; shell apps (e.g. `AgentSurface`) omit them.
  */
 
 import React from 'react';
@@ -10,6 +22,11 @@ import type { TouchCallbacks } from '../../interaction/touchHandlers';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import { VisualizationCanvas } from './VisualizationCanvas';
 
+/**
+ * Props extend `TouchCallbacks` for API compatibility; `onClusterRelease` is not forwarded
+ * to the canvas child (see file comment). Prefer wiring cluster release on `InteractionBand`.
+ * Optional direct-mount gesture props match `DirectMountCanvasTouchCallbacks` in `touchHandlers.ts`.
+ */
 export type VisualizationSurfaceProps = {
   visualizationRef: React.RefObject<VisualizationEngineRef | null>;
   controlsEnabled: boolean;
@@ -44,6 +61,7 @@ export function VisualizationSurface({
           inputEnabled={inputEnabled}
           canvasBackground={canvasBackground}
           clusterZoneHighlights={clusterZoneHighlights}
+          canvasTouchPolicy="none"
           onShortTap={onShortTap}
           onClusterTap={onClusterTap}
           onDoubleTap={onDoubleTap}
