@@ -65,10 +65,6 @@ import {
   type ResultsOverlayRevealedBlocks,
 } from './ui';
 import {
-  getVizRuntimeMode,
-  setVizRuntimeMode,
-} from './ui/components/overlays/VisualizationRuntimeMode';
-import {
   resetVizSubsystems,
   setVizSubsystem,
 } from './ui/components/overlays/vizSubsystemToggles';
@@ -215,8 +211,6 @@ export default function AgentSurface() {
   useEffect(() => {
     if (typeof __DEV__ === 'undefined' || !__DEV__) return;
     const g = globalThis as Record<string, unknown>;
-    g.setVizRuntimeMode = setVizRuntimeMode;
-    g.getVizRuntimeMode = getVizRuntimeMode;
     g.setVizSubsystem = setVizSubsystem;
     g.resetVizSubsystems = resetVizSubsystems;
   }, []);
@@ -1302,7 +1296,6 @@ export default function AgentSurface() {
         centerHoldShouldBypassDelay={
           orchState.audioSessionState !== 'idleReady'
         }
-        debugInteraction={debugPanelMode === 'viz'}
       />
       {debugPanelMode !== 'off' && (
         <View

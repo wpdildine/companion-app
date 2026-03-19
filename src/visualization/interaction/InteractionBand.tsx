@@ -18,7 +18,7 @@
  */
 
 import type { RefObject } from 'react';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import type { LayoutChangeEvent } from 'react-native';
 import { Animated, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -28,8 +28,6 @@ import { isVoiceLaneNdc } from '../../app/_experimental/nameShaping/layout/nameS
 import { logInfo } from '../../shared/logging';
 import type { VisualizationEngineRef } from '../runtime/runtimeTypes';
 import { hasMovedBeyondThreshold } from './fastMath';
-import { InteractionProbe } from './InteractionProbe';
-import type { InteractionProbeDebugState } from './InteractionProbe';
 import { getZoneFromNdcX } from './zoneLayout';
 
 /** Canonical center-hold threshold: press in center for this long to start hold-to-speak. */
@@ -70,8 +68,6 @@ export type InteractionBandProps = {
   blockedUntil?: number | null;
   /** When true, center-lane touches bypass the hold delay and route directly into the existing hold-start path. */
   centerHoldShouldBypassDelay?: boolean;
-  /** When true, band renders passive debug overlay (InteractionProbe) with NDC/zone/eligibility readout. */
-  debugInteraction?: boolean;
 };
 
 export function InteractionBand({
@@ -87,7 +83,6 @@ export function InteractionBand({
   blocked = false,
   blockedUntil = null,
   centerHoldShouldBypassDelay = false,
-  debugInteraction = false,
 }: InteractionBandProps) {
   const layoutRef = useRef<{
     x: number;
@@ -105,8 +100,6 @@ export function InteractionBand({
   const touchEndSequenceIdRef = useRef(0);
   const centerHoldPendingRef = useRef(false);
 
-  const [debugState, setDebugState] = useState<InteractionProbeDebugState | null>(null);
-  const [layoutSize, setLayoutSize] = useState({ w: 0, h: 0 });
   // Tracks whether the current gesture was activated on the UI thread.
   // onTouchesUp sets it false after calling handleTouchEnd so onFinalize knows not to cancel.
   const touchActivated = useSharedValue(false);
@@ -144,7 +137,6 @@ export function InteractionBand({
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { x, y, width: w, height: h } = e.nativeEvent.layout;
     layoutRef.current = { x, y, w, h };
-    setLayoutSize({ w, h });
   }, []);
   const bandTopInsetPx =
     topInsetOverridePx ??
@@ -215,35 +207,6 @@ export function InteractionBand({
     }).start();
   }, [blocked, blockedUntil, blockedOpacity]);
 
-  const updateDebugState = useCallback(
-    (touchActive: boolean, locationX?: number, locationY?: number) => {
-      if (!debugInteraction) return;
-      if (!touchActive) {
-        setDebugState(null);
-        return;
-      }
-      const layout = layoutRef.current;
-      if (!layout || locationX == null || locationY == null) return;
-      const ndc = toNdc(locationX, locationY);
-      const bandNdc = toBandNdc(locationX, locationY);
-      const zone = ndc ? getZoneFromNdcX(ndc[0]) : null;
-      const inVoiceLaneFromLayout =
-        bandNdc != null ? isVoiceLaneNdc(bandNdc[0], bandNdc[1]) : false;
-      const eligible = isCenterHoldEligible(
-        nameShapingCapture != null,
-        inVoiceLaneFromLayout,
-        zone,
-      );
-      setDebugState({
-        ndc,
-        zone,
-        eligible,
-        touchActive: true,
-      });
-    },
-    [debugInteraction, toNdc, toBandNdc, nameShapingCapture],
-  );
-
   const handleTouchStart = useCallback(
     (locationX: number, locationY: number) => {
       if (!enabled) return;
@@ -284,7 +247,6 @@ export function InteractionBand({
           nameShapingCapture?.onTouchStart(bandNdc);
         }
       }
-      updateDebugState(true, locationX, locationY);
     },
     [
       visualizationRef,
@@ -296,7 +258,6 @@ export function InteractionBand({
       onCenterHoldAttempt,
       createAttemptReporter,
       nameShapingCapture,
-      updateDebugState,
     ],
   );
 
@@ -343,7 +304,6 @@ export function InteractionBand({
           nameShapingCapture?.onTouchMove(bandNdc);
         }
       }
-      updateDebugState(true, locationX, locationY);
     },
     [
       visualizationRef,
@@ -352,7 +312,6 @@ export function InteractionBand({
       enabled,
       setZoneArmedFromNdc,
       nameShapingCapture,
-      updateDebugState,
     ],
   );
 
@@ -367,7 +326,6 @@ export function InteractionBand({
       const durationMs = start ? timestamp - start.timestamp : 0;
       const isShortTap = shortTapEligibleRef.current && durationMs < CENTER_HOLD_THRESHOLD_MS;
       nameShapingCapture?.onTouchEnd();
-      updateDebugState(false);
       if (v) {
         v.touchFieldActive = false;
         v.touchFieldNdc = null;
@@ -455,14 +413,12 @@ export function InteractionBand({
       enabled,
       clearCenterHoldState,
       nameShapingCapture,
-      updateDebugState,
     ],
   );
 
   const handleTouchCancel = useCallback(() => {
     nameShapingCapture?.onTouchCancel();
     clearCenterHoldState();
-    updateDebugState(false);
     const v = visualizationRef.current;
     if (v) {
       v.touchFieldActive = false;
@@ -474,7 +430,6 @@ export function InteractionBand({
     visualizationRef,
     clearCenterHoldState,
     nameShapingCapture,
-    updateDebugState,
   ]);
 
   const panGesture = React.useMemo(() => {
@@ -532,13 +487,6 @@ export function InteractionBand({
     >
       <GestureDetector gesture={panGesture}>
         <View collapsable={false} style={StyleSheet.absoluteFill}>
-          {debugInteraction && (
-            <InteractionProbe
-              debugState={debugState}
-              layoutW={layoutSize.w}
-              layoutH={layoutSize.h}
-            />
-          )}
           {blocked && (
             <Animated.View
               pointerEvents="none"

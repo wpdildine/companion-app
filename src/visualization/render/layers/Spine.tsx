@@ -31,6 +31,7 @@ import { HALFTONE_VERTEX } from '../../materials/halftone/halftone.vert';
 import { HALFTONE_FRAGMENT } from '../../materials/halftone/halftone.frag';
 import { getActiveBandVerticalEnvelope } from '../../interaction/activeBandEnvelope';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 
 /**
  * Map engine currentMode to canonical spine mode. Transient touch modes are
@@ -168,12 +169,15 @@ export function Spine({
     if (!groupRef.current) return;
     groupRef.current.visible = false;
     if (!show) return;
+    if (!getVizSubsystemEnabled('r3fFrame')) return;
 
     const w = v.canvasWidth > 0 ? v.canvasWidth : state.size.width;
     const h = v.canvasHeight > 0 ? v.canvasHeight : state.size.height;
     const hasSize = w > 0 && h > 0;
     if (!hasSize) return;
+    if (!getVizSubsystemEnabled('spineStep')) return;
 
+    const matW = getVizSubsystemEnabled('materialUniforms');
     const { layout } = scene.zones;
     const { activeHeightRatio, centerNdcY } = getActiveBandVerticalEnvelope(
       layout.bandTopInsetPx,
@@ -454,6 +458,7 @@ export function Spine({
         if (!halftoneMat) continue;
         mesh.visible = halftonePrimedRef.current;
         if (!halftonePrimedRef.current) continue;
+        if (matW) {
         halftoneMat.uniforms.uColor.value.set(planeColor);
         // Opacity is the membrane visibility; intensity should NOT zero the membrane.
         // Keep opacity scene-driven and use uIntensity only to shape the dots.
@@ -546,6 +551,7 @@ export function Spine({
           .halftoneFadeOneSided
           ? 1
           : 0;
+        }
       } else {
         mesh.visible = true;
         const mat = planeMats[i];
@@ -575,6 +581,7 @@ export function Spine({
         );
         const glowSide =
           Math.abs(planeX) < beamHalfWidth * 0.12 ? 0 : planeX > 0 ? -1 : 1;
+        if (matW) {
         mat.uniforms.uColor.value.set(planeColor);
         mat.uniforms.uOpacity.value = nextOpacity;
         mat.uniforms.uEdgeGlowStrength.value =
@@ -591,6 +598,7 @@ export function Spine({
         mat.uniforms.uBeamVis.value = beamVis;
         mat.uniforms.uGlowSide.value = glowSide;
         mat.uniforms.uEdgeYWeight.value = spine.style.edgeYWeight ?? 0.12;
+        }
       }
     }
 
@@ -703,33 +711,35 @@ export function Spine({
       }
     }
 
-    for (const matRef of [leftEdgeMatRef, rightEdgeMatRef]) {
-      const mat = matRef.current;
-      if (!mat) continue;
-      mat.uniforms.uColor.value.set(spine.style.color);
-      mat.uniforms.uOpacity.value = edgeVisible ? spine.style.edgeOpacity : 0;
-      mat.uniforms.uIntensity.value = edgeIntensity;
-      mat.uniforms.uDensity.value = halftoneProfile.density;
-      mat.uniforms.uTime.value = v.clock;
-      mat.uniforms.uResolution.value.set(resX, resY);
-      mat.uniforms.uPlanePhase.value = 0;
-      mat.uniforms.uPlaneSize.value.set(edgeWidth, edgeHeight);
-      mat.uniforms.uDebugFlat.value = spine.style.halftoneDebugFlat ? 1 : 0;
-      mat.uniforms.uFadeMode.value = 0;
-      mat.uniforms.uFadeInner.value = spine.style.halftoneFadeInner ?? 0.35;
-      mat.uniforms.uFadeOuter.value = spine.style.halftoneFadeOuter ?? 0.65;
-      mat.uniforms.uFadePower.value = spine.style.halftoneFadePower ?? 1.5;
-      mat.uniforms.uFadeAngle.value = spine.style.halftoneFadeAngle ?? 0.0;
-      mat.uniforms.uFadeOffset.value = spine.style.halftoneFadeOffset ?? 0.0;
-      mat.uniforms.uFadeCenter.value.set(
-        spine.style.halftoneFadeCenterX ?? 0.5,
-        spine.style.halftoneFadeCenterY ?? 0.5,
-      );
-      mat.uniforms.uFadeLevels.value = spine.style.halftoneFadeLevels ?? 1.0;
-      mat.uniforms.uFadeStepMix.value = spine.style.halftoneFadeStepMix ?? 0.0;
-      mat.uniforms.uFadeOneSided.value = spine.style.halftoneFadeOneSided
-        ? 1
-        : 0;
+    if (matW) {
+      for (const matRef of [leftEdgeMatRef, rightEdgeMatRef]) {
+        const mat = matRef.current;
+        if (!mat) continue;
+        mat.uniforms.uColor.value.set(spine.style.color);
+        mat.uniforms.uOpacity.value = edgeVisible ? spine.style.edgeOpacity : 0;
+        mat.uniforms.uIntensity.value = edgeIntensity;
+        mat.uniforms.uDensity.value = halftoneProfile.density;
+        mat.uniforms.uTime.value = v.clock;
+        mat.uniforms.uResolution.value.set(resX, resY);
+        mat.uniforms.uPlanePhase.value = 0;
+        mat.uniforms.uPlaneSize.value.set(edgeWidth, edgeHeight);
+        mat.uniforms.uDebugFlat.value = spine.style.halftoneDebugFlat ? 1 : 0;
+        mat.uniforms.uFadeMode.value = 0;
+        mat.uniforms.uFadeInner.value = spine.style.halftoneFadeInner ?? 0.35;
+        mat.uniforms.uFadeOuter.value = spine.style.halftoneFadeOuter ?? 0.65;
+        mat.uniforms.uFadePower.value = spine.style.halftoneFadePower ?? 1.5;
+        mat.uniforms.uFadeAngle.value = spine.style.halftoneFadeAngle ?? 0.0;
+        mat.uniforms.uFadeOffset.value = spine.style.halftoneFadeOffset ?? 0.0;
+        mat.uniforms.uFadeCenter.value.set(
+          spine.style.halftoneFadeCenterX ?? 0.5,
+          spine.style.halftoneFadeCenterY ?? 0.5,
+        );
+        mat.uniforms.uFadeLevels.value = spine.style.halftoneFadeLevels ?? 1.0;
+        mat.uniforms.uFadeStepMix.value = spine.style.halftoneFadeStepMix ?? 0.0;
+        mat.uniforms.uFadeOneSided.value = spine.style.halftoneFadeOneSided
+          ? 1
+          : 0;
+      }
     }
   });
 

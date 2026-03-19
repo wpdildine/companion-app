@@ -13,6 +13,7 @@ import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 import { getEventPulse, injectEventPulse } from '../utils/eventPulse';
 
 type GlyphBuffers = {
@@ -240,6 +241,8 @@ export function ContextGlyphs({
   useFrame((state, delta) => {
     const v = visualizationRef.current;
     if (!v) return;
+    if (!getVizSubsystemEnabled('r3fFrame')) return;
+    const matW = getVizSubsystemEnabled('materialUniforms');
     const runtime = getLayerRuntimeInputs(v);
     if (!loggedRef.current) {
       loggedRef.current = true;
@@ -338,6 +341,8 @@ export function ContextGlyphs({
     ];
     const eventPulse = getEventPulse(v, scene);
     injectEventPulse(pulsePositions, pulseTimes, pulseColors, eventPulse);
+
+    if (!matW) return;
 
     for (const u of [backUniforms, frontUniforms]) {
       u.uTime.value += delta;

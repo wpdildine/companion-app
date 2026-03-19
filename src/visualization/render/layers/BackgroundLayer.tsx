@@ -15,6 +15,7 @@ import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 import { computeTransientModulation, scaleModulation } from '../utils/transientModulation';
 import { interpolateModeValue } from '../../runtime/modeTransition';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 
 // ---- Plane 1: base (gradient + vignette + low-freq noise) ----
 const BASE_PLANE_VERTEX = `
@@ -242,6 +243,12 @@ export function BackgroundLayer({
       if (g2.current) g2.current.visible = false;
       return;
     }
+    if (!getVizSubsystemEnabled('r3fFrame')) {
+      if (g1.current) g1.current.visible = false;
+      if (g2.current) g2.current.visible = false;
+      return;
+    }
+    const matW = getVizSubsystemEnabled('materialUniforms');
     const transient = scaleModulation(
       computeTransientModulation(
         runtime.lastEvent ?? null,
@@ -264,7 +271,7 @@ export function BackgroundLayer({
     const pixelRatio = Math.max(1, state.gl.getPixelRatio?.() ?? 1);
     const resW = Math.max(1, Math.floor(state.size.width * pixelRatio));
     const resH = Math.max(1, Math.floor(state.size.height * pixelRatio));
-    if (detailMatRef.current) {
+    if (matW && detailMatRef.current) {
       (detailMatRef.current.uniforms.uResolution.value as THREE.Vector2).set(
         resW,
         resH,
@@ -313,36 +320,38 @@ export function BackgroundLayer({
     const halftoneThreshold = smoothThresholdRef.current;
     const halftoneScale = smoothScaleRef.current;
 
-    if (baseMatRef.current) {
-      baseMatRef.current.uniforms.uColor.value.set(
-        colorRef.current.r,
-        colorRef.current.g,
-        colorRef.current.b,
-      );
-      baseMatRef.current.uniforms.uOpacity.value =
-        SHADER_DEBUG_FLAGS.backgroundBase && n >= 1 ? opacity : 0;
-      baseMatRef.current.uniforms.uNoisePhase.value = noisePhase;
-      baseMatRef.current.uniforms.uIntensity.value = n >= 1 ? intensityRamp : 0;
-      baseMatRef.current.uniforms.uVignetteScale.value = pf.vignetteScale ?? 1.25;
-      baseMatRef.current.uniforms.uRadialFalloff.value = pf.radialFalloffStrength ?? 0.4;
-      baseMatRef.current.uniforms.uValueVariation.value = pf.valueVariation ?? 0.08;
-    }
-    if (detailMatRef.current) {
-      detailMatRef.current.uniforms.uColor.value.set(
-        colorRef.current.r,
-        colorRef.current.g,
-        colorRef.current.b,
-      );
-      detailMatRef.current.uniforms.uOpacity.value =
-        SHADER_DEBUG_FLAGS.backgroundDetail && n >= 2
-          ? Math.min(0.95, opacity * (bp.opacitySecond / bp.opacityBase) * 1.8)
-          : 0;
-      detailMatRef.current.uniforms.uNoisePhase.value = noisePhase;
-      detailMatRef.current.uniforms.uIntensity.value =
-        SHADER_DEBUG_FLAGS.backgroundDetail && n >= 2 ? intensityRamp : 0;
-      detailMatRef.current.uniforms.uHalftoneThreshold.value =
-        halftoneThreshold;
-      detailMatRef.current.uniforms.uHalftoneScale.value = halftoneScale;
+    if (matW) {
+      if (baseMatRef.current) {
+        baseMatRef.current.uniforms.uColor.value.set(
+          colorRef.current.r,
+          colorRef.current.g,
+          colorRef.current.b,
+        );
+        baseMatRef.current.uniforms.uOpacity.value =
+          SHADER_DEBUG_FLAGS.backgroundBase && n >= 1 ? opacity : 0;
+        baseMatRef.current.uniforms.uNoisePhase.value = noisePhase;
+        baseMatRef.current.uniforms.uIntensity.value = n >= 1 ? intensityRamp : 0;
+        baseMatRef.current.uniforms.uVignetteScale.value = pf.vignetteScale ?? 1.25;
+        baseMatRef.current.uniforms.uRadialFalloff.value = pf.radialFalloffStrength ?? 0.4;
+        baseMatRef.current.uniforms.uValueVariation.value = pf.valueVariation ?? 0.08;
+      }
+      if (detailMatRef.current) {
+        detailMatRef.current.uniforms.uColor.value.set(
+          colorRef.current.r,
+          colorRef.current.g,
+          colorRef.current.b,
+        );
+        detailMatRef.current.uniforms.uOpacity.value =
+          SHADER_DEBUG_FLAGS.backgroundDetail && n >= 2
+            ? Math.min(0.95, opacity * (bp.opacitySecond / bp.opacityBase) * 1.8)
+            : 0;
+        detailMatRef.current.uniforms.uNoisePhase.value = noisePhase;
+        detailMatRef.current.uniforms.uIntensity.value =
+          SHADER_DEBUG_FLAGS.backgroundDetail && n >= 2 ? intensityRamp : 0;
+        detailMatRef.current.uniforms.uHalftoneThreshold.value =
+          halftoneThreshold;
+        detailMatRef.current.uniforms.uHalftoneScale.value = halftoneScale;
+      }
     }
 
     if (g1.current && bp.planes[0]) {

@@ -15,6 +15,7 @@ import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { SHADER_DEBUG_FLAGS } from '../canvas/shaderDebugFlags';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 import { getEventPulse, injectEventPulse } from '../utils/eventPulse';
 import { logInfo } from '../../../shared/logging';
 
@@ -203,6 +204,7 @@ export function ContextLinks({
   useFrame((_, delta) => {
     const v = visualizationRef.current;
     if (!v) return;
+    if (!getVizSubsystemEnabled('r3fFrame')) return;
     const runtime = getLayerRuntimeInputs(v);
 
     if (gate.valid && gate.edges.length && gate.nodes.length && edgeGeometries.length) {
@@ -250,6 +252,8 @@ export function ContextLinks({
         posAttr.needsUpdate = true;
       }
     }
+
+    if (!getVizSubsystemEnabled('materialUniforms')) return;
 
     uniforms.uTime.value += delta;
     uniforms.uActivity.value = runtime.activity ?? 0;

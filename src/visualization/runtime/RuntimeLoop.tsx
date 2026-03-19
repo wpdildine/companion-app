@@ -25,6 +25,7 @@ import {
 } from '../interaction/zoneLayout';
 import { createMotionGrammarEngine } from './MotionGrammarEngine';
 import { MOTION_GRAMMAR } from '../scene/artDirection/motionGrammar';
+import { getVizSubsystemEnabled } from '../../app/ui/components/overlays/vizSubsystemToggles';
 
 const DT_CAP = 0.1;
 const APP_STATE_CYCLE_MS = 1300;
@@ -116,6 +117,59 @@ export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefO
     if (!v) return;
     didLog.current = true;
     v.clock = state.clock.getElapsedTime();
+    const dt = Math.min(delta, DT_CAP);
+    const dtMs = dt * 1000;
+
+    if (getVizSubsystemEnabled('lifecycleMode')) {
+      const canonicalMode = toCanonicalMotionMode(v.currentMode);
+      const transitionTarget = toCanonicalVisualizationMode(v.modeTransitionTo);
+      if (canonicalMode !== transitionTarget) {
+        v.modeTransitionFrom = transitionTarget;
+        v.modeTransitionTo = canonicalMode;
+        v.modeTransitionT = 0;
+        v.displayMode = v.currentMode;
+        const transitionKey = `${v.modeTransitionFrom}->${v.modeTransitionTo}`;
+        if (lastLoggedTransitionRef.current !== transitionKey) {
+          lastLoggedTransitionRef.current = transitionKey;
+          lastSettledTransitionRef.current = '';
+          logInfo('VisualizationRuntime', 'mode transition started', {
+            fromMode: v.modeTransitionFrom,
+            toMode: v.modeTransitionTo,
+            currentMode: v.currentMode,
+            displayMode: v.displayMode,
+            activity: Number(v.activity.toFixed(3)),
+            targetActivity: Number(v.targetActivity.toFixed(3)),
+          });
+        }
+      } else if (v.modeTransitionT < 1) {
+        v.modeTransitionT = Math.min(1, v.modeTransitionT + dtMs / MODE_TRANSITION_MS);
+        v.displayMode = v.currentMode;
+        if (v.modeTransitionT >= 1) {
+          v.modeTransitionFrom = canonicalMode;
+          v.modeTransitionTo = canonicalMode;
+          v.displayMode = v.currentMode;
+          const settledKey = `${canonicalMode}@settled`;
+          if (lastSettledTransitionRef.current !== settledKey) {
+            lastSettledTransitionRef.current = settledKey;
+            logInfo('VisualizationRuntime', 'mode transition settled', {
+              mode: canonicalMode,
+              displayMode: v.displayMode,
+              activity: Number(v.activity.toFixed(3)),
+              targetActivity: Number(v.targetActivity.toFixed(3)),
+            });
+          }
+        }
+      } else {
+        v.displayMode = v.currentMode;
+      }
+    } else {
+      v.displayMode = v.currentMode;
+    }
+
+    if (!getVizSubsystemEnabled('runtimeLoopOrchestration')) {
+      return;
+    }
+
     const now = Date.now();
     if (
       v.debugPulseLoopOn &&
@@ -197,50 +251,8 @@ export function RuntimeLoop({ visualizationRef }: { visualizationRef: React.RefO
       touchLogAt.current = now;
       console.log('[Viz] RuntimeLoop touchField', { touchFieldNdc: v.touchFieldNdc, touchWorld: v.touchWorld, touchInfluence: v.touchInfluence.toFixed(3), reduceMotion: v.reduceMotion });
     }
-    const dt = Math.min(delta, DT_CAP);
-    const dtMs = dt * 1000;
-    const canonicalMode = toCanonicalMotionMode(v.currentMode);
-    const transitionTarget = toCanonicalVisualizationMode(v.modeTransitionTo);
-    if (canonicalMode !== transitionTarget) {
-      v.modeTransitionFrom = transitionTarget;
-      v.modeTransitionTo = canonicalMode;
-      v.modeTransitionT = 0;
-      v.displayMode = v.currentMode;
-      const transitionKey = `${v.modeTransitionFrom}->${v.modeTransitionTo}`;
-      if (lastLoggedTransitionRef.current !== transitionKey) {
-        lastLoggedTransitionRef.current = transitionKey;
-        lastSettledTransitionRef.current = '';
-        logInfo('VisualizationRuntime', 'mode transition started', {
-          fromMode: v.modeTransitionFrom,
-          toMode: v.modeTransitionTo,
-          currentMode: v.currentMode,
-          displayMode: v.displayMode,
-          activity: Number(v.activity.toFixed(3)),
-          targetActivity: Number(v.targetActivity.toFixed(3)),
-        });
-      }
-    } else if (v.modeTransitionT < 1) {
-      v.modeTransitionT = Math.min(1, v.modeTransitionT + dtMs / MODE_TRANSITION_MS);
-      v.displayMode = v.currentMode;
-      if (v.modeTransitionT >= 1) {
-        v.modeTransitionFrom = canonicalMode;
-        v.modeTransitionTo = canonicalMode;
-        v.displayMode = v.currentMode;
-        const settledKey = `${canonicalMode}@settled`;
-        if (lastSettledTransitionRef.current !== settledKey) {
-          lastSettledTransitionRef.current = settledKey;
-          logInfo('VisualizationRuntime', 'mode transition settled', {
-            mode: canonicalMode,
-            displayMode: v.displayMode,
-            activity: Number(v.activity.toFixed(3)),
-            targetActivity: Number(v.targetActivity.toFixed(3)),
-          });
-        }
-      }
-    } else {
-      v.displayMode = v.currentMode;
-    }
 
+    const canonicalMode = toCanonicalMotionMode(v.currentMode);
     const lambda = v.targetActivity > v.activity ? v.lambdaUp : v.lambdaDown;
     const k = 1 - Math.exp(-lambda * dt);
     v.activity = v.activity + (v.targetActivity - v.activity) * k;

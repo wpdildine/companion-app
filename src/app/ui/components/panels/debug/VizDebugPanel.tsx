@@ -1,10 +1,9 @@
 /**
- * Viz Debug Panel: HUD wrapper that renders the visualization debug panel
- * inside the same styling as the pipeline telemetry panel.
+ * Viz Debug Panel: runtime isolation (presets + subsystem gates) and auxiliary harness.
  */
 
 import React, { useEffect, useState } from 'react';
-import { Dimensions, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { RefObject } from 'react';
 import type { VisualizationEngineRef } from '../../../../../visualization';
 import { DevPanel } from '../../../../../visualization';
@@ -13,37 +12,34 @@ import type { NameShapingActions } from '../../../../_experimental/nameShaping';
 import type { NameShapingState } from '../../../../_experimental/nameShaping';
 import { PanelHeaderAction } from '../../controls';
 import {
-  getVizRuntimeMode,
-  setVizRuntimeMode,
-  subscribeVizRuntimeMode,
-  type VizRuntimeMode,
-} from '../../overlays/VisualizationRuntimeMode';
-import {
   VIZ_SUBSYSTEM_KEYS,
   getVizSubsystemEnabled,
-  resetVizSubsystems,
+  presetAllVizSubsystemsOff,
+  presetAllVizSubsystemsOn,
   setVizSubsystem,
   subscribeVizSubsystemChange,
   type VizSubsystemKey,
 } from '../../overlays/vizSubsystemToggles';
-
-const VIZ_RUNTIME_MODE_OPTIONS: VizRuntimeMode[] = [
-  'all_on',
-  'all_off',
-  'signal_apply_only',
-  'spine_only',
-  'r3f_only',
-  'runtime_loop_only',
-  'fallback_only',
-];
+import { DebugMenuSection } from './DebugMenuSection';
+import { DebugMenuRow } from './DebugMenuRow';
 
 const PANEL_WIDTH = 360;
-const BG = 'rgba(15,17,21,0.9)';
+const BG = '#0f1115';
 const BORDER = '#2a2f38';
 const TEXT_PRIMARY = '#ffffff';
 const TEXT_MUTED = '#8b949e';
+const ACCENT = '#7ee787';
 
 const fontMono = Platform.select({ ios: 'Menlo', android: 'monospace' });
+
+function syncPostFxFromSubsystem(
+  visualizationRef: RefObject<VisualizationEngineRef | null>,
+): void {
+  const eng = visualizationRef.current;
+  if (eng) {
+    eng.postFxEnabled = getVizSubsystemEnabled('postFx');
+  }
+}
 
 export type VizDebugPanelProps = {
   visualizationRef: RefObject<VisualizationEngineRef | null>;
@@ -54,7 +50,6 @@ export type VizDebugPanelProps = {
   onToggleStubRules: () => void;
   maxHeight?: number;
   maxWidth?: number;
-  /** When both provided and non-null, the NameShaping section is rendered. No fallback state. */
   nameShapingState?: NameShapingState | null;
   nameShapingActions?: NameShapingActions | null;
 };
@@ -71,12 +66,6 @@ export function VizDebugPanel({
   nameShapingState,
   nameShapingActions,
 }: VizDebugPanelProps) {
-  const [showVisualizationDev, setShowVisualizationDev] = useState(false);
-  const [vizRuntimeMode, setVizRuntimeModeState] = useState(getVizRuntimeMode);
-  useEffect(
-    () => subscribeVizRuntimeMode(() => setVizRuntimeModeState(getVizRuntimeMode())),
-    [],
-  );
   const [, bumpSub] = useState(0);
   useEffect(
     () => subscribeVizSubsystemChange(() => bumpSub(n => n + 1)),
@@ -90,109 +79,98 @@ export function VizDebugPanel({
   const showNameShapingSection =
     nameShapingState != null && nameShapingActions != null;
 
+  const toggleControl = (on: boolean) => (
+    <Text style={[styles.toggleRight, on && styles.toggleOn]}>
+      {on ? 'ON' : 'OFF'}
+    </Text>
+  );
+
   return (
     <View style={[styles.panel, { width: panelWidth, maxHeight: panelMaxHeight }]}>
       <PanelHeaderAction variant="close" onPress={onClose} surface="debug" />
       <Text style={styles.mainTitle}>Viz Debug</Text>
-      <ScrollView style={[styles.scroll, { maxHeight: scrollMaxHeight }]} contentContainerStyle={styles.scrollContent}>
-        <Pressable
-          style={styles.sectionToggle}
-          onPress={() => setShowVisualizationDev(prev => !prev)}
-        >
-          <Text style={styles.sectionToggleCheck}>
-            {showVisualizationDev ? '[-]' : '[+]'}
-          </Text>
-          <Text style={styles.sectionToggleLabel}>Visualization Dev</Text>
-        </Pressable>
-        {showVisualizationDev && (
-          <DevPanel
-            visualizationRef={visualizationRef}
-            onClose={onClose}
-            theme={{ text: TEXT_PRIMARY, textMuted: TEXT_MUTED, background: 'transparent' }}
-            variant="embed"
-            showClose={false}
-          />
-        )}
-        <Text style={styles.sectionTitle}>Reference Stubs</Text>
-        <Pressable style={styles.stubRow} onPress={onToggleStubCards}>
-          <Text style={styles.stubCheck}>{stubCardsEnabled ? '[x]' : '[ ]'}</Text>
-          <Text style={styles.stubLabel}>Cards</Text>
-        </Pressable>
-        <Pressable style={styles.stubRow} onPress={onToggleStubRules}>
-          <Text style={styles.stubCheck}>{stubRulesEnabled ? '[x]' : '[ ]'}</Text>
-          <Text style={styles.stubLabel}>Rules</Text>
-        </Pressable>
-        {typeof __DEV__ !== 'undefined' && __DEV__ && (
+      <ScrollView
+        style={[styles.scroll, { maxHeight: scrollMaxHeight }]}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {typeof __DEV__ !== 'undefined' && __DEV__ ? (
           <>
-            <Text style={styles.sectionTitle}>Viz runtime isolation</Text>
-            <Text style={styles.modeCurrent}>current: {vizRuntimeMode}</Text>
-            {VIZ_RUNTIME_MODE_OPTIONS.map(m => (
-              <Pressable
-                key={m}
-                style={styles.modeRow}
-                onPress={() => setVizRuntimeMode(m)}
-              >
-                <Text
-                  style={
-                    m === vizRuntimeMode ? styles.modeRowActive : styles.modeRowLabel
-                  }
-                >
-                  {m}
-                </Text>
-              </Pressable>
-            ))}
-            <Text style={styles.sectionTitle}>Viz subsystems (all_on + toggle)</Text>
-            <Text style={styles.modeCurrent}>
-              Tap row to toggle. Only `postFx` is wired to a consumer right now.
-            </Text>
-            <Pressable
-              style={styles.modeRow}
-              onPress={() => {
-                resetVizSubsystems();
-                const eng = visualizationRef.current;
-                if (eng) eng.postFxEnabled = true;
-              }}
-            >
-              <Text style={styles.modeRowActive}>Reset all subsystems ON</Text>
-            </Pressable>
-            {VIZ_SUBSYSTEM_KEYS.map((k: VizSubsystemKey) => {
-              const on = getVizSubsystemEnabled(k);
-              return (
-                <Pressable
-                  key={k}
-                  style={styles.modeRow}
-                  onPress={() => {
-                    const nextEnabled = !on;
-                    console.log(
-                      `[VizDebugPanel:press] ${k} prevOn=${on} nextEnabled=${nextEnabled}`,
-                    );
-                    setVizSubsystem(k, nextEnabled);
-                    if (k === 'postFx') {
-                      const eng = visualizationRef.current;
-                      if (eng) {
-                        eng.postFxEnabled = nextEnabled;
+            <Text style={styles.groupLabel}>Runtime Controls</Text>
+            <DebugMenuSection title="Runtime Presets" defaultExpanded>
+              <DebugMenuRow
+                label="All on"
+                onPress={() => {
+                  presetAllVizSubsystemsOn();
+                  syncPostFxFromSubsystem(visualizationRef);
+                }}
+                right={<Text style={styles.presetAction}>Apply</Text>}
+              />
+              <DebugMenuRow
+                label="All off"
+                onPress={() => {
+                  presetAllVizSubsystemsOff();
+                  syncPostFxFromSubsystem(visualizationRef);
+                }}
+                right={<Text style={styles.presetAction}>Apply</Text>}
+              />
+            </DebugMenuSection>
+            <DebugMenuSection title="Subsystem Gates" defaultExpanded>
+              {VIZ_SUBSYSTEM_KEYS.map((k: VizSubsystemKey) => {
+                const on = getVizSubsystemEnabled(k);
+                return (
+                  <DebugMenuRow
+                    key={k}
+                    label={k}
+                    onPress={() => {
+                      const next = !on;
+                      setVizSubsystem(k, next);
+                      if (k === 'postFx') {
+                        const eng = visualizationRef.current;
+                        if (eng) eng.postFxEnabled = next;
                       }
-                    }
-                  }}
-                >
-                  <Text style={on ? styles.modeRowLabel : styles.modeRowActive}>
-                    [{on ? 'ON' : 'OFF'}] {k}
-                  </Text>
-                </Pressable>
-              );
-            })}
+                    }}
+                    right={toggleControl(on)}
+                  />
+                );
+              })}
+            </DebugMenuSection>
           </>
+        ) : (
+          <Text style={styles.devOnlyNote}>Runtime presets and gates: dev build only.</Text>
         )}
-        {showNameShapingSection && (
-          <>
-            <Text style={styles.sectionTitle}>NameShaping</Text>
-            <NameShapingDebugOverlay
-              state={nameShapingState}
-              actions={nameShapingActions}
-              theme={{ text: TEXT_PRIMARY, textMuted: TEXT_MUTED }}
+
+        <DebugMenuSection title="Auxiliary / Harness" defaultExpanded={false} deemphasized>
+          <DebugMenuSection title="Visualization Dev" defaultExpanded={false}>
+            <DevPanel
+              visualizationRef={visualizationRef}
+              onClose={onClose}
+              theme={{ text: TEXT_PRIMARY, textMuted: TEXT_MUTED, background: 'transparent' }}
+              variant="embed"
+              showClose={false}
             />
-          </>
-        )}
+          </DebugMenuSection>
+          <DebugMenuSection title="Reference Stubs" defaultExpanded={false}>
+            <DebugMenuRow
+              label="Cards"
+              onPress={onToggleStubCards}
+              right={toggleControl(stubCardsEnabled)}
+            />
+            <DebugMenuRow
+              label="Rules"
+              onPress={onToggleStubRules}
+              right={toggleControl(stubRulesEnabled)}
+            />
+          </DebugMenuSection>
+          {showNameShapingSection ? (
+            <DebugMenuSection title="NameShaping" defaultExpanded={false}>
+              <NameShapingDebugOverlay
+                state={nameShapingState!}
+                actions={nameShapingActions!}
+                theme={{ text: TEXT_PRIMARY, textMuted: TEXT_MUTED }}
+              />
+            </DebugMenuSection>
+          ) : null}
+        </DebugMenuSection>
       </ScrollView>
     </View>
   );
@@ -207,79 +185,49 @@ const styles = StyleSheet.create({
     padding: 10,
     paddingTop: 8,
     overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOpacity: 0.32,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 24,
   },
   mainTitle: {
     color: TEXT_PRIMARY,
     fontSize: 15,
     fontFamily: fontMono,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  sectionTitle: {
-    color: TEXT_MUTED,
-    fontSize: 12,
+  groupLabel: {
+    color: TEXT_PRIMARY,
+    fontSize: 13,
     fontFamily: fontMono,
-    fontWeight: '600',
-    marginTop: 10,
+    fontWeight: '700',
     marginBottom: 6,
   },
   scroll: { flexGrow: 0 },
   scrollContent: { paddingBottom: 16 },
-  sectionToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  sectionToggleCheck: {
-    width: 28,
+  presetAction: {
+    color: ACCENT,
     fontSize: 12,
-    lineHeight: 16,
     fontFamily: fontMono,
-    color: TEXT_PRIMARY,
-  },
-  sectionToggleLabel: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontFamily: fontMono,
-    color: TEXT_PRIMARY,
     fontWeight: '600',
   },
-  stubRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  stubCheck: {
-    width: 28,
+  toggleRight: {
     fontSize: 12,
-    lineHeight: 16,
-    fontFamily: fontMono,
-    color: TEXT_PRIMARY,
-  },
-  stubLabel: {
-    fontSize: 12,
-    lineHeight: 16,
     fontFamily: fontMono,
     color: TEXT_MUTED,
+    fontWeight: '600',
+    minWidth: 36,
+    textAlign: 'right',
   },
-  modeCurrent: {
+  toggleOn: {
+    color: ACCENT,
+  },
+  devOnlyNote: {
     color: TEXT_MUTED,
     fontSize: 11,
     fontFamily: fontMono,
-    marginBottom: 6,
-  },
-  modeRow: {
-    paddingVertical: 4,
-  },
-  modeRowLabel: {
-    color: TEXT_MUTED,
-    fontSize: 12,
-    fontFamily: fontMono,
-  },
-  modeRowActive: {
-    color: '#7ee787',
-    fontSize: 12,
-    fontFamily: fontMono,
-    fontWeight: '600',
+    marginBottom: 8,
   },
 });

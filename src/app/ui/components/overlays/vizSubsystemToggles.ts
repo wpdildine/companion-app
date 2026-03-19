@@ -1,7 +1,6 @@
 /**
  * Fine-grained visualization runtime toggles (dev/harness).
  * Default: all subsystems on. Set __ATLAS_VIZ_SUBSYSTEMS__[key] = false to disable.
- * Wave 1: panel state only until layer consumers are wired in later waves.
  */
 
 export type VizSubsystemKey =
@@ -75,14 +74,36 @@ export function resetVizSubsystems(): void {
   notify();
 }
 
-/** postFx first: keeps the only currently wired visual toggle above the fold in the debug panel. */
-export const VIZ_SUBSYSTEM_KEYS: VizSubsystemKey[] = [
-  'postFx',
+const ALL_SUBSYSTEM_KEYS: VizSubsystemKey[] = [
   'signalApply',
   'lifecycleMode',
+  'runtimeLoopOrchestration',
   'spineStep',
   'r3fFrame',
   'materialUniforms',
-  'runtimeLoopOrchestration',
+  'postFx',
   'fallbackInterval',
 ];
+
+/** Preset: every subsystem enabled (clears map). */
+export function presetAllVizSubsystemsOn(): void {
+  resetVizSubsystems();
+}
+
+/** Preset: every subsystem disabled. */
+export function presetAllVizSubsystemsOff(): void {
+  const g = globalThis as typeof globalThis & {
+    __ATLAS_VIZ_SUBSYSTEMS__?: VizSubsystemMap;
+  };
+  const cur: VizSubsystemMap = {};
+  for (const k of ALL_SUBSYSTEM_KEYS) {
+    cur[k] = false;
+  }
+  g.__ATLAS_VIZ_SUBSYSTEMS__ = cur;
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    console.log('[VizSubsystem] preset all off');
+  }
+  notify();
+}
+
+export const VIZ_SUBSYSTEM_KEYS: VizSubsystemKey[] = [...ALL_SUBSYSTEM_KEYS];

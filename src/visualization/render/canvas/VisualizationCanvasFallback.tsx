@@ -6,6 +6,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 
 const DEFAULT_FALLBACK_BG = '#000000';
@@ -51,6 +52,25 @@ const NODES = buildFallbackNodes();
 
 const POLL_MS = 120;
 
+export type FallbackVisualState = {
+  activity: number;
+  tick: number;
+};
+
+export function advanceFallbackVisualState(
+  prev: FallbackVisualState,
+  targetActivity: number,
+  intervalEnabled: boolean,
+): FallbackVisualState {
+  if (!intervalEnabled) {
+    return prev;
+  }
+  return {
+    activity: prev.activity * 0.85 + targetActivity * 0.15,
+    tick: prev.tick + 1,
+  };
+}
+
 export function VisualizationCanvasFallback({
   visualizationRef,
   canvasBackground = DEFAULT_FALLBACK_BG,
@@ -59,20 +79,24 @@ export function VisualizationCanvasFallback({
   canvasBackground?: string;
 }) {
   const { width, height } = useWindowDimensions();
-  const [activity, setActivity] = useState(0.15);
-  const [tick, setTick] = useState(0);
+  const [visualState, setVisualState] = useState<FallbackVisualState>({
+    activity: 0.15,
+    tick: 0,
+  });
 
   useEffect(() => {
     const id = setInterval(() => {
       const target = visualizationRef?.current?.targetActivity ?? 0.1;
-      setActivity((a) => a * 0.85 + target * 0.15);
-      setTick((n) => n + 1);
+      const intervalEnabled = getVizSubsystemEnabled('fallbackInterval');
+      setVisualState(prev =>
+        advanceFallbackVisualState(prev, target, intervalEnabled),
+      );
     }, POLL_MS);
     return () => clearInterval(id);
   }, [visualizationRef]);
 
   // Minimal field: render dots so fallback is never an empty View
-  const opacity = 0.3 + activity * 0.5;
+  const opacity = 0.3 + visualState.activity * 0.5;
   return (
     <View style={[StyleSheet.absoluteFill, styles.root, { backgroundColor: canvasBackground }]}>
       {NODES.map((node, i) => (
@@ -86,7 +110,9 @@ export function VisualizationCanvasFallback({
               width: node.size * 2,
               height: node.size * 2,
               borderRadius: node.size,
-              opacity: opacity * (0.7 + 0.3 * Math.sin(tick * 0.1 + node.phase)),
+              opacity:
+                opacity *
+                (0.7 + 0.3 * Math.sin(visualState.tick * 0.1 + node.phase)),
             },
           ]}
         />

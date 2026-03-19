@@ -5,6 +5,7 @@
 import { useFrame, useThree } from '@react-three/fiber/native';
 import { useRef } from 'react';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 
 const RADIUS = 13.5;
 
@@ -19,6 +20,7 @@ export function CameraOrbit({
   useFrame(() => {
     const v = visualizationRef.current;
     if (!v) return;
+    if (!getVizSubsystemEnabled('r3fFrame')) return;
 
     const theta = v.orbitTheta;
     let phi = v.orbitPhi;

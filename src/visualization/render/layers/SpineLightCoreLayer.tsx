@@ -10,6 +10,7 @@ import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { getActiveBandVerticalEnvelope } from '../../interaction/activeBandEnvelope';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 import { computeTransientModulation, scaleModulation } from '../utils/transientModulation';
 import { interpolateModeValue } from '../../runtime/modeTransition';
 
@@ -127,6 +128,7 @@ export function SpineLightCoreLayer({
     const mat = shaderMat;
     if (!v || !scene || !spine || !lightCore || !layers || !mesh || !mat)
       return;
+    if (!getVizSubsystemEnabled('r3fFrame')) return;
 
     const visible = v.vizIntensity !== 'off' && lightCore.enabled;
     mesh.visible = visible;
@@ -192,6 +194,8 @@ export function SpineLightCoreLayer({
     const mixedColor = mixedColorRef.current.copy(baseColor).lerp(tintColor, tintMix);
     const baseOrbColor = baseOrbColorRef.current.set(lightCore.orbColor);
     const mixedOrbColor = mixedOrbColorRef.current.copy(baseOrbColor).lerp(tintColor, tintMix);
+    const matW = getVizSubsystemEnabled('materialUniforms');
+    if (matW) {
     mat.uniforms.uColor.value.copy(mixedColor);
     mat.uniforms.uOrbColor.value.copy(mixedOrbColor);
     const motion = scene.motion;
@@ -276,6 +280,7 @@ export function SpineLightCoreLayer({
         ? 0
         : organism.presence * bendAmpScale * (1 + motionTension * 0.55) * settleDamp;
     mat.uniforms.uBendBias.value = organism ? organism.focusBias : 0;
+    }
 
     mat.blending =
       lightCore.blend === 'additive'

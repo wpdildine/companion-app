@@ -12,6 +12,7 @@ import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { createBackPlaneMaterial } from '../../materials/backPlane/backPlaneMaterial';
 import { createBackPlaneGlitchMaterial } from '../../materials/backPlane/backPlaneGlitchMaterial';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 
 function getViewSizeAtDistance(
   camera: THREE.Camera,
@@ -70,6 +71,8 @@ export function BackPlaneLayer({
   useFrame((state) => {
     const v = visualizationRef.current;
     if (!v?.scene?.backPlane?.planes.length) return;
+    if (!getVizSubsystemEnabled('r3fFrame')) return;
+    const matW = getVizSubsystemEnabled('materialUniforms');
     const bp = v.scene.backPlane;
     const layers = v.scene.layers;
     const backPlaneRo = getDescriptorRenderOrderBase(
@@ -98,6 +101,7 @@ export function BackPlaneLayer({
       const mat = mesh.material;
       if ((mat as THREE.ShaderMaterial).isShaderMaterial) {
         const shaderMat = mat as THREE.ShaderMaterial;
+        if (matW) {
         const boostedOpacity = plane.opacityBase * (2.6 + motionGain * 0.45);
         shaderMat.uniforms.uOpacity.value = Math.min(0.26, boostedOpacity);
         shaderMat.uniforms.uTime.value = v.clock * (0.7 + driftScale * 0.35);
@@ -115,8 +119,10 @@ export function BackPlaneLayer({
         const densityY = 88;
         const densityX = densityY * aspectXY;
         shaderMat.uniforms.uTileRepeat.value.set(densityX, densityY);
+        }
       } else {
         const basicMat = mat as THREE.MeshBasicMaterial;
+        if (matW) {
         basicMat.opacity = plane.opacityBase * (1 + motionGain * 0.25);
         basicMat.color
           .copy(colorRef.current)
@@ -126,6 +132,7 @@ export function BackPlaneLayer({
           const phase = Number(basicMat.userData.layerPhase ?? 0);
           tex.offset.x = phase * 0.17;
           tex.offset.y = phase * 0.09;
+        }
         }
       }
       mesh.position

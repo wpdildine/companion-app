@@ -32,15 +32,8 @@ import {
   isMountIdInRegistry,
 } from '../layers/layerRegistry';
 import { RuntimeLoop } from '../../runtime/RuntimeLoop';
-import {
-  VizRuntimeIsolationContext,
-  getVizIsolationGatesForMode,
-} from '../../runtime/VizRuntimeIsolationContext';
 import { PostFXPass } from './PostFXPass';
-import {
-  getVizRuntimeMode,
-  subscribeVizRuntimeMode,
-} from '../../../app/ui/components/overlays/VisualizationRuntimeMode';
+import { subscribeVizSubsystemChange } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 
 const TAP_MAX_MS = 300;
 const TAP_MAX_MOVE = 15;
@@ -91,9 +84,10 @@ export function VisualizationCanvasR3F({
   const lastTap = useRef<{ x: number; y: number; t: number } | null>(null);
   const dragActive = useRef(false);
   const [, setSceneRevision] = useState(0);
-  const [vizRuntimeMode, setVizRuntimeModeState] = useState(getVizRuntimeMode);
+  const [, setIsolationRev] = useState(0);
   useEffect(
-    () => subscribeVizRuntimeMode(() => setVizRuntimeModeState(getVizRuntimeMode())),
+    () =>
+      subscribeVizSubsystemChange(() => setIsolationRev(n => n + 1)),
     [],
   );
 
@@ -222,7 +216,6 @@ export function VisualizationCanvasR3F({
     },
     [canvasBackground],
   );
-  const isolationGates = getVizIsolationGatesForMode(vizRuntimeMode);
 
   return (
     <View
@@ -242,28 +235,26 @@ export function VisualizationCanvasR3F({
           preserveDrawingBuffer: false,
         }}
       >
-        <VizRuntimeIsolationContext.Provider value={isolationGates}>
-          <color attach="background" args={[canvasBackground]} />
-          {(visualizationRef.current?.scene?.layerDescriptors ??
-            DEFAULT_LAYER_DESCRIPTORS)
-            .filter(
-              d => d.enabled !== false && isMountIdInRegistry(d.id),
-            )
-            .map(d => {
-              const Comp = LAYER_REGISTRY[d.id];
-              return Comp ? (
-                <Comp
-                  key={d.id}
-                  visualizationRef={visualizationRef}
-                  descriptor={d}
-                />
-              ) : null;
-            })}
-          <RuntimeLoop visualizationRef={visualizationRef} />
-          <TouchRaycaster visualizationRef={visualizationRef} />
-          <CameraOrbit visualizationRef={visualizationRef} />
-          <PostFXPass visualizationRef={visualizationRef} />
-        </VizRuntimeIsolationContext.Provider>
+        <color attach="background" args={[canvasBackground]} />
+        {(visualizationRef.current?.scene?.layerDescriptors ??
+          DEFAULT_LAYER_DESCRIPTORS)
+          .filter(
+            d => d.enabled !== false && isMountIdInRegistry(d.id),
+          )
+          .map(d => {
+            const Comp = LAYER_REGISTRY[d.id];
+            return Comp ? (
+              <Comp
+                key={d.id}
+                visualizationRef={visualizationRef}
+                descriptor={d}
+              />
+            ) : null;
+          })}
+        <RuntimeLoop visualizationRef={visualizationRef} />
+        <TouchRaycaster visualizationRef={visualizationRef} />
+        <CameraOrbit visualizationRef={visualizationRef} />
+        <PostFXPass visualizationRef={visualizationRef} />
       </Canvas>
     </View>
   );

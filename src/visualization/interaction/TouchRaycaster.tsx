@@ -11,6 +11,7 @@ import { useFrame, useThree } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { useRef } from 'react';
 import type { VisualizationEngineRef } from '../runtime/runtimeTypes';
+import { getVizSubsystemEnabled } from '../../app/ui/components/overlays/vizSubsystemToggles';
 import { getPulseColorWithHue } from '../runtime/getPulseColor';
 
 export function TouchRaycaster({
@@ -27,6 +28,10 @@ export function TouchRaycaster({
   useFrame((state) => {
     const v = visualizationRef.current;
     if (!v?.pendingTapNdc) return;
+    if (!getVizSubsystemEnabled('r3fFrame')) {
+      v.pendingTapNdc = null;
+      return;
+    }
 
     const [ndcX, ndcY] = v.pendingTapNdc;
     // Consume-once contract: pendingTapNdc is single-fire and cleared immediately.

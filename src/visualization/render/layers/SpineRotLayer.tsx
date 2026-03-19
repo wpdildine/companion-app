@@ -13,6 +13,7 @@ import { createBasicPlaneMaterial } from '../../materials/basicPlaneMaterial';
 import { createHalftoneMaterial } from '../../materials/halftone/halftonePlaneMaterial';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 import { interpolateModeValue } from '../../runtime/modeTransition';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 
 export function SpineRotLayer({
   visualizationRef,
@@ -41,6 +42,8 @@ export function SpineRotLayer({
     const layersNow = sceneNow?.layers;
     const spineNow = sceneNow?.spine;
     if (!v || !spineRotNow || !layersNow || !spineNow) return;
+    if (!getVizSubsystemEnabled('r3fFrame')) return;
+    const matW = getVizSubsystemEnabled('materialUniforms');
 
     const processingVisibleCount = interpolateModeValue(v, {
       idle: spineRotNow.planeCountByMode.idle ?? 0,
@@ -88,6 +91,7 @@ export function SpineRotLayer({
       mesh.renderOrder = spineRotRo + i;
 
       if (plane.useHalftone && halftoneMat) {
+        if (matW) {
         halftoneMat.uniforms.uColor.value.set(plane.color);
         halftoneMat.uniforms.uOpacity.value =
           plane.opacityScale * opacityBase * visibilityWeight;
@@ -98,6 +102,7 @@ export function SpineRotLayer({
         halftoneMat.uniforms.uPlanePhase.value = i * 1.1;
         halftoneMat.uniforms.uPlaneSize.value.set(plane.scaleX, plane.scaleY);
         halftoneMat.uniforms.uDebugFlat.value = spineNow.style.halftoneDebugFlat ? 1 : 0;
+        }
       } else {
         const mat = ghostMatsRef.current[i];
         if (!mat) continue;

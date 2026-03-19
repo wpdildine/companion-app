@@ -13,6 +13,7 @@ import type {
 } from './runtimeTypes';
 import type { VisualizationSignals } from './visualizationSignals';
 import { TARGET_ACTIVITY_BY_MODE } from './createDefaultRef';
+import { getVizSubsystemEnabled } from '../../app/ui/components/overlays/vizSubsystemToggles';
 
 const PHASE_TO_MODE: Record<VisualizationSignals['phase'], VisualizationMode> = {
   idle: 'idle',
@@ -34,6 +35,9 @@ export function applyVisualizationSignals(
 ): void {
   const v = visualizationRef.current;
   if (!v) return;
+  if (!getVizSubsystemEnabled('signalApply')) {
+    return;
+  }
   const { panelRects, ...uiSignals } = signals;
   const mergedSignals = {
     ...(v.signalsSnapshot ?? ({} as VisualizationSignals)),

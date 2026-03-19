@@ -17,6 +17,7 @@ import { getActiveBandVerticalEnvelope } from '../../interaction/activeBandEnvel
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
+import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 
 const planeEdgesGeometry = new THREE.EdgesGeometry(
   new THREE.PlaneGeometry(1, 1),
@@ -104,6 +105,10 @@ export function TouchZones({
     const areaVisible = showZones && show && w > 0 && h > 0;
     areaGroupRef.current.visible = areaVisible;
     if (!areaVisible) return;
+    if (!getVizSubsystemEnabled('r3fFrame')) {
+      areaGroupRef.current.visible = false;
+      return;
+    }
 
     const envelope = getActiveBandVerticalEnvelope(
       showNameShapingTouchZones ? 0 : layout.bandTopInsetPx,
