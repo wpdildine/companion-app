@@ -19,14 +19,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  copyBundlePackToDocuments,
-  createBundlePackReader,
-  createDocumentsPackReader,
-  getContentPackPathInDocuments,
-  getFileReader,
-  getPackState,
-} from '../rag';
+import { getFileReader, getPackState } from '../rag';
 import { SemanticChannelView } from '../screens';
 import {
   cleanupEarcons,
@@ -285,29 +278,10 @@ export default function AgentSurface() {
       let fileReader = existingFileReader;
 
       if (!fileReader) {
-        let packRoot = '';
-        try {
-          packRoot = await copyBundlePackToDocuments();
-        } catch (error) {
-          logInfo(
-            'AgentSurface',
-            'NameShaping resolver pack copy skipped, falling back',
-            {
-              error: error instanceof Error ? error.message : String(error),
-            },
-          );
-          packRoot = (await getContentPackPathInDocuments()) ?? '';
-        }
-        fileReader =
-          (packRoot ? createDocumentsPackReader(packRoot) : null) ??
-          createBundlePackReader();
-      }
-
-      if (!fileReader) {
         if (!cancelled) {
           logInfo(
             'AgentSurface',
-            'NameShaping resolver index unavailable: no pack reader',
+            'NameShaping resolver index unavailable: no existing pack reader',
           );
         }
         nameShapingResolverIndexLoadingRef.current = false;
@@ -1134,10 +1108,6 @@ export default function AgentSurface() {
       setReduceMotion,
     );
     return () => sub?.remove?.();
-  }, []);
-
-  useEffect(() => {
-    copyBundlePackToDocuments().catch(() => {});
   }, []);
 
   useEffect(() => {
