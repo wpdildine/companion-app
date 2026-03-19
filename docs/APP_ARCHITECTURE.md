@@ -134,7 +134,8 @@ The high-level interaction contract is still the same, but the implementation is
 
 Current code path:
 
-- `VisualizationSurface` keeps the canvas at `pointerEvents="none"` and continues to expose discrete canvas callbacks (`onShortTap`, `onLongPressStart`, `onLongPressEnd`, legacy `onClusterTap` wiring).
+- `VisualizationSurface` keeps the canvas at `pointerEvents="none"`, so the GL subtree does **not** receive touches in this composition. R3F `onTouch*` handlers, `pendingTapNdc`, and `TouchRaycaster` tap pulses are therefore **dormant** here unless a caller mounts a touch-targetable canvas (e.g. direct `VisualizationCanvas` / `VisualizationCanvasR3F` without this wrapper).
+- The surface still accepts `TouchCallbacks` on its props type (e.g. `onShortTap`, long-press, legacy `onClusterTap`) for **latent / direct-mount** use. Those handlers are **not invoked** while the canvas layer is non-interactive. **`onClusterRelease` is not destructured or forwarded** from `VisualizationSurface` to `VisualizationCanvas`, and `VisualizationCanvas` does not pass it to R3F either—live **cluster release** is **`InteractionBand` → `onClusterRelease`** only; any R3F omission is downstream and not the root cause.
 - `InteractionBand` is the dedicated touch layer for the continuous touch field and release-commit semantics. In current code it uses `react-native-gesture-handler` `Gesture.Pan()` with `manualActivation(true)`.
 - The band mounts the detector on a non-collapsable host view (`collapsable={false}`), reflecting the current native-fast migration/workaround path.
 - Native touch remains the authoritative physical input path inside the band. Tap-like and hold-like semantics are preserved by JS callbacks (`runOnJS`) off the pan lifecycle.

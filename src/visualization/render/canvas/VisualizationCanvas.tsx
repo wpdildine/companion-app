@@ -1,6 +1,10 @@
 /**
  * Fullscreen node map canvas: R3F when available, otherwise 2D fallback (Lane B).
  * Loads R3F dynamically and uses an error boundary so R3F/expo-gl failures don't crash the app.
+ *
+ * `TouchCallbacks` on props includes `onClusterRelease`, but this module does not destructure
+ * or pass it to R3F (cluster-on-canvas is unused; `VisualizationSurface` also does not forward it).
+ * Downstream `VisualizationCanvasR3F` has no cluster-release handler—band owns release commit.
  */
 
 import React, { Component, useEffect, useState } from 'react';

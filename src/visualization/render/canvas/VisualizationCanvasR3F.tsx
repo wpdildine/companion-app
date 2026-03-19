@@ -1,15 +1,15 @@
 /**
  * R3F implementation of the visualization canvas (constructivist planes + context glyphs).
  *
- * Touch ownership model:
- * - Canvas path handles discrete gestures (short tap, double tap, long press, drag).
- * - InteractionBand handles continuous organism field + semantic cluster release commit.
+ * Touch (when this wrapper View actually receives touches):
+ * - Discrete gestures here: short tap → `pendingTapNdc` + TouchRaycaster pulse, double tap,
+ *   long press, drag/orbit. Must never write touchField* (owned by InteractionBand).
  *
- * Important split:
- * - Short tap here => pendingTapNdc -> TouchRaycaster pulse only.
- * - Cluster semantics (rules/cards) are release-driven in InteractionBand, not here.
+ * Default `VisualizationSurface` stack: parent sets `pointerEvents="none"` on the canvas
+ * layer, so these handlers do not run—physical band-region input is `InteractionBand` only.
+ * Mount this component without that policy (or use direct fill) for latent canvas gestures.
  *
- * This file must never write touchField* (owned by InteractionBand).
+ * Cluster release (rules/cards) is driven by InteractionBand, not this file.
  * canvasBackground and callbacks are injected (no theme import).
  */
 

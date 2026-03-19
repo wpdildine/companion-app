@@ -91,7 +91,7 @@ src/visualization/
   - touch start/move => continuous organism field updates only
   - touch end => semantic commit (`rules/cards`) based on final release position
   - touch cancel => clear only; no semantic callback
-  - short tap in canvas => pulse-only path (`pendingTapNdc` -> `TouchRaycaster`)
+  - short tap on a **touch-targetable** R3F canvas wrapper => pulse-only path (`pendingTapNdc` → `TouchRaycaster`). Default `VisualizationSurface` uses `pointerEvents="none"` on the canvas layer, so this path does **not** run in that layout.
 
 Migration note:
 
@@ -164,11 +164,12 @@ Three systems provide environmental layering so the spine feels embedded in spac
 
 ## Touch Ownership Contract
 
-When `VisualizationSurface` is used:
+When `VisualizationSurface` is used (default app shell):
 
-- Canvas does not receive direct pointer events.
-- `InteractionBand` is the dedicated owner for the band-driven continuous field and release-commit path.
-- `VisualizationCanvas` still exposes separate discrete callbacks such as short tap and long press through `VisualizationSurface`.
+- Canvas does not receive direct pointer events (`pointerEvents="none"` on the canvas wrapper).
+- **Physical touch owners** are **`InteractionBand`** (band region: continuous field + hold + cluster release) and **RN overlay content** (scroll, panels, controls). The GL view is not in the hit path for touches.
+- `InteractionBand` is the dedicated owner for the band-driven continuous field and release-commit path (`onClusterRelease` / legacy `onClusterTap`).
+- `TouchCallbacks` on `VisualizationSurface` still include discrete canvas props (short tap, long press, drag, etc.) for **API compatibility and direct-mount** scenarios where the canvas is touchable; in the default shell those callbacks are **dormant** (they are not fired). `onClusterRelease` on that type is **not forwarded** by `VisualizationSurface` or `VisualizationCanvas` today—cluster commit from touch is band-owned.
 - RN UI overlays retain direct interaction (scroll, buttons, panel controls).
 
 ## Current Gaps / Cleanup Candidates

@@ -2,9 +2,12 @@
  * Processes pending tap from canvas: raycast to plane at scene center,
  * triggers pulse at 3D intersection (reference: triggerPulse(clientX, clientY)).
  *
- * Note:
- * - This is a discrete tap pulse path (canvas/raycast), not the InteractionBand release-commit path.
- * - InteractionBand writes continuous touchField* and cluster release semantics separately.
+ * Runs only when something sets `pendingTapNdc` (typically a short tap on the R3F canvas
+ * wrapper). Default `VisualizationSurface` blocks canvas touches (`pointerEvents="none"`), so
+ * this path is dormant there.
+ *
+ * Discrete tap pulse (canvas/raycast), not InteractionBand release-commit. InteractionBand
+ * owns continuous touchField* and cluster release semantics separately.
  */
 
 import { useFrame, useThree } from '@react-three/fiber/native';

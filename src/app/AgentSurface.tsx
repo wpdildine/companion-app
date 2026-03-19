@@ -1167,6 +1167,11 @@ export default function AgentSurface() {
 
   return (
     <View style={localStyles.screenWrapper}>
+      {/*
+        VisualizationSurface uses pointerEvents="none" on the canvas layer: GL does not receive
+        touches; onShortTap/long-press here are latent (direct-mount API). Cluster release is
+        InteractionBand → onClusterRelease only (Surface does not forward onClusterRelease).
+      */}
       <VisualizationSurface
         visualizationRef={visualizationRef}
         controlsEnabled={debugEnabled}
@@ -1178,7 +1183,6 @@ export default function AgentSurface() {
           !debugEnabled ? handleUserModeLongPressStart : undefined
         }
         onLongPressEnd={!debugEnabled ? handleUserModeLongPressEnd : undefined}
-        onClusterRelease={!debugEnabled ? handleClusterTap : undefined}
       >
         <SemanticChannelView
           contentPaddingTop={insets.top}
