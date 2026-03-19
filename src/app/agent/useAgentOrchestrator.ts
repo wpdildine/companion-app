@@ -27,6 +27,7 @@ import {
   getSttProvider,
 } from '../../shared/config/endpointConfig';
 import {
+  isLogGateEnabled,
   logError,
   logInfo,
   logLifecycle,
@@ -1363,15 +1364,17 @@ export function useAgentOrchestrator(
     });
     if (runResult.shouldPlay) {
       playbackRequestIdRef.current = reqId;
-      logInfo(
-        'ResponseSurface',
-        'response_surface_playback_bound_to_committed_response',
-        {
-          requestId: reqId,
-          speakingBoundToCommittedResponse: true,
-          committedChars: runResult.committedText.length,
-        },
-      );
+      if (isLogGateEnabled('playbackHandoff')) {
+        logInfo(
+          'ResponseSurface',
+          'response_surface_playback_bound_to_committed_response',
+          {
+            requestId: reqId,
+            speakingBoundToCommittedResponse: true,
+            committedChars: runResult.committedText.length,
+          },
+        );
+      }
       playTextRef.current?.(runResult.committedText).catch(() => undefined);
       return runResult.committedText;
     }
@@ -1443,7 +1446,11 @@ export function useAgentOrchestrator(
             timestamp: ttsStartedAt,
             lifecycle: 'speaking',
           });
-          logInfo('AgentOrchestrator', 'playback started', { provider: 'piper' });
+          if (isLogGateEnabled('playbackHandoff')) {
+            logInfo('AgentOrchestrator', 'playback started', {
+              provider: 'piper',
+            });
+          }
           listenersRef?.current?.onPlaybackStart?.();
         }, 0);
         try {
@@ -1546,9 +1553,11 @@ export function useAgentOrchestrator(
           timestamp: ttsStartedAt,
           lifecycle: 'speaking',
         });
-        logInfo('AgentOrchestrator', 'playback started', {
-          provider: 'react-native-tts',
-        });
+        if (isLogGateEnabled('playbackHandoff')) {
+          logInfo('AgentOrchestrator', 'playback started', {
+            provider: 'react-native-tts',
+          });
+        }
         listenersRef?.current?.onPlaybackStart?.();
         Tts.speak(normalized);
       } catch (e) {
