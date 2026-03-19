@@ -1285,7 +1285,6 @@ export default function AgentSurface() {
         centerHoldShouldBypassDelay={
           orchState.audioSessionState !== 'idleReady'
         }
-        debugInteraction={debugPanelMode === 'viz'}
       />
       {debugPanelMode !== 'off' && (
         <View
