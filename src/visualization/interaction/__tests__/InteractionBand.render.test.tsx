@@ -1,6 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
+import type { VisualizationEngineRef } from '../../index';
 import { InteractionBand } from '../InteractionBand';
 
 type MockPanHandlers = {
@@ -34,8 +35,7 @@ type MockPanGesture = {
 let lastGesture: MockPanGesture | null = null;
 
 jest.mock('react-native-gesture-handler', () => {
-  const React = require('react');
-  const { View } = require('react-native');
+  const { View: NativeView } = require('react-native');
 
   const createPanGesture = (): MockPanGesture => {
     const handlers: MockPanHandlers = {};
@@ -73,7 +73,7 @@ jest.mock('react-native-gesture-handler', () => {
     }: {
       gesture: MockPanGesture;
       children: React.ReactNode;
-    }) => <View testID="gesture-detector">{children}</View>,
+    }) => <NativeView testID="gesture-detector">{children}</NativeView>,
   };
 });
 
@@ -107,7 +107,7 @@ describe('InteractionBand render path', () => {
         },
       },
     },
-  });
+  }) as React.RefObject<VisualizationEngineRef | null>;
 
   beforeEach(() => {
     lastGesture = null;
@@ -357,7 +357,7 @@ describe('InteractionBand render path', () => {
     });
 
     expect(onCenterHoldShortTap).toHaveBeenCalledTimes(1);
-    expect(visualizationRef.current.pendingTapNdc).toEqual([0, 0.28]);
+    expect(visualizationRef.current!.pendingTapNdc).toEqual([0, 0.28]);
     jest.useRealTimers();
   });
 
@@ -399,7 +399,7 @@ describe('InteractionBand render path', () => {
     });
 
     expect(onCenterHoldShortTap).toHaveBeenCalledTimes(1);
-    expect(visualizationRef.current.pendingTapNdc).toBeNull();
+    expect(visualizationRef.current!.pendingTapNdc).toBeNull();
     jest.useRealTimers();
   });
 });
@@ -422,7 +422,7 @@ describe('InteractionBand contract (attempt / acceptance / release)', () => {
         },
       },
     },
-  });
+  }) as React.RefObject<VisualizationEngineRef | null>;
 
   const layoutEvent = {
     nativeEvent: { layout: { x: 0, y: 0, width: 200, height: 288 } },

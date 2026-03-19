@@ -399,7 +399,7 @@ export function DevPanel({
           <Text style={[styles.section, { color: muted }]}>State tests</Text>
           <View style={[styles.row, styles.currentStateRow]}>
             <Text style={{ color: muted }}>Current state</Text>
-            <Text style={{ color: textColor, fontWeight: '600' }}>{v.currentMode}</Text>
+            <Text style={[styles.semiBoldText, { color: textColor }]}>{v.currentMode}</Text>
           </View>
           <Pressable
             onPress={() => {
@@ -923,6 +923,9 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 18,
+    fontWeight: '600',
+  },
+  semiBoldText: {
     fontWeight: '600',
   },
   scroll: {

@@ -48,7 +48,7 @@ describe('nameShapingTouchLayout', () => {
     });
 
     it('each region has valid ndc bounds', () => {
-      NAME_SHAPING_LAYOUT_REGIONS.forEach((r, i) => {
+      NAME_SHAPING_LAYOUT_REGIONS.forEach(r => {
         expect(r.startNdcX).toBeLessThanOrEqual(r.endNdcX);
         expect(r.startNdcY).toBeLessThanOrEqual(r.endNdcY);
         expect(r.startNdcX).toBeGreaterThanOrEqual(-1);

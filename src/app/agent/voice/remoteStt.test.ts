@@ -14,6 +14,7 @@ const mockCaptured: CapturedSttAudio = {
   mimeType: 'audio/webm',
   durationMillis: 100,
   audioBase64: 'base64data',
+  uri: 'file:///tmp/capture.webm',
 };
 
 describe('createRemoteSttCoordinator', () => {

@@ -71,7 +71,6 @@ export function BackPlaneLayer({
     const v = visualizationRef.current;
     if (!v?.scene?.backPlane?.planes.length) return;
     const bp = v.scene.backPlane;
-    const layers = v.scene.layers;
     const backPlaneRo = getDescriptorRenderOrderBase(
       v.scene,
       descriptor,

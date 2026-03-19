@@ -200,10 +200,13 @@ export interface RunRagFlowOptions {
 }
 
 function simplePromptHash(prompt: string): string {
+  /* eslint-disable no-bitwise */
   let h = 0;
   for (let i = 0; i < prompt.length; i++)
     h = (h << 5) - h + prompt.charCodeAt(i);
-  return (h >>> 0).toString(36);
+  const hash = (h >>> 0).toString(36);
+  /* eslint-enable no-bitwise */
+  return hash;
 }
 
 function extractTotalTokens(result: unknown): number | undefined {
@@ -445,11 +448,10 @@ export async function runRagFlow(
             bundleChars: bundleText.length,
           });
         } else {
-          const runtime = await import('@mtg/runtime');
-          const runtimeModule = runtime as {
-            getContext?: (question: string, packRoot: string) => Promise<unknown>;
+          const runtimeModule = (await import('@mtg/runtime')) as unknown as {
+            getContext?: (question: string, packRoot: string) => unknown;
             default?: {
-              getContext?: (question: string, packRoot: string) => Promise<unknown>;
+              getContext?: (question: string, packRoot: string) => unknown;
             };
           };
           const getContext =

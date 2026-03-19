@@ -11,9 +11,9 @@ import { ragError } from './errors';
 /** Decode one little-endian float16 at index i in u16 to float. Keeps vectors in f16 to avoid ~22s full decode. */
 function f16ToFloat(u16: Uint16Array, i: number): number {
   const x = u16[i]!;
-  const sign = (x >> 15) & 1;
-  const exp = (x >> 10) & 0x1f;
-  const frac = x & 0x3ff;
+  const sign = Math.floor(x / 2 ** 15) % 2;
+  const exp = Math.floor(x / 2 ** 10) % 32;
+  const frac = x % 1024;
   if (exp === 0) {
     return frac === 0 ? 0 : (sign ? -1 : 1) * Math.pow(2, -14) * (frac / 1024);
   }

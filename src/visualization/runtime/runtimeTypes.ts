@@ -3,6 +3,7 @@
  * Discrete mode is written by React; continuous animation advances in the runtime loop.
  */
 
+import type { AppStateStatus } from 'react-native';
 import type { GLSceneDescription } from '../scene/sceneFormations';
 import type {
   VisualizationSignalEvent,
@@ -86,6 +87,8 @@ export interface VisualizationEngineRef {
   vizIntensity: VisualizationIntensity;
   /** Reduce motion (accessibility). */
   reduceMotion: boolean;
+  /** Latest app foreground/background state. */
+  appState?: AppStateStatus;
   /** Last semantic event (for pulse/ripple). */
   lastEvent: VisualizationSignalEvent;
   /** Time of last event (clock or elapsed). */

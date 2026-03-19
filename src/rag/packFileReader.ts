@@ -9,18 +9,18 @@ import type { PackFileReader } from './types';
 
 function base64ToBytes(base64: string): Uint8Array {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  const len = base64.replace(/=+$/, '').length;
+  const len = base64.replace(new RegExp('=+$'), '').length;
   const out: number[] = [];
   let buf = 0;
   let bits = 0;
   for (let i = 0; i < len; i++) {
     const idx = chars.indexOf(base64[i]!);
     if (idx === -1) continue;
-    buf = (buf << 6) | idx;
+    buf = buf * 64 + idx;
     bits += 6;
     if (bits >= 8) {
       bits -= 8;
-      out.push((buf >> bits) & 0xff);
+      out.push(Math.floor(buf / 2 ** bits) % 256);
     }
   }
   return new Uint8Array(out);

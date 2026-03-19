@@ -9,7 +9,6 @@ import {
   transcriptTrace,
   POST_SPEECH_END_QUIET_WINDOW_MS,
   POST_STOP_FLUSH_WINDOW_MS,
-  ANDROID_TAIL_GRACE_MS,
 } from './transcriptSettlement';
 
 describe('transcriptSettlement helpers', () => {

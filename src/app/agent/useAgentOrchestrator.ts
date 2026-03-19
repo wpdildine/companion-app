@@ -227,7 +227,7 @@ export function useAgentOrchestrator(
       if (!key) {
         return {
           shouldSurface: true,
-          suppressedBy: null as SurfacedFailureSeverity | null,
+          suppressedBy: undefined as SurfacedFailureSeverity | undefined,
         };
       }
       const ledger = sessionFailureLedgerRef.current;
@@ -237,7 +237,7 @@ export function useAgentOrchestrator(
         terminalSurfaced: false,
       };
       let shouldSurface = true;
-      let suppressedBy: SurfacedFailureSeverity | null = null;
+      let suppressedBy: SurfacedFailureSeverity | undefined;
 
       if (severity === 'recoverable') {
         if (current.terminalSurfaced) {
@@ -288,7 +288,7 @@ export function useAgentOrchestrator(
           'AgentOrchestrator',
           'recoverable failure suppressed for session',
           {
-            recordingSessionId: recordingSessionId ?? null,
+            recordingSessionId,
             reason: classification.telemetryReason,
             suppressedBy: ledgerDecision.suppressedBy,
           },
@@ -331,7 +331,7 @@ export function useAgentOrchestrator(
           'AgentOrchestrator',
           'terminal failure suppressed for session',
           {
-            recordingSessionId: recordingSessionId ?? null,
+            recordingSessionId,
             reason,
             suppressedBy: ledgerDecision.suppressedBy,
           },

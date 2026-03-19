@@ -354,7 +354,7 @@ describe('AgentOrchestrator contract events', () => {
     await emitFinalTranscript(harness, 'Hello there');
 
     await act(async () => {
-      void harness.actions.submit();
+      harness.actions.submit();
       await flushPromises();
     });
 
@@ -408,7 +408,7 @@ describe('AgentOrchestrator contract events', () => {
     await emitFinalTranscript(harness, 'Hello there');
 
     await act(async () => {
-      void harness.actions.submit();
+      harness.actions.submit();
       await flushPromises();
     });
 
@@ -509,7 +509,7 @@ describe('AgentOrchestrator contract events', () => {
   it('exposes audioSessionState changes reactively during stop-for-submit', async () => {
     mockGetSttProvider.mockReturnValue('remote');
     let resolveTranscript: ((value: { text: string }) => void) | null = null;
-    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       json: () =>
         new Promise(resolve => {
@@ -592,7 +592,7 @@ describe('AgentOrchestrator contract events', () => {
 
   it('remote stt transcript is fetched and used after stopListeningAndRequestSubmit', async () => {
     mockGetSttProvider.mockReturnValue('remote');
-    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
       json: async () => ({ text: 'Remote transcript' }),
     } as Response);
@@ -632,7 +632,7 @@ describe('AgentOrchestrator contract events', () => {
 
   it('returns audioSessionState to idleReady when remote stt transcript is empty', async () => {
     mockGetSttProvider.mockReturnValue('remote');
-    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
       ok: true,
       json: async () => ({ text: '   ' }),
     } as Response);

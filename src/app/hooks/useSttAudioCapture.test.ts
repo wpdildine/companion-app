@@ -8,13 +8,14 @@ const mockStop = jest.fn(() => Promise.resolve());
 const mockRequestRecordingPermissionsAsync = jest.fn(() =>
   Promise.resolve({ granted: true, status: 'granted' }),
 );
-const mockSetAudioModeAsync = jest.fn(() => Promise.resolve());
-const mockBase64 = jest.fn(() => Promise.resolve('YmFzZTY0'));
+const mockSetAudioModeAsync = jest.fn((_args?: unknown) => Promise.resolve());
+const mockBase64 = jest.fn((_arg?: unknown) => Promise.resolve('YmFzZTY0'));
 const mockCopy = jest.fn();
 const mockFileCreate = jest.fn();
 const mockFileWrite = jest.fn();
 const mockDirectoryCreate = jest.fn();
 const dateNowSpy = jest.spyOn(Date, 'now').mockReturnValue(1234567890);
+const testGlobal = globalThis as typeof globalThis & { __DEV__?: boolean };
 
 jest.mock('expo-audio', () => ({
   useAudioRecorder: jest.fn(() => ({
@@ -23,12 +24,11 @@ jest.mock('expo-audio', () => ({
     stop: mockStop,
     uri: 'file:///tmp/sample-recording.m4a',
   })),
-  requestRecordingPermissionsAsync: (...args: unknown[]) =>
-    mockRequestRecordingPermissionsAsync(...args),
+  requestRecordingPermissionsAsync: () => mockRequestRecordingPermissionsAsync(),
   RecordingPresets: {
     HIGH_QUALITY: {},
   },
-  setAudioModeAsync: (...args: unknown[]) => mockSetAudioModeAsync(...args),
+  setAudioModeAsync: (args: unknown) => mockSetAudioModeAsync(args),
 }));
 
 jest.mock('expo-file-system', () => ({
@@ -40,14 +40,14 @@ jest.mock('expo-file-system', () => ({
         : 'file:///tmp/sample-recording.m4a';
     return {
       uri,
-      base64: (...base64Args: unknown[]) => mockBase64(...base64Args),
-      copy: (...copyArgs: unknown[]) => mockCopy(...copyArgs),
-      create: (...createArgs: unknown[]) => mockFileCreate(...createArgs),
-      write: (...writeArgs: unknown[]) => mockFileWrite(...writeArgs),
+      base64: (base64Arg?: unknown) => mockBase64(base64Arg),
+      copy: (copyArg?: unknown) => mockCopy(copyArg),
+      create: (createArg?: unknown) => mockFileCreate(createArg),
+      write: (data?: unknown, options?: unknown) => mockFileWrite(data, options),
     };
   }),
   Directory: jest.fn(() => ({
-    create: (...args: unknown[]) => mockDirectoryCreate(...args),
+    create: (arg?: unknown) => mockDirectoryCreate(arg),
   })),
   Paths: {
     document: {
@@ -61,7 +61,7 @@ jest.mock('expo-file-system', () => ({
 
 let hookResult: ReturnType<typeof useSttAudioCapture> | null = null;
 let root: TestRenderer.ReactTestRenderer | null = null;
-const originalDev = global.__DEV__;
+const originalDev = testGlobal.__DEV__;
 
 function Harness() {
   hookResult = useSttAudioCapture();
@@ -72,11 +72,11 @@ beforeEach(() => {
   jest.clearAllMocks();
   hookResult = null;
   root = null;
-  global.__DEV__ = true;
+  testGlobal.__DEV__ = true;
 });
 
 afterEach(() => {
-  global.__DEV__ = originalDev;
+  testGlobal.__DEV__ = originalDev;
   if (root) {
     act(() => {
       root!.unmount();
@@ -106,14 +106,9 @@ describe('useSttAudioCapture', () => {
     expect(mockPrepareToRecordAsync).toHaveBeenCalled();
     expect(mockRecord).toHaveBeenCalled();
 
-    let result:
-      | {
-          audioBase64: string;
-          mimeType: string;
-          filename: string;
-        }
-      | null
-      | undefined;
+    let result: Awaited<
+      ReturnType<ReturnType<typeof useSttAudioCapture>['endCapture']>
+    > | undefined;
 
     await act(async () => {
       result = await hookResult!.endCapture('rec-1');

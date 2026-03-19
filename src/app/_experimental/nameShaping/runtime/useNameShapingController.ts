@@ -73,25 +73,26 @@ export function useNameShapingController(
   actions: NameShapingActions,
   resolverIndex: ResolverIndex | null
 ): void {
+  const { committedSignature, resolverCandidates, selectedCandidate } = state;
   const {
     setResolverCandidates,
     setSelectedCandidate,
   } = actions;
 
   const resolvedCandidates = useMemo(() => {
-    if (resolverIndex === null || state.committedSignature.length === 0) {
+    if (resolverIndex === null || committedSignature.length === 0) {
       return [] as readonly NameShapingResolverCandidate[];
     }
-    const trace = getActiveNameShapingCommitTrace(state.committedSignature);
+    const trace = getActiveNameShapingCommitTrace(committedSignature);
     if (trace) {
       logInfo('AgentSurface', 'NameShaping commit trace resolve start', {
         traceId: trace.id,
         elapsedMs: trace.elapsedMs,
-        signatureLength: state.committedSignature.length,
+        signatureLength: committedSignature.length,
       });
     }
     const resolveStartMs = Date.now();
-    const results = resolveProperNounBySignature(resolverIndex, state.committedSignature);
+    const results = resolveProperNounBySignature(resolverIndex, committedSignature);
     const resolveEndMs = Date.now();
     if (trace) {
       logInfo('AgentSurface', 'NameShaping commit trace resolve end', {
@@ -102,13 +103,11 @@ export function useNameShapingController(
       });
     }
     return results;
-  }, [resolverIndex, state.committedSignature]);
+  }, [committedSignature, resolverIndex]);
 
   // Effect: committed signature → candidates + selection
   useEffect(() => {
-    const { resolverCandidates, selectedCandidate } = state;
-
-    if (state.committedSignature.length === 0) {
+    if (committedSignature.length === 0) {
       if (resolverCandidates.length > 0) {
         setResolverCandidates([]);
       }
@@ -130,7 +129,7 @@ export function useNameShapingController(
     const candidatesChanged = !candidatesEqual(resolvedCandidates, resolverCandidates);
 
     if (candidatesChanged) {
-      const trace = getActiveNameShapingCommitTrace(state.committedSignature);
+      const trace = getActiveNameShapingCommitTrace(committedSignature);
       if (trace) {
         logInfo('AgentSurface', 'NameShaping commit trace state write', {
           traceId: trace.id,
@@ -154,9 +153,9 @@ export function useNameShapingController(
       setSelectedCandidate(nextSelected);
     }
   }, [
-    state.committedSignature,
-    state.selectedCandidate,
-    state.resolverCandidates,
+    committedSignature,
+    selectedCandidate,
+    resolverCandidates,
     resolverIndex,
     resolvedCandidates,
     setResolverCandidates,

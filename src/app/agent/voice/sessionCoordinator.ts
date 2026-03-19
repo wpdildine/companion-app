@@ -3,8 +3,6 @@
  * Does not own finalizeStop or settlement; orchestrator wires those. Does not call native stop—orchestrator does.
  */
 
-import { NATIVE_RESTART_GUARD_MS } from './voiceNative';
-
 export const IOS_STOP_GRACE_MS = 250;
 
 export type AudioSessionState =
@@ -86,7 +84,7 @@ export function createSessionCoordinator(
       }
     },
     scheduleIosStopGrace(
-      recordingSessionId: string | undefined,
+      _recordingSessionId: string | undefined,
       delayMs: number,
       onElapsed: () => void
     ) {

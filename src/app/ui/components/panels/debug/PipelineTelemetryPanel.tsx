@@ -5,7 +5,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { Dimensions, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { RequestDebugState, RequestDebugEvent } from '../../../../agent/requestDebugTypes';
 import { PanelHeaderAction } from '../../controls';
 

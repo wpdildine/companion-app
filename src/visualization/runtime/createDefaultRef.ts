@@ -62,6 +62,7 @@ export function createDefaultVisualizationRef(): VisualizationEngineRef {
     postFxGrain: 0.04,
     vizIntensity: 'subtle',
     reduceMotion: false,
+    appState: undefined,
     lastEvent: null,
     lastEventTime: 0,
     signalsSnapshot: undefined,

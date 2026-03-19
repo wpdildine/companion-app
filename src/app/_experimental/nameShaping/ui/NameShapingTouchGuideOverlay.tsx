@@ -29,6 +29,16 @@ const SELECTOR_COLORS: Record<NameShapingSelector, string> = {
   BREAK: '#a855f7',
 };
 
+const SELECTOR_TEXT_STYLES = StyleSheet.create({
+  BRIGHT: { color: '#f59e0b' },
+  ROUND: { color: '#ef4444' },
+  LIQUID: { color: '#06b6d4' },
+  SOFT: { color: '#22c55e' },
+  HARD: { color: '#3b82f6' },
+  BREAK: { color: '#a855f7' },
+  voice: { color: '#0f172a' },
+});
+
 function getRegionLabel(region: NameShapingOverlayRegion): string {
   if (region.kind === 'voice') return 'VOICE';
   return SELECTOR_METADATA[region.selector!].displayLabel.toUpperCase();
@@ -47,6 +57,12 @@ function getRegionColor(region: NameShapingOverlayRegion): string {
   return region.kind === 'voice'
     ? '#f8fafc'
     : SELECTOR_COLORS[region.selector!];
+}
+
+function getRegionTextStyle(region: NameShapingOverlayRegion) {
+  return region.kind === 'voice'
+    ? SELECTOR_TEXT_STYLES.voice
+    : SELECTOR_TEXT_STYLES[region.selector!];
 }
 
 export type NameShapingTouchGuideOverlayProps = {
@@ -76,6 +92,7 @@ export function NameShapingTouchGuideOverlay({
       {NAME_SHAPING_OVERLAY_REGIONS.map((region, index) => {
         const rect = ndcRegionToScreenRect(region, envelope);
         const color = getRegionColor(region);
+        const textStyle = getRegionTextStyle(region);
 
         return (
           <View
@@ -110,7 +127,7 @@ export function NameShapingTouchGuideOverlay({
                   minimumFontScale={0.7}
                   style={[
                     styles.leftLabelText,
-                    { color: region.kind === 'voice' ? '#0f172a' : color },
+                    textStyle,
                   ]}
                 >
                   {getRegionLabel(region)}
@@ -135,7 +152,7 @@ export function NameShapingTouchGuideOverlay({
                   minimumFontScale={0.65}
                   style={[
                     styles.rightLabelText,
-                    { color: region.kind === 'voice' ? '#0f172a' : color },
+                    textStyle,
                   ]}
                 >
                   {getRegionLetterGroups(region)}

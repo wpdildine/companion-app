@@ -6,7 +6,7 @@
 import { Platform } from 'react-native';
 import { logInfo, logWarn } from '../../../shared/logging';
 
-const LOG_TAG = 'TranscriptSettlement';
+const LOG_TAG = 'AgentOrchestrator';
 
 /** Short window after speechEnd to wait for final transcript before settling on partial. */
 export const POST_SPEECH_END_QUIET_WINDOW_MS = 200;
@@ -180,7 +180,9 @@ export function createTranscriptSettlementCoordinator(
         return await new Promise<SettlementOutcome>(resolve => {
           tailGraceTimerRef.current = setTimeout(() => {
             tailGraceTimerRef.current = null;
-            void resolveSettlement('tailGraceExpired', recordingSessionId).then(resolve);
+            resolveSettlement('tailGraceExpired', recordingSessionId)
+              .then(resolve)
+              .catch(() => resolve({ kind: 'ignored' }));
           }, ANDROID_TAIL_GRACE_MS);
           logInfo(LOG_TAG, 'android tail grace scheduled before fallback commit', {
             recordingSessionId,
@@ -337,7 +339,9 @@ export function createTranscriptSettlementCoordinator(
           partialCandidateText: partialCandidate.text,
           partialCandidatePreview: partialCandidate.preview,
         });
-        void resolveSettlement('quietWindowExpired', sessionIdForQuiet).then(onResolved);
+        resolveSettlement('quietWindowExpired', sessionIdForQuiet)
+          .then(onResolved)
+          .catch(() => onResolved({ kind: 'ignored' }));
       }, POST_SPEECH_END_QUIET_WINDOW_MS);
     },
     acceptFinalCandidate(combinedText: string, sessionId: string | undefined) {
