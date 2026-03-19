@@ -1,5 +1,5 @@
 /**
- * Viz Debug Panel: dev-only HUD with runtime controls and visualization debug.
+ * Debug Panel: dev-only HUD with runtime controls, log gates, and visualization debug.
  * Uses same shell as pipeline telemetry panel. No harness/trace instrumentation.
  */
 
@@ -32,6 +32,13 @@ const TEXT_MUTED = '#8b949e';
 const ACCENT = '#7ee787';
 
 const fontMono = Platform.select({ ios: 'Menlo', android: 'monospace' });
+
+function getLogGates(): Record<string, boolean> | undefined {
+  if (typeof globalThis === 'undefined') return undefined;
+  return (globalThis as Record<string, unknown>).__ATLAS_LOG_GATES__ as
+    | Record<string, boolean>
+    | undefined;
+}
 
 function syncPostFxFromSubsystem(
   visualizationRef: RefObject<VisualizationEngineRef | null>,
@@ -69,6 +76,7 @@ export function VizDebugPanel({
   nameShapingActions,
 }: VizDebugPanelProps) {
   const [, bumpSub] = useState(0);
+  const [, forceLogGatesRefresh] = useState(0);
   useEffect(
     () => subscribeVizSubsystemChange(() => bumpSub(n => n + 1)),
     [],
@@ -90,7 +98,7 @@ export function VizDebugPanel({
   return (
     <View style={[styles.panel, { width: panelWidth, maxHeight: panelMaxHeight }]}>
       <PanelHeaderAction variant="close" onPress={onClose} surface="debug" />
-      <Text style={styles.mainTitle}>Viz Debug</Text>
+      <Text style={styles.mainTitle}>Debug Panel</Text>
       <ScrollView
         style={[styles.scroll, { maxHeight: scrollMaxHeight }]}
         contentContainerStyle={styles.scrollContent}
@@ -98,6 +106,68 @@ export function VizDebugPanel({
         {typeof __DEV__ !== 'undefined' && __DEV__ ? (
           <>
             <Text style={styles.groupLabel}>Runtime Controls</Text>
+            <DebugMenuSection title="Log Gates" defaultExpanded>
+              <DebugMenuRow
+                label="Disable hot path logs"
+                onPress={() => {
+                  const fn = (globalThis as Record<string, unknown>)
+                    .disableHotPathLogs as (() => void) | undefined;
+                  if (typeof fn === 'function') fn();
+                  forceLogGatesRefresh(n => n + 1);
+                }}
+                right={<Text style={styles.presetAction}>Run</Text>}
+              />
+              <DebugMenuRow
+                label="Enable all logs"
+                onPress={() => {
+                  const fn = (globalThis as Record<string, unknown>)
+                    .enableAllLogs as (() => void) | undefined;
+                  if (typeof fn === 'function') fn();
+                  forceLogGatesRefresh(n => n + 1);
+                }}
+                right={<Text style={styles.presetAction}>Run</Text>}
+              />
+              {(() => {
+                const gates = getLogGates();
+                const onSettlement = gates?.settlementPayload !== false;
+                const onPlayback = gates?.playbackHandoff !== false;
+                const onRequestDebug = gates?.requestDebug !== false;
+                return (
+                  <>
+                    <DebugMenuRow
+                      label="Settlement payload"
+                      onPress={() => {
+                        if (gates) {
+                          gates.settlementPayload = !onSettlement;
+                          forceLogGatesRefresh(n => n + 1);
+                        }
+                      }}
+                      right={toggleControl(onSettlement)}
+                    />
+                    <DebugMenuRow
+                      label="Playback handoff"
+                      onPress={() => {
+                        if (gates) {
+                          gates.playbackHandoff = !onPlayback;
+                          forceLogGatesRefresh(n => n + 1);
+                        }
+                      }}
+                      right={toggleControl(onPlayback)}
+                    />
+                    <DebugMenuRow
+                      label="Request debug"
+                      onPress={() => {
+                        if (gates) {
+                          gates.requestDebug = !onRequestDebug;
+                          forceLogGatesRefresh(n => n + 1);
+                        }
+                      }}
+                      right={toggleControl(onRequestDebug)}
+                    />
+                  </>
+                );
+              })()}
+            </DebugMenuSection>
             <DebugMenuSection title="Runtime Presets" defaultExpanded>
               <DebugMenuRow
                 label="All on"

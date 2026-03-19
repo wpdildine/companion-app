@@ -18,72 +18,77 @@ import {
   useColorScheme,
   View,
 } from 'react-native';
-import { logInfo } from '../shared/logging';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  copyBundlePackToDocuments,
+  createBundlePackReader,
+  createDocumentsPackReader,
+  getContentPackPathInDocuments,
+  getFileReader,
+  getPackState,
+} from '../rag';
+import { SemanticChannelView } from '../screens';
 import {
   cleanupEarcons,
-  playListeningStartEarcon,
   playListeningEndEarcon,
+  playListeningStartEarcon,
   prepareEarcons,
 } from '../shared/feedback/earcons';
 import {
-  triggerListeningStartHaptic,
   triggerListeningEndHaptic,
+  triggerListeningStartHaptic,
 } from '../shared/feedback/haptics';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { logInfo } from '../shared/logging';
 import {
   dummyAnswer,
   dummyCards,
   dummyRules,
 } from '../shared/stubs/demoResults';
-import { SemanticChannelView } from '../screens';
-import { SemanticChannelLoadingView } from './ui';
 import { getTheme } from '../theme';
-import {
-  createDefaultVisualizationRef,
-  getSceneDescription,
-  setVisualizationScene,
-  VisualizationSurface,
-  InteractionBand,
-} from '../visualization';
 import type {
   VisualizationPanelRects,
   VisualizationSignalEvent,
 } from '../visualization';
-import { useVisualizationSignals } from './hooks/useVisualizationSignals';
 import {
-  useAgentOrchestrator,
-  useVisualizationController,
-  emit as requestDebugEmit,
-  getState as getRequestDebugState,
-  subscribe as subscribeRequestDebug,
-  type RequestDebugState,
-} from './agent';
-import {
-  ResultsOverlay,
-  PipelineTelemetryPanel,
-  VizDebugPanel,
-  type ResultsOverlayRevealedBlocks,
-} from './ui';
-import {
-  createBundlePackReader,
-  createDocumentsPackReader,
-  copyBundlePackToDocuments,
-  getFileReader,
-  getContentPackPathInDocuments,
-  getPackState,
-} from '../rag';
+  createDefaultVisualizationRef,
+  getSceneDescription,
+  InteractionBand,
+  setVisualizationScene,
+  VisualizationSurface,
+} from '../visualization';
 import {
   buildResolverIndex,
+  NameShapingTouchGuideOverlay,
   useNameShapingController,
   useNameShapingState,
   useSpineNameShapingCapture,
-  NameShapingTouchGuideOverlay,
   type ResolverIndex,
 } from './_experimental/nameShaping';
 import {
   endNameShapingCommitTrace,
   getActiveNameShapingCommitTrace,
 } from './_experimental/nameShaping/runtime/nameShapingCommitTrace';
+import {
+  getState as getRequestDebugState,
+  emit as requestDebugEmit,
+  subscribe as subscribeRequestDebug,
+  useAgentOrchestrator,
+  useVisualizationController,
+  type RequestDebugState,
+} from './agent';
+import { useVisualizationSignals } from './hooks/useVisualizationSignals';
+import {
+  PipelineTelemetryPanel,
+  ResultsOverlay,
+  SemanticChannelLoadingView,
+  VizDebugPanel,
+  type ResultsOverlayRevealedBlocks,
+} from './ui';
+import {
+  resetVizSubsystems,
+  setVizSubsystem,
+} from './ui/components/overlays/vizSubsystemToggles';
+import { isLogGateEnabled } from '../shared/logging';
 
 /** Set true to show NameShaping debug affordances by default; enabling capture remains manual in the Viz debug panel. */
 const NAME_SHAPING_CAPTURE_DEBUG = false;
@@ -134,7 +139,12 @@ export default function AgentSurface() {
     import('./agent').AgentOrchestratorListeners | null
   >(null);
   const requestDebugSinkRef = useRef<import('./agent').RequestDebugSink | null>(
-    requestDebugEmit,
+    function requestDebugSinkWrapper(
+      payload: Parameters<import('./agent').RequestDebugSink>[0],
+    ) {
+      if (!isLogGateEnabled('requestDebug')) return;
+      requestDebugEmit(payload);
+    },
   );
   const orch = useAgentOrchestrator({ listenersRef, requestDebugSinkRef });
   const { state: orchState, actions: orchActions } = orch;
@@ -203,6 +213,33 @@ export default function AgentSurface() {
     debugEnabled,
     debugScenario: DEBUG_SCENARIO,
   });
+
+  useEffect(() => {
+    if (typeof __DEV__ === 'undefined' || !__DEV__) return;
+    const g = globalThis as Record<string, unknown>;
+    g.setVizSubsystem = setVizSubsystem;
+    g.resetVizSubsystems = resetVizSubsystems;
+    if (!g.__ATLAS_LOG_GATES__) {
+      g.__ATLAS_LOG_GATES__ = {
+        settlementPayload: true,
+        playbackHandoff: true,
+        requestDebug: true,
+        ragVerbose: true,
+        vizRuntime: true,
+      };
+    }
+    g.disableHotPathLogs = () => {
+      const gates = g.__ATLAS_LOG_GATES__ as Record<string, boolean>;
+      gates.settlementPayload = false;
+      gates.playbackHandoff = false;
+    };
+    g.enableAllLogs = () => {
+      const gates = g.__ATLAS_LOG_GATES__ as Record<string, boolean>;
+      Object.keys(gates).forEach(key => {
+        gates[key] = true;
+      });
+    };
+  }, []);
 
   const { state: nameShapingState, actions: nameShapingActions } =
     useNameShapingState();

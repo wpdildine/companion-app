@@ -12,7 +12,12 @@ import {
   type PackFileReader,
   type ValidationSummary,
 } from '../../../rag';
-import { logError, logInfo, logWarn } from '../../../shared/logging';
+import {
+  isLogGateEnabled,
+  logError,
+  logInfo,
+  logWarn,
+} from '../../../shared/logging';
 import type { FailureClassification } from '../failureClassification';
 import { classifyTerminalFailure } from '../failureClassification';
 import type { RequestDebugEmitPayload } from '../requestDebugTypes';
@@ -381,19 +386,23 @@ export async function executeRequest(
       validationSummary: result.validationSummary,
       timestamp: settledAt,
     });
-    logInfo('ResponseSurface', 'response_settled', {
-      requestId: reqId,
-      lifecycle: 'processing',
-      processingSubstate: 'settling',
-      committedChars: committedText.length,
-      rulesCount: result.validationSummary.rules.length,
-      cardsCount: result.validationSummary.cards.length,
-    });
-    logInfo('ResponseSurface', 'response_settled_payload', {
-      requestId: reqId,
-      committedResponseText: committedText,
-      ...summarizeValidationSummary(result.validationSummary),
-    });
+    if (isLogGateEnabled('playbackHandoff')) {
+      logInfo('ResponseSurface', 'response_settled', {
+        requestId: reqId,
+        lifecycle: 'processing',
+        processingSubstate: 'settling',
+        committedChars: committedText.length,
+        rulesCount: result.validationSummary.rules.length,
+        cardsCount: result.validationSummary.cards.length,
+      });
+    }
+    if (isLogGateEnabled('settlementPayload')) {
+      logInfo('ResponseSurface', 'response_settled_payload', {
+        requestId: reqId,
+        committedResponseText: committedText,
+        ...summarizeValidationSummary(result.validationSummary),
+      });
+    }
     previousCommittedResponseRef.current = null;
     previousCommittedValidationRef.current = null;
     return {
