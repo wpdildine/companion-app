@@ -1429,21 +1429,25 @@ export function useAgentOrchestrator(
           interSentenceSilenceMs: 250,
           interCommaSilenceMs: 125,
         });
-        setProcessingSubstate(null);
-        setMode('speaking');
-        setLifecycle('speaking');
-        const ttsStartedAt = Date.now();
-        emitRequestDebug(requestDebugSinkRef, {
-          type: 'tts_start',
-          requestId: playbackRequestIdRef.current,
-          ttsStartedAt,
-          timestamp: ttsStartedAt,
-          lifecycle: 'speaking',
-        });
-        logInfo('AgentOrchestrator', 'playback started', { provider: 'piper' });
-        listenersRef?.current?.onPlaybackStart?.();
+        // Experiment: invoke speak() first, defer speaking-state fanout to next macrotask.
+        const speakPromise = PiperTts.speak(normalized);
+        setTimeout(() => {
+          setProcessingSubstate(null);
+          setMode('speaking');
+          setLifecycle('speaking');
+          const ttsStartedAt = Date.now();
+          emitRequestDebug(requestDebugSinkRef, {
+            type: 'tts_start',
+            requestId: playbackRequestIdRef.current,
+            ttsStartedAt,
+            timestamp: ttsStartedAt,
+            lifecycle: 'speaking',
+          });
+          logInfo('AgentOrchestrator', 'playback started', { provider: 'piper' });
+          listenersRef?.current?.onPlaybackStart?.();
+        }, 0);
         try {
-          await PiperTts.speak(normalized);
+          await speakPromise;
         } catch (e) {
           if (!playbackInterruptedRef.current) {
             const message =
