@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * Sync the full content pack from mtg_rules into companion-app/assets/content_pack,
+ * Sync the full content pack from pack_runtime into companion-app/assets/content_pack,
  * including models/ (GGUF). Use for a one-off "fat" build so the app can copy the
  * full pack to device once; then switch back to sync-pack-small for normal builds.
  *
  * Usage:
- *   node scripts/sync-pack-full.js [path-to-mtg_rules]
+ *   node scripts/sync-pack-full.js [path-to-pack_runtime]
  *   MTG_RULES_PATH=/path node scripts/sync-pack-full.js
  *   pnpm run rag:pack:full
  *
- * Default source: ../mtg_rules/content_pack
+ * Default source: ../pack_runtime/content_pack
  *
  * Note: validate-e2e-gates (check-pack-no-models) will fail while the full pack
  * is in place. For a one-off Android build with the model on device: run this script,
@@ -33,7 +33,7 @@ function getSourceRoot(cliPath) {
   const envPath = process.env.MTG_RULES_PATH;
   if (cliPath) return path.resolve(ROOT, cliPath);
   if (envPath) return path.resolve(ROOT, envPath);
-  return path.resolve(ROOT, '..', 'mtg_rules');
+  return path.resolve(ROOT, '..', 'pack_runtime');
 }
 
 function sha256File(filePath) {
@@ -106,8 +106,12 @@ function run() {
 
   const contextProvider = manifest.sidecars?.capabilities?.context_provider;
   const files = contextProvider?.files ?? {};
-  const rulesDbPath = files.rules_db?.path ? path.join(sourcePack, files.rules_db.path) : path.join(sourcePack, 'rules', 'rules.db');
-  const cardsDbPath = files.cards_db?.path ? path.join(sourcePack, files.cards_db.path) : path.join(sourcePack, 'cards', 'cards.db');
+  const rulesDbPath = files.rules_db?.path
+    ? path.join(sourcePack, files.rules_db.path)
+    : path.join(sourcePack, 'rules', 'rules.db');
+  const cardsDbPath = files.cards_db?.path
+    ? path.join(sourcePack, files.cards_db.path)
+    : path.join(sourcePack, 'cards', 'cards.db');
   if (fs.existsSync(rulesDbPath)) {
     identity.rules_db_hash = sha256File(rulesDbPath);
   }
@@ -119,13 +123,16 @@ function run() {
   if (fs.existsSync(specPath)) {
     const spec = JSON.parse(fs.readFileSync(specPath, 'utf8'));
     identity.context_provider_spec_hash = sha256File(specPath);
-    if (spec.schema_version != null) identity.context_provider_spec_schema_version = spec.schema_version;
+    if (spec.schema_version != null)
+      identity.context_provider_spec_schema_version = spec.schema_version;
   }
 
   const identityPath = path.join(DEST, PACK_IDENTITY_FILE);
   fs.writeFileSync(identityPath, JSON.stringify(identity, null, 2) + '\n');
   console.log('Wrote', PACK_IDENTITY_FILE);
-  console.log('Next: build the app once; on first launch the app will copy this pack to device. For normal builds, run pnpm run rag:pack again.');
+  console.log(
+    'Next: build the app once; on first launch the app will copy this pack to device. For normal builds, run pnpm run rag:pack again.',
+  );
 }
 
 run();

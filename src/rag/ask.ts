@@ -11,7 +11,7 @@ import { buildPrompt, trimChunksToFitPrompt } from './runtimePrompt';
 import type { PackFileReader, PackState, RagInitParams } from './types';
 import { RAG_USE_DETERMINISTIC_CONTEXT_ONLY } from './types';
 
-/** Llama 3 stop sequences (not exported from @mtg/runtime RN entrypoint; define here to avoid passing undefined to native). */
+/** Llama 3 stop sequences (not exported from @atlas/runtime RN entrypoint; define here to avoid passing undefined to native). */
 const LLAMA3_STOP_SEQUENCES = ['<|eot_id|>', '<|end_of_text|>'];
 
 export interface RunRagFlowResult {
@@ -215,7 +215,8 @@ function extractTotalTokens(result: unknown): number | undefined {
   const direct = rec.tokens ?? rec.token_count ?? rec.total_tokens;
   if (typeof direct === 'number') return direct;
   const usage = rec.usage as Record<string, unknown> | undefined;
-  if (usage && typeof usage.total_tokens === 'number') return usage.total_tokens;
+  if (usage && typeof usage.total_tokens === 'number')
+    return usage.total_tokens;
   return undefined;
 }
 
@@ -235,7 +236,11 @@ const BUNDLE_PREVIEW_MAX = 200;
 function toContextSelection(
   bundle:
     | {
-        cards?: Array<{ name?: string; oracle_id?: string; oracle_text?: string }>;
+        cards?: Array<{
+          name?: string;
+          oracle_id?: string;
+          oracle_text?: string;
+        }>;
         rules?: Array<{ rule_id?: string; text?: string }>;
       }
     | null
@@ -361,35 +366,54 @@ export async function runRagFlow(
     });
     options?.onRetrievalComplete?.();
     mark('context build start');
-    const { prompt, contextBlock } = trimChunksToFitPrompt(chunksForPrompt, question);
+    const { prompt, contextBlock } = trimChunksToFitPrompt(
+      chunksForPrompt,
+      question,
+    );
     mark('context build end');
     if (requestId != null && requestDebugSink) {
       emitRag('rag_retrieval_mode', { retrievalMode: 'vector' });
       emitRag('rag_context_bundle_selected', {
         contextLength: contextBlock.length,
-        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules').length,
-        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards').length,
-        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules')
+          .length,
+        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards')
+          .length,
+        bundlePreview:
+          contextBlock.slice(0, BUNDLE_PREVIEW_MAX) +
+          (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
       });
       emitRag('rag_context_assembled', {
         contextLength: contextBlock.length,
-        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules').length,
-        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards').length,
-        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules')
+          .length,
+        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards')
+          .length,
+        bundlePreview:
+          contextBlock.slice(0, BUNDLE_PREVIEW_MAX) +
+          (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
       });
       emitRag('rag_retrieval_complete', {
         retrievalMode: 'vector',
         contextLength: contextBlock.length,
-        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules').length,
-        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards').length,
-        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules')
+          .length,
+        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards')
+          .length,
+        bundlePreview:
+          contextBlock.slice(0, BUNDLE_PREVIEW_MAX) +
+          (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
       });
       emitRag('rag_prompt_built', {
         promptLength: prompt.length,
         contextLength: contextBlock.length,
-        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules').length,
-        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards').length,
-        promptPreview: prompt.slice(0, PROMPT_PREVIEW_MAX) + (prompt.length > PROMPT_PREVIEW_MAX ? '…' : ''),
+        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules')
+          .length,
+        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards')
+          .length,
+        promptPreview:
+          prompt.slice(0, PROMPT_PREVIEW_MAX) +
+          (prompt.length > PROMPT_PREVIEW_MAX ? '…' : ''),
         promptHash: simplePromptHash(prompt),
       });
       emitRag('rag_generation_request_start', {
@@ -439,8 +463,12 @@ export async function runRagFlow(
           bundleText = result.final_context_bundle_canonical ?? '';
           contextSelection = toContextSelection(result.bundle);
           if (result?.bundle) {
-            bundleRulesCount = Array.isArray(result.bundle.rules) ? result.bundle.rules.length : undefined;
-            bundleCardsCount = Array.isArray(result.bundle.cards) ? result.bundle.cards.length : undefined;
+            bundleRulesCount = Array.isArray(result.bundle.rules)
+              ? result.bundle.rules.length
+              : undefined;
+            bundleCardsCount = Array.isArray(result.bundle.cards)
+              ? result.bundle.cards.length
+              : undefined;
             bundleId = (result.bundle as { bundle_id?: string }).bundle_id;
             ruleSetId = (result.bundle as { rule_set_id?: string }).rule_set_id;
           }
@@ -448,15 +476,14 @@ export async function runRagFlow(
             bundleChars: bundleText.length,
           });
         } else {
-          const runtimeModule = (await import('@mtg/runtime')) as unknown as {
+          const runtimeModule = (await import('@atlas/runtime')) as unknown as {
             getContext?: (question: string, packRoot: string) => unknown;
             default?: {
               getContext?: (question: string, packRoot: string) => unknown;
             };
           };
           const getContext =
-            runtimeModule.getContext ??
-            runtimeModule.default?.getContext;
+            runtimeModule.getContext ?? runtimeModule.default?.getContext;
           if (typeof getContext === 'function') {
             mark('getContext start');
             const result = await getContext(question, packRoot);
@@ -466,17 +493,33 @@ export async function runRagFlow(
                 ? result
                 : (result as { final_context_bundle_canonical?: string })
                     ?.final_context_bundle_canonical ?? '';
-            const bundle = (result as { bundle?: { rules?: unknown[]; cards?: unknown[]; bundle_id?: string; rule_set_id?: string } })
-              ?.bundle;
+            const bundle = (
+              result as {
+                bundle?: {
+                  rules?: unknown[];
+                  cards?: unknown[];
+                  bundle_id?: string;
+                  rule_set_id?: string;
+                };
+              }
+            )?.bundle;
             if (bundle) {
               contextSelection = toContextSelection(
                 bundle as {
-                  cards?: Array<{ name?: string; oracle_id?: string; oracle_text?: string }>;
+                  cards?: Array<{
+                    name?: string;
+                    oracle_id?: string;
+                    oracle_text?: string;
+                  }>;
                   rules?: Array<{ rule_id?: string; text?: string }>;
                 },
               );
-              bundleRulesCount = Array.isArray(bundle.rules) ? bundle.rules.length : undefined;
-              bundleCardsCount = Array.isArray(bundle.cards) ? bundle.cards.length : undefined;
+              bundleRulesCount = Array.isArray(bundle.rules)
+                ? bundle.rules.length
+                : undefined;
+              bundleCardsCount = Array.isArray(bundle.cards)
+                ? bundle.cards.length
+                : undefined;
               bundleId = bundle.bundle_id;
               ruleSetId = bundle.rule_set_id;
             }
@@ -506,7 +549,7 @@ export async function runRagFlow(
           }
           throw ragError(
             'E_DETERMINISTIC_ONLY',
-            `Deterministic context provider not available: ${msg}. Ensure pack is copied to device (packRoot set) and @mtg/runtime or in-app getContextRN is used.`,
+            `Deterministic context provider not available: ${msg}. Ensure pack is copied to device (packRoot set) and @atlas/runtime or in-app getContextRN is used.`,
           );
         }
       }
@@ -528,7 +571,8 @@ export async function runRagFlow(
       if (!bundleText?.trim()) {
         logWarn('RAG', 'deterministic context returned empty bundle', {
           questionChars: question.length,
-          questionPreview: question.length <= 80 ? question : `${question.slice(0, 77)}...`,
+          questionPreview:
+            question.length <= 80 ? question : `${question.slice(0, 77)}...`,
           packRootPresent: !!packRoot,
         });
         throw ragError(
@@ -548,7 +592,9 @@ export async function runRagFlow(
           ruleSetId,
           rulesCount: bundleRulesCount,
           cardsCount: bundleCardsCount,
-          bundlePreview: bundleText.slice(0, BUNDLE_PREVIEW_MAX) + (bundleText.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+          bundlePreview:
+            bundleText.slice(0, BUNDLE_PREVIEW_MAX) +
+            (bundleText.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
         });
         emitRag('rag_context_assembled', {
           contextLength: bundleText.length,
@@ -556,7 +602,9 @@ export async function runRagFlow(
           ruleSetId,
           rulesCount: bundleRulesCount,
           cardsCount: bundleCardsCount,
-          bundlePreview: bundleText.slice(0, BUNDLE_PREVIEW_MAX) + (bundleText.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+          bundlePreview:
+            bundleText.slice(0, BUNDLE_PREVIEW_MAX) +
+            (bundleText.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
         });
         emitRag('rag_retrieval_complete', {
           retrievalMode: 'deterministic',
@@ -565,14 +613,18 @@ export async function runRagFlow(
           ruleSetId,
           rulesCount: bundleRulesCount,
           cardsCount: bundleCardsCount,
-          bundlePreview: bundleText.slice(0, BUNDLE_PREVIEW_MAX) + (bundleText.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+          bundlePreview:
+            bundleText.slice(0, BUNDLE_PREVIEW_MAX) +
+            (bundleText.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
         });
         emitRag('rag_prompt_built', {
           promptLength: prompt.length,
           contextLength: bundleText.length,
           rulesCount: bundleRulesCount,
           cardsCount: bundleCardsCount,
-          promptPreview: prompt.slice(0, PROMPT_PREVIEW_MAX) + (prompt.length > PROMPT_PREVIEW_MAX ? '…' : ''),
+          promptPreview:
+            prompt.slice(0, PROMPT_PREVIEW_MAX) +
+            (prompt.length > PROMPT_PREVIEW_MAX ? '…' : ''),
           promptHash: simplePromptHash(prompt),
         });
       }
@@ -634,7 +686,9 @@ export async function runRagFlow(
               if (requestId != null && requestDebugSink) {
                 if (!firstTokenEmitted) {
                   firstTokenEmitted = true;
-                  emitRag('rag_first_token', { elapsedMs: Date.now() - completionStartedAt });
+                  emitRag('rag_first_token', {
+                    elapsedMs: Date.now() - completionStartedAt,
+                  });
                 }
                 const now = Date.now();
                 if (now - lastStreamEmitAt >= 400) {
@@ -761,34 +815,45 @@ export async function runRagFlow(
       };
     });
     options?.onRetrievalComplete?.();
-    const { prompt, contextBlock } = trimChunksToFitPrompt(chunksForPrompt, question);
+    const { prompt, contextBlock } = trimChunksToFitPrompt(
+      chunksForPrompt,
+      question,
+    );
     mark('context build end');
     if (requestId != null && requestDebugSink) {
       emitRag('rag_context_bundle_selected', {
         contextLength: contextBlock.length,
         rulesCount: rulesRowIds.length,
         cardsCount: cardsRowIds.length,
-        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+        bundlePreview:
+          contextBlock.slice(0, BUNDLE_PREVIEW_MAX) +
+          (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
       });
       emitRag('rag_context_assembled', {
         contextLength: contextBlock.length,
         rulesCount: rulesRowIds.length,
         cardsCount: cardsRowIds.length,
-        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+        bundlePreview:
+          contextBlock.slice(0, BUNDLE_PREVIEW_MAX) +
+          (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
       });
       emitRag('rag_retrieval_complete', {
         retrievalMode: 'vector',
         contextLength: contextBlock.length,
         rulesCount: rulesRowIds.length,
         cardsCount: cardsRowIds.length,
-        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+        bundlePreview:
+          contextBlock.slice(0, BUNDLE_PREVIEW_MAX) +
+          (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
       });
       emitRag('rag_prompt_built', {
         promptLength: prompt.length,
         contextLength: contextBlock.length,
         rulesCount: rulesRowIds.length,
         cardsCount: cardsRowIds.length,
-        promptPreview: prompt.slice(0, PROMPT_PREVIEW_MAX) + (prompt.length > PROMPT_PREVIEW_MAX ? '…' : ''),
+        promptPreview:
+          prompt.slice(0, PROMPT_PREVIEW_MAX) +
+          (prompt.length > PROMPT_PREVIEW_MAX ? '…' : ''),
         promptHash: simplePromptHash(prompt),
       });
     }

@@ -6,7 +6,7 @@ const {
 } = require('@storybook/react-native/metro/withStorybook');
 
 const projectRoot = __dirname;
-const runtimePath = path.resolve(projectRoot, 'node_modules/@mtg/runtime');
+const runtimePath = path.resolve(projectRoot, 'node_modules/@atlas/runtime');
 const watchFolders = fs.existsSync(runtimePath) ? [runtimePath] : [];
 
 const config = {
@@ -34,7 +34,7 @@ const config = {
       /node_modules[\\/]@mtg[\\/]runtime[\\/]node_modules[\\/]@react-three[\\/]fiber[\\/].*/,
     ],
     resolveRequest: (context, moduleName, platform) => {
-      if (moduleName === '@mtg/runtime' && platform) {
+      if (moduleName === '@atlas/runtime' && platform) {
         const rnEntry = path.join(runtimePath, 'dist', 'index.rn.js');
         if (fs.existsSync(rnEntry)) {
           return { type: 'sourceFile', filePath: rnEntry };

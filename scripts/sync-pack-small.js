@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * Sync a "small" content pack from mtg_rules into companion-app/assets/content_pack.
+ * Sync a "small" content pack from pack_runtime into companion-app/assets/content_pack.
  * This is the build contract: the app always bundles a real directory (no symlink
  * semantics). Copies manifest, router, rules, cards, hashes, context_provider_spec,
  * and any .db files; always excludes models/.
  * Writes pack_identity.json into the destination for debug/parity tracing.
  *
  * Usage:
- *   node scripts/sync-pack-small.js [path-to-mtg_rules]
+ *   node scripts/sync-pack-small.js [path-to-pack_runtime]
  *   MTG_RULES_PATH=/path node scripts/sync-pack-small.js
  *
- * Default source: ../mtg_rules/content_pack
+ * Default source: ../pack_runtime/content_pack
  */
 
 const fs = require('fs');
@@ -28,7 +28,7 @@ function getSourceRoot(cliPath) {
   const envPath = process.env.MTG_RULES_PATH;
   if (cliPath) return path.resolve(ROOT, cliPath);
   if (envPath) return path.resolve(ROOT, envPath);
-  return path.resolve(ROOT, '..', 'mtg_rules');
+  return path.resolve(ROOT, '..', 'pack_runtime');
 }
 
 function sha256File(filePath) {
@@ -101,8 +101,12 @@ function run() {
 
   const contextProvider = manifest.sidecars?.capabilities?.context_provider;
   const files = contextProvider?.files ?? {};
-  const rulesDbPath = files.rules_db?.path ? path.join(sourcePack, files.rules_db.path) : path.join(sourcePack, 'rules', 'rules.db');
-  const cardsDbPath = files.cards_db?.path ? path.join(sourcePack, files.cards_db.path) : path.join(sourcePack, 'cards', 'cards.db');
+  const rulesDbPath = files.rules_db?.path
+    ? path.join(sourcePack, files.rules_db.path)
+    : path.join(sourcePack, 'rules', 'rules.db');
+  const cardsDbPath = files.cards_db?.path
+    ? path.join(sourcePack, files.cards_db.path)
+    : path.join(sourcePack, 'cards', 'cards.db');
   if (fs.existsSync(rulesDbPath)) {
     identity.rules_db_hash = sha256File(rulesDbPath);
   }
@@ -114,13 +118,19 @@ function run() {
   if (fs.existsSync(specPath)) {
     const spec = JSON.parse(fs.readFileSync(specPath, 'utf8'));
     identity.context_provider_spec_hash = sha256File(specPath);
-    if (spec.schema_version != null) identity.context_provider_spec_schema_version = spec.schema_version;
+    if (spec.schema_version != null)
+      identity.context_provider_spec_schema_version = spec.schema_version;
   }
   // Pack identity is strictly runtime-relevant (pack + router + db + spec hashes, spec schema version). Omit fixture_schema_version unless you ship fixture traces in packs.
 
   const identityPath = path.join(DEST, PACK_IDENTITY_FILE);
   fs.writeFileSync(identityPath, JSON.stringify(identity, null, 2) + '\n');
-  console.log('Wrote', PACK_IDENTITY_FILE, ':', JSON.stringify(identity, null, 2));
+  console.log(
+    'Wrote',
+    PACK_IDENTITY_FILE,
+    ':',
+    JSON.stringify(identity, null, 2),
+  );
 }
 
 run();

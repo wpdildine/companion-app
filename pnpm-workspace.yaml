@@ -1,2 +1,2 @@
 overrides:
-  '@mtg/runtime': link:../mtg_rules/runtime-ts
+  '@atlas/runtime': link:../pack_runtime/runtime-ts

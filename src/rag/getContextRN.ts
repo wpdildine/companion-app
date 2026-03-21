@@ -1,6 +1,6 @@
 /**
- * In-app implementation of getContext for React Native when @mtg/runtime's RN entrypoint
- * does not provide it. Uses @mtg/runtime portable exports + pack DBs via react-native-quick-sqlite.
+ * In-app implementation of getContext for React Native when @atlas/runtime's RN entrypoint
+ * does not provide it. Uses @atlas/runtime portable exports + pack DBs via react-native-quick-sqlite.
  * Requires packRoot to be a real path (e.g. Documents/content_pack) so we can open SQLite files.
  */
 
@@ -8,7 +8,7 @@ import type {
   ContextBundle,
   ContextProviderSpec,
   RoutingTrace,
-} from '@mtg/runtime';
+} from '@atlas/runtime';
 import {
   analyzeQuery,
   canonicalizeBundle,
@@ -21,11 +21,11 @@ import {
   normalize,
   route,
   tokenEst,
-} from '@mtg/runtime';
+} from '@atlas/runtime';
+import { logInfo, logWarn } from '../shared/logging/logger';
+import { RAG_CONFIG } from './config';
 import { openCardsDb, openRulesDb, type DbRow } from './packDbRN';
 import type { PackFileReader } from './types';
-import { RAG_CONFIG } from './config';
-import { logInfo, logWarn } from '../shared/logging/logger';
 
 const SECTION_702 = 702;
 const MIN_TOKEN_LENGTH = 3;
@@ -193,7 +193,9 @@ export async function getContextRN(
     const stopwordsList = getStopwords(routerMap) || ['the', 'a', 'of'];
     const stopwords = new Set<string>(stopwordsList);
     const thresholds = getResolverThresholds(routerMap);
-    const generalTokenSet = new Set<string>(generalTokens(normalized, stopwords));
+    const generalTokenSet = new Set<string>(
+      generalTokens(normalized, stopwords),
+    );
     const prefixLenMin = thresholds.prefix_len_min ?? 3;
 
     let resolvedCards: DbRow[] = [];
@@ -251,10 +253,14 @@ export async function getContextRN(
     const keywords = [...new Set([...generalTokenSet, ...cardKeywords])];
 
     const plan = route(analysis, routerMap, cardKeywords, spec);
-    const sectionsConsidered = plan.section_intents.map(([s]: [string, string]) => s);
+    const sectionsConsidered = plan.section_intents.map(
+      ([s]: [string, string]) => s,
+    );
     const sectionsSelected = [...new Set(sectionsConsidered)];
     logInfo('RAG', 'getContextRN routing summary', {
-      resolvedCards: resolvedCards.map(card => String((card as { name?: string }).name ?? '')),
+      resolvedCards: resolvedCards.map(card =>
+        String((card as { name?: string }).name ?? ''),
+      ),
       cardKeywordCount: cardKeywords.length,
       keywordCount: keywords.length,
       sectionsConsidered,
@@ -402,7 +408,9 @@ export async function getContextRN(
       logWarn('RAG', 'getContextRN assembled empty bundle', {
         queryPreview: previewQuery(queryText),
         normalizedQuery: normalized,
-        resolvedCards: resolvedCards.map(card => String((card as { name?: string }).name ?? '')),
+        resolvedCards: resolvedCards.map(card =>
+          String((card as { name?: string }).name ?? ''),
+        ),
         sectionsConsidered,
         sectionsSelected,
         finalCardsCount: inclCards.length,
