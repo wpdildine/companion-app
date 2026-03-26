@@ -4,6 +4,7 @@
  */
 
 import { logError, logInfo, logWarn } from '../../../shared/logging';
+import { isOpenAIProxyError } from '../../providers/openAI/openAIProxyTypes';
 import type { CapturedSttAudio } from '../../hooks/useSttAudioCapture';
 import { normalizeTranscript, transcriptPreview } from './transcriptSettlement';
 
@@ -23,7 +24,11 @@ export interface RemoteSttDeps {
   applyTranscript: (normalizedText: string) => void;
   transcribeAudio: TranscribeAudioFn;
   getEndpointBaseUrl: () => string | null;
-  onFailure: (message: string, recordingSessionId?: string) => void;
+  onFailure: (
+    message: string,
+    recordingSessionId?: string,
+    meta?: { code?: string },
+  ) => void;
   /** When STT returns empty/whitespace-only (recoverable). Orchestrator uses this to return to idle without terminal error. */
   onEmptyTranscript?: (recordingSessionId?: string) => void;
 }
@@ -78,6 +83,7 @@ export function createRemoteSttCoordinator(deps: RemoteSttDeps): {
       onFailure(
         'Remote STT audio capture produced no uploadable audio',
         recordingSessionId,
+        undefined,
       );
       return false;
     }
@@ -123,12 +129,14 @@ export function createRemoteSttCoordinator(deps: RemoteSttDeps): {
       return true;
     } catch (error) {
       const message = toErrorMessage(error);
+      const code = isOpenAIProxyError(error) ? error.code : undefined;
       logError('AgentOrchestrator', 'remote stt transcription failed', {
         recordingSessionId,
         message,
+        proxyErrorCode: code ?? null,
         endpointBaseUrl: getEndpointBaseUrl(),
       });
-      onFailure(message, recordingSessionId);
+      onFailure(message, recordingSessionId, code != null ? { code } : undefined);
       return false;
     }
   };

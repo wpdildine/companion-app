@@ -13,6 +13,11 @@ import type { NameShapingActions } from '../../../../_experimental/nameShaping';
 import type { NameShapingState } from '../../../../_experimental/nameShaping';
 import { PanelHeaderAction } from '../../controls';
 import {
+  getSttOverride,
+  getSttProvider,
+  setSttOverride,
+} from '../../../../../shared/config/endpointConfig';
+import {
   VIZ_SUBSYSTEM_KEYS,
   getVizSubsystemEnabled,
   presetAllVizSubsystemsOff,
@@ -21,6 +26,7 @@ import {
   subscribeVizSubsystemChange,
   type VizSubsystemKey,
 } from '../../overlays/vizSubsystemToggles';
+import { logInfo } from '../../../../../shared/logging';
 import { DebugMenuSection } from './DebugMenuSection';
 import { DebugMenuRow } from './DebugMenuRow';
 
@@ -77,6 +83,7 @@ export function VizDebugPanel({
 }: VizDebugPanelProps) {
   const [, bumpSub] = useState(0);
   const [, forceLogGatesRefresh] = useState(0);
+  const [, bumpSttOverrideUi] = useState(0);
   useEffect(
     () => subscribeVizSubsystemChange(() => bumpSub(n => n + 1)),
     [],
@@ -167,6 +174,61 @@ export function VizDebugPanel({
                   </>
                 );
               })()}
+            </DebugMenuSection>
+            <DebugMenuSection title="STT provider (override)" defaultExpanded>
+              {(() => {
+                const ov = getSttOverride();
+                const env = getSttProvider();
+                const activeLabel =
+                  ov != null ? `override=${ov}` : `env=${env}`;
+                return (
+                  <Text style={styles.sttHint} numberOfLines={2}>
+                    Next listen uses snapshot: {activeLabel}
+                  </Text>
+                );
+              })()}
+              <DebugMenuRow
+                label="local"
+                onPress={() => {
+                  setSttOverride('local');
+                  logInfo('AgentSurface', 'stt dev control set override', {
+                    mode: 'local',
+                  });
+                  bumpSttOverrideUi(n => n + 1);
+                }}
+                right={<Text style={styles.presetAction}>Set</Text>}
+              />
+              <DebugMenuRow
+                label="remote"
+                onPress={() => {
+                  setSttOverride('remote');
+                  logInfo('AgentSurface', 'stt dev control set override', {
+                    mode: 'remote',
+                  });
+                  bumpSttOverrideUi(n => n + 1);
+                }}
+                right={<Text style={styles.presetAction}>Set</Text>}
+              />
+              <DebugMenuRow
+                label="remote_with_local_fallback"
+                onPress={() => {
+                  setSttOverride('remote_with_local_fallback');
+                  logInfo('AgentSurface', 'stt dev control set override', {
+                    mode: 'remote_with_local_fallback',
+                  });
+                  bumpSttOverrideUi(n => n + 1);
+                }}
+                right={<Text style={styles.presetAction}>Set</Text>}
+              />
+              <DebugMenuRow
+                label="Clear override (use env)"
+                onPress={() => {
+                  setSttOverride(null);
+                  logInfo('AgentSurface', 'stt dev control clear override', {});
+                  bumpSttOverrideUi(n => n + 1);
+                }}
+                right={<Text style={styles.presetAction}>Clear</Text>}
+              />
             </DebugMenuSection>
             <DebugMenuSection title="Runtime Presets" defaultExpanded>
               <DebugMenuRow
@@ -296,5 +358,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: fontMono,
     marginBottom: 8,
+  },
+  sttHint: {
+    color: TEXT_MUTED,
+    fontSize: 10,
+    fontFamily: fontMono,
+    marginBottom: 6,
+    paddingHorizontal: 2,
   },
 });

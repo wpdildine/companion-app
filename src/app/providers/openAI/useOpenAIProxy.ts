@@ -8,13 +8,14 @@
 import { useCallback, useState } from 'react';
 import { getEndpointBaseUrl } from '../../../shared/config/endpointConfig';
 import { logWarn } from '../../../shared/logging';
-import type {
-  OpenAIProxyError,
-  RespondParams,
-  RespondResult,
-  RespondUsage,
-  TranscribeAudioParams,
-  TranscribeAudioResult,
+import {
+  isOpenAIProxyError,
+  type OpenAIProxyError,
+  type RespondParams,
+  type RespondResult,
+  type RespondUsage,
+  type TranscribeAudioParams,
+  type TranscribeAudioResult,
 } from './openAIProxyTypes';
 
 const ERR_BASE_URL = 'OpenAI proxy base URL not configured (ENDPOINT_BASE_URL)';
@@ -28,15 +29,6 @@ const REMOTE_STT_REQUEST_TIMEOUT_MS = 4000;
 
 function normalizeError(message: string, code?: string): OpenAIProxyError {
   return { message, code };
-}
-
-function isOpenAIProxyError(error: unknown): error is OpenAIProxyError {
-  return (
-    error != null &&
-    typeof error === 'object' &&
-    !(error instanceof Error) &&
-    typeof (error as OpenAIProxyError).message === 'string'
-  );
 }
 
 function throwNormalizedError(message: string, code?: string): never {

@@ -6,7 +6,10 @@ import type { AgentOrchestratorListeners, AgentOrchestratorState } from '../type
 import Voice from '@react-native-voice/voice';
 import * as rag from '../../../rag';
 
-const mockGetSttProvider = jest.fn<'local' | 'remote', []>(() => 'local');
+const mockGetSttProvider = jest.fn<
+  'local' | 'remote' | 'remote_with_local_fallback',
+  []
+>(() => 'local');
 const mockGetEndpointBaseUrl = jest.fn<string | null, []>(
   () => 'http://192.168.1.54:8787',
 );
@@ -18,6 +21,11 @@ let mockRecorderUri = 'file:///tmp/mock-recording.m4a';
 jest.mock('../../../shared/config/endpointConfig', () => ({
   getSttProvider: () => mockGetSttProvider(),
   getEndpointBaseUrl: () => mockGetEndpointBaseUrl(),
+  snapshotSttResolution: () => ({
+    provider: mockGetSttProvider(),
+    overrideApplied: false,
+  }),
+  resolveSttProvider: () => mockGetSttProvider(),
 }));
 
 jest.mock('react-native', () => ({
@@ -257,6 +265,7 @@ const emitFinalTranscript = async (harness: Harness, text: string) => {
 describe('AgentOrchestrator contract events', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetSttProvider.mockReset();
     mockGetSttProvider.mockReturnValue('local');
     mockGetEndpointBaseUrl.mockReturnValue('http://192.168.1.54:8787');
     mockRecorderStop.mockResolvedValue(undefined);
@@ -555,6 +564,7 @@ describe('AgentOrchestrator contract events', () => {
 
     await act(async () => {
       await harness.actions.submit();
+      await flushPromises();
       await flushPromises();
       await flushPromises();
     });

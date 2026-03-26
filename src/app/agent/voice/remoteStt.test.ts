@@ -21,8 +21,11 @@ describe('createRemoteSttCoordinator', () => {
   const mockTranscribe = jest.fn();
   let pendingCapture: CapturedSttAudio | null = null;
   let appliedText: string | null = null;
-  let failureArgs: { message: string; recordingSessionId?: string } | null =
-    null;
+  let failureArgs: {
+    message: string;
+    recordingSessionId?: string;
+    meta?: { code?: string };
+  } | null = null;
 
   const deps = {
     getPendingCapture: () => pendingCapture,
@@ -34,8 +37,8 @@ describe('createRemoteSttCoordinator', () => {
     },
     transcribeAudio: mockTranscribe,
     getEndpointBaseUrl: () => 'http://test',
-    onFailure: (message: string, recordingSessionId?: string) => {
-      failureArgs = { message, recordingSessionId };
+    onFailure: (message: string, recordingSessionId?: string, meta?: { code?: string }) => {
+      failureArgs = { message, recordingSessionId, meta };
     },
   };
 
