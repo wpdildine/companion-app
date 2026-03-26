@@ -41,6 +41,11 @@ import {
 import { useOpenAIProxy } from '../providers/openAI/useOpenAIProxy';
 import { classifyRecoverableFailure } from './failureClassification';
 import { emitRequestDebug } from './orchestrator/telemetry';
+import {
+  projectContextArtifact,
+  projectFailureArtifact,
+  projectSettlementArtifact,
+} from './orchestrator/artifactProjector';
 import { executeRequest } from './request/executeRequest';
 import type { RequestDebugEmitPayload } from './requestDebugTypes';
 import type {
@@ -1223,6 +1228,8 @@ export function useAgentOrchestrator(
       });
       return null;
     }
+  const acceptedTranscript = transcribedTextRef.current;
+  const normalizedTranscript = question;
     requestIdRef.current += 1;
     const reqId = requestIdRef.current;
     previousCommittedResponseRef.current = responseTextRef.current;
@@ -1264,8 +1271,8 @@ export function useAgentOrchestrator(
     emitRequestDebug(requestDebugSinkRef, {
       type: 'request_start',
       requestId: reqId,
-      acceptedTranscript: transcribedTextRef.current,
-      normalizedTranscript: question,
+      acceptedTranscript,
+      normalizedTranscript,
       requestStartedAt,
       timestamp: requestStartedAt,
       lifecycle: 'processing',
@@ -1344,6 +1351,36 @@ export function useAgentOrchestrator(
       setMode('idle');
       setLifecycle('idle');
       setAudioState('idleReady', { reason: 'requestFailed' });
+
+      const failedAt = Date.now();
+      const domainValid = runResult.classification.stage !== 'speech';
+      emitRequestDebug(requestDebugSinkRef, {
+        type: 'context_artifact_emitted',
+        requestId: reqId,
+        timestamp: failedAt,
+        contextArtifact: projectContextArtifact({
+          requestId: reqId,
+          timestampMs: failedAt,
+          rawText: acceptedTranscript,
+          normalizedText: normalizedTranscript,
+          domainValid,
+          validationSummary: null,
+          fallbackUsed: false,
+        }),
+      });
+      emitRequestDebug(requestDebugSinkRef, {
+        type: 'failure_artifact_emitted',
+        requestId: reqId,
+        timestamp: failedAt,
+        failureArtifact: projectFailureArtifact({
+          requestId: reqId,
+          timestampMs: failedAt,
+          rawText: acceptedTranscript,
+          normalizedText: normalizedTranscript,
+          failureClassification: runResult.classification,
+          domainValid,
+        }),
+      });
       setError(runResult.displayMessage);
       listenersRef?.current?.onError?.(runResult.classification.kind, {
         stage: runResult.classification.stage,
@@ -1376,12 +1413,75 @@ export function useAgentOrchestrator(
         );
       }
       playTextRef.current?.(runResult.committedText).catch(() => undefined);
+
+      // Defer artifact emission so we do not block the Piper TTS macrotask
+      // responsible for lifecycle fanout + `tts_start` debug evidence.
+      setTimeout(() => {
+        const completedAtForArtifacts = Date.now();
+        emitRequestDebug(requestDebugSinkRef, {
+          type: 'context_artifact_emitted',
+          requestId: reqId,
+          timestamp: completedAtForArtifacts,
+          contextArtifact: projectContextArtifact({
+            requestId: reqId,
+            timestampMs: completedAtForArtifacts,
+            rawText: acceptedTranscript,
+            normalizedText: normalizedTranscript,
+            domainValid: true,
+            validationSummary: runResult.validationSummary,
+            fallbackUsed: false,
+          }),
+        });
+        emitRequestDebug(requestDebugSinkRef, {
+          type: 'settlement_artifact_emitted',
+          requestId: reqId,
+          timestamp: completedAtForArtifacts,
+          settlementArtifact: projectSettlementArtifact({
+            requestId: reqId,
+            timestampMs: completedAtForArtifacts,
+            lifecycle: lifecycleRef.current,
+            rawText: acceptedTranscript,
+            normalizedText: normalizedTranscript,
+            responseText: runResult.committedText,
+            validationSummary: runResult.validationSummary,
+          }),
+        });
+      }, 0);
       return runResult.committedText;
     }
     // When not playing: transition to idle. When shouldPlay we skip this so playText() sets speaking (avoids processing->idle->speaking and idle fan-out cost).
     setMode('idle');
     setLifecycle('idle');
     if (!runResult.shouldPlay) {
+      const completedAtForArtifacts = Date.now();
+      emitRequestDebug(requestDebugSinkRef, {
+        type: 'context_artifact_emitted',
+        requestId: reqId,
+        timestamp: completedAtForArtifacts,
+        contextArtifact: projectContextArtifact({
+          requestId: reqId,
+          timestampMs: completedAtForArtifacts,
+          rawText: acceptedTranscript,
+          normalizedText: normalizedTranscript,
+          domainValid: true,
+          validationSummary: runResult.validationSummary,
+          fallbackUsed: false,
+        }),
+      });
+      emitRequestDebug(requestDebugSinkRef, {
+        type: 'settlement_artifact_emitted',
+        requestId: reqId,
+        timestamp: completedAtForArtifacts,
+        settlementArtifact: projectSettlementArtifact({
+          requestId: reqId,
+          timestampMs: completedAtForArtifacts,
+          lifecycle: lifecycleRef.current,
+          rawText: acceptedTranscript,
+          normalizedText: normalizedTranscript,
+          responseText: runResult.committedText,
+          validationSummary: runResult.validationSummary,
+        }),
+      });
       activeRequestIdRef.current = 0;
       const completedAt = Date.now();
       emitRequestDebug(requestDebugSinkRef, {
@@ -1434,6 +1534,7 @@ export function useAgentOrchestrator(
         });
         // Experiment: invoke speak() first, defer speaking-state fanout to next macrotask.
         const speakPromise = PiperTts.speak(normalized);
+        const reqIdForTts = playbackRequestIdRef.current;
         setTimeout(() => {
           setProcessingSubstate(null);
           setMode('speaking');
@@ -1441,7 +1542,7 @@ export function useAgentOrchestrator(
           const ttsStartedAt = Date.now();
           emitRequestDebug(requestDebugSinkRef, {
             type: 'tts_start',
-            requestId: playbackRequestIdRef.current,
+            requestId: reqIdForTts,
             ttsStartedAt,
             timestamp: ttsStartedAt,
             lifecycle: 'speaking',
@@ -1468,26 +1569,30 @@ export function useAgentOrchestrator(
         } finally {
           const ttsEndedAt = Date.now();
           const reqIdForLog = playbackRequestIdRef.current;
-          emitRequestDebug(requestDebugSinkRef, {
-            type: 'tts_end',
-            requestId: reqIdForLog,
-            ttsEndedAt,
-            timestamp: ttsEndedAt,
-            lifecycle: 'idle',
-          });
-          if (reqIdForLog != null) {
-            pendingPlaybackCompleteRef.current = {
+          // Defer `tts_end` + idle lifecycle fanout so `tts_start` (timers phase) cannot
+          // be observed after `tts_end` when `speak()` resolves immediately in tests/mocks.
+          setTimeout(() => {
+            emitRequestDebug(requestDebugSinkRef, {
+              type: 'tts_end',
               requestId: reqIdForLog,
-              endedAt: ttsEndedAt,
-            };
-          }
-          playbackRequestIdRef.current = null;
-          setProcessingSubstate(null);
-          setMode('idle');
-          setLifecycle('idle');
-          setAudioState('idleReady', { reason: 'playbackComplete' });
-          logInfo('AgentOrchestrator', 'playback completed');
-          listenersRef?.current?.onPlaybackEnd?.();
+              ttsEndedAt,
+              timestamp: ttsEndedAt,
+              lifecycle: 'idle',
+            });
+            if (reqIdForLog != null) {
+              pendingPlaybackCompleteRef.current = {
+                requestId: reqIdForLog,
+                endedAt: ttsEndedAt,
+              };
+            }
+            playbackRequestIdRef.current = null;
+            setProcessingSubstate(null);
+            setMode('idle');
+            setLifecycle('idle');
+            setAudioState('idleReady', { reason: 'playbackComplete' });
+            logInfo('AgentOrchestrator', 'playback completed');
+            listenersRef?.current?.onPlaybackEnd?.();
+          }, 0);
         }
         return;
       }
