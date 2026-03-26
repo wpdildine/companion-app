@@ -44,7 +44,10 @@ import {
 } from '../hooks/useSttAudioCapture';
 import { useOpenAIProxy } from '../providers/openAI/useOpenAIProxy';
 import { classifyRecoverableFailure } from './failureClassification';
-import { emitRequestDebug } from './orchestrator/telemetry';
+import {
+  emitRequestDebug,
+  type RequestDebugSinkRef,
+} from './orchestrator/telemetry';
 import {
   projectContextArtifact,
   projectFailureArtifact,
@@ -80,6 +83,102 @@ import {
   NATIVE_RESTART_GUARD_MS,
   runNativeStopFlow,
 } from './voice/voiceNative';
+
+/** Non-authoritative artifact projection; failures must not abort request completion. */
+const ARTIFACT_PROJECTION_HELPER = 'extractIntentSignals';
+
+function emitContextArtifactDebug(
+  sinkRef: RequestDebugSinkRef | null | undefined,
+  base: { requestId: number; timestamp: number },
+  project: () => ReturnType<typeof projectContextArtifact>,
+): void {
+  try {
+    emitRequestDebug(sinkRef, {
+      type: 'context_artifact_emitted',
+      requestId: base.requestId,
+      timestamp: base.timestamp,
+      contextArtifact: project(),
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logWarn('AgentOrchestrator', 'artifact_projection_failed', {
+      artifactKind: 'context',
+      helper: ARTIFACT_PROJECTION_HELPER,
+      message,
+      requestId: base.requestId,
+    });
+    emitRequestDebug(sinkRef, {
+      type: 'artifact_projection_failed',
+      requestId: base.requestId,
+      timestamp: base.timestamp,
+      artifactKind: 'context',
+      helper: ARTIFACT_PROJECTION_HELPER,
+      message,
+    });
+  }
+}
+
+function emitSettlementArtifactDebug(
+  sinkRef: RequestDebugSinkRef | null | undefined,
+  base: { requestId: number; timestamp: number },
+  project: () => ReturnType<typeof projectSettlementArtifact>,
+): void {
+  try {
+    emitRequestDebug(sinkRef, {
+      type: 'settlement_artifact_emitted',
+      requestId: base.requestId,
+      timestamp: base.timestamp,
+      settlementArtifact: project(),
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logWarn('AgentOrchestrator', 'artifact_projection_failed', {
+      artifactKind: 'settlement',
+      helper: ARTIFACT_PROJECTION_HELPER,
+      message,
+      requestId: base.requestId,
+    });
+    emitRequestDebug(sinkRef, {
+      type: 'artifact_projection_failed',
+      requestId: base.requestId,
+      timestamp: base.timestamp,
+      artifactKind: 'settlement',
+      helper: ARTIFACT_PROJECTION_HELPER,
+      message,
+    });
+  }
+}
+
+function emitFailureArtifactDebug(
+  sinkRef: RequestDebugSinkRef | null | undefined,
+  base: { requestId: number; timestamp: number },
+  project: () => ReturnType<typeof projectFailureArtifact>,
+): void {
+  try {
+    emitRequestDebug(sinkRef, {
+      type: 'failure_artifact_emitted',
+      requestId: base.requestId,
+      timestamp: base.timestamp,
+      failureArtifact: project(),
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logWarn('AgentOrchestrator', 'artifact_projection_failed', {
+      artifactKind: 'failure',
+      helper: ARTIFACT_PROJECTION_HELPER,
+      message,
+      requestId: base.requestId,
+    });
+    emitRequestDebug(sinkRef, {
+      type: 'artifact_projection_failed',
+      requestId: base.requestId,
+      timestamp: base.timestamp,
+      artifactKind: 'failure',
+      helper: ARTIFACT_PROJECTION_HELPER,
+      message,
+    });
+  }
+}
 
 /** Proxy / orchestrator failure codes that arm next-listen local preference (remote_with_local_fallback only). */
 const NEXT_LISTEN_LOCAL_PREFERENCE_CODES = new Set([
@@ -1565,11 +1664,11 @@ export function useAgentOrchestrator(
 
       const failedAt = Date.now();
       const domainValid = runResult.classification.stage !== 'speech';
-      emitRequestDebug(requestDebugSinkRef, {
-        type: 'context_artifact_emitted',
+      emitContextArtifactDebug(requestDebugSinkRef, {
         requestId: reqId,
         timestamp: failedAt,
-        contextArtifact: projectContextArtifact({
+      }, () =>
+        projectContextArtifact({
           requestId: reqId,
           timestampMs: failedAt,
           rawText: acceptedTranscript,
@@ -1578,12 +1677,12 @@ export function useAgentOrchestrator(
           validationSummary: null,
           fallbackUsed: false,
         }),
-      });
-      emitRequestDebug(requestDebugSinkRef, {
-        type: 'failure_artifact_emitted',
+      );
+      emitFailureArtifactDebug(requestDebugSinkRef, {
         requestId: reqId,
         timestamp: failedAt,
-        failureArtifact: projectFailureArtifact({
+      }, () =>
+        projectFailureArtifact({
           requestId: reqId,
           timestampMs: failedAt,
           rawText: acceptedTranscript,
@@ -1591,7 +1690,7 @@ export function useAgentOrchestrator(
           failureClassification: runResult.classification,
           domainValid,
         }),
-      });
+      );
       setError(runResult.displayMessage);
       listenersRef?.current?.onError?.(runResult.classification.kind, {
         stage: runResult.classification.stage,
@@ -1629,11 +1728,11 @@ export function useAgentOrchestrator(
       // responsible for lifecycle fanout + `tts_start` debug evidence.
       setTimeout(() => {
         const completedAtForArtifacts = Date.now();
-        emitRequestDebug(requestDebugSinkRef, {
-          type: 'context_artifact_emitted',
+        emitContextArtifactDebug(requestDebugSinkRef, {
           requestId: reqId,
           timestamp: completedAtForArtifacts,
-          contextArtifact: projectContextArtifact({
+        }, () =>
+          projectContextArtifact({
             requestId: reqId,
             timestampMs: completedAtForArtifacts,
             rawText: acceptedTranscript,
@@ -1642,12 +1741,12 @@ export function useAgentOrchestrator(
             validationSummary: runResult.validationSummary,
             fallbackUsed: false,
           }),
-        });
-        emitRequestDebug(requestDebugSinkRef, {
-          type: 'settlement_artifact_emitted',
+        );
+        emitSettlementArtifactDebug(requestDebugSinkRef, {
           requestId: reqId,
           timestamp: completedAtForArtifacts,
-          settlementArtifact: projectSettlementArtifact({
+        }, () =>
+          projectSettlementArtifact({
             requestId: reqId,
             timestampMs: completedAtForArtifacts,
             lifecycle: lifecycleRef.current,
@@ -1656,7 +1755,7 @@ export function useAgentOrchestrator(
             responseText: runResult.committedText,
             validationSummary: runResult.validationSummary,
           }),
-        });
+        );
       }, 0);
       return runResult.committedText;
     }
@@ -1665,11 +1764,11 @@ export function useAgentOrchestrator(
     setLifecycle('idle');
     if (!runResult.shouldPlay) {
       const completedAtForArtifacts = Date.now();
-      emitRequestDebug(requestDebugSinkRef, {
-        type: 'context_artifact_emitted',
+      emitContextArtifactDebug(requestDebugSinkRef, {
         requestId: reqId,
         timestamp: completedAtForArtifacts,
-        contextArtifact: projectContextArtifact({
+      }, () =>
+        projectContextArtifact({
           requestId: reqId,
           timestampMs: completedAtForArtifacts,
           rawText: acceptedTranscript,
@@ -1678,12 +1777,12 @@ export function useAgentOrchestrator(
           validationSummary: runResult.validationSummary,
           fallbackUsed: false,
         }),
-      });
-      emitRequestDebug(requestDebugSinkRef, {
-        type: 'settlement_artifact_emitted',
+      );
+      emitSettlementArtifactDebug(requestDebugSinkRef, {
         requestId: reqId,
         timestamp: completedAtForArtifacts,
-        settlementArtifact: projectSettlementArtifact({
+      }, () =>
+        projectSettlementArtifact({
           requestId: reqId,
           timestampMs: completedAtForArtifacts,
           lifecycle: lifecycleRef.current,
@@ -1692,7 +1791,7 @@ export function useAgentOrchestrator(
           responseText: runResult.committedText,
           validationSummary: runResult.validationSummary,
         }),
-      });
+      );
       activeRequestIdRef.current = 0;
       const completedAt = Date.now();
       emitRequestDebug(requestDebugSinkRef, {
