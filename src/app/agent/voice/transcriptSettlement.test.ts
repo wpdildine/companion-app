@@ -71,6 +71,8 @@ describe('createTranscriptSettlementCoordinator', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    mockDeps.getTranscribedText.mockReturnValue('');
+    mockDeps.getPartialTranscript.mockReturnValue('');
   });
 
   afterEach(() => {
@@ -123,6 +125,15 @@ describe('createTranscriptSettlementCoordinator', () => {
       coord.acceptFinalCandidate('longer text', 's1');
       coord.acceptFinalCandidate('short', 's1');
       expect(coord.getFinalCandidateText()).toBe('longer text');
+    });
+    it('acceptFinalCandidate does not replace when committed transcript is longer than incoming', () => {
+      const coord = createTranscriptSettlementCoordinator(mockDeps as any);
+      coord.acceptFinalCandidate('short', 's1');
+      mockDeps.getTranscribedText.mockReturnValue(
+        'already committed longer line',
+      );
+      coord.acceptFinalCandidate('medium', 's1');
+      expect(coord.getFinalCandidateText()).toBe('short');
     });
   });
 

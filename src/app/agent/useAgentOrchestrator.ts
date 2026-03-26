@@ -760,7 +760,10 @@ export function useAgentOrchestrator(
         pendingSubmitWhenReady: outcome.shouldSubmit,
         settlementResolved: settlementCoordinator.getSettlementResolved(),
       });
-      if (outcome.shouldSubmit) {
+      const readySubmit =
+        outcome.kind === 'ready' && outcome.shouldSubmit;
+      if (readySubmit) {
+        finalizeStop(reason, recordingSessionId, { keepLifecycle: true });
         listenersRef?.current?.onTranscriptReadyForSubmit?.();
       }
       const nextAudioState = outcome.shouldSubmit ? 'settling' : 'idleReady';
@@ -769,11 +772,13 @@ export function useAgentOrchestrator(
         reason: 'settlementResolved',
       });
       await cleanupPendingIosStopIfNeeded(recordingSessionId, nextAudioState);
-      finalizeStop(
-        reason,
-        recordingSessionId,
-        outcome.shouldSubmit ? { keepLifecycle: true } : undefined,
-      );
+      if (!readySubmit) {
+        finalizeStop(
+          reason,
+          recordingSessionId,
+          outcome.shouldSubmit ? { keepLifecycle: true } : undefined,
+        );
+      }
     },
     [
       cleanupPendingIosStopIfNeeded,
@@ -2098,24 +2103,65 @@ export function useAgentOrchestrator(
       }
       if (modeRef.current !== 'listening' && !stopRequestedRef.current) return;
       const next = (e.value?.[0] ?? '').trim();
+      const normalizedIncoming = normalizeTranscript(next);
       if (speechEndedRef.current) {
-        const normalizedIncoming = normalizeTranscript(next);
-        logInfo(
-          'AgentOrchestrator',
-          'final ignored because speechEndedRef=true',
-          {
+        const priorCommitted = normalizeTranscript(transcribedTextRef.current);
+        type LateFinalRejectReason =
+          | 'not_longer'
+          | 'not_pending_submit'
+          | 'remote_path'
+          | 'empty';
+        let rejectReason: LateFinalRejectReason | null = null;
+        if (listenSttPathRef.current === 'remote') {
+          rejectReason = 'remote_path';
+        } else if (!normalizedIncoming.length) {
+          rejectReason = 'empty';
+        } else if (
+          !settlementCoordinator.getPendingSubmitWhenReady() ||
+          recordingSessionRef.current !==
+            settlementCoordinator.getPendingSubmitSessionId()
+        ) {
+          rejectReason = 'not_pending_submit';
+        } else if (normalizedIncoming.length <= priorCommitted.length) {
+          rejectReason = 'not_longer';
+        }
+
+        if (rejectReason !== null) {
+          logInfo('AgentOrchestrator', 'late_final_rejected_post_speech_end', {
             recordingSessionId: sessionId,
-            pendingSubmitWhenReady:
-              settlementCoordinator.getPendingSubmitWhenReady(),
-            settlementResolved: settlementCoordinator.getSettlementResolved(),
-            finalStabilizationActive:
-              settlementCoordinator.getFinalStabilizationActive(),
+            reason: rejectReason,
+            priorChars: priorCommitted.length,
+            priorTranscriptPreview: transcriptPreview(transcribedTextRef.current),
             incomingChunkChars: normalizedIncoming.length,
-            incomingTranscriptText: normalizedIncoming,
             incomingTranscriptPreview: transcriptPreview(normalizedIncoming),
-          },
-        );
-        return;
+          });
+          if (rejectReason !== 'empty') {
+            logInfo(
+              'AgentOrchestrator',
+              'final ignored because speechEndedRef=true',
+              {
+                recordingSessionId: sessionId,
+                pendingSubmitWhenReady:
+                  settlementCoordinator.getPendingSubmitWhenReady(),
+                settlementResolved: settlementCoordinator.getSettlementResolved(),
+                finalStabilizationActive:
+                  settlementCoordinator.getFinalStabilizationActive(),
+                incomingChunkChars: normalizedIncoming.length,
+                incomingTranscriptText: normalizedIncoming,
+                incomingTranscriptPreview: transcriptPreview(normalizedIncoming),
+              },
+            );
+          }
+          return;
+        }
+
+        logInfo('AgentOrchestrator', 'late_final_accepted_post_speech_end', {
+          recordingSessionId: sessionId,
+          priorChars: priorCommitted.length,
+          priorTranscriptPreview: transcriptPreview(transcribedTextRef.current),
+          incomingChars: normalizedIncoming.length,
+          incomingTranscriptPreview: transcriptPreview(normalizedIncoming),
+        });
       }
       if (!next) return;
       const committed = committedTextRef.current.trim();

@@ -35,6 +35,18 @@ export function transcriptTrace(text: string): { chars: number; text: string; pr
   };
 }
 
+/** Do not apply a settlement choice shorter than the orchestrator's committed line (e.g. late final already promoted). */
+function clampChoiceToCommittedFloor(
+  chosen: string,
+  getTranscribedText: () => string,
+): string {
+  const committedNorm = normalizeTranscript(getTranscribedText());
+  const chosenNorm = normalizeTranscript(chosen);
+  if (committedNorm.length === 0) return chosen;
+  if (chosenNorm.length >= committedNorm.length) return chosen;
+  return getTranscribedText();
+}
+
 export type AudioSessionState = 'idleReady' | 'starting' | 'listening' | 'stopping' | 'settling';
 
 export type SettlementOutcome =
@@ -205,6 +217,10 @@ export function createTranscriptSettlementCoordinator(
         capturedFinalCandidate.length >= capturedPartialNorm.length
           ? capturedFinalCandidate
           : capturedPartialNorm;
+      const clampedFlush = clampChoiceToCommittedFloor(
+        bestByLength,
+        deps.getTranscribedText,
+      );
       logInfo(LOG_TAG, 'settlement candidate comparison', {
         recordingSessionId,
         reason,
@@ -217,9 +233,10 @@ export function createTranscriptSettlementCoordinator(
         chosenCandidateChars: bestByLength.length,
         chosenCandidateText: bestByLength,
         chosenCandidatePreview: transcriptPreview(bestByLength),
+        clampedToCommittedFloor: clampedFlush !== bestByLength,
       });
-      if (bestByLength) {
-        deps.updateTranscript(bestByLength);
+      if (clampedFlush) {
+        deps.updateTranscript(clampedFlush);
       } else {
         deps.finalizeTranscriptFromPartial(reason, recordingSessionId);
       }
@@ -254,6 +271,10 @@ export function createTranscriptSettlementCoordinator(
         hadFinal: !!capturedFinalCandidate,
         hadPartial: !!capturedPartialNorm,
       });
+      const clampedQuiet = clampChoiceToCommittedFloor(
+        bestByLength,
+        deps.getTranscribedText,
+      );
       logInfo(LOG_TAG, 'settlement candidate comparison', {
         recordingSessionId,
         reason,
@@ -266,9 +287,10 @@ export function createTranscriptSettlementCoordinator(
         chosenCandidateChars: bestByLength.length,
         chosenCandidateText: bestByLength,
         chosenCandidatePreview: transcriptPreview(bestByLength),
+        clampedToCommittedFloor: clampedQuiet !== bestByLength,
       });
-      if (bestByLength) {
-        deps.updateTranscript(bestByLength);
+      if (clampedQuiet) {
+        deps.updateTranscript(clampedQuiet);
       } else {
         deps.finalizeTranscriptFromPartial('quietWindowExpired', recordingSessionId);
       }
@@ -346,7 +368,12 @@ export function createTranscriptSettlementCoordinator(
     },
     acceptFinalCandidate(combinedText: string, sessionId: string | undefined) {
       const currentCandidate = finalCandidateTextRef.current ?? '';
-      const shouldReplaceCandidate = normalizeTranscript(combinedText).length >= currentCandidate.length;
+      const normalizedIncoming = normalizeTranscript(combinedText);
+      const normalizedCurrent = normalizeTranscript(currentCandidate);
+      const normalizedCommitted = normalizeTranscript(deps.getTranscribedText());
+      const shouldReplaceCandidate =
+        normalizedIncoming.length >= normalizedCurrent.length &&
+        normalizedIncoming.length >= normalizedCommitted.length;
       if (shouldReplaceCandidate) {
         finalCandidateTextRef.current = combinedText;
         finalCandidateSessionIdRef.current = sessionId ?? null;
