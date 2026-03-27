@@ -12,6 +12,7 @@ import {
   type Ref,
 } from './executeRequest';
 import type { ValidationSummary } from '../../../rag';
+import { CONTEXT_RETRIEVAL_EMPTY } from '../../../rag/errors';
 
 jest.mock('../../../rag', () => {
   const actual = jest.requireActual<typeof import('../../../rag')>('../../../rag');
@@ -105,6 +106,38 @@ describe('executeRequest', () => {
     });
   });
 
+  describe('semantic front door', () => {
+    it('returns status front_door when ragAsk blocks at substrate gate', async () => {
+      getMockRagAsk().mockResolvedValue({
+        nudged: '',
+        raw: '',
+        validationSummary: emptyValidationSummary,
+        frontDoorBlocked: true,
+        semanticFrontDoor: {
+          contract_version: 1,
+          working_query: 'x',
+          resolver_mode: 'none',
+          transcript_decision: 'insufficient_signal',
+          front_door_verdict: 'abstain_transcript',
+          routing_readiness: { sections_selected: [] },
+        },
+      });
+
+      const options = makeBaseOptions();
+      const result = await executeRequest(options);
+
+      expect(result).toMatchObject({
+        status: 'front_door',
+        semanticFrontDoor: expect.objectContaining({
+          front_door_verdict: 'abstain_transcript',
+        }),
+      });
+      expect(options.requestDebugSink).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'semantic_front_door' }),
+      );
+    });
+  });
+
   describe('empty-output fallback', () => {
     it('returns completed with EMPTY_RESPONSE_FALLBACK_MESSAGE and shouldPlay false when nudged is empty', async () => {
       getMockRagAsk().mockResolvedValue({
@@ -147,6 +180,33 @@ describe('executeRequest', () => {
       });
       expect((result as { status: 'failed'; displayMessage: string }).displayMessage).toContain(
         'E_MODEL_PATH'
+      );
+    });
+
+    it('includes attributionErrorKind on request_failed when RAG error carries structured attribution', async () => {
+      const err = {
+        code: 'E_RETRIEVAL',
+        message: 'Deterministic context provider returned empty bundle.',
+        details: {
+          attribution: { error_kind: CONTEXT_RETRIEVAL_EMPTY },
+        },
+      };
+      getMockRagAsk().mockRejectedValue(err);
+
+      const options = makeBaseOptions();
+      const result = await executeRequest(options);
+
+      expect(result).toMatchObject({
+        status: 'failed',
+        classification: expect.objectContaining({
+          kind: 'retrieval_empty_bundle',
+        }),
+      });
+      expect(options.requestDebugSink).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'request_failed',
+          attributionErrorKind: CONTEXT_RETRIEVAL_EMPTY,
+        }),
       );
     });
   });

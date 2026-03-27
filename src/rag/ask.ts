@@ -3,10 +3,24 @@
  * Supports either on-device llama.rn (GGUF paths) or Ollama HTTP API.
  */
 
+import type {
+  GetContextOptions,
+  GetContextResult,
+  SemanticFrontDoor,
+} from '@atlas/runtime';
 import { logError, logInfo, logWarn } from '../shared/logging';
 import { RAG_CONFIG } from './config';
-import { ragError } from './errors';
+import {
+  CONTEXT_BUNDLE_ERROR,
+  CONTEXT_RETRIEVAL_EMPTY,
+  ragError,
+  ragErrorWithAttribution,
+} from './errors';
 import { loadChunksForRows, loadVectors, searchL2 } from './retrieval';
+import {
+  checkFrontDoorBeforeRetrieval,
+  shouldRunFrontDoorGateBeforeRetrieval,
+} from './frontDoorGate';
 import { buildPrompt, trimChunksToFitPrompt } from './runtimePrompt';
 import type { PackFileReader, PackState, RagInitParams } from './types';
 import { RAG_USE_DETERMINISTIC_CONTEXT_ONLY } from './types';
@@ -25,6 +39,9 @@ export interface RunRagFlowResult {
     cards: Array<{ name: string; doc_id?: string; oracleText?: string }>;
     rules: Array<{ rule_id: string; title?: string; excerpt?: string }>;
   };
+  /** Substrate pre-retrieval gate blocked LLM path (deterministic RN seam). */
+  semanticFrontDoor?: SemanticFrontDoor;
+  frontDoorBlocked?: boolean;
 }
 
 let embedContext: import('llama.rn').LlamaContext | null = null;
@@ -300,7 +317,40 @@ export async function runRagFlow(
   const rulesMeta = packState.rules.indexMeta;
   const cardsMeta = packState.cards.indexMeta;
   if (rulesMeta.dim !== cardsMeta.dim) {
-    throw ragError('E_RETRIEVAL', 'Rules and cards index dim mismatch');
+    throw ragErrorWithAttribution(
+      'E_RETRIEVAL',
+      'Rules and cards index dim mismatch',
+      CONTEXT_BUNDLE_ERROR,
+    );
+  }
+
+  const packRootForGate = params.packRoot?.trim() || packState.packRoot?.trim();
+  if (
+    packRootForGate &&
+    shouldRunFrontDoorGateBeforeRetrieval(params) &&
+    reader
+  ) {
+    const gate = await checkFrontDoorBeforeRetrieval(
+      question,
+      packRootForGate,
+      reader,
+    );
+    if (gate.blocked) {
+      if (requestId != null && requestDebugSink) {
+        emitRag('rag_front_door_block', {
+          verdict: gate.semanticFrontDoor.front_door_verdict,
+          resolverMode: gate.semanticFrontDoor.resolver_mode,
+          transcriptDecision: gate.semanticFrontDoor.transcript_decision,
+        });
+      }
+      return {
+        raw: '',
+        contextText: '',
+        intent: 'unknown',
+        semanticFrontDoor: gate.semanticFrontDoor,
+        frontDoorBlocked: true,
+      };
+    }
   }
 
   let queryVec: Float32Array;
@@ -474,7 +524,29 @@ export async function runRagFlow(
           }
           logInfo('RAG', 'getContextRN completed', {
             bundleChars: bundleText.length,
+            frontDoorVerdict: result.semanticFrontDoor?.front_door_verdict,
           });
+          if (
+            result.semanticFrontDoor &&
+            result.semanticFrontDoor.front_door_verdict !==
+              'proceed_to_retrieval'
+          ) {
+            if (requestId != null && requestDebugSink) {
+              emitRag('rag_front_door_block', {
+                verdict: result.semanticFrontDoor.front_door_verdict,
+                resolverMode: result.semanticFrontDoor.resolver_mode,
+                transcriptDecision:
+                  result.semanticFrontDoor.transcript_decision,
+              });
+            }
+            return {
+              raw: '',
+              contextText: '',
+              intent: 'unknown',
+              semanticFrontDoor: result.semanticFrontDoor,
+              frontDoorBlocked: true,
+            };
+          }
         } else {
           const runtimeModule = (await import('@atlas/runtime')) as unknown as {
             getContext?: (question: string, packRoot: string) => unknown;
@@ -482,27 +554,48 @@ export async function runRagFlow(
               getContext?: (question: string, packRoot: string) => unknown;
             };
           };
-          const getContext =
+          const getContextRaw =
             runtimeModule.getContext ?? runtimeModule.default?.getContext;
+          const getContext = getContextRaw as
+            | ((
+                q: string,
+                p: string,
+                o?: GetContextOptions,
+              ) => Promise<GetContextResult>)
+            | undefined;
           if (typeof getContext === 'function') {
             mark('getContext start');
-            const result = await getContext(question, packRoot);
+            const result = await getContext(question, packRoot, {
+              includeTrace: true,
+            });
             mark('getContext end');
+            const gc = result as GetContextResult;
+            if (
+              gc.semanticFrontDoor &&
+              gc.semanticFrontDoor.front_door_verdict !==
+                'proceed_to_retrieval'
+            ) {
+              if (requestId != null && requestDebugSink) {
+                emitRag('rag_front_door_block', {
+                  verdict: gc.semanticFrontDoor.front_door_verdict,
+                  resolverMode: gc.semanticFrontDoor.resolver_mode,
+                  transcriptDecision:
+                    gc.semanticFrontDoor.transcript_decision,
+                });
+              }
+              return {
+                raw: '',
+                contextText: '',
+                intent: 'unknown',
+                semanticFrontDoor: gc.semanticFrontDoor,
+                frontDoorBlocked: true,
+              };
+            }
             bundleText =
               typeof result === 'string'
                 ? result
-                : (result as { final_context_bundle_canonical?: string })
-                    ?.final_context_bundle_canonical ?? '';
-            const bundle = (
-              result as {
-                bundle?: {
-                  rules?: unknown[];
-                  cards?: unknown[];
-                  bundle_id?: string;
-                  rule_set_id?: string;
-                };
-              }
-            )?.bundle;
+                : gc.trace?.final_context_bundle_canonical ?? '';
+            const bundle = gc?.bundle;
             if (bundle) {
               contextSelection = toContextSelection(
                 bundle as {
@@ -520,8 +613,8 @@ export async function runRagFlow(
               bundleCardsCount = Array.isArray(bundle.cards)
                 ? bundle.cards.length
                 : undefined;
-              bundleId = bundle.bundle_id;
-              ruleSetId = bundle.rule_set_id;
+              bundleId = (bundle as { bundle_id?: string }).bundle_id;
+              ruleSetId = (bundle as { rule_set_id?: string }).rule_set_id;
             }
             logInfo('RAG', 'runtime deterministic context completed', {
               bundleChars: bundleText.length,
@@ -535,16 +628,18 @@ export async function runRagFlow(
           .includes('could not load bundle');
         if (packRoot && reader) {
           logError('RAG', 'getContextRN failed', { message: msg });
-          throw ragError(
+          throw ragErrorWithAttribution(
             'E_RETRIEVAL',
             `Deterministic context provider could not load bundle. Ensure content_pack is present on device and packRoot is valid.`,
+            CONTEXT_BUNDLE_ERROR,
           );
         } else {
           logError('RAG', 'runtime getContext failed', { message: msg });
           if (isBundleLoadError) {
-            throw ragError(
+            throw ragErrorWithAttribution(
               'E_RETRIEVAL',
               `Deterministic context provider could not load bundle. Ensure content_pack is present on device and packRoot is valid.`,
+              CONTEXT_BUNDLE_ERROR,
             );
           }
           throw ragError(
@@ -558,9 +653,22 @@ export async function runRagFlow(
         try {
           const { getContextRN } = await import('./getContextRN');
           mark('getContext start');
-          const result = await getContextRN(question, packRoot, reader);
+          const retryResult = await getContextRN(question, packRoot, reader);
           mark('getContext end');
-          bundleText = result.final_context_bundle_canonical ?? '';
+          if (
+            retryResult.semanticFrontDoor &&
+            retryResult.semanticFrontDoor.front_door_verdict !==
+              'proceed_to_retrieval'
+          ) {
+            return {
+              raw: '',
+              contextText: '',
+              intent: 'unknown',
+              semanticFrontDoor: retryResult.semanticFrontDoor,
+              frontDoorBlocked: true,
+            };
+          }
+          bundleText = retryResult.final_context_bundle_canonical ?? '';
           logInfo('RAG', 'getContextRN retry completed', {
             bundleChars: bundleText.length,
           });
@@ -575,9 +683,10 @@ export async function runRagFlow(
             question.length <= 80 ? question : `${question.slice(0, 77)}...`,
           packRootPresent: !!packRoot,
         });
-        throw ragError(
+        throw ragErrorWithAttribution(
           'E_RETRIEVAL',
           'Deterministic context provider returned empty bundle.',
+          CONTEXT_RETRIEVAL_EMPTY,
         );
       }
       options?.onRetrievalComplete?.();

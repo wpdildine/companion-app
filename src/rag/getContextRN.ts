@@ -8,10 +8,13 @@ import type {
   ContextBundle,
   ContextProviderSpec,
   RoutingTrace,
+  SemanticFrontDoor,
+  SemanticFrontDoorAmbiguousCandidate,
 } from '@atlas/runtime';
 import {
   analyzeQuery,
   canonicalizeBundle,
+  computeSemanticFrontDoor,
   getDefinitions,
   getKeywordAbilities,
   getResolverThresholds,
@@ -19,12 +22,19 @@ import {
   getStopwords,
   loadRouterMap,
   normalize,
+  normalizeForEntityCatalogKey,
+  preNormalizeTranscriptForQuery,
   route,
   tokenEst,
 } from '@atlas/runtime';
 import { logInfo, logWarn } from '../shared/logging/logger';
 import { RAG_CONFIG } from './config';
-import { openCardsDb, openRulesDb, type DbRow } from './packDbRN';
+import {
+  openCardsDb,
+  openRulesDb,
+  type CardsDb,
+  type DbRow,
+} from './packDbRN';
 import type { PackFileReader } from './types';
 
 const SECTION_702 = 702;
@@ -40,6 +50,8 @@ interface DbRule {
 export interface GetContextRNResult {
   bundle: ContextBundle;
   final_context_bundle_canonical: string;
+  /** Substrate-authored pre-retrieval gate; normative for orchestrator branching. */
+  semanticFrontDoor: SemanticFrontDoor;
 }
 
 function overlapScore(
@@ -146,6 +158,148 @@ function previewQuery(text: string): string {
   return `${normalized.slice(0, 77)}...`;
 }
 
+/** Card-query path: alias-style scan; multiple distinct oracle_ids → ambiguous. */
+function resolveEntityModeForCardQuery(
+  normalized: string,
+  whatDoesNameNorm: string | null | undefined,
+  cardsDb: CardsDb,
+  prefixLenMin: number,
+): {
+  resolver_mode: 'resolved' | 'ambiguous' | 'none';
+  resolvedCards: DbRow[];
+  ambiguous_candidates: SemanticFrontDoorAmbiguousCandidate[];
+} {
+  const candidates = new Map<string, SemanticFrontDoorAmbiguousCandidate>();
+  const addRow = (row: DbRow | null) => {
+    if (!row) return;
+    const oid = String((row as { oracle_id?: string }).oracle_id ?? '');
+    if (!oid) return;
+    const name = String((row as { name?: string }).name ?? '');
+    candidates.set(oid, { name, oracle_id: oid });
+  };
+
+  if (whatDoesNameNorm) {
+    addRow(cardsDb.cardByNameNorm(whatDoesNameNorm));
+  }
+  if (normalized) {
+    const tokens = normalized.split(/\s+/).filter(Boolean);
+    let row = cardsDb.cardByNameNorm(normalized);
+    if (row) {
+      addRow(row);
+    } else {
+      for (let n = Math.min(4, tokens.length); n >= 2; n--) {
+        const phrase = tokens.slice(0, n).join(' ');
+        if (phrase.length < prefixLenMin) continue;
+        row = cardsDb.cardByNameNorm(phrase);
+        if (row && normalized.startsWith(phrase)) {
+          addRow(row);
+          break;
+        }
+      }
+      if (candidates.size === 0 && tokens.length >= 2) {
+        for (let n = Math.min(4, tokens.length); n >= 2; n--) {
+          for (let i = 0; i <= tokens.length - n; i++) {
+            const phrase = tokens.slice(i, i + n).join(' ');
+            row = cardsDb.cardByNameNorm(phrase);
+            if (row) addRow(row);
+          }
+        }
+      }
+      if (candidates.size === 0) {
+        for (let n = Math.min(4, tokens.length); n >= 1; n--) {
+          const phrase = tokens.slice(0, n).join(' ');
+          if (phrase.length < prefixLenMin) continue;
+          row = cardsDb.cardByNameNorm(phrase);
+          if (row && normalized.startsWith(phrase)) addRow(row);
+        }
+      }
+    }
+  }
+
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  for (let n = Math.min(4, tokens.length); n >= 1; n--) {
+    for (let i = 0; i <= tokens.length - n; i++) {
+      const phrase = tokens.slice(i, i + n).join(' ');
+      if (phrase.length < prefixLenMin && n > 1) continue;
+      addRow(cardsDb.cardByNameNorm(phrase));
+    }
+  }
+
+  if (candidates.size >= 2) {
+    return {
+      resolver_mode: 'ambiguous',
+      resolvedCards: [],
+      ambiguous_candidates: [...candidates.values()].slice(0, 8),
+    };
+  }
+  if (candidates.size === 1) {
+    const only = [...candidates.values()][0]!;
+    const row = cardsDb.cardByOracleId(only.oracle_id!);
+    return {
+      resolver_mode: 'resolved',
+      resolvedCards: row ? [row] : [],
+      ambiguous_candidates: [],
+    };
+  }
+  return { resolver_mode: 'none', resolvedCards: [], ambiguous_candidates: [] };
+}
+
+/** Non–card-query path: legacy single-card heuristic (substrate-owned bundle shaping). */
+function resolveLegacyCardRows(
+  normalized: string,
+  whatDoesNameNorm: string | null | undefined,
+  cardsDb: CardsDb,
+  prefixLenMin: number,
+): DbRow[] {
+  let resolvedCards: DbRow[] = [];
+  if (whatDoesNameNorm) {
+    const row = cardsDb.cardByNameNorm(whatDoesNameNorm);
+    if (row) resolvedCards = [row];
+  }
+  if (resolvedCards.length === 0 && normalized) {
+    let row = cardsDb.cardByNameNorm(normalized);
+    if (row) {
+      resolvedCards = [row];
+    } else {
+      const tokens = normalized.split(/\s+/).filter(Boolean);
+      for (let n = Math.min(4, tokens.length); n >= 2; n--) {
+        const phrase = tokens.slice(0, n).join(' ');
+        if (phrase.length < prefixLenMin) continue;
+        row = cardsDb.cardByNameNorm(phrase);
+        if (row && normalized.startsWith(phrase)) {
+          resolvedCards = [row];
+          break;
+        }
+      }
+      if (resolvedCards.length === 0 && tokens.length >= 2) {
+        for (let n = Math.min(4, tokens.length); n >= 2; n--) {
+          for (let i = 0; i <= tokens.length - n; i++) {
+            const phrase = tokens.slice(i, i + n).join(' ');
+            row = cardsDb.cardByNameNorm(phrase);
+            if (row) {
+              resolvedCards = [row];
+              break;
+            }
+          }
+          if (resolvedCards.length > 0) break;
+        }
+      }
+      if (resolvedCards.length === 0) {
+        for (let n = Math.min(4, tokens.length); n >= 1; n--) {
+          const phrase = tokens.slice(0, n).join(' ');
+          if (phrase.length < prefixLenMin) continue;
+          row = cardsDb.cardByNameNorm(phrase);
+          if (row && normalized.startsWith(phrase)) {
+            resolvedCards = [row];
+            break;
+          }
+        }
+      }
+    }
+  }
+  return resolvedCards;
+}
+
 export async function getContextRN(
   queryText: string,
   packRoot: string,
@@ -176,11 +330,22 @@ export async function getContextRN(
   const cardsDb = openCardsDb(packRoot);
   const rulesDb = openRulesDb(packRoot);
   try {
-    const analysis = analyzeQuery(queryText, routerMap, spec);
+    const trimmedRaw = queryText.trim();
+    const { workingQuery, uncertainty } = preNormalizeTranscriptForQuery(
+      trimmedRaw,
+      spec,
+    );
+    const transcript_decision = uncertainty.transcript_decision;
+    const resolver_query_norm = normalizeForEntityCatalogKey(trimmedRaw);
+
+    const analysis = analyzeQuery(workingQuery, routerMap, spec);
     const normalized = analysis.q_norm.trim();
     logInfo('RAG', 'getContextRN analysis', {
       queryChars: queryText.length,
       queryPreview: previewQuery(queryText),
+      workingQueryChars: workingQuery.length,
+      workingQueryPreview: previewQuery(workingQuery),
+      transcriptDecision: transcript_decision,
       normalizedChars: normalized.length,
       normalizedQuery: normalized,
       tokensNorm: analysis.tokens_norm,
@@ -199,50 +364,27 @@ export async function getContextRN(
     const prefixLenMin = thresholds.prefix_len_min ?? 3;
 
     let resolvedCards: DbRow[] = [];
-    if (analysis.what_does_name_norm) {
-      const row = cardsDb.cardByNameNorm(analysis.what_does_name_norm);
-      if (row) resolvedCards = [row];
-    }
-    if (resolvedCards.length === 0 && normalized) {
-      let row = cardsDb.cardByNameNorm(normalized);
-      if (row) {
-        resolvedCards = [row];
-      } else {
-        const tokens = normalized.split(/\s+/).filter(Boolean);
-        for (let n = Math.min(4, tokens.length); n >= 2; n--) {
-          const phrase = tokens.slice(0, n).join(' ');
-          if (phrase.length < prefixLenMin) continue;
-          row = cardsDb.cardByNameNorm(phrase);
-          if (row && normalized.startsWith(phrase)) {
-            resolvedCards = [row];
-            break;
-          }
-        }
-        if (resolvedCards.length === 0 && tokens.length >= 2) {
-          for (let n = Math.min(4, tokens.length); n >= 2; n--) {
-            for (let i = 0; i <= tokens.length - n; i++) {
-              const phrase = tokens.slice(i, i + n).join(' ');
-              row = cardsDb.cardByNameNorm(phrase);
-              if (row) {
-                resolvedCards = [row];
-                break;
-              }
-            }
-            if (resolvedCards.length > 0) break;
-          }
-        }
-        if (resolvedCards.length === 0) {
-          for (let n = Math.min(4, tokens.length); n >= 1; n--) {
-            const phrase = tokens.slice(0, n).join(' ');
-            if (phrase.length < prefixLenMin) continue;
-            row = cardsDb.cardByNameNorm(phrase);
-            if (row && normalized.startsWith(phrase)) {
-              resolvedCards = [row];
-              break;
-            }
-          }
-        }
-      }
+    let resolver_mode: 'resolved' | 'ambiguous' | 'none' = 'resolved';
+    let ambiguous_candidates: SemanticFrontDoorAmbiguousCandidate[] = [];
+
+    if (analysis.looks_like_card_query) {
+      const entity = resolveEntityModeForCardQuery(
+        normalized,
+        analysis.what_does_name_norm,
+        cardsDb,
+        prefixLenMin,
+      );
+      resolver_mode = entity.resolver_mode;
+      resolvedCards = entity.resolvedCards;
+      ambiguous_candidates = entity.ambiguous_candidates;
+    } else {
+      resolver_mode = 'resolved';
+      resolvedCards = resolveLegacyCardRows(
+        normalized,
+        analysis.what_does_name_norm,
+        cardsDb,
+        prefixLenMin,
+      );
     }
 
     const cardKeywords: string[] = [];
@@ -257,6 +399,24 @@ export async function getContextRN(
       ([s]: [string, string]) => s,
     );
     const sectionsSelected = [...new Set(sectionsConsidered)];
+    const routing_has_intent =
+      plan.section_intents.length > 0 ||
+      (plan.hard_includes?.length ?? 0) > 0 ||
+      (plan.concept_default_rule_ids?.length ?? 0) > 0;
+
+    const semanticFrontDoor = computeSemanticFrontDoor({
+      working_query: workingQuery,
+      resolver_query_norm,
+      transcript_decision,
+      resolver_mode,
+      looks_like_card_query: analysis.looks_like_card_query,
+      routing_has_intent,
+      has_committed_cards: resolvedCards.length > 0,
+      ambiguous_candidates:
+        ambiguous_candidates.length > 0 ? ambiguous_candidates : undefined,
+      sections_selected: sectionsSelected,
+    });
+
     logInfo('RAG', 'getContextRN routing summary', {
       resolvedCards: resolvedCards.map(card =>
         String((card as { name?: string }).name ?? ''),
@@ -268,7 +428,31 @@ export async function getContextRN(
       routeReasons: plan.reasons,
       hardIncludes: plan.hard_includes,
       conceptDefaultRuleIds: plan.concept_default_rule_ids,
+      frontDoorVerdict: semanticFrontDoor.front_door_verdict,
+      resolverMode: resolver_mode,
     });
+
+    if (semanticFrontDoor.front_door_verdict !== 'proceed_to_retrieval') {
+      logInfo('RAG', 'getContextRN front-door short-circuit', {
+        verdict: semanticFrontDoor.front_door_verdict,
+        transcriptDecision: transcript_decision,
+        resolverMode: resolver_mode,
+      });
+      const routingTrace: RoutingTrace = {
+        sections_considered: sectionsConsidered,
+        sections_selected: sectionsSelected,
+      };
+      return {
+        bundle: {
+          cards: [],
+          rules: [],
+          keywords: [],
+          routing_trace: routingTrace,
+        },
+        final_context_bundle_canonical: '',
+        semanticFrontDoor,
+      };
+    }
 
     const keywordAbilitiesMap = getKeywordAbilities(routerMap);
     const definitionsMap = getDefinitions(routerMap);
@@ -438,6 +622,7 @@ export async function getContextRN(
     return {
       bundle,
       final_context_bundle_canonical: canonicalBundle,
+      semanticFrontDoor,
     };
   } finally {
     cardsDb.close();

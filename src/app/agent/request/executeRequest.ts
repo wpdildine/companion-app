@@ -5,6 +5,7 @@
  * (completed, failed, or stale).
  */
 
+import type { SemanticFrontDoor } from '@atlas/runtime';
 import { Platform } from 'react-native';
 import {
   ask as ragAsk,
@@ -18,8 +19,13 @@ import {
   logInfo,
   logWarn,
 } from '../../../shared/logging';
+import { readAttributionErrorKind } from '../../../rag/errors';
 import type { FailureClassification } from '../failureClassification';
-import { classifyTerminalFailure } from '../failureClassification';
+import {
+  classifyRecoverableFailure,
+  classifyTerminalFailure,
+  recoverableReasonKeyForFrontDoorVerdict,
+} from '../failureClassification';
 import type { RequestDebugEmitPayload } from '../requestDebugTypes';
 import type { AgentOrchestratorListeners, ProcessingSubstate } from '../types';
 
@@ -84,6 +90,10 @@ export type ExecuteRequestResult =
       status: 'failed';
       classification: FailureClassification;
       displayMessage: string;
+    }
+  | {
+      status: 'front_door';
+      semanticFrontDoor: SemanticFrontDoor;
     }
   | {
       status: 'stale';
@@ -158,16 +168,6 @@ export async function executeRequest(
         { requestDebugSink: requestDebugSink ?? undefined },
       );
     }
-    const retrievalEndedAt = Date.now();
-    requestDebugSink?.({
-      type: 'retrieval_end',
-      requestId: reqId,
-      retrievalEndedAt,
-      packIdentity: null,
-      timestamp: retrievalEndedAt,
-    });
-    logInfo('AgentOrchestrator', 'retrieval completed', { requestId: reqId });
-    listenersRef.current?.onRetrievalEnd?.();
     const generationStartedAt = Date.now();
     requestDebugSink?.({
       type: 'generation_start',
@@ -285,6 +285,40 @@ export async function executeRequest(
         }
       },
     });
+    const retrievalEndedAt = Date.now();
+    requestDebugSink?.({
+      type: 'retrieval_end',
+      requestId: reqId,
+      retrievalEndedAt,
+      packIdentity: null,
+      timestamp: retrievalEndedAt,
+    });
+    logInfo('AgentOrchestrator', 'retrieval completed', { requestId: reqId });
+    listenersRef.current?.onRetrievalEnd?.();
+    if (result.frontDoorBlocked && result.semanticFrontDoor) {
+      const fd = result.semanticFrontDoor;
+      const recoverable = classifyRecoverableFailure(
+        recoverableReasonKeyForFrontDoorVerdict(fd.front_door_verdict),
+      );
+      requestDebugSink?.({
+        type: 'semantic_front_door',
+        requestId: reqId,
+        frontDoorVerdict: fd.front_door_verdict,
+        resolverMode: fd.resolver_mode,
+        transcriptDecision: fd.transcript_decision,
+        telemetryReason: recoverable.telemetryReason,
+        timestamp: Date.now(),
+      });
+      logInfo('AgentOrchestrator', 'semantic front door blocked request', {
+        requestId: reqId,
+        frontDoorVerdict: fd.front_door_verdict,
+        telemetryReason: recoverable.telemetryReason,
+      });
+      return {
+        status: 'front_door',
+        semanticFrontDoor: fd,
+      };
+    }
     if (reqId !== activeRequestIdRef.current) {
       previousCommittedResponseRef.current = null;
       previousCommittedValidationRef.current = null;
@@ -418,6 +452,7 @@ export async function executeRequest(
         ? (e as { code: string }).code
         : '';
     const failureClassification = classifyTerminalFailure(e);
+    const attributionErrorKind = readAttributionErrorKind(e);
     let displayMsg = code ? `[${code}] ${msg}` : msg;
     if (code === 'E_MODEL_PATH' && Platform.OS === 'android') {
       displayMsg += ` Put the chat GGUF in the app's files/models/ folder (filename: ${CHAT_MODEL_FILENAME}).`;
@@ -432,6 +467,9 @@ export async function executeRequest(
         completedAt: failedAt,
         lifecycle: 'error',
         timestamp: failedAt,
+        ...(attributionErrorKind !== undefined
+          ? { attributionErrorKind }
+          : {}),
       });
       const requestFailurePayload = {
         requestId: reqId,
@@ -439,6 +477,9 @@ export async function executeRequest(
         failureKind: failureClassification.kind,
         failureStage: failureClassification.stage,
         failureReason: failureClassification.telemetryReason,
+        ...(attributionErrorKind !== undefined
+          ? { attributionErrorKind }
+          : {}),
       };
       if (failureClassification.kind === 'retrieval_empty_bundle') {
         logWarn(

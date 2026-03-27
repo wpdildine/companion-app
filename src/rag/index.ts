@@ -11,7 +11,13 @@ import type { PackFileReader, PackState, RagInitParams } from './types';
 
 export { applyPackRagConfig, RAG_CONFIG } from './config';
 export type { PackRagConfig, RagConfig } from './config';
-export { ragError } from './errors';
+export {
+  CONTEXT_BUNDLE_ERROR,
+  CONTEXT_RETRIEVAL_EMPTY,
+  ragError,
+  ragErrorWithAttribution,
+  readAttributionErrorKind,
+} from './errors';
 export type { RagErrorCode } from './errors';
 export {
   getPackEmbedModelId,
@@ -29,6 +35,7 @@ export { RAG_USE_DETERMINISTIC_CONTEXT_ONLY } from './types';
 export type { PackFileReader, PackState, RagInitParams } from './types';
 export type { ValidationSummary } from './validate';
 
+import type { SemanticFrontDoor } from '@atlas/runtime';
 import { runHumanShortPipeline, runPipelineHumanShort } from '@atlas/runtime';
 import type { ValidationSummary } from './validate';
 
@@ -71,6 +78,9 @@ export interface AskResult {
   raw: string;
   nudged: string;
   validationSummary: ValidationSummary;
+  /** Deterministic path stopped at semantic front door (no LLM / no retrieval misuse). */
+  frontDoorBlocked?: boolean;
+  semanticFrontDoor?: SemanticFrontDoor;
 }
 
 /** Set to true to disable nudge globally (for debugging prompt/chunks vs CLI). */
@@ -369,6 +379,24 @@ export async function ask(
       _question,
       options,
     );
+    if (result.frontDoorBlocked && result.semanticFrontDoor) {
+      return {
+        raw: '',
+        nudged: '',
+        validationSummary: {
+          cards: [],
+          rules: [],
+          stats: {
+            cardHitRate: 0,
+            ruleHitRate: 0,
+            unknownCardCount: 0,
+            invalidRuleCount: 0,
+          },
+        },
+        frontDoorBlocked: true,
+        semanticFrontDoor: result.semanticFrontDoor,
+      };
+    }
     if (skipNudge) {
       const nudgedText = maybeSanitizeCardEffectAnswer(
         _question,

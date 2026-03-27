@@ -18,15 +18,23 @@ const mockRecorderRecord = jest.fn();
 const mockRecorderStop = jest.fn(() => Promise.resolve());
 let mockRecorderUri = 'file:///tmp/mock-recording.m4a';
 
-jest.mock('../../../shared/config/endpointConfig', () => ({
-  getSttProvider: () => mockGetSttProvider(),
-  getEndpointBaseUrl: () => mockGetEndpointBaseUrl(),
-  snapshotSttResolution: () => ({
-    provider: mockGetSttProvider(),
-    overrideApplied: false,
-  }),
-  resolveSttProvider: () => mockGetSttProvider(),
-}));
+jest.mock('../../../shared/config/endpointConfig', () => {
+  const actual = jest.requireActual<
+    typeof import('../../../shared/config/endpointConfig')
+  >('../../../shared/config/endpointConfig');
+  return {
+    ...actual,
+    getSttProvider: () => mockGetSttProvider(),
+    getEndpointBaseUrl: () => mockGetEndpointBaseUrl(),
+    snapshotSttResolution: () => ({
+      provider: mockGetSttProvider(),
+      overrideApplied: false,
+    }),
+    resolveSttProvider: () => mockGetSttProvider(),
+    /** Tests use expo-audio mock; native mic path needs native modules not present in Jest. */
+    isNativeMicCaptureEnabled: () => false,
+  };
+});
 
 jest.mock('react-native', () => ({
   Platform: { OS: 'ios' },
@@ -81,23 +89,40 @@ jest.mock('react-native-tts', () => ({
   },
 }));
 
-jest.mock('expo-audio', () => ({
-  useAudioRecorder: jest.fn(() => ({
-    prepareToRecordAsync: mockRecorderPrepareToRecordAsync,
-    record: mockRecorderRecord,
-    stop: mockRecorderStop,
+jest.mock('expo-audio', () => {
+  class MockAudioRecorder {
+    prepareToRecordAsync = mockRecorderPrepareToRecordAsync;
+    record = mockRecorderRecord;
+    stop = mockRecorderStop;
+    release = jest.fn();
     get uri() {
       return mockRecorderUri;
+    }
+  }
+  return {
+    useAudioRecorder: jest.fn(() => ({
+      prepareToRecordAsync: mockRecorderPrepareToRecordAsync,
+      record: mockRecorderRecord,
+      stop: mockRecorderStop,
+      get uri() {
+        return mockRecorderUri;
+      },
+    })),
+    getRecordingPermissionsAsync: jest.fn(() =>
+      Promise.resolve({ granted: true, status: 'granted' }),
+    ),
+    requestRecordingPermissionsAsync: jest.fn(() =>
+      Promise.resolve({ granted: true, status: 'granted' }),
+    ),
+    RecordingPresets: {
+      HIGH_QUALITY: {},
     },
-  })),
-  requestRecordingPermissionsAsync: jest.fn(() =>
-    Promise.resolve({ granted: true, status: 'granted' }),
-  ),
-  RecordingPresets: {
-    HIGH_QUALITY: {},
-  },
-  setAudioModeAsync: jest.fn(() => Promise.resolve()),
-}));
+    setAudioModeAsync: jest.fn(() => Promise.resolve()),
+    AudioModule: {
+      AudioRecorder: MockAudioRecorder,
+    },
+  };
+});
 
 jest.mock('expo-file-system', () => ({
   File: jest.fn((...args: unknown[]) => ({
@@ -264,13 +289,16 @@ const emitFinalTranscript = async (harness: Harness, text: string) => {
 
 describe('AgentOrchestrator contract events', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
     mockGetSttProvider.mockReset();
     mockGetSttProvider.mockReturnValue('local');
     mockGetEndpointBaseUrl.mockReturnValue('http://192.168.1.54:8787');
     mockRecorderStop.mockResolvedValue(undefined);
     mockRecorderUri = 'file:///tmp/mock-recording.m4a';
+    (rag.ask as jest.Mock).mockReset();
     (rag.ask as jest.Mock).mockResolvedValue(mockAskResult());
+    const piperTts = require('piper-tts').default as { speak: jest.Mock };
+    piperTts.speak.mockReset();
+    piperTts.speak.mockImplementation(() => Promise.resolve());
   });
 
   it('success path ordering', async () => {
@@ -282,6 +310,8 @@ describe('AgentOrchestrator contract events', () => {
     await act(async () => {
       await harness.actions.submit();
       await flushPromises();
+      await flushPromises();
+      await new Promise<void>(resolve => setTimeout(resolve, 40));
       await flushPromises();
     });
 
@@ -531,6 +561,8 @@ describe('AgentOrchestrator contract events', () => {
     await act(async () => {
       await harness.actions.startListening(true);
       await flushPromises();
+      await new Promise<void>(resolve => setTimeout(resolve, 50));
+      await flushPromises();
     });
 
     expect(harness.getState().audioSessionState).toBe('listening');
@@ -566,6 +598,8 @@ describe('AgentOrchestrator contract events', () => {
       await harness.actions.submit();
       await flushPromises();
       await flushPromises();
+      await flushPromises();
+      await new Promise<void>(resolve => setTimeout(resolve, 80));
       await flushPromises();
     });
 
@@ -612,6 +646,8 @@ describe('AgentOrchestrator contract events', () => {
     await act(async () => {
       await harness.actions.startListening(true);
       await flushPromises();
+      await new Promise<void>(resolve => setTimeout(resolve, 50));
+      await flushPromises();
     });
 
     await act(async () => {
@@ -621,6 +657,8 @@ describe('AgentOrchestrator contract events', () => {
 
     await act(async () => {
       await flushPromises();
+      await flushPromises();
+      await new Promise<void>(resolve => setTimeout(resolve, 50));
       await flushPromises();
     });
 
@@ -652,11 +690,18 @@ describe('AgentOrchestrator contract events', () => {
     await act(async () => {
       await harness.actions.startListening(true);
       await flushPromises();
+      await new Promise<void>(resolve => setTimeout(resolve, 50));
+      await flushPromises();
     });
 
     await act(async () => {
       await harness.actions.stopListeningAndRequestSubmit();
       await flushPromises();
+      await flushPromises();
+    });
+
+    await act(async () => {
+      await new Promise<void>(resolve => setTimeout(resolve, 100));
       await flushPromises();
     });
 
@@ -717,10 +762,14 @@ describe('AgentOrchestrator contract events', () => {
     await act(async () => {
       await harness.actions.startListening(true);
       await flushPromises();
+      await new Promise<void>(resolve => setTimeout(resolve, 50));
+      await flushPromises();
     });
 
     await act(async () => {
       await harness.actions.stopListeningAndRequestSubmit();
+      await flushPromises();
+      await new Promise<void>(resolve => setTimeout(resolve, 50));
       await flushPromises();
     });
 
@@ -739,6 +788,171 @@ describe('AgentOrchestrator contract events', () => {
     );
     expect(harness.getState().audioSessionState).toBe('idleReady');
     expect(harness.getState().lifecycle).toBe('idle');
+
+    harness.unmount();
+  });
+
+  it('semantic front door abstain_transcript: recoverable, no TTS, committed response cleared', async () => {
+    const onRecoverableFailure = jest.fn();
+    const recorder = createEventRecorder();
+    const harness = createHarness(recorder, { onRecoverableFailure });
+    (rag.ask as jest.Mock).mockResolvedValueOnce({
+      nudged: '',
+      raw: '',
+      validationSummary: {
+        cards: [],
+        rules: [],
+        stats: {
+          cardHitRate: 0,
+          ruleHitRate: 0,
+          unknownCardCount: 0,
+          invalidRuleCount: 0,
+        },
+      },
+      frontDoorBlocked: true,
+      semanticFrontDoor: {
+        contract_version: 1,
+        working_query: 'x',
+        resolver_mode: 'none',
+        transcript_decision: 'insufficient_signal',
+        front_door_verdict: 'abstain_transcript',
+        routing_readiness: { sections_selected: [] },
+      },
+    });
+
+    await emitFinalTranscript(harness, 'Hello there');
+
+    await act(async () => {
+      await harness.actions.submit();
+      await flushPromises();
+      await flushPromises();
+    });
+
+    expect(harness.getState().lifecycle).toBe('idle');
+    expect(harness.getState().responseText).toBeNull();
+    expect(harness.getState().validationSummary).toBeNull();
+    expect(harness.getState().lastFrontDoorOutcome?.semanticFrontDoor.front_door_verdict).toBe(
+      'abstain_transcript',
+    );
+    expect(
+      recorder.events.some(event => event.type === 'tts_start'),
+    ).toBe(false);
+    expect(onRecoverableFailure).toHaveBeenCalledWith(
+      'semantic_front_door',
+      expect.objectContaining({
+        stage: 'request',
+        frontDoorVerdict: 'abstain_transcript',
+        semanticFrontDoor: expect.objectContaining({
+          front_door_verdict: 'abstain_transcript',
+        }),
+      }),
+    );
+
+    harness.unmount();
+  });
+
+  it('semantic front door clarify_entity commits candidate names and lastFrontDoorOutcome', async () => {
+    const recorder = createEventRecorder();
+    const harness = createHarness(recorder);
+    (rag.ask as jest.Mock).mockResolvedValueOnce({
+      nudged: '',
+      raw: '',
+      validationSummary: {
+        cards: [],
+        rules: [],
+        stats: {
+          cardHitRate: 0,
+          ruleHitRate: 0,
+          unknownCardCount: 0,
+          invalidRuleCount: 0,
+        },
+      },
+      frontDoorBlocked: true,
+      semanticFrontDoor: {
+        contract_version: 1,
+        working_query: 'bolt',
+        resolver_mode: 'ambiguous',
+        transcript_decision: 'pass_through',
+        front_door_verdict: 'clarify_entity',
+        ambiguous_candidates: [{ name: 'Lightning Bolt' }, { name: 'Bolt Bend' }],
+        routing_readiness: { sections_selected: [] },
+      },
+    });
+
+    await emitFinalTranscript(harness, 'bolt');
+
+    await act(async () => {
+      await harness.actions.submit();
+      await flushPromises();
+      await flushPromises();
+    });
+
+    expect(harness.getState().responseText).toBe('Lightning Bolt\nBolt Bend');
+    expect(harness.getState().validationSummary).toBeNull();
+    expect(harness.getState().lastFrontDoorOutcome?.semanticFrontDoor.front_door_verdict).toBe(
+      'clarify_entity',
+    );
+    expect(
+      recorder.events.some(event => event.type === 'tts_start'),
+    ).toBe(false);
+
+    harness.unmount();
+  });
+
+  it('successful completion clears lastFrontDoorOutcome after prior front door', async () => {
+    const recorder = createEventRecorder();
+    const harness = createHarness(recorder);
+    (rag.ask as jest.Mock)
+      .mockResolvedValueOnce({
+        nudged: '',
+        raw: '',
+        validationSummary: {
+          cards: [],
+          rules: [],
+          stats: {
+            cardHitRate: 0,
+            ruleHitRate: 0,
+            unknownCardCount: 0,
+            invalidRuleCount: 0,
+          },
+        },
+        frontDoorBlocked: true,
+        semanticFrontDoor: {
+          contract_version: 1,
+          working_query: 'x',
+          resolver_mode: 'none',
+          transcript_decision: 'insufficient_signal',
+          front_door_verdict: 'abstain_transcript',
+          routing_readiness: { sections_selected: [] },
+        },
+      })
+      .mockResolvedValueOnce(mockAskResult());
+
+    await emitFinalTranscript(harness, 'first');
+
+    await act(async () => {
+      await harness.actions.submit();
+      await flushPromises();
+      await flushPromises();
+    });
+    expect(harness.getState().lastFrontDoorOutcome).not.toBeNull();
+
+    await emitFinalTranscript(harness, 'Hello there second');
+
+    await act(async () => {
+      await harness.actions.submit();
+      await flushPromises();
+      await flushPromises();
+    });
+
+    expect(harness.getState().lastFrontDoorOutcome).toBeNull();
+    expect(harness.getState().responseText).toBe('Hello there');
+
+    await act(async () => {
+      await flushPromises();
+      await new Promise<void>(resolve => setTimeout(resolve, 30));
+      await flushPromises();
+    });
 
     harness.unmount();
   });

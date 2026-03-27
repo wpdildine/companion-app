@@ -43,12 +43,16 @@ import {
   type SttAudioCaptureFailureKind,
 } from '../hooks/useSttAudioCapture';
 import { useOpenAIProxy } from '../providers/openAI/useOpenAIProxy';
-import { classifyRecoverableFailure } from './failureClassification';
+import {
+  classifyRecoverableFailure,
+  recoverableReasonKeyForFrontDoorVerdict,
+} from './failureClassification';
 import {
   projectContextArtifact,
   projectFailureArtifact,
   projectSettlementArtifact,
 } from './orchestrator/artifactProjector';
+import { committedResponseFromSemanticFrontDoor } from './orchestrator/frontDoorCommit';
 import {
   emitRequestDebug,
   type RequestDebugSinkRef,
@@ -59,6 +63,7 @@ import type {
   AgentLifecycleState,
   AgentOrchestratorListeners,
   AgentOrchestratorState,
+  LastFrontDoorOutcome,
   ProcessingSubstate,
 } from './types';
 import { createRemoteSttCoordinator } from './av/remoteStt';
@@ -305,6 +310,8 @@ export function useAgentOrchestrator(
   const [ioBlockedReason, setIoBlockedReason] = useState<string | null>(null);
   const [audioSessionState, setAudioSessionState] =
     useState<AudioSessionState>('idleReady');
+  const [lastFrontDoorOutcome, setLastFrontDoorOutcome] =
+    useState<LastFrontDoorOutcome | null>(null);
 
   const voiceRef = useRef<VoiceModule | null>(null);
   const ttsRef = useRef<TtsModule | null>(null);
@@ -1699,6 +1706,50 @@ export function useAgentOrchestrator(
       requestInFlightRef.current = false;
       return null;
     }
+    if (runResult.status === 'front_door') {
+      requestInFlightRef.current = false;
+      activeRequestIdRef.current = 0;
+      logInfo('AgentOrchestrator', 'active requestId cleared', {
+        requestId: reqId,
+        reason: 'semantic_front_door',
+      });
+      const fd = runResult.semanticFrontDoor;
+      const committed = committedResponseFromSemanticFrontDoor(fd);
+      setResponseText(committed.text.length > 0 ? committed.text : null);
+      setValidationSummary(null);
+      previousCommittedResponseRef.current = null;
+      previousCommittedValidationRef.current = null;
+      setLastFrontDoorOutcome({ requestId: reqId, semanticFrontDoor: fd });
+      setProcessingSubstate(null);
+      emitRequestDebug(requestDebugSinkRef, {
+        type: 'processing_substate',
+        requestId: reqId,
+        processingSubstate: null,
+        timestamp: Date.now(),
+      });
+      setMode('idle');
+      setLifecycle('idle');
+      setAudioState('idleReady', { reason: 'semanticFrontDoor' });
+      setError(null);
+      emitRecoverableFailure(
+        recoverableReasonKeyForFrontDoorVerdict(fd.front_door_verdict),
+        {
+          frontDoorVerdict: fd.front_door_verdict,
+          resolverMode: fd.resolver_mode,
+          semanticFrontDoor: fd,
+        },
+      );
+      emitRequestDebug(requestDebugSinkRef, {
+        type: 'request_complete',
+        requestId: reqId,
+        status: 'completed_front_door',
+        frontDoorVerdict: fd.front_door_verdict,
+        completedAt: Date.now(),
+        lifecycle: 'idle',
+        timestamp: Date.now(),
+      });
+      return null;
+    }
     if (runResult.status === 'failed') {
       requestInFlightRef.current = false;
       activeRequestIdRef.current = 0;
@@ -1766,6 +1817,7 @@ export function useAgentOrchestrator(
     }
     requestInFlightRef.current = false;
     setError(null);
+    setLastFrontDoorOutcome(null);
     setProcessingSubstate(null);
     emitRequestDebug(requestDebugSinkRef, {
       type: 'processing_substate',
@@ -2049,6 +2101,7 @@ export function useAgentOrchestrator(
     }
     setError(null);
     setProcessingSubstate(null);
+    setLastFrontDoorOutcome(null);
     setMode('idle');
     setLifecycle('idle');
     logInfo('AgentOrchestrator', 'retryable idle state restored');
@@ -2644,6 +2697,7 @@ export function useAgentOrchestrator(
     ioBlockedReason,
     audioSessionState,
     recordingSessionId: recordingSessionRef.current,
+    lastFrontDoorOutcome,
     metadata: undefined,
   };
 

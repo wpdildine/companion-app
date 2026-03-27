@@ -1,3 +1,8 @@
+import {
+  CONTEXT_RETRIEVAL_EMPTY,
+  readAttributionErrorKind,
+} from '../../rag/errors';
+
 export type FailureStage = 'speech' | 'retrieval' | 'model' | 'request' | 'unknown';
 export type FailureRecoverability = 'recoverable' | 'terminal' | 'ignored';
 export type FailureTransientEvent = 'softFail' | 'terminalFail' | null;
@@ -8,6 +13,7 @@ export type FailureKind =
   | 'retrieval_unavailable'
   | 'model_unavailable'
   | 'request_cancelled'
+  | 'semantic_front_door'
   | 'unknown';
 
 export type FailureClassification = {
@@ -46,6 +52,27 @@ const RECOVERABLE_FAILURES: Record<string, FailureClassification> = {
     recoverability: 'recoverable',
     transientEvent: 'softFail',
     telemetryReason: 'interactionRejected',
+  },
+  semanticFrontDoorTranscript: {
+    kind: 'semantic_front_door',
+    stage: 'request',
+    recoverability: 'recoverable',
+    transientEvent: 'softFail',
+    telemetryReason: 'semanticFrontDoorTranscript',
+  },
+  semanticFrontDoorNoGrounding: {
+    kind: 'semantic_front_door',
+    stage: 'request',
+    recoverability: 'recoverable',
+    transientEvent: 'softFail',
+    telemetryReason: 'semanticFrontDoorNoGrounding',
+  },
+  semanticFrontDoorClarify: {
+    kind: 'semantic_front_door',
+    stage: 'request',
+    recoverability: 'recoverable',
+    transientEvent: 'softFail',
+    telemetryReason: 'semanticFrontDoorClarify',
   },
 };
 
@@ -158,6 +185,32 @@ const DEFAULT_TERMINAL_FAILURE: FailureClassification = {
   telemetryReason: 'request',
 };
 
+/** Maps substrate `front_door_verdict` to a recoverable reason key (distinct telemetry). */
+export function recoverableReasonKeyForFrontDoorVerdict(
+  verdict:
+    | 'proceed_to_retrieval'
+    | 'clarify_entity'
+    | 'abstain_no_grounding'
+    | 'abstain_transcript',
+): keyof typeof RECOVERABLE_FAILURES {
+  switch (verdict) {
+    case 'abstain_transcript':
+      return 'semanticFrontDoorTranscript';
+    case 'abstain_no_grounding':
+      return 'semanticFrontDoorNoGrounding';
+    case 'clarify_entity':
+      return 'semanticFrontDoorClarify';
+    case 'proceed_to_retrieval':
+      throw new Error(
+        'recoverableReasonKeyForFrontDoorVerdict: proceed_to_retrieval is not a blocked front-door verdict',
+      );
+    default: {
+      const _exhaustive: never = verdict;
+      throw new Error(`Unexpected front_door_verdict: ${String(_exhaustive)}`);
+    }
+  }
+}
+
 export function classifyRecoverableFailure(reason: string): FailureClassification {
   return RECOVERABLE_FAILURES[reason] ?? {
     kind: 'unknown',
@@ -171,15 +224,9 @@ export function classifyRecoverableFailure(reason: string): FailureClassificatio
 export function classifyTerminalFailure(error: unknown): FailureClassification {
   const code =
     error && typeof error === 'object' && 'code' in error ? String((error as { code: unknown }).code) : '';
-  const message =
-    error && typeof error === 'object' && 'message' in error
-      ? String((error as { message: unknown }).message)
-      : '';
 
-  if (
-    code === 'E_RETRIEVAL' &&
-    message.toLowerCase().includes('empty bundle')
-  ) {
+  const attributionKind = readAttributionErrorKind(error);
+  if (code === 'E_RETRIEVAL' && attributionKind === CONTEXT_RETRIEVAL_EMPTY) {
     return {
       kind: 'retrieval_empty_bundle',
       stage: 'retrieval',
