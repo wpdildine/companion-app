@@ -117,6 +117,8 @@ Do not put transient event logic into art-direction files. Per-layer render file
 
 ## Runtime behavior (stabilization)
 
+**Native microphone boundary:** Capture/session semantics at the native plugin ↔ JS boundary are governed by [docs/NATIVE_MIC_CONTRACT.md](docs/NATIVE_MIC_CONTRACT.md) (hardware/session facts, plugin lifecycle, events). AgentOrchestrator remains the owner of voice input lifecycle and settlement behavior below.
+
 - **Transcript settlement before submit** — For hold-to-speak release, submit runs only after transcript settlement. The surface calls `stopListeningAndRequestSubmit()`; the orchestrator waits for final result, speech end (with usable partial), or a bounded timeout, then invokes `onTranscriptReadyForSubmit` once. Submit must not be triggered by direct `stopListening()` + `submit()` on release.
 - **Single active ask** — Only one ask may be in flight. New submit attempts are blocked until the current request settles. Lifecycle transitions are request-scoped (active requestId); stale completions are ignored and logged.
 - **Post-stop speech errors** — Speech recognition errors that occur after stop has been requested (finalization underway) are treated as non-fatal and do not force lifecycle into error.

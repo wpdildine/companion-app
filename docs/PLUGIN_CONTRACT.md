@@ -10,6 +10,13 @@ This document defines the **standardized interface** for native plugins in this 
 4. **Emit structured events** — use a consistent event payload shape (e.g. `type`, `message`, `data`) for progress, warnings, and completion.
 5. **Expose debug info** — provide a method (e.g. `getDebugInfo()`) that returns a string or object useful for diagnostics (e.g. module loaded, model path, version).
 
+## NATIVE plugins and domain contracts
+
+Plugins that talk to **hardware**, **OS-level services**, or **device capabilities** are **NATIVE** plugins. They MUST follow the five rules above **and** the applicable domain extension:
+
+- **Pattern:** `docs/NATIVE_<DOMAIN>_CONTRACT.md` (e.g. microphone capture: [NATIVE_MIC_CONTRACT.md](./NATIVE_MIC_CONTRACT.md)).
+- **Microphone / voice capture:** Add [NATIVE_MIC_CONTRACT.md](./NATIVE_MIC_CONTRACT.md) on top of this file—lifecycle phases, native→JS events, failure taxonomy at the mic boundary, and orchestrator interaction boundaries. Generic `PluginEventPayload` and structured errors here are the **floor**; the mic contract narrows **event types**, **session correlation**, and **lifecycle** expectations. Do not duplicate the full mic lifecycle in this file; use the link.
+
 ## Three lanes
 
 ### 1) Developer logs — "always available" debugging
