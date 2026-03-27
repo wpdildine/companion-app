@@ -12,7 +12,7 @@ Apply this pattern to any plugin that interfaces with hardware, OS services, or 
 
 ## Ownership split
 
-The native plugin owns hardware and session facts only. The app, orchestrator, or other semantic owner remains responsible for user-facing meaning, policy, retries, fallback, and lifecycle truth. Plugins emit facts, not decisions. Native code can report what happened at the hardware or OS boundary, but it must not decide what the app means by those facts or take semantic actions on the app's behalf.
+The native plugin owns hardware and session facts only. The app, orchestrator, or other semantic owner remains responsible for user-facing meaning, policy, retries, fallback, and lifecycle truth. Plugins emit facts, not decisions. Native code can report what happened at the hardware or OS boundary, but it must not decide what the app means by those facts or take semantic actions on the app's behalf. Fact consumers in app code should route through a single semantic ingress (for agent AV, `applyAvFact` in the orchestrator layer).
 
 ## Required JS contract shape
 

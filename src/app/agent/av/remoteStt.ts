@@ -38,7 +38,7 @@ export interface RemoteSttDeps {
     recordingSessionId?: string,
     meta?: { code?: string },
   ) => void;
-  /** When STT returns empty/whitespace-only (recoverable). Orchestrator uses this to return to idle without terminal error. */
+  /** When STT returns empty/whitespace-only. Orchestrator assigns semantic meaning. */
   onEmptyTranscript?: (recordingSessionId?: string) => void;
 }
 

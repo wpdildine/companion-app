@@ -5,6 +5,7 @@ import type {
   SttAudioCaptureFailureKind,
 } from '../../hooks/useSttAudioCapture';
 import { type AudioSessionState, IOS_STOP_GRACE_MS } from './sessionCoordinator';
+import type { AvFact, AvFactEmitter } from './avFacts';
 
 type AvLog = (
   scope: LogScope,
@@ -19,35 +20,21 @@ export type AvStartRoute =
   | 'local_voice_remote_unavailable';
 
 export type AvPlaybackRoute = 'piper' | 'react-native-tts';
-type AvPlaybackFactEvent = 'started' | 'completed' | 'cancelled';
 
 export type AvPlaybackFact = {
-  event: AvPlaybackFactEvent;
+  kind: 'av.playback.started' | 'av.playback.completed' | 'av.playback.cancelled';
   provider: AvPlaybackRoute;
   requestId: number | null;
   at: number;
 };
 
-export type RemoteStopFinalizeFact =
-  | {
-      kind: 'capture_failed';
-      recordingSessionId?: string;
-      failureKind: SttAudioCaptureFailureKind;
-      message: string;
-    }
-  | {
-      kind: 'stt_timeout';
-      recordingSessionId?: string;
-    }
-  | {
-      kind: 'stt_unavailable';
-      recordingSessionId?: string;
-      emptyTranscript: boolean;
-    }
-  | {
-      kind: 'transcript_ready';
-      recordingSessionId?: string;
-    };
+export type RemoteStopFinalizeFact = Extract<
+  AvFact,
+  | { kind: 'av.capture.failed' }
+  | { kind: 'av.stt.timeout' }
+  | { kind: 'av.stt.unavailable' }
+  | { kind: 'av.stt.completed' }
+>;
 
 export function selectAvStartRouteMechanics(opts: {
   sttProvider: SttProvider;
@@ -87,16 +74,10 @@ export async function startAvLocalVoiceListeningMechanics(args: {
     startTimeFallbackReason?: string;
   };
   startVoice: () => Promise<void>;
-  onClearNextListenPreference: () => void;
-  setListenPath: (next: 'local' | 'remote') => void;
-  setAudioState: (next: AudioSessionState, context?: object) => void;
-  clearIoBlock: () => void;
-  setRecordingSession: (sessionId: string) => void;
-  setSpeechEnded: (v: boolean) => void;
+  emitAvFact?: AvFactEmitter;
   getSttProviderForLog: () => SttProvider;
   getSessionSttOverrideApplied: () => boolean;
   getRecordingStartAt: () => number | null;
-  playListenIn: () => void;
   logInfo: AvLog;
 }): Promise<void> {
   const {
@@ -104,21 +85,20 @@ export async function startAvLocalVoiceListeningMechanics(args: {
     sttProvider,
     opts,
     startVoice,
-    onClearNextListenPreference,
-    setListenPath,
-    setAudioState,
-    clearIoBlock,
-    setRecordingSession,
-    setSpeechEnded,
+    emitAvFact,
     getSttProviderForLog,
     getSessionSttOverrideApplied,
     getRecordingStartAt,
-    playListenIn,
     logInfo,
   } = args;
+  const now = () => Date.now();
 
   if (opts?.clearedNextListenPreference) {
-    onClearNextListenPreference();
+    emitAvFact?.({
+      kind: 'av.bookkeeping.next_listen_local_preference_cleared',
+      at: now(),
+      recordingSessionId,
+    });
     logInfo(
       'AgentOrchestrator',
       'stt next-listen local preference cleared after local start',
@@ -136,11 +116,32 @@ export async function startAvLocalVoiceListeningMechanics(args: {
     });
   }
   await startVoice();
-  setListenPath('local');
-  setAudioState('listening', { recordingSessionId });
-  clearIoBlock();
-  setRecordingSession(recordingSessionId);
-  setSpeechEnded(false);
+  emitAvFact?.({
+    kind: 'av.bookkeeping.listen_path',
+    at: now(),
+    recordingSessionId,
+    listenPath: 'local',
+  });
+  emitAvFact?.({
+    kind: 'av.session.transitioned',
+    at: now(),
+    recordingSessionId,
+    next: 'listening',
+    mechanicalReason: 'captureStartAccepted',
+  });
+  emitAvFact?.({ kind: 'av.bookkeeping.io_block_cleared', at: now(), recordingSessionId });
+  emitAvFact?.({
+    kind: 'av.bookkeeping.recording_session_id',
+    at: now(),
+    recordingSessionId,
+    sessionId: recordingSessionId,
+  });
+  emitAvFact?.({
+    kind: 'av.bookkeeping.speech_ended',
+    at: now(),
+    recordingSessionId,
+    value: false,
+  });
   const recordingStartAt = getRecordingStartAt();
   logInfo('AgentOrchestrator', 'voice listen active', {
     recordingSessionId,
@@ -154,48 +155,60 @@ export async function startAvLocalVoiceListeningMechanics(args: {
   logInfo('AgentOrchestrator', 'start attempt accepted', {
     recordingSessionId,
   });
-  playListenIn();
+  emitAvFact?.({ kind: 'av.bookkeeping.listen_in_signal', at: now(), recordingSessionId });
 }
 
 export async function startAvRemoteCaptureListeningMechanics(args: {
   recordingSessionId: string;
   sttProvider: SttProvider;
   beginCapture: (recordingSessionId?: string) => Promise<boolean>;
-  setListenPath: (next: 'local' | 'remote') => void;
-  setAudioState: (next: AudioSessionState, context?: object) => void;
-  clearIoBlock: () => void;
-  setRecordingSession: (sessionId: string) => void;
-  setSpeechEnded: (v: boolean) => void;
+  emitAvFact?: AvFactEmitter;
   getSttProviderForLog: () => SttProvider;
   getSessionSttOverrideApplied: () => boolean;
   getRecordingStartAt: () => number | null;
-  playListenIn: () => void;
   logInfo: AvLog;
 }): Promise<boolean> {
   const {
     recordingSessionId,
     sttProvider,
     beginCapture,
-    setListenPath,
-    setAudioState,
-    clearIoBlock,
-    setRecordingSession,
-    setSpeechEnded,
+    emitAvFact,
     getSttProviderForLog,
     getSessionSttOverrideApplied,
     getRecordingStartAt,
-    playListenIn,
     logInfo,
   } = args;
+  const now = () => Date.now();
   const captureStarted = await beginCapture(recordingSessionId);
   if (!captureStarted) {
     return false;
   }
-  setListenPath('remote');
-  setAudioState('listening', { recordingSessionId });
-  clearIoBlock();
-  setRecordingSession(recordingSessionId);
-  setSpeechEnded(false);
+  emitAvFact?.({
+    kind: 'av.bookkeeping.listen_path',
+    at: now(),
+    recordingSessionId,
+    listenPath: 'remote',
+  });
+  emitAvFact?.({
+    kind: 'av.session.transitioned',
+    at: now(),
+    recordingSessionId,
+    next: 'listening',
+    mechanicalReason: 'remoteCaptureStarted',
+  });
+  emitAvFact?.({ kind: 'av.bookkeeping.io_block_cleared', at: now(), recordingSessionId });
+  emitAvFact?.({
+    kind: 'av.bookkeeping.recording_session_id',
+    at: now(),
+    recordingSessionId,
+    sessionId: recordingSessionId,
+  });
+  emitAvFact?.({
+    kind: 'av.bookkeeping.speech_ended',
+    at: now(),
+    recordingSessionId,
+    value: false,
+  });
   const recordingStartAt = getRecordingStartAt();
   logInfo('AgentOrchestrator', 'voice listen active', {
     recordingSessionId,
@@ -209,7 +222,7 @@ export async function startAvRemoteCaptureListeningMechanics(args: {
   logInfo('AgentOrchestrator', 'start attempt accepted', {
     recordingSessionId,
   });
-  playListenIn();
+  emitAvFact?.({ kind: 'av.bookkeeping.listen_in_signal', at: now(), recordingSessionId });
   return true;
 }
 
@@ -239,7 +252,7 @@ export function startAvPlaybackLifecycleMechanics(args: {
     logInfo('AgentOrchestrator', 'playback started', { provider });
   }
   return {
-    event: 'started',
+    kind: 'av.playback.started',
     provider,
     requestId: playbackRequestId,
     at: ttsStartedAt,
@@ -261,7 +274,7 @@ export function finishAvPlaybackLifecycleMechanics(args: {
   const provider = activePlaybackProviderRef.current ?? 'react-native-tts';
   activePlaybackProviderRef.current = null;
   return {
-    event,
+    kind: event === 'cancelled' ? 'av.playback.cancelled' : 'av.playback.completed',
     provider,
     requestId: playbackRequestId,
     at: endedAt,
@@ -281,9 +294,7 @@ export async function runRemoteStopFinalizeMechanics(args: {
       }
   >;
   transcribeCapturedAudioIfNeeded: (recordingSessionId?: string) => Promise<boolean>;
-  setPendingCapturedAudio: (capture: CapturedSttAudio | null) => void;
-  setAudioState: (next: AudioSessionState, context?: object) => void;
-  setLastRemoteSttEmpty: (v: boolean) => void;
+  emitAvFact?: AvFactEmitter;
   getLastRemoteSttEmpty: () => boolean;
   settleTimeoutMs: number;
 }): Promise<RemoteStopFinalizeFact> {
@@ -291,27 +302,40 @@ export async function runRemoteStopFinalizeMechanics(args: {
     recordingSessionId,
     endCapture,
     transcribeCapturedAudioIfNeeded,
-    setPendingCapturedAudio,
-    setAudioState,
-    setLastRemoteSttEmpty,
+    emitAvFact,
     getLastRemoteSttEmpty,
     settleTimeoutMs,
   } = args;
+  const at = () => Date.now();
   const captureResult = await endCapture(recordingSessionId);
   if (!captureResult.ok) {
     return {
-      kind: 'capture_failed',
+      kind: 'av.capture.failed',
+      at: at(),
       recordingSessionId,
       failureKind: captureResult.failureKind,
       message: captureResult.message,
     };
   }
-  setPendingCapturedAudio(captureResult.capture);
-  setAudioState('settling', {
+  emitAvFact?.({
+    kind: 'av.bookkeeping.pending_captured_audio_set',
+    at: at(),
     recordingSessionId,
-    reason: 'remoteCaptureComplete',
+    capture: captureResult.capture,
   });
-  setLastRemoteSttEmpty(false);
+  emitAvFact?.({
+    kind: 'av.session.transitioned',
+    at: at(),
+    recordingSessionId,
+    next: 'settling',
+    mechanicalReason: 'remoteCaptureComplete',
+  });
+  emitAvFact?.({
+    kind: 'av.bookkeeping.remote_stt_empty_flag',
+    at: at(),
+    recordingSessionId,
+    value: false,
+  });
   const sttPromise = transcribeCapturedAudioIfNeeded(recordingSessionId);
   const settleTimeoutPromise = new Promise<never>((_, reject) =>
     setTimeout(
@@ -323,20 +347,26 @@ export async function runRemoteStopFinalizeMechanics(args: {
     const sttReady = await Promise.race([sttPromise, settleTimeoutPromise]);
     if (!sttReady) {
       const wasEmptyTranscript = getLastRemoteSttEmpty();
-      setLastRemoteSttEmpty(false);
+      emitAvFact?.({
+        kind: 'av.bookkeeping.remote_stt_empty_flag',
+        at: at(),
+        recordingSessionId,
+        value: false,
+      });
       return {
-        kind: 'stt_unavailable',
+        kind: 'av.stt.unavailable',
+        at: at(),
         recordingSessionId,
         emptyTranscript: wasEmptyTranscript,
       };
     }
-    return { kind: 'transcript_ready', recordingSessionId };
+    return { kind: 'av.stt.completed', at: at(), recordingSessionId };
   } catch (e) {
     if (
       e instanceof Error &&
       e.message === 'ORCHESTRATOR_STT_SETTLE_TIMEOUT'
     ) {
-      return { kind: 'stt_timeout', recordingSessionId };
+      return { kind: 'av.stt.timeout', at: at(), recordingSessionId };
     }
     throw e;
   }
@@ -395,7 +425,7 @@ export async function cleanupPendingIosStopIfNeededMechanics(args: {
   platformIsIos: boolean;
   getIosStopPending: () => boolean;
   getIosStopInvoked: () => boolean;
-  setAudioState: (next: AudioSessionState, context?: object) => void;
+  emitAvFact?: AvFactEmitter;
   invokeStop: () => Promise<void>;
   setIosStopPending: (v: boolean) => void;
   setIosStopInvoked: (v: boolean) => void;
@@ -407,7 +437,7 @@ export async function cleanupPendingIosStopIfNeededMechanics(args: {
     platformIsIos,
     getIosStopPending,
     getIosStopInvoked,
-    setAudioState,
+    emitAvFact,
     invokeStop,
     setIosStopPending,
     setIosStopInvoked,
@@ -419,16 +449,25 @@ export async function cleanupPendingIosStopIfNeededMechanics(args: {
   logInfo('AgentOrchestrator', 'cleanup forcing native voice stop before idle', {
     recordingSessionId,
   });
-  setAudioState('stopping', { recordingSessionId });
+  emitAvFact?.({
+    kind: 'av.session.transitioned',
+    at: Date.now(),
+    recordingSessionId,
+    next: 'stopping',
+    mechanicalReason: 'cleanupForcedStop',
+  });
   logInfo('AgentOrchestrator', 'native voice stop in flight', {
     recordingSessionId,
   });
   await invokeStop();
   setIosStopPending(false);
   setIosStopInvoked(true);
-  setAudioState(nextAudioState, {
+  emitAvFact?.({
+    kind: 'av.session.transitioned',
+    at: Date.now(),
     recordingSessionId,
-    reason: 'nativeStopComplete',
+    next: nextAudioState,
+    mechanicalReason: 'nativeStopComplete',
   });
   logInfo('AgentOrchestrator', 'native voice stop completed', {
     recordingSessionId,

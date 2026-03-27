@@ -112,7 +112,7 @@ Structured rejections from async native methods MUST follow [PLUGIN_CONTRACT.md]
 
 **Native may emit:** Factual events and structured errors as above; MUST NOT emit commands that imply **submit**, **user finished speaking**, or **orchestrator lifecycle** transitions as authoritative truth. MUST NOT command visualization or RAG.
 
-**Forbidden:** Plugin-driven **semantic** actions: submit, fallback selection, or changing normalized agent lifecycle. The app bridge MAY forward facts to **AgentOrchestrator**, which alone applies semantics per [APP_ARCHITECTURE.md](./APP_ARCHITECTURE.md).
+**Forbidden:** Plugin-driven **semantic** actions: submit, fallback selection, or changing normalized agent lifecycle. The app bridge MAY forward facts to **AgentOrchestrator**, which alone applies semantics per [APP_ARCHITECTURE.md](./APP_ARCHITECTURE.md); AV-originated facts should cross via explicit mechanical facts/events into a single orchestrator semantic ingress (`applyAvFact` pattern).
 
 ---
 
