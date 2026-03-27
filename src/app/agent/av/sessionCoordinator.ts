@@ -56,6 +56,44 @@ export function createSessionCoordinator(
   const iosStopPendingRef = { current: false };
   const iosStopInvokedRef = { current: false };
 
+  const clearIosStopGraceTimer = () => {
+    if (iosStopGraceTimerRef.current) {
+      clearTimeout(iosStopGraceTimerRef.current);
+      iosStopGraceTimerRef.current = null;
+    }
+  };
+
+  const scheduleIosStopGrace = (
+    _recordingSessionId: string | undefined,
+    delayMs: number,
+    onElapsed: () => void,
+  ) => {
+    iosStopPendingRef.current = true;
+    if (iosStopGraceTimerRef.current) {
+      clearTimeout(iosStopGraceTimerRef.current);
+    }
+    iosStopGraceTimerRef.current = setTimeout(() => {
+      iosStopGraceTimerRef.current = null;
+      iosStopPendingRef.current = false;
+      onElapsed();
+    }, delayMs);
+  };
+
+  const executeNativeStopWithGrace = async (
+    platformIsIos: boolean,
+    recordingSessionId: string | undefined,
+    graceMs: number,
+    runStop: () => Promise<void>,
+  ): Promise<void> => {
+    if (platformIsIos) {
+      scheduleIosStopGrace(recordingSessionId, graceMs, () =>
+        runStop().catch(() => {}),
+      );
+      return;
+    }
+    await runStop();
+  };
+
   return {
     getAudioState: () => audioStateRef.current,
     setAudioState(next: AudioSessionState, context?: object) {
@@ -79,27 +117,8 @@ export function createSessionCoordinator(
         return { block: true, reason: 'nativeGuard' };
       return { block: false };
     },
-    clearIosStopGraceTimer() {
-      if (iosStopGraceTimerRef.current) {
-        clearTimeout(iosStopGraceTimerRef.current);
-        iosStopGraceTimerRef.current = null;
-      }
-    },
-    scheduleIosStopGrace(
-      _recordingSessionId: string | undefined,
-      delayMs: number,
-      onElapsed: () => void,
-    ) {
-      iosStopPendingRef.current = true;
-      if (iosStopGraceTimerRef.current) {
-        clearTimeout(iosStopGraceTimerRef.current);
-      }
-      iosStopGraceTimerRef.current = setTimeout(() => {
-        iosStopGraceTimerRef.current = null;
-        iosStopPendingRef.current = false;
-        onElapsed();
-      }, delayMs);
-    },
+    clearIosStopGraceTimer,
+    scheduleIosStopGrace,
     getIosStopPending: () => iosStopPendingRef.current,
     getIosStopInvoked: () => iosStopInvokedRef.current,
     setIosStopPending: (v: boolean) => {
@@ -112,19 +131,6 @@ export function createSessionCoordinator(
       nativeRestartGuardUntilRef.current = until;
     },
     getNativeRestartGuardUntil: () => nativeRestartGuardUntilRef.current,
-    async executeNativeStopWithGrace(
-      platformIsIos: boolean,
-      recordingSessionId: string | undefined,
-      graceMs: number,
-      runStop: () => Promise<void>,
-    ): Promise<void> {
-      if (platformIsIos) {
-        this.scheduleIosStopGrace(recordingSessionId, graceMs, () =>
-          runStop().catch(() => {}),
-        );
-        return;
-      }
-      await runStop();
-    },
+    executeNativeStopWithGrace,
   };
 }
