@@ -45,14 +45,14 @@ import {
 import { useOpenAIProxy } from '../providers/openAI/useOpenAIProxy';
 import { classifyRecoverableFailure } from './failureClassification';
 import {
-  emitRequestDebug,
-  type RequestDebugSinkRef,
-} from './orchestrator/telemetry';
-import {
   projectContextArtifact,
   projectFailureArtifact,
   projectSettlementArtifact,
 } from './orchestrator/artifactProjector';
+import {
+  emitRequestDebug,
+  type RequestDebugSinkRef,
+} from './orchestrator/telemetry';
 import { executeRequest } from './request/executeRequest';
 import type { RequestDebugEmitPayload } from './requestDebugTypes';
 import type {
@@ -190,6 +190,39 @@ const NEXT_LISTEN_LOCAL_PREFERENCE_CODES = new Set([
 ]);
 
 type RemoteSttFailureMeta = { code?: string; mechanismReason?: string };
+type AvStartRoute =
+  | 'local_voice_default'
+  | 'remote_capture_required'
+  | 'local_voice_next_listen_preference'
+  | 'local_voice_remote_unavailable';
+type AvPlaybackRoute = 'piper' | 'react-native-tts';
+type AvPlaybackFactEvent = 'started' | 'completed' | 'cancelled';
+type AvPlaybackFact = {
+  event: AvPlaybackFactEvent;
+  provider: AvPlaybackRoute;
+  requestId: number | null;
+  at: number;
+};
+type RemoteStopFinalizeFact =
+  | {
+      kind: 'capture_failed';
+      recordingSessionId?: string;
+      failureKind: SttAudioCaptureFailureKind;
+      message: string;
+    }
+  | {
+      kind: 'stt_timeout';
+      recordingSessionId?: string;
+    }
+  | {
+      kind: 'stt_unavailable';
+      recordingSessionId?: string;
+      emptyTranscript: boolean;
+    }
+  | {
+      kind: 'transcript_ready';
+      recordingSessionId?: string;
+    };
 
 function shouldSetNextListenLocalPreference(
   sttProvider: SttProvider,
@@ -305,6 +338,7 @@ export function useAgentOrchestrator(
   const modeRef = useRef(mode);
   const lifecycleRef = useRef(lifecycle);
   const playbackInterruptedRef = useRef(false);
+  const activePlaybackProviderRef = useRef<AvPlaybackRoute | null>(null);
   const lastRemoteSttEmptyRef = useRef(false);
   /**
    * Next-listen local preference (not same-utterance recovery): set after eligible remote transcribe
@@ -586,9 +620,7 @@ export function useAgentOrchestrator(
           stt_env_mode: getSttProvider(),
           stt_next_listen_local_preference_set: true,
           stt_mechanism_reason_class:
-            meta?.mechanismReason ??
-            meta?.code ??
-            'proxy_transport',
+            meta?.mechanismReason ?? meta?.code ?? 'proxy_transport',
         });
       }
       setAudioState('idleReady', {
@@ -859,8 +891,7 @@ export function useAgentOrchestrator(
         pendingSubmitWhenReady: outcome.shouldSubmit,
         settlementResolved: settlementCoordinator.getSettlementResolved(),
       });
-      const readySubmit =
-        outcome.kind === 'ready' && outcome.shouldSubmit;
+      const readySubmit = outcome.kind === 'ready' && outcome.shouldSubmit;
       if (readySubmit) {
         finalizeStop(reason, recordingSessionId, { keepLifecycle: true });
         listenersRef?.current?.onTranscriptReadyForSubmit?.();
@@ -937,6 +968,273 @@ export function useAgentOrchestrator(
     [sessionCoordinator],
   );
 
+  // ===== AV isolation: backend arbitration + capture start mechanics (facts only) =====
+  const selectAvStartRoute = useCallback(
+    (opts: {
+      sttProvider: SttProvider;
+      hasVoiceModule: boolean;
+      endpointAvailable: boolean;
+      nextListenLocalPreference: boolean;
+    }): { route: AvStartRoute; fallbackReason?: string } => {
+      const {
+        sttProvider,
+        hasVoiceModule,
+        endpointAvailable,
+        nextListenLocalPreference,
+      } = opts;
+      if (sttProvider === 'local') {
+        return { route: 'local_voice_default' };
+      }
+      if (sttProvider === 'remote') {
+        return { route: 'remote_capture_required' };
+      }
+      if (nextListenLocalPreference) {
+        return { route: 'local_voice_next_listen_preference' };
+      }
+      if (!endpointAvailable && hasVoiceModule) {
+        return {
+          route: 'local_voice_remote_unavailable',
+          fallbackReason: 'remote_start_unavailable_missing_url',
+        };
+      }
+      return { route: 'remote_capture_required' };
+    },
+    [],
+  );
+
+  const startAvLocalVoiceListening = useCallback(
+    async (
+      recordingSessionId: string,
+      sttProvider: SttProvider,
+      opts?: {
+        clearedNextListenPreference?: boolean;
+        startTimeFallbackReason?: string;
+      },
+    ) => {
+      const voice = voiceRef.current;
+      if (!voice) {
+        throw new Error('Voice module unavailable');
+      }
+      if (opts?.clearedNextListenPreference) {
+        nextListenLocalPreferenceRef.current = false;
+        logInfo(
+          'AgentOrchestrator',
+          'stt next-listen local preference cleared after local start',
+          { recordingSessionId },
+        );
+      }
+      if (opts?.startTimeFallbackReason) {
+        logInfo('AgentOrchestrator', 'stt start-time fallback to local', {
+          recordingSessionId,
+          stt_preferred_mode: sttProvider,
+          stt_override_applied: sessionSttOverrideAppliedRef.current ?? false,
+          stt_env_mode: getSttProvider(),
+          stt_start_time_fallback_applied: true,
+          stt_mechanism_reason_class: opts.startTimeFallbackReason,
+        });
+      }
+      try {
+        await voice.start('en-US');
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const nativeVoice = getVoiceNative();
+        if (
+          msg.toLowerCase().includes('startspeech is null') &&
+          typeof nativeVoice?.startSpeech === 'function'
+        ) {
+          await nativeVoice.startSpeech('en-US');
+        } else {
+          throw e;
+        }
+      }
+      listenSttPathRef.current = 'local';
+      setAudioState('listening', { recordingSessionId });
+      clearIoBlock();
+      recordingSessionRef.current = recordingSessionId;
+      speechEndedRef.current = false;
+      logInfo('AgentOrchestrator', 'voice listen active', {
+        recordingSessionId,
+        stt_preferred_mode: sttProvider,
+        stt_override_applied: sessionSttOverrideAppliedRef.current ?? false,
+        stt_env_mode: getSttProvider(),
+        stt_effective_listen_mode: 'local',
+        startLatencyMs:
+          recordingStartAtRef.current != null
+            ? Date.now() - recordingStartAtRef.current
+            : undefined,
+      });
+      logInfo('AgentOrchestrator', 'start attempt accepted', {
+        recordingSessionId,
+      });
+      playListenIn();
+    },
+    [clearIoBlock, playListenIn, setAudioState],
+  );
+
+  const startAvRemoteCaptureListening = useCallback(
+    async (
+      recordingSessionId: string,
+      sttProvider: SttProvider,
+    ): Promise<boolean> => {
+      const captureStarted = await sttAudioCapture.beginCapture(recordingSessionId);
+      if (!captureStarted) {
+        return false;
+      }
+      listenSttPathRef.current = 'remote';
+      setAudioState('listening', { recordingSessionId });
+      clearIoBlock();
+      recordingSessionRef.current = recordingSessionId;
+      speechEndedRef.current = false;
+      logInfo('AgentOrchestrator', 'voice listen active', {
+        recordingSessionId,
+        stt_preferred_mode: sttProvider,
+        stt_override_applied: sessionSttOverrideAppliedRef.current ?? false,
+        stt_env_mode: getSttProvider(),
+        stt_effective_listen_mode: 'remote',
+        startLatencyMs:
+          recordingStartAtRef.current != null
+            ? Date.now() - recordingStartAtRef.current
+            : undefined,
+      });
+      logInfo('AgentOrchestrator', 'start attempt accepted', {
+        recordingSessionId,
+      });
+      playListenIn();
+      return true;
+    },
+    [clearIoBlock, playListenIn, setAudioState, sttAudioCapture],
+  );
+
+  // ===== AV isolation: playback command coordination mechanics =====
+  const selectAvPlaybackRoute = useCallback((canUsePiper: boolean): AvPlaybackRoute => {
+    return canUsePiper ? 'piper' : 'react-native-tts';
+  }, []);
+
+  const startAvPlaybackLifecycle = useCallback(
+    (provider: AvPlaybackRoute): AvPlaybackFact => {
+      activePlaybackProviderRef.current = provider;
+      const ttsStartedAt = Date.now();
+      if (isLogGateEnabled('playbackHandoff')) {
+        logInfo('AgentOrchestrator', 'playback started', {
+          provider,
+        });
+      }
+      return {
+        event: 'started',
+        provider,
+        requestId: playbackRequestIdRef.current,
+        at: ttsStartedAt,
+      };
+    },
+    [],
+  );
+
+  const finishAvPlaybackLifecycle = useCallback(
+    (endedAt: number, event: 'completed' | 'cancelled' = 'completed'): AvPlaybackFact => {
+      const provider = activePlaybackProviderRef.current ?? 'react-native-tts';
+      activePlaybackProviderRef.current = null;
+      return {
+        event,
+        provider,
+        requestId: playbackRequestIdRef.current,
+        at: endedAt,
+      };
+    },
+    [],
+  );
+
+  const applyPlaybackSemanticStart = useCallback((fact: AvPlaybackFact) => {
+    setProcessingSubstate(null);
+    setMode('speaking');
+    setLifecycle('speaking');
+    emitRequestDebug(requestDebugSinkRef, {
+      type: 'tts_start',
+      requestId: fact.requestId,
+      ttsStartedAt: fact.at,
+      timestamp: fact.at,
+      lifecycle: 'speaking',
+    });
+    listenersRef?.current?.onPlaybackStart?.();
+  }, [listenersRef, requestDebugSinkRef]);
+
+  const applyPlaybackSemanticExit = useCallback((fact: AvPlaybackFact) => {
+    emitRequestDebug(requestDebugSinkRef, {
+      type: 'tts_end',
+      requestId: fact.requestId,
+      ttsEndedAt: fact.at,
+      timestamp: fact.at,
+      lifecycle: 'idle',
+    });
+    if (fact.event === 'completed' && fact.requestId != null) {
+      pendingPlaybackCompleteRef.current = {
+        requestId: fact.requestId,
+        endedAt: fact.at,
+      };
+    }
+    playbackRequestIdRef.current = null;
+    setProcessingSubstate(null);
+    setMode('idle');
+    setLifecycle('idle');
+    setAudioState('idleReady', {
+      reason: fact.event === 'cancelled' ? 'playbackCancelled' : 'playbackComplete',
+    });
+    if (fact.event === 'cancelled') {
+      logInfo('AgentOrchestrator', 'playback cancelled');
+    } else {
+      logInfo('AgentOrchestrator', 'playback completed');
+    }
+    listenersRef?.current?.onPlaybackEnd?.();
+  }, [listenersRef, requestDebugSinkRef, setAudioState]);
+
+  const runRemoteStopFinalizeMechanics = useCallback(
+    async (recordingSessionId?: string): Promise<RemoteStopFinalizeFact> => {
+      const captureResult = await sttAudioCapture.endCapture(recordingSessionId);
+      if (!captureResult.ok) {
+        return {
+          kind: 'capture_failed',
+          recordingSessionId,
+          failureKind: captureResult.failureKind,
+          message: captureResult.message,
+        };
+      }
+      pendingCapturedAudioRef.current = captureResult.capture;
+      setAudioState('settling', {
+        recordingSessionId,
+        reason: 'remoteCaptureComplete',
+      });
+      lastRemoteSttEmptyRef.current = false;
+      const sttPromise = transcribeCapturedAudioIfNeeded(recordingSessionId);
+      const settleTimeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error('ORCHESTRATOR_STT_SETTLE_TIMEOUT')),
+          ORCHESTRATOR_STT_SETTLE_TIMEOUT_MS,
+        ),
+      );
+      try {
+        const sttReady = await Promise.race([sttPromise, settleTimeoutPromise]);
+        if (!sttReady) {
+          const wasEmptyTranscript = lastRemoteSttEmptyRef.current;
+          lastRemoteSttEmptyRef.current = false;
+          return {
+            kind: 'stt_unavailable',
+            recordingSessionId,
+            emptyTranscript: wasEmptyTranscript,
+          };
+        }
+        return { kind: 'transcript_ready', recordingSessionId };
+      } catch (e) {
+        if (
+          e instanceof Error &&
+          e.message === 'ORCHESTRATOR_STT_SETTLE_TIMEOUT'
+        ) {
+          return { kind: 'stt_timeout', recordingSessionId };
+        }
+        throw e;
+      }
+    },
+    [setAudioState, sttAudioCapture, transcribeCapturedAudioIfNeeded],
+  );
+
   const stopListening = useCallback(async () => {
     const recordingSessionId = recordingSessionRef.current ?? undefined;
     logInfo('AgentOrchestrator', 'voice listen stop requested', {
@@ -1010,63 +1308,37 @@ export function useAgentOrchestrator(
     stopRequestedRef.current = true;
     setAudioState('stopping', { recordingSessionId, reason: 'stopForSubmit' });
     if (listenSttPathRef.current === 'remote') {
-      const captureResult = await sttAudioCapture.endCapture(
-        recordingSessionId,
-      );
-      if (!captureResult.ok) {
+      const mechanics = await runRemoteStopFinalizeMechanics(recordingSessionId);
+      if (mechanics.kind === 'capture_failed') {
         handleLocalCaptureFailure(
-          captureResult.failureKind,
-          captureResult.message,
-          recordingSessionId,
+          mechanics.failureKind,
+          mechanics.message,
+          mechanics.recordingSessionId,
         );
         finalizeStop('remoteCaptureFailed', recordingSessionId);
         return;
       }
-      pendingCapturedAudioRef.current = captureResult.capture;
-      setAudioState('settling', {
-        recordingSessionId,
-        reason: 'remoteCaptureComplete',
-      });
-      lastRemoteSttEmptyRef.current = false;
-      const sttPromise = transcribeCapturedAudioIfNeeded(recordingSessionId);
-      const settleTimeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error('ORCHESTRATOR_STT_SETTLE_TIMEOUT')),
-          ORCHESTRATOR_STT_SETTLE_TIMEOUT_MS,
-        ),
-      );
-      let sttReady: boolean;
-      try {
-        sttReady = await Promise.race([sttPromise, settleTimeoutPromise]);
-      } catch (e) {
-        if (
-          e instanceof Error &&
-          e.message === 'ORCHESTRATOR_STT_SETTLE_TIMEOUT'
-        ) {
-          logWarn(
-            'AgentOrchestrator',
-            'orchestrator-level STT settle timeout fired',
-            {
-              recordingSessionId,
-              timeoutMs: ORCHESTRATOR_STT_SETTLE_TIMEOUT_MS,
-            },
-          );
-          failRemoteStt(
-            'Remote STT request timed out (orchestrator)',
+      if (mechanics.kind === 'stt_timeout') {
+        logWarn(
+          'AgentOrchestrator',
+          'orchestrator-level STT settle timeout fired',
+          {
             recordingSessionId,
-            { mechanismReason: 'orchestrator_stt_settle_timeout' },
-          );
-          finalizeStop('remoteSttFailed', recordingSessionId, {
-            keepLifecycle: true,
-          });
-          return;
-        }
-        throw e;
+            timeoutMs: ORCHESTRATOR_STT_SETTLE_TIMEOUT_MS,
+          },
+        );
+        failRemoteStt(
+          'Remote STT request timed out (orchestrator)',
+          recordingSessionId,
+          { mechanismReason: 'orchestrator_stt_settle_timeout' },
+        );
+        finalizeStop('remoteSttFailed', recordingSessionId, {
+          keepLifecycle: true,
+        });
+        return;
       }
-      if (!sttReady) {
-        const wasEmptyTranscript = lastRemoteSttEmptyRef.current;
-        lastRemoteSttEmptyRef.current = false;
-        if (wasEmptyTranscript) {
+      if (mechanics.kind === 'stt_unavailable') {
+        if (mechanics.emptyTranscript) {
           emitRecoverableFailure('noUsableTranscript', {
             recordingSessionId,
             reason: 'remoteSttEmptyTranscript',
@@ -1144,11 +1416,10 @@ export function useAgentOrchestrator(
     listenersRef,
     resolveSettlement,
     runNativeStopWithLogging,
+    runRemoteStopFinalizeMechanics,
     setAudioState,
     sessionCoordinator,
-    sttAudioCapture,
     settlementCoordinator,
-    transcribeCapturedAudioIfNeeded,
   ]);
 
   const startListening = useCallback(
@@ -1251,114 +1522,13 @@ export function useAgentOrchestrator(
       firstFinalAtRef.current = null;
       setAudioState('starting', { recordingSessionId });
       try {
-        const startLocalVoiceListening = async (opts: {
-          clearedNextListenPreference?: boolean;
-          startTimeFallbackApplied?: boolean;
-          startTimeFallbackReason?: string;
-        } = {}) => {
-          const voice = voiceRef.current;
-          if (!voice) {
-            throw new Error('Voice module unavailable');
-          }
-          if (opts.clearedNextListenPreference) {
-            nextListenLocalPreferenceRef.current = false;
-            logInfo(
-              'AgentOrchestrator',
-              'stt next-listen local preference cleared after local start',
-              { recordingSessionId },
-            );
-          }
-          if (opts.startTimeFallbackApplied) {
-            logInfo('AgentOrchestrator', 'stt start-time fallback to local', {
-              recordingSessionId,
-              stt_preferred_mode: sttProvider,
-              stt_override_applied: sessionSttOverrideAppliedRef.current ?? false,
-              stt_env_mode: getSttProvider(),
-              stt_start_time_fallback_applied: true,
-              stt_mechanism_reason_class:
-                opts.startTimeFallbackReason ?? 'remote_start_unavailable',
-            });
-          }
-          try {
-            await voice.start('en-US');
-          } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
-            const nativeVoice = getVoiceNative();
-            if (
-              msg.toLowerCase().includes('startspeech is null') &&
-              typeof nativeVoice?.startSpeech === 'function'
-            ) {
-              await nativeVoice.startSpeech('en-US');
-            } else {
-              throw e;
-            }
-          }
-          listenSttPathRef.current = 'local';
-          setAudioState('listening', { recordingSessionId });
-          clearIoBlock();
-          recordingSessionRef.current = recordingSessionId;
-          speechEndedRef.current = false;
-          logInfo('AgentOrchestrator', 'voice listen active', {
-            recordingSessionId,
-            stt_preferred_mode: sttProvider,
-            stt_override_applied: sessionSttOverrideAppliedRef.current ?? false,
-            stt_env_mode: getSttProvider(),
-            stt_effective_listen_mode: 'local',
-            startLatencyMs:
-              recordingStartAtRef.current != null
-                ? Date.now() - recordingStartAtRef.current
-                : undefined,
-          });
-          logInfo('AgentOrchestrator', 'start attempt accepted', {
-            recordingSessionId,
-          });
-          playListenIn();
-        };
-
-        const startRemoteCaptureListening = async () => {
-          const captureStarted = await sttAudioCapture.beginCapture(
-            recordingSessionId,
-          );
-          if (!captureStarted) {
-            return false;
-          }
-          remoteCaptureStarted = true;
-          listenSttPathRef.current = 'remote';
-          setAudioState('listening', { recordingSessionId });
-          clearIoBlock();
-          recordingSessionRef.current = recordingSessionId;
-          speechEndedRef.current = false;
-          logInfo('AgentOrchestrator', 'voice listen active', {
-            recordingSessionId,
-            stt_preferred_mode: sttProvider,
-            stt_override_applied: sessionSttOverrideAppliedRef.current ?? false,
-            stt_env_mode: getSttProvider(),
-            stt_effective_listen_mode: 'remote',
-            startLatencyMs:
-              recordingStartAtRef.current != null
-                ? Date.now() - recordingStartAtRef.current
-                : undefined,
-          });
-          logInfo('AgentOrchestrator', 'start attempt accepted', {
-            recordingSessionId,
-          });
-          playListenIn();
-          return true;
-        };
-
-        if (sttProvider === 'local') {
-          if (!V) {
-            logWarn(
-              'AgentOrchestrator',
-              'start attempt rejected: voice module unavailable',
-            );
-            return { ok: false, reason: 'voiceUnavailable' };
-          }
-          await startLocalVoiceListening();
-          return { ok: true };
-        }
-
-        if (sttProvider === 'remote') {
+        const startRoute = selectAvStartRoute({
+          sttProvider,
+          hasVoiceModule: !!V,
+          endpointAvailable: endpointBaseUrl != null,
+          nextListenLocalPreference: nextListenLocalPreferenceRef.current,
+        });
+        if (startRoute.route === 'remote_capture_required') {
           if (!endpointBaseUrl) {
             const message =
               'OpenAI proxy base URL not configured (ENDPOINT_BASE_URL)';
@@ -1374,71 +1544,46 @@ export function useAgentOrchestrator(
             );
             return { ok: false, reason: 'sttBaseUrlMissing' };
           }
-          const remoteOk = await startRemoteCaptureListening();
+          const remoteOk = await startAvRemoteCaptureListening(
+            recordingSessionId,
+            sttProvider,
+          );
           if (!remoteOk) {
-            const message = 'Remote STT audio capture unavailable';
-            setAudioState('idleReady', { recordingSessionId });
-            setError(message);
-            logError(
-              'AgentOrchestrator',
-              'remote stt start blocked: audio capture unavailable',
-              {
-                recordingSessionId,
-                sttProvider,
-                endpointBaseUrl,
-              },
-            );
-            return { ok: false, reason: 'sttCaptureUnavailable' };
+            if (sttProvider === 'remote') {
+              const message = 'Remote STT audio capture unavailable';
+              setAudioState('idleReady', { recordingSessionId });
+              setError(message);
+              logError(
+                'AgentOrchestrator',
+                'remote stt start blocked: audio capture unavailable',
+                {
+                  recordingSessionId,
+                  sttProvider,
+                  endpointBaseUrl,
+                },
+              );
+              return { ok: false, reason: 'sttCaptureUnavailable' };
+            }
+          } else {
+            remoteCaptureStarted = true;
+            return { ok: true };
           }
-          return { ok: true };
         }
-
-        // remote_with_local_fallback
-        if (nextListenLocalPreferenceRef.current) {
-          if (!V) {
-            logWarn(
-              'AgentOrchestrator',
-              'start attempt rejected: voice module unavailable',
-            );
-            return { ok: false, reason: 'voiceUnavailable' };
-          }
-          await startLocalVoiceListening({
-            clearedNextListenPreference: true,
-          });
-          return { ok: true };
+        if (!V) {
+          logWarn(
+            'AgentOrchestrator',
+            'start attempt rejected: voice module unavailable',
+          );
+          return { ok: false, reason: 'voiceUnavailable' };
         }
-
-        if (!endpointBaseUrl) {
-          if (!V) {
-            logWarn(
-              'AgentOrchestrator',
-              'start attempt rejected: voice module unavailable',
-            );
-            return { ok: false, reason: 'voiceUnavailable' };
-          }
-          await startLocalVoiceListening({
-            startTimeFallbackApplied: true,
-            startTimeFallbackReason: 'remote_start_unavailable_missing_url',
-          });
-          return { ok: true };
-        }
-
-        const captureOk = await startRemoteCaptureListening();
-        if (!captureOk) {
-          if (!V) {
-            logWarn(
-              'AgentOrchestrator',
-              'start attempt rejected: voice module unavailable',
-            );
-            return { ok: false, reason: 'voiceUnavailable' };
-          }
-          await startLocalVoiceListening({
-            startTimeFallbackApplied: true,
-            startTimeFallbackReason:
-              'remote_start_unavailable_capture_failed',
-          });
-          return { ok: true };
-        }
+        await startAvLocalVoiceListening(recordingSessionId, sttProvider, {
+          clearedNextListenPreference:
+            startRoute.route === 'local_voice_next_listen_preference',
+          startTimeFallbackReason:
+            startRoute.route === 'local_voice_remote_unavailable'
+              ? startRoute.fallbackReason
+              : undefined,
+        });
         return { ok: true };
       } catch (e) {
         if (remoteCaptureStarted) {
@@ -1476,14 +1621,14 @@ export function useAgentOrchestrator(
     },
     [
       applyIoBlock,
-      clearIoBlock,
       endpointBaseUrl,
       mode,
-      playListenIn,
+      selectAvStartRoute,
       setAudioState,
       sessionCoordinator,
       settlementCoordinator,
-      snapshotSttResolution,
+      startAvLocalVoiceListening,
+      startAvRemoteCaptureListening,
       sttAudioCapture,
       updateTranscript,
     ],
@@ -1538,8 +1683,8 @@ export function useAgentOrchestrator(
       });
       return null;
     }
-  const acceptedTranscript = transcribedTextRef.current;
-  const normalizedTranscript = question;
+    const acceptedTranscript = transcribedTextRef.current;
+    const normalizedTranscript = question;
     requestIdRef.current += 1;
     const reqId = requestIdRef.current;
     previousCommittedResponseRef.current = responseTextRef.current;
@@ -1664,32 +1809,38 @@ export function useAgentOrchestrator(
 
       const failedAt = Date.now();
       const domainValid = runResult.classification.stage !== 'speech';
-      emitContextArtifactDebug(requestDebugSinkRef, {
-        requestId: reqId,
-        timestamp: failedAt,
-      }, () =>
-        projectContextArtifact({
+      emitContextArtifactDebug(
+        requestDebugSinkRef,
+        {
           requestId: reqId,
-          timestampMs: failedAt,
-          rawText: acceptedTranscript,
-          normalizedText: normalizedTranscript,
-          domainValid,
-          validationSummary: null,
-          fallbackUsed: false,
-        }),
+          timestamp: failedAt,
+        },
+        () =>
+          projectContextArtifact({
+            requestId: reqId,
+            timestampMs: failedAt,
+            rawText: acceptedTranscript,
+            normalizedText: normalizedTranscript,
+            domainValid,
+            validationSummary: null,
+            fallbackUsed: false,
+          }),
       );
-      emitFailureArtifactDebug(requestDebugSinkRef, {
-        requestId: reqId,
-        timestamp: failedAt,
-      }, () =>
-        projectFailureArtifact({
+      emitFailureArtifactDebug(
+        requestDebugSinkRef,
+        {
           requestId: reqId,
-          timestampMs: failedAt,
-          rawText: acceptedTranscript,
-          normalizedText: normalizedTranscript,
-          failureClassification: runResult.classification,
-          domainValid,
-        }),
+          timestamp: failedAt,
+        },
+        () =>
+          projectFailureArtifact({
+            requestId: reqId,
+            timestampMs: failedAt,
+            rawText: acceptedTranscript,
+            normalizedText: normalizedTranscript,
+            failureClassification: runResult.classification,
+            domainValid,
+          }),
       );
       setError(runResult.displayMessage);
       listenersRef?.current?.onError?.(runResult.classification.kind, {
@@ -1728,33 +1879,39 @@ export function useAgentOrchestrator(
       // responsible for lifecycle fanout + `tts_start` debug evidence.
       setTimeout(() => {
         const completedAtForArtifacts = Date.now();
-        emitContextArtifactDebug(requestDebugSinkRef, {
-          requestId: reqId,
-          timestamp: completedAtForArtifacts,
-        }, () =>
-          projectContextArtifact({
+        emitContextArtifactDebug(
+          requestDebugSinkRef,
+          {
             requestId: reqId,
-            timestampMs: completedAtForArtifacts,
-            rawText: acceptedTranscript,
-            normalizedText: normalizedTranscript,
-            domainValid: true,
-            validationSummary: runResult.validationSummary,
-            fallbackUsed: false,
-          }),
+            timestamp: completedAtForArtifacts,
+          },
+          () =>
+            projectContextArtifact({
+              requestId: reqId,
+              timestampMs: completedAtForArtifacts,
+              rawText: acceptedTranscript,
+              normalizedText: normalizedTranscript,
+              domainValid: true,
+              validationSummary: runResult.validationSummary,
+              fallbackUsed: false,
+            }),
         );
-        emitSettlementArtifactDebug(requestDebugSinkRef, {
-          requestId: reqId,
-          timestamp: completedAtForArtifacts,
-        }, () =>
-          projectSettlementArtifact({
+        emitSettlementArtifactDebug(
+          requestDebugSinkRef,
+          {
             requestId: reqId,
-            timestampMs: completedAtForArtifacts,
-            lifecycle: lifecycleRef.current,
-            rawText: acceptedTranscript,
-            normalizedText: normalizedTranscript,
-            responseText: runResult.committedText,
-            validationSummary: runResult.validationSummary,
-          }),
+            timestamp: completedAtForArtifacts,
+          },
+          () =>
+            projectSettlementArtifact({
+              requestId: reqId,
+              timestampMs: completedAtForArtifacts,
+              lifecycle: lifecycleRef.current,
+              rawText: acceptedTranscript,
+              normalizedText: normalizedTranscript,
+              responseText: runResult.committedText,
+              validationSummary: runResult.validationSummary,
+            }),
         );
       }, 0);
       return runResult.committedText;
@@ -1764,33 +1921,39 @@ export function useAgentOrchestrator(
     setLifecycle('idle');
     if (!runResult.shouldPlay) {
       const completedAtForArtifacts = Date.now();
-      emitContextArtifactDebug(requestDebugSinkRef, {
-        requestId: reqId,
-        timestamp: completedAtForArtifacts,
-      }, () =>
-        projectContextArtifact({
+      emitContextArtifactDebug(
+        requestDebugSinkRef,
+        {
           requestId: reqId,
-          timestampMs: completedAtForArtifacts,
-          rawText: acceptedTranscript,
-          normalizedText: normalizedTranscript,
-          domainValid: true,
-          validationSummary: runResult.validationSummary,
-          fallbackUsed: false,
-        }),
+          timestamp: completedAtForArtifacts,
+        },
+        () =>
+          projectContextArtifact({
+            requestId: reqId,
+            timestampMs: completedAtForArtifacts,
+            rawText: acceptedTranscript,
+            normalizedText: normalizedTranscript,
+            domainValid: true,
+            validationSummary: runResult.validationSummary,
+            fallbackUsed: false,
+          }),
       );
-      emitSettlementArtifactDebug(requestDebugSinkRef, {
-        requestId: reqId,
-        timestamp: completedAtForArtifacts,
-      }, () =>
-        projectSettlementArtifact({
+      emitSettlementArtifactDebug(
+        requestDebugSinkRef,
+        {
           requestId: reqId,
-          timestampMs: completedAtForArtifacts,
-          lifecycle: lifecycleRef.current,
-          rawText: acceptedTranscript,
-          normalizedText: normalizedTranscript,
-          responseText: runResult.committedText,
-          validationSummary: runResult.validationSummary,
-        }),
+          timestamp: completedAtForArtifacts,
+        },
+        () =>
+          projectSettlementArtifact({
+            requestId: reqId,
+            timestampMs: completedAtForArtifacts,
+            lifecycle: lifecycleRef.current,
+            rawText: acceptedTranscript,
+            normalizedText: normalizedTranscript,
+            responseText: runResult.committedText,
+            validationSummary: runResult.validationSummary,
+          }),
       );
       activeRequestIdRef.current = 0;
       const completedAt = Date.now();
@@ -1830,6 +1993,7 @@ export function useAgentOrchestrator(
         }
       }
       if (canUsePiper) {
+        const playbackRoute = selectAvPlaybackRoute(true);
         logInfo('Playback', 'tts path selected', {
           provider: 'piper',
           textChars: normalized.length,
@@ -1844,25 +2008,9 @@ export function useAgentOrchestrator(
         });
         // Experiment: invoke speak() first, defer speaking-state fanout to next macrotask.
         const speakPromise = PiperTts.speak(normalized);
-        const reqIdForTts = playbackRequestIdRef.current;
         setTimeout(() => {
-          setProcessingSubstate(null);
-          setMode('speaking');
-          setLifecycle('speaking');
-          const ttsStartedAt = Date.now();
-          emitRequestDebug(requestDebugSinkRef, {
-            type: 'tts_start',
-            requestId: reqIdForTts,
-            ttsStartedAt,
-            timestamp: ttsStartedAt,
-            lifecycle: 'speaking',
-          });
-          if (isLogGateEnabled('playbackHandoff')) {
-            logInfo('AgentOrchestrator', 'playback started', {
-              provider: 'piper',
-            });
-          }
-          listenersRef?.current?.onPlaybackStart?.();
+          const fact = startAvPlaybackLifecycle(playbackRoute);
+          applyPlaybackSemanticStart(fact);
         }, 0);
         try {
           await speakPromise;
@@ -1878,34 +2026,16 @@ export function useAgentOrchestrator(
           }
         } finally {
           const ttsEndedAt = Date.now();
-          const reqIdForLog = playbackRequestIdRef.current;
           // Defer `tts_end` + idle lifecycle fanout so `tts_start` (timers phase) cannot
           // be observed after `tts_end` when `speak()` resolves immediately in tests/mocks.
           setTimeout(() => {
-            emitRequestDebug(requestDebugSinkRef, {
-              type: 'tts_end',
-              requestId: reqIdForLog,
-              ttsEndedAt,
-              timestamp: ttsEndedAt,
-              lifecycle: 'idle',
-            });
-            if (reqIdForLog != null) {
-              pendingPlaybackCompleteRef.current = {
-                requestId: reqIdForLog,
-                endedAt: ttsEndedAt,
-              };
-            }
-            playbackRequestIdRef.current = null;
-            setProcessingSubstate(null);
-            setMode('idle');
-            setLifecycle('idle');
-            setAudioState('idleReady', { reason: 'playbackComplete' });
-            logInfo('AgentOrchestrator', 'playback completed');
-            listenersRef?.current?.onPlaybackEnd?.();
+            const fact = finishAvPlaybackLifecycle(ttsEndedAt, 'completed');
+            applyPlaybackSemanticExit(fact);
           }, 0);
         }
         return;
       }
+      const playbackRoute = selectAvPlaybackRoute(false);
       let Tts: TtsModule;
       try {
         Tts = require('react-native-tts').default as TtsModule;
@@ -1923,29 +2053,10 @@ export function useAgentOrchestrator(
           provider: 'react-native-tts',
           textChars: normalized.length,
         });
-        const reqIdForTts = playbackRequestIdRef.current;
         const onFinish = () => {
           const ttsEndedAt = Date.now();
-          emitRequestDebug(requestDebugSinkRef, {
-            type: 'tts_end',
-            requestId: reqIdForTts,
-            ttsEndedAt,
-            timestamp: ttsEndedAt,
-            lifecycle: 'idle',
-          });
-          if (reqIdForTts != null) {
-            pendingPlaybackCompleteRef.current = {
-              requestId: reqIdForTts,
-              endedAt: ttsEndedAt,
-            };
-          }
-          playbackRequestIdRef.current = null;
-          setProcessingSubstate(null);
-          setMode('idle');
-          setLifecycle('idle');
-          setAudioState('idleReady', { reason: 'playbackComplete' });
-          logInfo('AgentOrchestrator', 'playback completed');
-          listenersRef?.current?.onPlaybackEnd?.();
+          const fact = finishAvPlaybackLifecycle(ttsEndedAt, 'completed');
+          applyPlaybackSemanticExit(fact);
           try {
             if (typeof Tts.removeEventListener === 'function') {
               Tts.removeEventListener('tts-finish', onFinish);
@@ -1957,23 +2068,8 @@ export function useAgentOrchestrator(
         };
         Tts.addEventListener('tts-finish', onFinish);
         Tts.addEventListener('tts-cancel', onFinish);
-        setProcessingSubstate(null);
-        setMode('speaking');
-        setLifecycle('speaking');
-        const ttsStartedAt = Date.now();
-        emitRequestDebug(requestDebugSinkRef, {
-          type: 'tts_start',
-          requestId: reqIdForTts,
-          ttsStartedAt,
-          timestamp: ttsStartedAt,
-          lifecycle: 'speaking',
-        });
-        if (isLogGateEnabled('playbackHandoff')) {
-          logInfo('AgentOrchestrator', 'playback started', {
-            provider: 'react-native-tts',
-          });
-        }
-        listenersRef?.current?.onPlaybackStart?.();
+        const fact = startAvPlaybackLifecycle(playbackRoute);
+        applyPlaybackSemanticStart(fact);
         Tts.speak(normalized);
       } catch (e) {
         if (!playbackInterruptedRef.current) {
@@ -1992,7 +2088,14 @@ export function useAgentOrchestrator(
         }
       }
     },
-    [piperAvailable, listenersRef, requestDebugSinkRef, setAudioState],
+    [
+      applyPlaybackSemanticExit,
+      applyPlaybackSemanticStart,
+      finishAvPlaybackLifecycle,
+      piperAvailable,
+      selectAvPlaybackRoute,
+      startAvPlaybackLifecycle,
+    ],
   );
 
   playTextRef.current = playText;
@@ -2011,14 +2114,12 @@ export function useAgentOrchestrator(
     } catch {
       /* ignore */
     }
-    setProcessingSubstate(null);
-    setMode('idle');
-    setLifecycle('idle');
-    listenersRef?.current?.onPlaybackEnd?.();
+    const fact = finishAvPlaybackLifecycle(Date.now(), 'cancelled');
+    applyPlaybackSemanticExit(fact);
     setTimeout(() => {
       playbackInterruptedRef.current = false;
     }, 120);
-  }, [listenersRef]);
+  }, [applyPlaybackSemanticExit, finishAvPlaybackLifecycle]);
 
   const clearError = useCallback(() => {
     setError(null);
@@ -2230,7 +2331,9 @@ export function useAgentOrchestrator(
             recordingSessionId: sessionId,
             reason: rejectReason,
             priorChars: priorCommitted.length,
-            priorTranscriptPreview: transcriptPreview(transcribedTextRef.current),
+            priorTranscriptPreview: transcriptPreview(
+              transcribedTextRef.current,
+            ),
             incomingChunkChars: normalizedIncoming.length,
             incomingTranscriptPreview: transcriptPreview(normalizedIncoming),
           });
@@ -2242,12 +2345,14 @@ export function useAgentOrchestrator(
                 recordingSessionId: sessionId,
                 pendingSubmitWhenReady:
                   settlementCoordinator.getPendingSubmitWhenReady(),
-                settlementResolved: settlementCoordinator.getSettlementResolved(),
+                settlementResolved:
+                  settlementCoordinator.getSettlementResolved(),
                 finalStabilizationActive:
                   settlementCoordinator.getFinalStabilizationActive(),
                 incomingChunkChars: normalizedIncoming.length,
                 incomingTranscriptText: normalizedIncoming,
-                incomingTranscriptPreview: transcriptPreview(normalizedIncoming),
+                incomingTranscriptPreview:
+                  transcriptPreview(normalizedIncoming),
               },
             );
           }
