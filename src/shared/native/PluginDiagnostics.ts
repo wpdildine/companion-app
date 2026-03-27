@@ -79,6 +79,15 @@ function subscribeToAtlasNativeMic(): void {
         const entry = normalize('AtlasNativeMic', event);
         pushAndTrim(entry, bufferSize);
         toConsole(entry);
+        console.log('[AtlasNativeMic] validation_event', {
+          timestamp: entry.timestamp,
+          type: entry.type,
+          sessionId:
+            typeof entry.data?.sessionId === 'string' ? entry.data.sessionId : undefined,
+          phase: typeof entry.data?.phase === 'string' ? entry.data.phase : undefined,
+          stale: entry.data?.stale === true,
+          code: typeof entry.data?.code === 'string' ? entry.data.code : undefined,
+        });
       });
       unsubscribes.push(unsub);
     }
