@@ -55,6 +55,7 @@
     "expo-gl": "~16.0.10",
     "llama.rn": "^0.11.4",
     "piper-tts": "file:plugins/piper-tts",
+    "atlas-native-mic": "file:plugins/atlas-native-mic",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.4",

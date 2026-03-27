@@ -8,6 +8,8 @@ import {
   useAudioRecorder,
 } from 'expo-audio';
 import { Directory, File, Paths } from 'expo-file-system';
+import AtlasNativeMic from 'atlas-native-mic';
+import { isNativeMicCaptureEnabled } from '../../shared/config/endpointConfig';
 import { logInfo, logWarn } from '../../shared/logging';
 
 /** Ensure EXPO_OS is set before expo-audio API calls (Android). */
@@ -136,14 +138,34 @@ async function restorePlaybackAudioMode(): Promise<void> {
   });
 }
 
+function sessionKey(recordingSessionId?: string): string {
+  return recordingSessionId?.trim() || 'capture';
+}
+
+function shouldAttemptNativeMic(): boolean {
+  return isNativeMicCaptureEnabled() && AtlasNativeMic.isAvailable();
+}
+
+function toFileUri(uri: string): string {
+  if (uri.startsWith('file://')) return uri;
+  if (uri.length === 0) return uri;
+  return `file://${uri}`;
+}
+
 export function useSttAudioCapture() {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [isCapturing, setIsCapturing] = useState(false);
   const captureStartedAtRef = useRef<number | null>(null);
+  const nativeMicActiveRef = useRef(false);
+  const lastNativeCaptureRef = useRef<{
+    sessionId: string;
+    capture: CapturedSttAudio;
+  } | null>(null);
 
   const beginCapture = useCallback(
     async (recordingSessionId?: string): Promise<boolean> => {
       ensureExpoOsBeforeCapture();
+      const sid = sessionKey(recordingSessionId);
       try {
         let permissions: { granted: boolean; status?: string };
         try {
@@ -163,6 +185,32 @@ export function useSttAudioCapture() {
           });
           return false;
         }
+
+        if (shouldAttemptNativeMic()) {
+          try {
+            await AtlasNativeMic.init();
+            await AtlasNativeMic.startCapture(sid);
+            nativeMicActiveRef.current = true;
+            lastNativeCaptureRef.current = null;
+            captureStartedAtRef.current = Date.now();
+            setIsCapturing(true);
+            logInfo('AgentOrchestrator', 'stt audio capture started (native mic)', {
+              recordingSessionId,
+            });
+            return true;
+          } catch (e) {
+            nativeMicActiveRef.current = false;
+            logWarn(
+              'AgentOrchestrator',
+              'native mic capture start failed; falling back to expo-audio',
+              {
+                recordingSessionId,
+                message: errorMessage(e),
+              },
+            );
+          }
+        }
+
         await configureRecordingAudioMode();
         try {
           await recorder.prepareToRecordAsync(RecordingPresets.HIGH_QUALITY);
@@ -173,6 +221,7 @@ export function useSttAudioCapture() {
           }
         }
         recorder.record();
+        nativeMicActiveRef.current = false;
         captureStartedAtRef.current = Date.now();
         setIsCapturing(true);
         logInfo('AgentOrchestrator', 'stt audio capture started', { recordingSessionId });
@@ -180,6 +229,7 @@ export function useSttAudioCapture() {
       } catch (error) {
         setIsCapturing(false);
         captureStartedAtRef.current = null;
+        nativeMicActiveRef.current = false;
         logWarn('AgentOrchestrator', 'stt audio capture failed to start', {
           recordingSessionId,
           message: errorMessage(error),
@@ -197,6 +247,112 @@ export function useSttAudioCapture() {
 
   const endCapture = useCallback(
     async (recordingSessionId?: string): Promise<SttAudioCaptureStopResult> => {
+      const sid = sessionKey(recordingSessionId);
+
+      if (nativeMicActiveRef.current) {
+        let stopErrorMessage: string | null = null;
+        try {
+          const result = await AtlasNativeMic.stopFinalize(sid);
+          nativeMicActiveRef.current = false;
+          setIsCapturing(false);
+          if (result.duplicate) {
+            captureStartedAtRef.current = null;
+            try {
+              await restorePlaybackAudioMode();
+            } catch {
+              /* ignore */
+            }
+            const last = lastNativeCaptureRef.current;
+            if (last != null && last.sessionId === sid) {
+              logInfo(
+                'AgentOrchestrator',
+                'stt audio capture duplicate finalize treated as idempotent no-op (native mic)',
+                { recordingSessionId },
+              );
+              return { ok: true, capture: last.capture };
+            }
+            return {
+              ok: false,
+              failureKind: 'missingFileAfterStop',
+              message: 'duplicate stopFinalize without prior finalized capture (native mic)',
+            };
+          }
+          const rawUri = result.uri;
+          if (!rawUri) {
+            captureStartedAtRef.current = null;
+            try {
+              await restorePlaybackAudioMode();
+            } catch {
+              /* ignore */
+            }
+            return {
+              ok: false,
+              failureKind: 'missingFileAfterStop',
+              message: 'Native mic stop completed without capture URI',
+            };
+          }
+          const uri = toFileUri(rawUri);
+          const file = new File(uri);
+          const audioBase64 = await file.base64();
+          const filename = uri.split('/').pop() ?? `stt-${Date.now()}.m4a`;
+          const durationMillis =
+            result.durationMillis > 0
+              ? result.durationMillis
+              : captureStartedAtRef.current != null
+                ? Math.max(0, Date.now() - captureStartedAtRef.current)
+                : 0;
+          const mimeType = inferMimeType(uri);
+          const debugPreservedUri = preserveDebugCapture(
+            audioBase64,
+            filename,
+            recordingSessionId,
+          );
+          const payload: CapturedSttAudio = {
+            audioBase64,
+            mimeType,
+            filename,
+            durationMillis,
+            uri,
+            ...(debugPreservedUri != null && { debugPreservedUri }),
+          };
+          lastNativeCaptureRef.current = { sessionId: sid, capture: payload };
+          logInfo('AgentOrchestrator', 'stt audio capture completed (native mic)', {
+            recordingSessionId,
+            durationMillis,
+            filename,
+            mimeType,
+            sizeBase64Chars: audioBase64.length,
+            debugPreservedUri: debugPreservedUri ?? null,
+          });
+          captureStartedAtRef.current = null;
+          try {
+            await restorePlaybackAudioMode();
+          } catch {
+            /* ignore */
+          }
+          return { ok: true, capture: payload };
+        } catch (error) {
+          stopErrorMessage = errorMessage(error);
+          nativeMicActiveRef.current = false;
+          setIsCapturing(false);
+          captureStartedAtRef.current = null;
+          logWarn('AgentOrchestrator', 'stt audio capture native finalize failed', {
+            recordingSessionId,
+            message: stopErrorMessage,
+          });
+          try {
+            await restorePlaybackAudioMode();
+          } catch {
+            /* ignore */
+          }
+          return {
+            ok: false,
+            failureKind: 'finalizeFailed',
+            message: stopErrorMessage,
+          };
+        }
+      }
+
       let stopErrorMessage: string | null = null;
       try {
         await recorder.stop();
@@ -280,6 +436,28 @@ export function useSttAudioCapture() {
 
   const cancelCapture = useCallback(
     async (recordingSessionId?: string): Promise<void> => {
+      const sid = sessionKey(recordingSessionId);
+      if (nativeMicActiveRef.current) {
+        try {
+          await AtlasNativeMic.cancel(sid);
+        } catch {
+          /* ignore */
+        } finally {
+          lastNativeCaptureRef.current = null;
+          nativeMicActiveRef.current = false;
+          setIsCapturing(false);
+          captureStartedAtRef.current = null;
+          try {
+            await restorePlaybackAudioMode();
+          } catch {
+            /* ignore */
+          }
+          logInfo('AgentOrchestrator', 'stt audio capture cancelled (native mic)', {
+            recordingSessionId,
+          });
+        }
+        return;
+      }
       try {
         await recorder.stop();
       } catch {

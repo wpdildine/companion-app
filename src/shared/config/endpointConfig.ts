@@ -27,6 +27,18 @@ const rawSttProvider =
     ? process.env.STT_PROVIDER
     : undefined;
 
+/** Baked at build (babel-plugin-inline-dotenv). When true, remote STT capture uses atlas-native-mic instead of expo-audio. */
+const rawNativeMicCapture =
+  typeof process !== 'undefined' && process.env != null
+    ? process.env.NATIVE_MIC_CAPTURE
+    : undefined;
+
+/** When true, remote capture uses atlas-native-mic (see docs/NATIVE_MIC_CONTRACT.md); default false (expo-audio). Baked at build. */
+export function isNativeMicCaptureEnabled(): boolean {
+  const v = rawNativeMicCapture?.trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
 /** Build-time STT mode: `local` (native only), `remote` (proxy only), `remote_with_local_fallback` (prefer remote; start-time fallback + next-listen local preference per orchestrator policy). */
 export type SttProvider = 'local' | 'remote' | 'remote_with_local_fallback';
 

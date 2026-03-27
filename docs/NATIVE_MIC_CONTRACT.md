@@ -161,3 +161,42 @@ A reader can implement native plugins that achieve: deterministic start/stop; sa
 - [PLUGIN_CONTRACT.md](./PLUGIN_CONTRACT.md) — baseline native plugin rules and payload floors.
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — agent layout; orchestrator vs `voice/` mechanism.
 - [APP_ARCHITECTURE.md](./APP_ARCHITECTURE.md) — AgentOrchestrator ownership, stabilization, error semantics.
+
+---
+
+## 11. Implementation appendix (AtlasNativeMic, Cycle 3)
+
+Normative **JS-facing** names for the `atlas-native-mic` package (`plugins/atlas-native-mic`). Platform implementations MUST match these strings at the bridge boundary.
+
+### Native module name
+
+- **iOS / Android:** `AtlasNativeMic`
+
+### Methods (async; reject with `{ code, message, ... }` per PLUGIN_CONTRACT)
+
+| Method | Purpose |
+|--------|--------|
+| `init()` | Idempotent module readiness. |
+| `startCapture(sessionId: string)` | Begin capture for `sessionId` (must match orchestrator `recordingSessionId` when used from remote STT path). |
+| `stopFinalize(sessionId: string)` | Success-path stop; resolves with `{ uri: string, durationMillis: number, duplicate?: boolean }`. |
+| `cancel(sessionId: string)` | Abandon capture without finalized audio. |
+| `teardown()` | Shutdown; late events dropped/tagged per §4. |
+| `getDebugInfo()` | Diagnostics string. |
+| `addListener` / `removeListeners` | Required for `NativeEventEmitter` on Android. |
+
+### Event `type` strings (native → JS)
+
+| `type` | Meaning |
+|--------|--------|
+| `mic_capture_started` | Session armed; `data.sessionId`, `data.phase` (e.g. `capturing`). |
+| `mic_capture_stopping` | Finalization in progress; `data.phase` `stopping`. |
+| `mic_capture_finalized` | Terminal success path; `data.phase` `finalized`. |
+| `mic_interruption` | Route/OS interruption (reserved; emit when implemented). |
+| `mic_failure` | Structured failure or cancel terminal (`data.code`, optional `data.classification`). |
+
+Every event body MUST include at least `sessionId` and `phase` in the map sent to JS (see §5).
+
+### App integration (remote capture only)
+
+- Build-time flag `NATIVE_MIC_CAPTURE` (`1` / `true` / `yes`): when set, [useSttAudioCapture.ts](../src/app/hooks/useSttAudioCapture.ts) uses `atlas-native-mic` instead of expo-audio for the **remote** STT capture path; default is **off** (expo-audio). Local `@react-native-voice/voice` path is unchanged.
+- `isNativeMicCaptureEnabled()` is exported from [endpointConfig.ts](../src/shared/config/endpointConfig.ts).
