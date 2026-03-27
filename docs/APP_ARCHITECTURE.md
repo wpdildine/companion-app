@@ -117,7 +117,7 @@ Do not put transient event logic into art-direction files. Per-layer render file
 
 ## Runtime behavior (stabilization)
 
-**Native microphone boundary:** Capture/session semantics at the native plugin ↔ JS boundary are governed by [docs/NATIVE_MIC_CONTRACT.md](docs/NATIVE_MIC_CONTRACT.md) (hardware/session facts, plugin lifecycle, events). AgentOrchestrator remains the owner of voice input lifecycle and settlement behavior below.
+**Native microphone boundary:** Capture/session semantics at the native plugin ↔ JS boundary are governed by [docs/NATIVE_MIC_CONTRACT.md](docs/NATIVE_MIC_CONTRACT.md) (hardware/session facts, plugin lifecycle, events). AgentOrchestrator remains the owner of voice input lifecycle and settlement behavior below. AV mechanics are implemented in `src/app/agent/av/`, while transcript settlement remains orchestrator-adjacent in `src/app/agent/orchestrator/`.
 
 - **Transcript settlement before submit** — For hold-to-speak release, submit runs only after transcript settlement. The surface calls `stopListeningAndRequestSubmit()`; the orchestrator waits for final result, speech end (with usable partial), or a bounded timeout, then invokes `onTranscriptReadyForSubmit` once. Submit must not be triggered by direct `stopListening()` + `submit()` on release.
 - **Single active ask** — Only one ask may be in flight. New submit attempts are blocked until the current request settles. Lifecycle transitions are request-scoped (active requestId); stale completions are ignored and logged.
@@ -245,6 +245,8 @@ Logs are state-change and event-based only; no per-frame or render-loop logging.
 - Composition root: `src/app/AgentSurface.tsx`
 - Earcon/haptic hooks: `src/shared/feedback/earcons.ts`, `src/shared/feedback/haptics.ts` (listening start/end; assets at `assets/sound/earcon_in.wav`, `earcon_out.wav`)
 - Agent roles: `src/app/agent/` — `useAgentOrchestrator.ts`, `useVisualizationController.ts`, `types.ts`, `index.ts`
+- Agent AV mechanics: `src/app/agent/av/` — `avSurface.ts`, `sessionCoordinator.ts`, `remoteStt.ts`, `voiceNative.ts`
+- Agent orchestrator-adjacent helpers: `src/app/agent/orchestrator/` — `telemetry.ts`, `artifactProjector.ts`, `transcriptSettlement.ts`, `modelPaths.ts`
 - Signal hook: `src/app/hooks/useVisualizationSignals.ts`
 - UI wrappers: `src/screens/voice/SemanticChannelView.tsx`, `src/app/ui/components/overlays/SemanticChannelLoadingView.tsx`
 - Overlay/panels: `src/app/ui/components/overlays/ResultsOverlay.tsx`, `src/app/ui/components/panels/debug/PipelineTelemetryPanel.tsx`, `src/app/ui/components/panels/debug/VizDebugPanel.tsx`

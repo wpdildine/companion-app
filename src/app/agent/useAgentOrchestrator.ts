@@ -61,7 +61,7 @@ import type {
   AgentOrchestratorState,
   ProcessingSubstate,
 } from './types';
-import { createRemoteSttCoordinator } from './voice/remoteStt';
+import { createRemoteSttCoordinator } from './av/remoteStt';
 import {
   cleanupPendingIosStopIfNeededMechanics,
   finishAvPlaybackLifecycleMechanics,
@@ -76,27 +76,27 @@ import {
   type AvPlaybackRoute,
   type AvStartRoute,
   type RemoteStopFinalizeFact,
-} from './voice/avSurface';
+} from './av/avSurface';
 import {
   createSessionCoordinator,
   type AudioSessionState,
-} from './voice/sessionCoordinator';
+} from './av/sessionCoordinator';
 import {
   createTranscriptSettlementCoordinator,
   normalizeTranscript,
   transcriptPreview,
   type SettlementOutcome,
-} from './voice/transcriptSettlement';
+} from './orchestrator/transcriptSettlement';
+import { getOnDeviceModelPaths } from './orchestrator/modelPaths';
 import {
   blockWindowUntil,
-  getOnDeviceModelPaths,
   getVoiceNative,
   invokeVoiceStop,
   isRecognizerReentrancyError,
   isRecoverableSpeechError,
   NATIVE_RESTART_GUARD_MS,
   runNativeStopFlow,
-} from './voice/voiceNative';
+} from './av/voiceNative';
 
 /** Non-authoritative artifact projection; failures must not abort request completion. */
 const ARTIFACT_PROJECTION_HELPER = 'extractIntentSignals';

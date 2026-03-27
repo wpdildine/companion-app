@@ -26,7 +26,11 @@ export function transcriptPreview(text: string): string {
   return `${normalized.slice(0, 117)}...`;
 }
 
-export function transcriptTrace(text: string): { chars: number; text: string; preview: string } {
+export function transcriptTrace(text: string): {
+  chars: number;
+  text: string;
+  preview: string;
+} {
   const normalized = normalizeTranscript(text);
   return {
     chars: normalized.length,
@@ -46,8 +50,6 @@ function clampChoiceToCommittedFloor(
   if (chosenNorm.length >= committedNorm.length) return chosen;
   return getTranscribedText();
 }
-
-export type AudioSessionState = 'idleReady' | 'starting' | 'listening' | 'stopping' | 'settling';
 
 export type SettlementOutcome =
   | {
@@ -74,13 +76,21 @@ export interface TranscriptSettlementDeps {
   updateTranscript: (text: string) => void;
   getSpeechEnded: () => boolean;
   getRecordingSessionId: () => string | null;
-  finalizeTranscriptFromPartial: (reason: string, recordingSessionId?: string) => void;
+  finalizeTranscriptFromPartial: (
+    reason: string,
+    recordingSessionId?: string,
+  ) => void;
   emitRecoverableFailure: (reason: string, details?: Record<string, unknown>) => void;
-  transcribeCapturedAudioIfNeeded: (recordingSessionId?: string) => Promise<boolean>;
+  transcribeCapturedAudioIfNeeded: (
+    recordingSessionId?: string,
+  ) => Promise<boolean>;
 }
 
 export interface TranscriptSettlementCoordinator {
-  resolveSettlement: (reason: string, recordingSessionId?: string) => Promise<SettlementOutcome>;
+  resolveSettlement: (
+    reason: string,
+    recordingSessionId?: string,
+  ) => Promise<SettlementOutcome>;
   finalizeStop: (reason: string, recordingSessionId?: string) => void;
   startQuietWindow: (
     recordingSessionId: string | undefined,
@@ -98,18 +108,28 @@ export interface TranscriptSettlementCoordinator {
   setPendingSubmit: (sessionId: string | null) => void;
   clearFinalizeTimer: () => void;
   scheduleFlushWindow: (onFlush: () => void) => void;
-  scheduleDelayedFinalize: (reason: string, recordingSessionId: string | undefined, delayMs: number) => void;
+  scheduleDelayedFinalize: (
+    reason: string,
+    recordingSessionId: string | undefined,
+    delayMs: number,
+  ) => void;
   /** Clear settlement timers and refs when starting a new listen session (no finalize side effects). */
   resetForNewSession: () => void;
 }
 
 export function createTranscriptSettlementCoordinator(
-  deps: TranscriptSettlementDeps
+  deps: TranscriptSettlementDeps,
 ): TranscriptSettlementCoordinator {
-  const quietWindowTimerRef = { current: null as ReturnType<typeof setTimeout> | null };
-  const tailGraceTimerRef = { current: null as ReturnType<typeof setTimeout> | null };
+  const quietWindowTimerRef = {
+    current: null as ReturnType<typeof setTimeout> | null,
+  };
+  const tailGraceTimerRef = {
+    current: null as ReturnType<typeof setTimeout> | null,
+  };
   const tailGraceSessionIdRef = { current: null as string | null };
-  const finalStabilizationTimerRef = { current: null as ReturnType<typeof setTimeout> | null };
+  const finalStabilizationTimerRef = {
+    current: null as ReturnType<typeof setTimeout> | null,
+  };
   const finalStabilizationActiveRef = { current: false };
   const finalCandidateTextRef = { current: null as string | null };
   const finalCandidateSessionIdRef = { current: null as string | null };
@@ -170,7 +190,8 @@ export function createTranscriptSettlementCoordinator(
   };
 
   const resolveSettlement = async (reason: string, recordingSessionId?: string) => {
-    if (settlementResolvedRef.current) return { kind: 'ignored' } satisfies SettlementOutcome;
+    if (settlementResolvedRef.current)
+      return { kind: 'ignored' } satisfies SettlementOutcome;
     const capturedFinalCandidate = finalCandidateTextRef.current ?? '';
     const capturedPartialNorm = normalizeTranscript(deps.getPartialTranscript());
     if (
@@ -212,7 +233,11 @@ export function createTranscriptSettlementCoordinator(
     clearAllSettlementTimers();
     resetSettlementRefs();
 
-    if (reason === 'timeout' || reason === 'flushWindowExpired' || reason === 'tailGraceExpired') {
+    if (
+      reason === 'timeout' ||
+      reason === 'flushWindowExpired' ||
+      reason === 'tailGraceExpired'
+    ) {
       const bestByLength =
         capturedFinalCandidate.length >= capturedPartialNorm.length
           ? capturedFinalCandidate
@@ -303,7 +328,10 @@ export function createTranscriptSettlementCoordinator(
         logWarn(LOG_TAG, 'quiet window produced empty transcript', {
           recordingSessionId,
         });
-        deps.emitRecoverableFailure('noUsableTranscript', { recordingSessionId, reason: 'quietWindowExpired' });
+        deps.emitRecoverableFailure('noUsableTranscript', {
+          recordingSessionId,
+          reason: 'quietWindowExpired',
+        });
         return {
           kind: 'recoverable_empty',
           shouldSubmit,
@@ -331,9 +359,14 @@ export function createTranscriptSettlementCoordinator(
   return {
     resolveSettlement,
     finalizeStop,
-    startQuietWindow(recordingSessionId: string | undefined, onResolved: (outcome: SettlementOutcome) => void) {
+    startQuietWindow(
+      recordingSessionId: string | undefined,
+      onResolved: (outcome: SettlementOutcome) => void,
+    ) {
       const sessionIdForQuiet = recordingSessionId;
-      logInfo(LOG_TAG, 'speechEnd received, quiet window started', { recordingSessionId: sessionIdForQuiet });
+      logInfo(LOG_TAG, 'speechEnd received, quiet window started', {
+        recordingSessionId: sessionIdForQuiet,
+      });
       if (quietWindowTimerRef.current) {
         clearTimeout(quietWindowTimerRef.current);
         quietWindowTimerRef.current = null;
@@ -431,7 +464,11 @@ export function createTranscriptSettlementCoordinator(
         onFlush();
       }, POST_STOP_FLUSH_WINDOW_MS);
     },
-    scheduleDelayedFinalize(reason: string, recordingSessionId: string | undefined, delayMs: number) {
+    scheduleDelayedFinalize(
+      reason: string,
+      recordingSessionId: string | undefined,
+      delayMs: number,
+    ) {
       if (finalizeTimerRef.current) clearTimeout(finalizeTimerRef.current);
       finalizeTimerRef.current = setTimeout(() => {
         finalizeTimerRef.current = null;

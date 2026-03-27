@@ -159,7 +159,7 @@ A reader can implement native plugins that achieve: deterministic start/stop; sa
 ## Related documents
 
 - [PLUGIN_CONTRACT.md](./PLUGIN_CONTRACT.md) — baseline native plugin rules and payload floors.
-- [ARCHITECTURE.md](./ARCHITECTURE.md) — agent layout; orchestrator vs `voice/` mechanism.
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — agent layout; orchestrator semantic ownership vs AV mechanism surface (`src/app/agent/av/`).
 - [APP_ARCHITECTURE.md](./APP_ARCHITECTURE.md) — AgentOrchestrator ownership, stabilization, error semantics.
 
 ---

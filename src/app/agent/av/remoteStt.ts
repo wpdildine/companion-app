@@ -6,7 +6,16 @@
 import { logError, logInfo, logWarn } from '../../../shared/logging';
 import { isOpenAIProxyError } from '../../providers/openAI/openAIProxyTypes';
 import type { CapturedSttAudio } from '../../hooks/useSttAudioCapture';
-import { normalizeTranscript, transcriptPreview } from './transcriptSettlement';
+
+function normalizeTranscript(text: string): string {
+  return text.trim().replace(/\s+/g, ' ');
+}
+
+function transcriptPreview(text: string): string {
+  const normalized = normalizeTranscript(text);
+  if (normalized.length <= 120) return normalized;
+  return `${normalized.slice(0, 117)}...`;
+}
 
 export const REMOTE_STT_CAPTURE_WAIT_MS = 800;
 export const REMOTE_STT_CAPTURE_POLL_MS = 25;
@@ -100,10 +109,10 @@ export function createRemoteSttCoordinator(deps: RemoteSttDeps): {
     });
     try {
       const result = await transcribeAudio({
-      audioBase64: capturedAudio.audioBase64,
-      mimeType: capturedAudio.mimeType,
-      filename: capturedAudio.filename,
-      language: 'en',
+        audioBase64: capturedAudio.audioBase64,
+        mimeType: capturedAudio.mimeType,
+        filename: capturedAudio.filename,
+        language: 'en',
       });
       logInfo('AgentOrchestrator', 'remote stt proxy response received', {
         recordingSessionId,

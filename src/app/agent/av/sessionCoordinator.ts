@@ -16,7 +16,7 @@ export interface SessionCoordinatorDeps {
   onAudioStateChange: (
     prev: AudioSessionState,
     next: AudioSessionState,
-    context?: object
+    context?: object,
   ) => void;
 }
 
@@ -28,7 +28,7 @@ export interface SessionCoordinator {
   scheduleIosStopGrace: (
     recordingSessionId: string | undefined,
     delayMs: number,
-    onElapsed: () => void
+    onElapsed: () => void,
   ) => void;
   getIosStopPending: () => boolean;
   getIosStopInvoked: () => boolean;
@@ -41,16 +41,18 @@ export interface SessionCoordinator {
     platformIsIos: boolean,
     recordingSessionId: string | undefined,
     graceMs: number,
-    runStop: () => Promise<void>
+    runStop: () => Promise<void>,
   ) => Promise<void>;
 }
 
 export function createSessionCoordinator(
-  deps: SessionCoordinatorDeps
+  deps: SessionCoordinatorDeps,
 ): SessionCoordinator {
   const audioStateRef = { current: 'idleReady' as AudioSessionState };
   const nativeRestartGuardUntilRef = { current: 0 };
-  const iosStopGraceTimerRef = { current: null as ReturnType<typeof setTimeout> | null };
+  const iosStopGraceTimerRef = {
+    current: null as ReturnType<typeof setTimeout> | null,
+  };
   const iosStopPendingRef = { current: false };
   const iosStopInvokedRef = { current: false };
 
@@ -86,7 +88,7 @@ export function createSessionCoordinator(
     scheduleIosStopGrace(
       _recordingSessionId: string | undefined,
       delayMs: number,
-      onElapsed: () => void
+      onElapsed: () => void,
     ) {
       iosStopPendingRef.current = true;
       if (iosStopGraceTimerRef.current) {
@@ -114,11 +116,11 @@ export function createSessionCoordinator(
       platformIsIos: boolean,
       recordingSessionId: string | undefined,
       graceMs: number,
-      runStop: () => Promise<void>
+      runStop: () => Promise<void>,
     ): Promise<void> {
       if (platformIsIos) {
         this.scheduleIosStopGrace(recordingSessionId, graceMs, () =>
-          runStop().catch(() => {})
+          runStop().catch(() => {}),
         );
         return;
       }

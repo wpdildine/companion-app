@@ -141,7 +141,10 @@ describe('createTranscriptSettlementCoordinator', () => {
     it('clears timers and calls finalizeTranscriptFromPartial', () => {
       const coord = createTranscriptSettlementCoordinator(mockDeps as any);
       coord.finalizeStop('testReason', 's1');
-      expect(mockDeps.finalizeTranscriptFromPartial).toHaveBeenCalledWith('testReason', 's1');
+      expect(mockDeps.finalizeTranscriptFromPartial).toHaveBeenCalledWith(
+        'testReason',
+        's1',
+      );
     });
   });
 
