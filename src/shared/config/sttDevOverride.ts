@@ -9,6 +9,9 @@ import { logInfo } from '../logging';
 
 export type SttProviderOverride = 'local' | 'remote' | 'remote_with_local_fallback';
 
+/** Default STT when no dev override is set; env resolution uses this as fallback (see `getSttProvider`). */
+export const DEFAULT_STT_PROVIDER: SttProviderOverride = 'local';
+
 /** Stable id for log correlation (proves single bundle path). */
 export const STT_DEV_OVERRIDE_MODULE_ID = 'shared/config/sttDevOverride';
 

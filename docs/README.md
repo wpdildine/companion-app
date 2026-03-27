@@ -16,6 +16,7 @@ Primary documentation map for this repository.
 ## Contracts
 
 - [Plugin Contract](./PLUGIN_CONTRACT.md)
+- [Native Plugin Integration Pattern](./NATIVE_PLUGIN_PATTERN.md)
 - [Native Microphone Contract](./NATIVE_MIC_CONTRACT.md)
 
 ## RAG Notes

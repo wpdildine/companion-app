@@ -8,9 +8,10 @@
  */
 
 import { logInfo } from '../logging';
-import { getSttOverride } from './sttDevOverride';
+import { DEFAULT_STT_PROVIDER, getSttOverride } from './sttDevOverride';
 
 export {
+  DEFAULT_STT_PROVIDER,
   getSttOverride,
   setSttOverride,
   getSttOverrideStoreSnapshot,
@@ -33,10 +34,12 @@ const rawNativeMicCapture =
     ? process.env.NATIVE_MIC_CAPTURE
     : undefined;
 
-/** When true, remote capture uses atlas-native-mic (see docs/NATIVE_MIC_CONTRACT.md); default false (expo-audio). Baked at build. */
+/** When true, remote capture uses atlas-native-mic (see docs/NATIVE_MIC_CONTRACT.md). Default on; only `0` / `false` / `no` disables. Baked at build. */
 export function isNativeMicCaptureEnabled(): boolean {
   const v = rawNativeMicCapture?.trim().toLowerCase();
-  return v === '1' || v === 'true' || v === 'yes';
+  if (v === undefined || v === '') return true;
+  if (v === '0' || v === 'false' || v === 'no') return false;
+  return true;
 }
 
 /** Build-time STT mode: `local` (native only), `remote` (proxy only), `remote_with_local_fallback` (prefer remote; start-time fallback + next-listen local preference per orchestrator policy). */
@@ -65,7 +68,7 @@ export function getSttProvider(): SttProvider {
   const raw = rawSttProvider?.trim().toLowerCase();
   if (raw === 'remote') return 'remote';
   if (raw === 'remote_with_local_fallback') return 'remote_with_local_fallback';
-  return 'local';
+  return DEFAULT_STT_PROVIDER;
 }
 
 /** Dev override (if set) then env. */

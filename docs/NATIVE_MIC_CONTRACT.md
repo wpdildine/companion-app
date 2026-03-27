@@ -1,6 +1,6 @@
 # Native Microphone Contract (NATIVE plugin extension)
 
-**Authority:** This document extends [PLUGIN_CONTRACT.md](./PLUGIN_CONTRACT.md) for **microphone / voice capture** native plugins. It does not replace [ARCHITECTURE.md](./ARCHITECTURE.md) or [APP_ARCHITECTURE.md](./APP_ARCHITECTURE.md). **AgentOrchestrator** remains the semantic and app-lifecycle owner; this contract defines the **native → JS boundary** for mic hardware and session **facts** only.
+**Authority:** This document extends [PLUGIN_CONTRACT.md](./PLUGIN_CONTRACT.md) for **microphone / voice capture** native plugins. It does not replace [ARCHITECTURE.md](./ARCHITECTURE.md) or [APP_ARCHITECTURE.md](./APP_ARCHITECTURE.md). It also sits on top of the reusable native integration pattern in [NATIVE_PLUGIN_PATTERN.md](./NATIVE_PLUGIN_PATTERN.md). **AgentOrchestrator** remains the semantic and app-lifecycle owner; this contract defines the **native → JS boundary** for mic hardware and session **facts** only.
 
 **Naming:** Native plugin governance docs in this repo use the pattern `docs/NATIVE_<DOMAIN>_CONTRACT.md`. This file (`NATIVE_MIC_CONTRACT.md`) is the reference pattern for future `NATIVE_*` contracts.
 
