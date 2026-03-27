@@ -1,22 +1,71 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
-import {
-  getRecordingPermissionsAsync,
-  RecordingPresets,
-  requestRecordingPermissionsAsync,
-  setAudioModeAsync,
-  useAudioRecorder,
+import type {
+  AudioRecorder,
+  RecordingOptions,
+  RecordingOptionsAndroid,
+  RecordingOptionsIos,
+  RecordingOptionsWeb,
 } from 'expo-audio';
-import { Directory, File, Paths } from 'expo-file-system';
 import AtlasNativeMic from 'atlas-native-mic';
 import { isNativeMicCaptureEnabled } from '../../shared/config/endpointConfig';
 import { logInfo, logWarn } from '../../shared/logging';
 
-/** Ensure EXPO_OS is set before expo-audio API calls (Android). */
-function ensureExpoOsBeforeCapture(): void {
-  if (typeof process !== 'undefined' && process.env && !process.env.EXPO_OS) {
-    process.env.EXPO_OS = Platform.OS;
+type CommonRecordingOptions = {
+  extension: string;
+  sampleRate: number;
+  numberOfChannels: number;
+  bitRate: number;
+  isMeteringEnabled: boolean;
+};
+
+/** Mirrors expo-audio `createRecordingOptions` using RN `Platform` (no expo-modules-core at module load). */
+function createRecordingOptionsLocal(
+  options: RecordingOptions,
+): CommonRecordingOptions &
+  (RecordingOptionsIos | RecordingOptionsAndroid | RecordingOptionsWeb) {
+  const commonOptions: CommonRecordingOptions = {
+    extension: options.extension,
+    sampleRate: options.sampleRate,
+    numberOfChannels: options.numberOfChannels,
+    bitRate: options.bitRate,
+    isMeteringEnabled: options.isMeteringEnabled ?? false,
+  };
+
+  if (Platform.OS === 'ios') {
+    return {
+      ...commonOptions,
+      ...options.ios,
+    };
   }
+  if (Platform.OS === 'android') {
+    return {
+      ...commonOptions,
+      ...options.android,
+    };
+  }
+  return {
+    ...commonOptions,
+    ...options.web,
+  };
+}
+
+let expoAudioModule: typeof import('expo-audio') | null = null;
+function getExpoAudio(): typeof import('expo-audio') {
+  if (!expoAudioModule) {
+    expoAudioModule = require('expo-audio') as typeof import('expo-audio');
+  }
+  return expoAudioModule;
+}
+
+let expoFileSystemModule: typeof import('expo-file-system') | null = null;
+function getExpoFileSystem(): typeof import('expo-file-system') {
+  if (!expoFileSystemModule) {
+    expoFileSystemModule = require('expo-file-system') as typeof import(
+      'expo-file-system'
+    );
+  }
+  return expoFileSystemModule;
 }
 
 export interface CapturedSttAudio {
@@ -84,6 +133,7 @@ function preserveDebugCapture(
   recordingSessionId?: string,
 ): string | undefined {
   if (!canPreserveDebugCapture()) return undefined;
+  const { Directory, File, Paths } = getExpoFileSystem();
   const documentUri =
     typeof Paths.document?.uri === 'string'
       ? Paths.document.uri.replace(/\/+$/, '')
@@ -115,6 +165,7 @@ function preserveDebugCapture(
 }
 
 async function configureRecordingAudioMode(): Promise<void> {
+  const { setAudioModeAsync } = getExpoAudio();
   await setAudioModeAsync({
     allowsRecording: true,
     playsInSilentMode: true,
@@ -127,6 +178,7 @@ async function configureRecordingAudioMode(): Promise<void> {
 }
 
 async function restorePlaybackAudioMode(): Promise<void> {
+  const { setAudioModeAsync } = getExpoAudio();
   await setAudioModeAsync({
     allowsRecording: false,
     playsInSilentMode: true,
@@ -182,7 +234,6 @@ function toFileUri(uri: string): string {
 }
 
 export function useSttAudioCapture() {
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [isCapturing, setIsCapturing] = useState(false);
   const captureStartedAtRef = useRef<number | null>(null);
   const validationTimingBySessionRef = useRef<Record<string, MicValidationTiming>>(
@@ -193,10 +244,17 @@ export function useSttAudioCapture() {
     sessionId: string;
     capture: CapturedSttAudio;
   } | null>(null);
+  const expoRecorderRef = useRef<AudioRecorder | null>(null);
+
+  useEffect(() => {
+    return () => {
+      expoRecorderRef.current?.release();
+      expoRecorderRef.current = null;
+    };
+  }, []);
 
   const beginCapture = useCallback(
     async (recordingSessionId?: string): Promise<boolean> => {
-      ensureExpoOsBeforeCapture();
       const sid = sessionKey(recordingSessionId);
       const nativeMicEnabled = isNativeMicCaptureEnabled();
       validationTimingBySessionRef.current[sid] = {
@@ -208,25 +266,6 @@ export function useSttAudioCapture() {
         nativeMicEnabled,
       });
       try {
-        let permissions: { granted: boolean; status?: string };
-        try {
-          const statusResult = await getRecordingPermissionsAsync();
-          if (statusResult.granted) {
-            permissions = { granted: true, status: statusResult.status };
-          } else {
-            permissions = await requestRecordingPermissionsAsync();
-          }
-        } catch {
-          permissions = await requestRecordingPermissionsAsync();
-        }
-        if (!permissions.granted) {
-          logWarn('AgentOrchestrator', 'stt audio capture permission denied', {
-            recordingSessionId,
-            status: permissions.status,
-          });
-          return false;
-        }
-
         if (shouldAttemptNativeMic()) {
           logMicValidation('beginCapture_native_attempt', {
             sessionId: sid,
@@ -236,6 +275,8 @@ export function useSttAudioCapture() {
           try {
             await AtlasNativeMic.init();
             await AtlasNativeMic.startCapture(sid);
+            expoRecorderRef.current?.release();
+            expoRecorderRef.current = null;
             nativeMicActiveRef.current = true;
             lastNativeCaptureRef.current = null;
             captureStartedAtRef.current = Date.now();
@@ -288,9 +329,41 @@ export function useSttAudioCapture() {
           }
         }
 
-        await configureRecordingAudioMode();
+        const {
+          getRecordingPermissionsAsync,
+          requestRecordingPermissionsAsync,
+          RecordingPresets,
+          AudioModule,
+        } = getExpoAudio();
+        let permissions: { granted: boolean; status?: string };
         try {
-          await recorder.prepareToRecordAsync(RecordingPresets.HIGH_QUALITY);
+          const statusResult = await getRecordingPermissionsAsync();
+          if (statusResult.granted) {
+            permissions = { granted: true, status: statusResult.status };
+          } else {
+            permissions = await requestRecordingPermissionsAsync();
+          }
+        } catch {
+          permissions = await requestRecordingPermissionsAsync();
+        }
+        if (!permissions.granted) {
+          logWarn('AgentOrchestrator', 'stt audio capture permission denied', {
+            recordingSessionId,
+            status: permissions.status,
+          });
+          return false;
+        }
+
+        const recordingPreset = RecordingPresets.HIGH_QUALITY;
+        await configureRecordingAudioMode();
+        let recorder = expoRecorderRef.current;
+        if (!recorder) {
+          const platformOptions = createRecordingOptionsLocal(recordingPreset);
+          recorder = new AudioModule.AudioRecorder(platformOptions);
+          expoRecorderRef.current = recorder;
+        }
+        try {
+          await recorder.prepareToRecordAsync(recordingPreset);
         } catch (error) {
           const message = errorMessage(error);
           if (!message.toLowerCase().includes('already been prepared')) {
@@ -333,7 +406,7 @@ export function useSttAudioCapture() {
         return false;
       }
     },
-    [recorder],
+    [],
   );
 
   const endCapture = useCallback(
@@ -426,6 +499,7 @@ export function useSttAudioCapture() {
             };
           }
           const uri = toFileUri(rawUri);
+          const { File } = getExpoFileSystem();
           const file = new File(uri);
           const audioBase64 = await file.base64();
           const filename = uri.split('/').pop() ?? `stt-${Date.now()}.m4a`;
@@ -521,9 +595,28 @@ export function useSttAudioCapture() {
         }
       }
 
+      const expoRecorder = expoRecorderRef.current;
+      if (!expoRecorder) {
+        setIsCapturing(false);
+        captureStartedAtRef.current = null;
+        logWarn('AgentOrchestrator', 'stt audio capture missing expo recorder', {
+          recordingSessionId,
+        });
+        try {
+          await restorePlaybackAudioMode();
+        } catch {
+          /* ignore */
+        }
+        return {
+          ok: false,
+          failureKind: 'finalizeFailed',
+          message: 'Expo recorder not initialized for expo capture',
+        };
+      }
+
       let stopErrorMessage: string | null = null;
       try {
-        await recorder.stop();
+        await expoRecorder.stop();
       } catch (error) {
         stopErrorMessage = errorMessage(error);
         logMicValidation(
@@ -544,7 +637,7 @@ export function useSttAudioCapture() {
       }
       setIsCapturing(false);
       try {
-        const uri = recorder.uri;
+        const uri = expoRecorder.uri;
         if (!uri) {
           const message =
             stopErrorMessage ??
@@ -560,6 +653,7 @@ export function useSttAudioCapture() {
             message,
           };
         }
+        const { File } = getExpoFileSystem();
         const file = new File(uri);
         const audioBase64 = await file.base64();
         const filename = uri.split('/').pop() ?? `stt-${Date.now()}.m4a`;
@@ -639,7 +733,7 @@ export function useSttAudioCapture() {
         }
       }
     },
-    [recorder],
+    [],
   );
 
   const cancelCapture = useCallback(
@@ -715,8 +809,11 @@ export function useSttAudioCapture() {
         }
         return;
       }
+      const expoRecorder = expoRecorderRef.current;
       try {
-        await recorder.stop();
+        if (expoRecorder) {
+          await expoRecorder.stop();
+        }
       } catch (error) {
         const message = errorMessage(error);
         const looksDuplicateNoop =
@@ -773,7 +870,7 @@ export function useSttAudioCapture() {
         });
       }
     },
-    [recorder],
+    [],
   );
 
   return {
