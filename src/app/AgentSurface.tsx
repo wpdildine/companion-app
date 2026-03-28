@@ -5,7 +5,7 @@
  * Does not own provider/runtime logic; that lives in AgentOrchestrator.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   AppState,
@@ -47,8 +47,11 @@ import {
   VisualizationSurface,
 } from '../visualization';
 import {
+  getPlayActAccessibilityLabel,
+  getPlayActPhaseCaptionText,
   getState as getRequestDebugState,
   emit as requestDebugEmit,
+  resolveAgentPlayAct,
   subscribe as subscribeRequestDebug,
   useAgentOrchestrator,
   useVisualizationController,
@@ -77,6 +80,8 @@ const ASK_HOLD_MS = 400;
 /** Max recording duration for hold-to-speak; timeout triggers stop + submit (same as release). */
 const MAX_RECORDING_DURATION_MS = 12000;
 const DEBUG_DISABLE_PROCESSING = false;
+/** Cycle 6 Stage 2: visible phase caption in semantic channel; keep false for a11y-only (Stage 1). */
+const PLAY_ACT_PHASE_CAPTION_ENABLED = false;
 const DEBUG_LOG_SCOPES: Array<import('../shared/logging').LogScope> = [
   'AgentOrchestrator',
   'Interaction',
@@ -432,6 +437,25 @@ export default function AgentSurface() {
   const isAsking = orchState.lifecycle === 'processing';
   const interactionBandEnabled =
     !debugEnabled && !anyPanelVisible && orchState.lifecycle !== 'processing';
+
+  const playActResolution = useMemo(
+    () =>
+      resolveAgentPlayAct(orchState, {
+        interactionBandEnabled,
+      }),
+    [orchState, interactionBandEnabled],
+  );
+
+  const playActAccessibilityLabel = useMemo(
+    () => getPlayActAccessibilityLabel(playActResolution, orchState),
+    [playActResolution, orchState],
+  );
+
+  const playActPhaseCaption = useMemo(() => {
+    if (!PLAY_ACT_PHASE_CAPTION_ENABLED) return null;
+    return getPlayActPhaseCaptionText(playActResolution, orchState);
+  }, [playActResolution, orchState]);
+
   const canHoldToSpeak = !isAsking && !anyPanelVisible && !debugEnabled;
   const canSwipeContext = canRevealPanels && interactionBandEnabled;
   const activeInteractionOwner: ActiveInteractionOwner = debugEnabled
@@ -968,6 +992,9 @@ export default function AgentSurface() {
           contentPaddingTop={insets.top}
           contentPaddingBottom={insets.bottom}
           onScroll={handleOverlayScroll}
+          accessibilityContainerLabel={playActAccessibilityLabel}
+          phaseCaptionText={playActPhaseCaption}
+          phaseCaptionColor={mutedColor}
         >
           <ResultsOverlay
             responseText={orchState.responseText}

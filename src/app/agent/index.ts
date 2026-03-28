@@ -21,6 +21,10 @@ export type {
   AgentPrimaryAct,
   PlayActSurfaceFacts,
 } from './resolveAgentPlayAct';
+export {
+  getPlayActAccessibilityLabel,
+  getPlayActPhaseCaptionText,
+} from './playActPhaseCopy';
 export { useAgentOrchestrator } from './useAgentOrchestrator';
 export type {
   AgentOrchestratorActions,

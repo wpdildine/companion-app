@@ -8,6 +8,7 @@ import React from 'react';
 import {
   ScrollView,
   StyleSheet,
+  Text,
   View,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
@@ -18,6 +19,11 @@ export type SemanticChannelViewProps = {
   contentPaddingBottom: number;
   onScroll?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
   scrollEventThrottle?: number;
+  /** Cycle 6: Play/Act-derived a11y label for the scroll region (orchestrator wins on error). */
+  accessibilityContainerLabel?: string;
+  /** Cycle 6 Stage 2: optional non-interactive phase line; omit when null/undefined. */
+  phaseCaptionText?: string | null;
+  phaseCaptionColor?: string;
   children: React.ReactNode;
 };
 
@@ -31,6 +37,12 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
   },
+  phaseCaption: {
+    paddingHorizontal: 16,
+    paddingBottom: 6,
+    fontSize: 12,
+    letterSpacing: 0.2,
+  },
 });
 
 export function SemanticChannelView({
@@ -38,8 +50,14 @@ export function SemanticChannelView({
   contentPaddingBottom,
   onScroll,
   scrollEventThrottle = 16,
+  accessibilityContainerLabel,
+  phaseCaptionText,
+  phaseCaptionColor,
   children,
 }: SemanticChannelViewProps) {
+  const showCaption =
+    typeof phaseCaptionText === 'string' && phaseCaptionText.length > 0;
+
   return (
     <ScrollView
       style={[styles.scroll, styles.scrollOverlay]}
@@ -51,7 +69,17 @@ export function SemanticChannelView({
       scrollEventThrottle={scrollEventThrottle}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator
+      accessibilityLabel={accessibilityContainerLabel}
     >
+      {showCaption ? (
+        <Text
+          style={[styles.phaseCaption, { color: phaseCaptionColor ?? '#888' }]}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
+          {phaseCaptionText}
+        </Text>
+      ) : null}
       <View style={styles.content}>{children}</View>
     </ScrollView>
   );

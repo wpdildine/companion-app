@@ -85,6 +85,20 @@ The five Acts do not define a dedicated “hard error” Act. When `lifecycle ==
 
 ---
 
+## Cycle 6 — optional consumer (semantic channel)
+
+**Consumer:** `SemanticChannelView` (shell wrapping `ResultsOverlay`), fed from `AgentSurface` (`src/screens/voice/SemanticChannelView.tsx`, `src/app/AgentSurface.tsx`).
+
+**Consumed resolver outputs:** `primaryAct` and `commitVisibilityHint` only **via** `src/app/agent/playActPhaseCopy.ts` string mappers—not read directly in the view. **Not consumed this cycle:** `affordanceHints`, `processingSubstate` for UI branching.
+
+**Orchestrator overrides:** `lifecycle === 'error'` → accessibility label from `error` string, not Act; visible phase caption suppressed on error (overlay owns error presentation).
+
+**Surface intersection:** `resolveAgentPlayAct(orchState, { interactionBandEnabled })` uses the same band enablement boolean as [INTERACTION_CONTRACT.md](INTERACTION_CONTRACT.md) arbitration wiring in AgentSurface.
+
+**Stage 2 visible caption:** `PLAY_ACT_PHASE_CAPTION_ENABLED` in `AgentSurface` (default `false`); set `true` for optional helper line without changing ownership.
+
+---
+
 ## Implementation-planning readiness
 
 **READY** — Resolver inputs map to existing `AgentOrchestratorState` fields; optional surface facts pass as a small struct at composition boundaries.
