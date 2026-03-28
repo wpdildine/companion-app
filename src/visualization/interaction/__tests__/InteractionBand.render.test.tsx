@@ -147,12 +147,6 @@ describe('InteractionBand render path', () => {
   it('runs the live gesture path and avoids cancel after a successful end', () => {
     const visualizationRef = createVisualizationRef();
     const onClusterRelease = jest.fn();
-    const nameShapingCapture = {
-      onTouchStart: jest.fn(),
-      onTouchMove: jest.fn(),
-      onTouchEnd: jest.fn(),
-      onTouchCancel: jest.fn(),
-    };
 
     let renderer: TestRenderer.ReactTestRenderer;
     act(() => {
@@ -160,7 +154,6 @@ describe('InteractionBand render path', () => {
         <InteractionBand
           visualizationRef={visualizationRef}
           onClusterRelease={onClusterRelease}
-          nameShapingCapture={nameShapingCapture}
         />,
       );
     });
@@ -193,27 +186,16 @@ describe('InteractionBand render path', () => {
 
     expect(stateManager.activate).toHaveBeenCalledTimes(1);
     expect(stateManager.fail).not.toHaveBeenCalled();
-    expect(nameShapingCapture.onTouchStart).toHaveBeenCalledTimes(1);
-    expect(nameShapingCapture.onTouchEnd).toHaveBeenCalledTimes(1);
-    expect(nameShapingCapture.onTouchCancel).not.toHaveBeenCalled();
+    // Cards-side short tap: center-hold cluster path is skipped (shortTap branch).
     expect(onClusterRelease).not.toHaveBeenCalled();
   });
 
   it('uses cancel cleanup only when finalize reports an unsuccessful gesture', () => {
     const visualizationRef = createVisualizationRef();
-    const nameShapingCapture = {
-      onTouchStart: jest.fn(),
-      onTouchMove: jest.fn(),
-      onTouchEnd: jest.fn(),
-      onTouchCancel: jest.fn(),
-    };
 
     act(() => {
       TestRenderer.create(
-        <InteractionBand
-          visualizationRef={visualizationRef}
-          nameShapingCapture={nameShapingCapture}
-        />,
+        <InteractionBand visualizationRef={visualizationRef} />,
       );
     });
 
@@ -229,25 +211,16 @@ describe('InteractionBand render path', () => {
       gesture!.handlers.onFinalize?.({}, false);
     });
 
-    expect(nameShapingCapture.onTouchCancel).toHaveBeenCalledTimes(1);
-    expect(nameShapingCapture.onTouchEnd).not.toHaveBeenCalled();
+    expect(visualizationRef.current!.touchFieldActive).toBe(false);
+    expect(visualizationRef.current!.zoneArmed).toBeNull();
   });
 
   it('does not cancel after touchesUp already handled the end', () => {
     const visualizationRef = createVisualizationRef();
-    const nameShapingCapture = {
-      onTouchStart: jest.fn(),
-      onTouchMove: jest.fn(),
-      onTouchEnd: jest.fn(),
-      onTouchCancel: jest.fn(),
-    };
 
     act(() => {
       TestRenderer.create(
-        <InteractionBand
-          visualizationRef={visualizationRef}
-          nameShapingCapture={nameShapingCapture}
-        />,
+        <InteractionBand visualizationRef={visualizationRef} />,
       );
     });
 
@@ -266,8 +239,8 @@ describe('InteractionBand render path', () => {
       gesture!.handlers.onFinalize?.({}, false);
     });
 
-    expect(nameShapingCapture.onTouchEnd).toHaveBeenCalledTimes(1);
-    expect(nameShapingCapture.onTouchCancel).not.toHaveBeenCalled();
+    expect(visualizationRef.current!.touchFieldActive).toBe(false);
+    expect(visualizationRef.current!.zoneArmed).toBeNull();
   });
 
   it('bypasses the hold delay for center-lane touches when busy-audio retry feedback is enabled', () => {

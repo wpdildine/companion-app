@@ -1,18 +1,11 @@
 /**
  * Touch zone affordances. Dumb renderer: viewport math and camera-facing placement
- * only; all layout/style from visualizationRef.current.scene. When NameShaping
- * debug capture is enabled, this layer reuses the canonical selector region map.
+ * only; all layout/style from visualizationRef.current.scene.
  */
 
 import { useFrame } from '@react-three/fiber/native';
 import { useRef } from 'react';
 import * as THREE from 'three';
-import {
-  NAME_SHAPING_OVERLAY_REGIONS,
-  type NameShapingOverlayRegion,
-} from '../../../app/_experimental/nameShaping/layout/nameShapingTouchRegions';
-import { ndcRegionToRenderDescriptor } from '../../../app/_experimental/nameShaping/layout/nameShapingLayoutTransforms';
-import type { NameShapingSelector } from '../../../app/_experimental/nameShaping/foundation/nameShapingConstants';
 import { getActiveBandVerticalEnvelope } from '../../interaction/activeBandEnvelope';
 import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import type { LayerDescriptor } from '../../scene/layerDescriptor';
@@ -22,16 +15,8 @@ const planeEdgesGeometry = new THREE.EdgesGeometry(
   new THREE.PlaneGeometry(1, 1),
 );
 
-const MAX_ZONE_COUNT = NAME_SHAPING_OVERLAY_REGIONS.length;
-
-const NAME_SHAPING_SELECTOR_COLORS: Record<NameShapingSelector, string> = {
-  BRIGHT: '#f59e0b',
-  ROUND: '#ef4444',
-  LIQUID: '#06b6d4',
-  SOFT: '#22c55e',
-  HARD: '#3b82f6',
-  BREAK: '#a855f7',
-};
+/** Rules / center / cards overlay slots from scene.zones.layout. */
+const MAX_ZONE_COUNT = 3;
 
 type OverlaySegment = {
   widthRatio: number;
@@ -43,28 +28,6 @@ type OverlaySegment = {
   buttonInsetRatio: number;
   edgeOpacity: number;
 };
-
-function buildNameShapingSegments(
-  regions: readonly NameShapingOverlayRegion[],
-  opacity: number,
-): OverlaySegment[] {
-  return regions.map(region => {
-    const descriptor = ndcRegionToRenderDescriptor(region);
-    return {
-      widthRatio: descriptor.widthRatio,
-      heightRatio: descriptor.heightRatio,
-      centerNdcX: descriptor.centerNdcX,
-      centerNdcY: descriptor.centerNdcY,
-      color:
-        region.kind === 'voice'
-          ? '#f8fafc'
-          : NAME_SHAPING_SELECTOR_COLORS[region.selector!],
-      opacity: (region.kind === 'voice' ? 0.24 : 0.34) * opacity,
-      buttonInsetRatio: region.kind === 'voice' ? 0.84 : 0.9,
-      edgeOpacity: region.kind === 'voice' ? 0.65 : 1,
-    };
-  });
-}
 
 export function TouchZones({
   visualizationRef,
@@ -96,7 +59,6 @@ export function TouchZones({
     const { layout, style } = scene.zones;
     const show = v.vizIntensity !== 'off';
     const showZones = v.showTouchZones ?? false;
-    const showNameShapingTouchZones = v.showNameShapingTouchZones ?? false;
 
     if (!areaGroupRef.current) return;
     const w = v.canvasWidth > 0 ? v.canvasWidth : state.size.width;
@@ -105,10 +67,7 @@ export function TouchZones({
     areaGroupRef.current.visible = areaVisible;
     if (!areaVisible) return;
 
-    const envelope = getActiveBandVerticalEnvelope(
-      showNameShapingTouchZones ? 0 : layout.bandTopInsetPx,
-      h,
-    );
+    const envelope = getActiveBandVerticalEnvelope(layout.bandTopInsetPx, h);
     const { activeHeightRatio, centerNdcY } = envelope;
 
     const cam = state.camera as THREE.PerspectiveCamera;
@@ -151,12 +110,7 @@ export function TouchZones({
         edgeOpacity: 1,
       },
     ];
-    const segments = showNameShapingTouchZones
-      ? buildNameShapingSegments(
-          NAME_SHAPING_OVERLAY_REGIONS,
-          style.areaPlaneOpacityCenter,
-        )
-      : defaultSegments;
+    const segments = defaultSegments;
 
     cam.getWorldPosition(cameraPosRef.current);
     cam.getWorldDirection(cameraDirRef.current);

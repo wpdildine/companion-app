@@ -85,7 +85,6 @@ export function createDefaultVisualizationRef(): VisualizationEngineRef {
     touchPresenceNdc: { x: 0, y: 0 },
     focusZone: null,
     showTouchZones: false,
-    showNameShapingTouchZones: false,
     spineUseHalftonePlanes: false,
     stateCycleOn: false,
     stateCycleTimerId: null,

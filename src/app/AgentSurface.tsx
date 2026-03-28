@@ -8,10 +8,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
-  ActivityIndicator,
   AppState,
   Dimensions,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -19,7 +17,6 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getFileReader, getPackState } from '../rag';
 import { SemanticChannelView } from '../screens';
 import {
   cleanupEarcons,
@@ -50,18 +47,6 @@ import {
   VisualizationSurface,
 } from '../visualization';
 import {
-  buildResolverIndex,
-  NameShapingTouchGuideOverlay,
-  useNameShapingController,
-  useNameShapingState,
-  useSpineNameShapingCapture,
-  type ResolverIndex,
-} from './_experimental/nameShaping';
-import {
-  endNameShapingCommitTrace,
-  getActiveNameShapingCommitTrace,
-} from './_experimental/nameShaping/runtime/nameShapingCommitTrace';
-import {
   getState as getRequestDebugState,
   emit as requestDebugEmit,
   subscribe as subscribeRequestDebug,
@@ -83,11 +68,7 @@ import {
 } from './ui/components/overlays/vizSubsystemToggles';
 import { isLogGateEnabled } from '../shared/logging';
 
-/** Set true to show NameShaping debug affordances by default; enabling capture remains manual in the Viz debug panel. */
-const NAME_SHAPING_CAPTURE_DEBUG = false;
-const NAME_SHAPING_VERBOSE_DEBUG_LOGS = false;
-const NAME_SHAPING_VISUAL_DEBUG_ENABLED = true;
-const DEBUG_ENABLED_DEFAULT = NAME_SHAPING_CAPTURE_DEBUG;
+const DEBUG_ENABLED_DEFAULT = false;
 const DEBUG_SCENARIO = false;
 const SHOW_REVEAL_CHIPS = false;
 const SHOW_HOLD_TO_SPEAK = false;
@@ -100,7 +81,6 @@ const DEBUG_LOG_SCOPES: Array<import('../shared/logging').LogScope> = [
   'AgentOrchestrator',
   'Interaction',
   'AgentSurface',
-  'NameShapingCapture',
 ];
 
 /** Interaction ownership: one owner wins by priority (debug > overlay > holdToSpeak > swipeContext > playbackTap > none). none = no owner holds exclusive interaction. */
@@ -233,201 +213,6 @@ export default function AgentSurface() {
       });
     };
   }, []);
-
-  const { state: nameShapingState, actions: nameShapingActions } =
-    useNameShapingState();
-  const [nameShapingResolverIndex, setNameShapingResolverIndex] =
-    useState<ResolverIndex | null>(null);
-  const [nameShapingResolverIndexLoading, setNameShapingResolverIndexLoading] =
-    useState(false);
-  const nameShapingResolverIndexLoadingRef = useRef(false);
-  useNameShapingController(
-    nameShapingState,
-    nameShapingActions,
-    nameShapingResolverIndex,
-  );
-  const { capture: nameShapingCapture } = useSpineNameShapingCapture(
-    nameShapingState.enabled,
-    nameShapingActions,
-    {
-      emitOnTouchStart: true,
-      debugLogging: NAME_SHAPING_VERBOSE_DEBUG_LOGS,
-    },
-  );
-  useEffect(() => {
-    let cancelled = false;
-
-    // TODO(nameshaping-resume): Name Shaping is intentionally paused after the
-    // current prototype foundation. Preserve lazy resolver bootstrap, but revisit
-    // Android resolver perf before expanding this integration further.
-    const loadNameShapingResolverIndex = async () => {
-      if (!nameShapingState.enabled) return;
-      if (nameShapingResolverIndex != null) return;
-      if (nameShapingResolverIndexLoadingRef.current) return;
-
-      nameShapingResolverIndexLoadingRef.current = true;
-      if (!cancelled) {
-        setNameShapingResolverIndexLoading(true);
-      }
-
-      const existingPackState = getPackState();
-      const existingFileReader = getFileReader();
-      let nameLookupPath =
-        existingPackState?.validate.cardsNameLookupPath ??
-        'cards/name_lookup.jsonl';
-      let fileReader = existingFileReader;
-
-      if (!fileReader) {
-        if (!cancelled) {
-          logInfo(
-            'AgentSurface',
-            'NameShaping resolver index unavailable: no existing pack reader',
-          );
-        }
-        nameShapingResolverIndexLoadingRef.current = false;
-        if (!cancelled) {
-          setNameShapingResolverIndexLoading(false);
-        }
-        return;
-      }
-
-      try {
-        const resolverIndex = await buildResolverIndex(
-          fileReader,
-          nameLookupPath,
-        );
-        if (cancelled) return;
-        setNameShapingResolverIndex(resolverIndex);
-        const stats = resolverIndex.getIndexStats();
-        logInfo('AgentSurface', 'NameShaping resolver index loaded', {
-          entryCount: stats.entryCount,
-          uniqueBaseSignatures: stats.uniqueBaseSignatures,
-          nameLookupPath,
-        });
-      } catch (error) {
-        if (cancelled) return;
-        logInfo('AgentSurface', 'NameShaping resolver index failed to load', {
-          nameLookupPath,
-          error:
-            error instanceof Error
-              ? error.message
-              : 'unknown resolver index load error',
-        });
-      } finally {
-        nameShapingResolverIndexLoadingRef.current = false;
-        if (!cancelled) {
-          setNameShapingResolverIndexLoading(false);
-        }
-      }
-    };
-
-    loadNameShapingResolverIndex();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [nameShapingState.enabled, nameShapingResolverIndex]);
-  useEffect(() => {
-    if (!NAME_SHAPING_VERBOSE_DEBUG_LOGS || !nameShapingState.enabled) return;
-    logInfo('AgentSurface', 'NameShaping raw sequence updated', {
-      count: nameShapingState.rawEmittedSequence.length,
-      rawSequence: nameShapingState.rawEmittedSequence.map(
-        token => token.selector,
-      ),
-    });
-  }, [nameShapingState.enabled, nameShapingState.rawEmittedSequence]);
-  useEffect(() => {
-    if (!nameShapingState.enabled) return;
-    const count = nameShapingState.rawEmittedSequence.length;
-    if (count === 0) return;
-    const lastToken = nameShapingState.rawEmittedSequence[count - 1];
-    logInfo('AgentSurface', 'NameShaping token appended', {
-      count,
-      selector: lastToken?.selector ?? null,
-    });
-  }, [nameShapingState.enabled, nameShapingState.rawEmittedSequence]);
-  useEffect(() => {
-    if (!NAME_SHAPING_VERBOSE_DEBUG_LOGS || !nameShapingState.enabled) return;
-    logInfo('AgentSurface', 'NameShaping normalized signature updated', {
-      count: nameShapingState.normalizedSignature.length,
-      normalizedSignature: [...nameShapingState.normalizedSignature],
-    });
-  }, [nameShapingState.enabled, nameShapingState.normalizedSignature]);
-  useEffect(() => {
-    if (!NAME_SHAPING_VERBOSE_DEBUG_LOGS || !nameShapingState.enabled) return;
-    logInfo('AgentSurface', 'NameShaping resolver candidates updated', {
-      hasResolverIndex: nameShapingResolverIndex !== null,
-      count: nameShapingState.resolverCandidates.length,
-      candidates: nameShapingState.resolverCandidates.map(candidate => ({
-        cardId: candidate.cardId,
-        displayName: candidate.displayName,
-        score: candidate.score,
-      })),
-    });
-  }, [
-    nameShapingState.enabled,
-    nameShapingState.resolverCandidates,
-    nameShapingResolverIndex,
-  ]);
-  useEffect(() => {
-    if (!nameShapingState.enabled) return;
-    if (nameShapingState.committedSignature.length === 0) return;
-    const trace = getActiveNameShapingCommitTrace(
-      nameShapingState.committedSignature,
-    );
-    if (!trace) return;
-    logInfo('AgentSurface', 'NameShaping commit trace render settled', {
-      traceId: trace.id,
-      elapsedMs: trace.elapsedMs,
-      committedLength: nameShapingState.committedSignature.length,
-      candidateCount: nameShapingState.resolverCandidates.length,
-      hasSelectedCandidate: nameShapingState.selectedCandidate != null,
-    });
-    endNameShapingCommitTrace(trace.id);
-  }, [
-    nameShapingState.enabled,
-    nameShapingState.committedSignature,
-    nameShapingState.resolverCandidates,
-    nameShapingState.selectedCandidate,
-  ]);
-  useEffect(() => {
-    if (
-      !NAME_SHAPING_VERBOSE_DEBUG_LOGS ||
-      !nameShapingState.enabled ||
-      nameShapingState.normalizedSignature.length === 0 ||
-      nameShapingResolverIndex !== null
-    ) {
-      return;
-    }
-    logInfo(
-      'AgentSurface',
-      'NameShaping normalized signature has no resolver index yet',
-      {
-        normalizedSignature: [...nameShapingState.normalizedSignature],
-      },
-    );
-  }, [
-    nameShapingState.enabled,
-    nameShapingState.normalizedSignature,
-    nameShapingResolverIndex,
-  ]);
-  useEffect(() => {
-    const viz = visualizationRef.current;
-    if (!viz) return;
-    const showNameShapingDebugZones =
-      nameShapingState.enabled && NAME_SHAPING_VISUAL_DEBUG_ENABLED;
-    // TODO(nameshaping-resume): These visual debug zones remain prototype-only.
-    // Keep them aligned with the subsystem while paused, but do not treat them
-    // as settled product UI.
-    viz.showNameShapingTouchZones = showNameShapingDebugZones;
-    viz.showTouchZones = showNameShapingDebugZones;
-    logInfo(
-      'AgentSurface',
-      showNameShapingDebugZones
-        ? 'NameShaping touch guide enabled'
-        : 'NameShaping touch guide disabled',
-    );
-  }, [nameShapingState.enabled]);
 
   useEffect(() => {
     logInfo('AgentSurface', 'mounted as active composition root');
@@ -1220,55 +1005,6 @@ export default function AgentSurface() {
           />
         </SemanticChannelView>
       </VisualizationSurface>
-      <NameShapingTouchGuideOverlay
-        visible={nameShapingState.enabled && NAME_SHAPING_VISUAL_DEBUG_ENABLED}
-        bandTopInsetPx={
-          nameShapingState.enabled
-            ? 0
-            : visualizationRef.current?.scene?.zones.layout.bandTopInsetPx ??
-              112
-        }
-      />
-      <Modal
-        visible={
-          nameShapingState.enabled &&
-          nameShapingResolverIndex === null &&
-          nameShapingResolverIndexLoading
-        }
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-      >
-        <View
-          pointerEvents="none"
-          style={localStyles.nameShapingLoadingOverlay}
-        >
-          <View
-            style={[
-              localStyles.nameShapingLoadingCard,
-              { backgroundColor: inputBg, borderColor },
-            ]}
-          >
-            <ActivityIndicator size="small" color={theme.primary} />
-            <Text
-              style={[
-                localStyles.nameShapingLoadingTitle,
-                { color: textColor },
-              ]}
-            >
-              Prototype Loading
-            </Text>
-            <Text
-              style={[
-                localStyles.nameShapingLoadingHint,
-                { color: mutedColor },
-              ]}
-            >
-              Loading NameShaping card-name index...
-            </Text>
-          </View>
-        </View>
-      </Modal>
       <InteractionBand
         visualizationRef={visualizationRef}
         onClusterRelease={handleClusterTap}
@@ -1279,12 +1015,6 @@ export default function AgentSurface() {
         onCenterHoldShortTap={
           !debugEnabled ? () => emitEvent('shortTap') : undefined
         }
-        nameShapingCapture={
-          nameShapingState.enabled && !debugEnabled
-            ? nameShapingCapture
-            : undefined
-        }
-        topInsetOverridePx={nameShapingState.enabled ? 0 : undefined}
         enabled={interactionBandEnabled}
         blocked={orchState.ioBlockedUntil != null}
         blockedUntil={orchState.ioBlockedUntil ?? null}
@@ -1338,8 +1068,6 @@ export default function AgentSurface() {
                 onToggleStubRules={() =>
                   setDebugStubRulesEnabled(prev => !prev)
                 }
-                nameShapingState={nameShapingState}
-                nameShapingActions={nameShapingActions}
                 maxHeight={
                   telemetryLayout.height > 0
                     ? telemetryLayout.height -
@@ -1380,38 +1108,6 @@ export default function AgentSurface() {
 
 const localStyles = StyleSheet.create({
   screenWrapper: { flex: 1 },
-  nameShapingLoadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 30,
-    elevation: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  nameShapingLoadingCard: {
-    minWidth: 220,
-    maxWidth: 320,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    alignItems: 'center',
-    gap: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-  },
-  nameShapingLoadingTitle: {
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: '700',
-  },
-  nameShapingLoadingHint: {
-    fontSize: 13,
-    lineHeight: 18,
-    textAlign: 'center',
-  },
   askTrigger: {
     borderWidth: 1,
     borderRadius: 10,

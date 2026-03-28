@@ -1,6 +1,6 @@
 /**
  * Developer controls: palette, easing, viz toggles. Writes only into runtime ref.
- * Gate: long-press on status header in AgentSurface sets devEnabled.
+ * Opened from the app debug HUD (AgentSurface); `onClose` is supplied by the parent shell.
  */
 
 import {
@@ -436,7 +436,7 @@ export function DevPanel({
             style={[styles.row, styles.button]}
           >
             <Text style={{ color: textColor }}>
-              Restore app-driven mode (close Dev)
+              Restore app-driven mode (exit debug UI)
             </Text>
           </Pressable>
           <Text style={[styles.section, { color: muted }]}>Motion axis debug</Text>

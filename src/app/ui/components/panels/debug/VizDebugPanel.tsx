@@ -8,9 +8,6 @@ import { Dimensions, Platform, ScrollView, StyleSheet, Text, View } from 'react-
 import type { RefObject } from 'react';
 import type { VisualizationEngineRef } from '../../../../../visualization';
 import { DevPanel } from '../../../../../visualization';
-import { NameShapingDebugOverlay } from '../../../../_experimental/nameShaping';
-import type { NameShapingActions } from '../../../../_experimental/nameShaping';
-import type { NameShapingState } from '../../../../_experimental/nameShaping';
 import { PanelHeaderAction } from '../../controls';
 import {
   getSttOverride,
@@ -64,9 +61,6 @@ export type VizDebugPanelProps = {
   onToggleStubRules: () => void;
   maxHeight?: number;
   maxWidth?: number;
-  /** When both provided and non-null, the NameShaping section is rendered. No fallback state. */
-  nameShapingState?: NameShapingState | null;
-  nameShapingActions?: NameShapingActions | null;
 };
 
 export function VizDebugPanel({
@@ -78,8 +72,6 @@ export function VizDebugPanel({
   onToggleStubRules,
   maxHeight,
   maxWidth,
-  nameShapingState,
-  nameShapingActions,
 }: VizDebugPanelProps) {
   const [, bumpSub] = useState(0);
   const [, forceLogGatesRefresh] = useState(0);
@@ -92,9 +84,6 @@ export function VizDebugPanel({
   const panelWidth = Math.min(PANEL_WIDTH, Math.max(240, (maxWidth ?? window.width) - 24));
   const panelMaxHeight = Math.max(240, (maxHeight ?? window.height) - 24);
   const scrollMaxHeight = Math.max(160, panelMaxHeight - 96);
-
-  const showNameShapingSection =
-    nameShapingState != null && nameShapingActions != null;
 
   const toggleControl = (on: boolean) => (
     <Text style={[styles.toggleRight, on && styles.toggleOn]}>
@@ -295,15 +284,6 @@ export function VizDebugPanel({
               right={toggleControl(stubRulesEnabled)}
             />
           </DebugMenuSection>
-          {showNameShapingSection ? (
-            <DebugMenuSection title="NameShaping" defaultExpanded={false}>
-              <NameShapingDebugOverlay
-                state={nameShapingState!}
-                actions={nameShapingActions!}
-                theme={{ text: TEXT_PRIMARY, textMuted: TEXT_MUTED }}
-              />
-            </DebugMenuSection>
-          ) : null}
         </DebugMenuSection>
       </ScrollView>
     </View>

@@ -155,7 +155,6 @@ Current semantic behavior:
 
 Additional current nuance:
 
-- `nameShapingCapture`, when enabled, is allowed to take over semantic handling. In that mode the band still forwards band-relative NDC to the capture handlers, but hold-to-speak and cluster-release semantics are suppressed.
 - The band can be visually marked blocked via `blocked` / `blockedUntil` while I/O guardrails are active.
 - Because this path is under active migration, treat the exact Gesture Handler ownership and activation details as implementation details, not as a frozen public contract.
 
@@ -193,7 +192,7 @@ Current implementation invariant: zone classification **MUST** use InteractionBa
 Current bounds behavior:
 
 - The band top inset defaults to `visualizationRef.current.scene?.zones.layout.bandTopInsetPx ?? 112`.
-- AgentSurface may override that inset. The current Name Shaping path sets `topInsetOverridePx={0}`.
+- Callers may override that inset via `InteractionBand`’s `topInsetOverridePx` when product layout requires it.
 - Documentation should therefore refer to a runtime-configured top inset, not assume the scene-configured value is the only active path at all times.
 
 ### Visual touch affordance
@@ -260,6 +259,6 @@ Logs are state-change and event-based only; no per-frame or render-loop logging.
 ## Known In-Progress Areas
 
 - Panel gesture system from the refactor plan (header drag/snap/dismiss/restore + arbitration) is not fully implemented as a dedicated `src/screens/voice` gesture layer.
-- InteractionBand native-fast migration is still in progress. Current code uses a Pan-based RNGH host with manual activation, non-collapsable host mounting, optional probe diagnostics, and special-case capture takeover for Name Shaping. Keep docs aligned to the active code path and avoid describing this layer as finalized.
+- InteractionBand native-fast migration is still in progress. Current code uses a Pan-based RNGH host with manual activation, non-collapsable host mounting, and optional probe diagnostics. Keep docs aligned to the active code path and avoid describing this layer as finalized.
 
 **Plan D (Final Integration Pass):** Verified integration boundaries for acceptance → processing → settlement → playback → completion, telemetry ordering, and denial/stale-callback behavior; see `.cursor/plans/final_integration_pass.plan.md`.
