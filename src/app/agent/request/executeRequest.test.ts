@@ -135,6 +135,8 @@ describe('executeRequest', () => {
       expect(options.requestDebugSink).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'semantic_front_door' }),
       );
+      expect(options.setResponseText).not.toHaveBeenCalled();
+      expect(options.setValidationSummary).not.toHaveBeenCalled();
     });
   });
 

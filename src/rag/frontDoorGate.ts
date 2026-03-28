@@ -1,6 +1,11 @@
 /**
  * Substrate semantic front-door authorization before vector/Ollama retrieval.
  * Delegates to getContextRN (same inputs as deterministic context) — runtime-only.
+ *
+ * Path note (Cycle 7): When `RAG_USE_DETERMINISTIC_CONTEXT_ONLY` is true, this returns false
+ * so `runRagFlow` does not call `checkFrontDoorBeforeRetrieval` here — gating still runs inside
+ * `getContextRN` on the deterministic branch. Vector/Ollama paths use this explicit pre-retrieval
+ * gate so embedding/HTTP never runs when the verdict is not `proceed_to_retrieval`.
  */
 
 import type { SemanticFrontDoor } from '@atlas/runtime';

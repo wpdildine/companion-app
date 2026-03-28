@@ -308,6 +308,8 @@ export async function runRagFlow(
 
   const listResult = runListPreClassifier(question, packState);
   if (listResult?.useListPath) {
+    // Unreachable while `useListPath` stays false. If implemented, must authorize via the same
+    // `computeSemanticFrontDoor` substrate path as getContextRN before any list retrieval (Cycle 7).
     return {
       raw: '[Deterministic list path not yet implemented]',
       intent: 'unknown',
@@ -548,6 +550,11 @@ export async function runRagFlow(
             };
           }
         } else {
+          logWarn(
+            'RAG',
+            'deterministic context: using Node getContext fallback (missing packRoot or reader); production app should use getContextRN',
+            { packRootPresent: !!packRoot, readerPresent: !!reader },
+          );
           const runtimeModule = (await import('@atlas/runtime')) as unknown as {
             getContext?: (question: string, packRoot: string) => unknown;
             default?: {

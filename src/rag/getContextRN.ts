@@ -364,7 +364,7 @@ export async function getContextRN(
     const prefixLenMin = thresholds.prefix_len_min ?? 3;
 
     let resolvedCards: DbRow[] = [];
-    let resolver_mode: 'resolved' | 'ambiguous' | 'none' = 'resolved';
+    let resolver_mode: 'resolved' | 'ambiguous' | 'none' = 'none';
     let ambiguous_candidates: SemanticFrontDoorAmbiguousCandidate[] = [];
 
     if (analysis.looks_like_card_query) {
@@ -378,13 +378,14 @@ export async function getContextRN(
       resolvedCards = entity.resolvedCards;
       ambiguous_candidates = entity.ambiguous_candidates;
     } else {
-      resolver_mode = 'resolved';
       resolvedCards = resolveLegacyCardRows(
         normalized,
         analysis.what_does_name_norm,
         cardsDb,
         prefixLenMin,
       );
+      // Match desktop `resolveLexical`: no committed card rows → `none`, not `resolved`.
+      resolver_mode = resolvedCards.length > 0 ? 'resolved' : 'none';
     }
 
     const cardKeywords: string[] = [];
@@ -404,6 +405,9 @@ export async function getContextRN(
       (plan.hard_includes?.length ?? 0) > 0 ||
       (plan.concept_default_rule_ids?.length ?? 0) > 0;
 
+    // has_committed_cards: same substrate fact as desktop after resolver hydration —
+    // `contextProvider` uses `resolvedRows.length > 0` post `hydrateAndCommitAuthoritativeCardRows`;
+    // RN commits card rows from SQLite into `resolvedCards` before routing (SEMANTIC_FRONT_DOOR.md).
     const semanticFrontDoor = computeSemanticFrontDoor({
       working_query: workingQuery,
       resolver_query_norm,

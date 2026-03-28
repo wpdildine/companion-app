@@ -111,6 +111,8 @@ describe('runRagFlow pre-retrieval gate', () => {
     );
 
     expect(result.frontDoorBlocked).toBe(true);
+    expect(result.raw).toBe('');
+    expect(result.contextText).toBe('');
     expect(result.semanticFrontDoor?.front_door_verdict).toBe(
       'abstain_no_grounding',
     );
@@ -156,6 +158,8 @@ describe('runRagFlow pre-retrieval gate', () => {
     );
 
     expect(result.frontDoorBlocked).toBe(true);
+    expect(result.raw).toBe('');
+    expect(result.contextText).toBe('');
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
