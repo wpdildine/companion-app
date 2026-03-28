@@ -28,7 +28,7 @@ import {
   triggerListeningEndHaptic,
   triggerListeningStartHaptic,
 } from '../shared/feedback/haptics';
-import { logInfo } from '../shared/logging';
+import { logInfo, logWarn } from '../shared/logging';
 import {
   dummyAnswer,
   dummyCards,
@@ -47,10 +47,12 @@ import {
   VisualizationSurface,
 } from '../visualization';
 import {
+  detectPlayActDrift,
   getPlayActAccessibilityLabel,
   getPlayActPhaseCaptionText,
   getState as getRequestDebugState,
   emit as requestDebugEmit,
+  playActDriftSignature,
   resolveAgentPlayAct,
   subscribe as subscribeRequestDebug,
   useAgentOrchestrator,
@@ -80,8 +82,8 @@ const ASK_HOLD_MS = 400;
 /** Max recording duration for hold-to-speak; timeout triggers stop + submit (same as release). */
 const MAX_RECORDING_DURATION_MS = 12000;
 const DEBUG_DISABLE_PROCESSING = false;
-/** Stage 2 visible caption: default off (Stage 1 a11y-only). Enable only under docs/PLAY_ACT_BOUNDARIES.md Stage 2 decision rule. */
-const PLAY_ACT_PHASE_CAPTION_ENABLED = false;
+/** Cycle 8 Stage 2: visible phase line in semantic channel; see docs/PLAY_ACT_REALIZATION.md Cycle 8 and docs/PLAY_ACT_BOUNDARIES.md. */
+const PLAY_ACT_PHASE_CAPTION_ENABLED = true;
 const DEBUG_LOG_SCOPES: Array<import('../shared/logging').LogScope> = [
   'AgentOrchestrator',
   'Interaction',
@@ -256,6 +258,8 @@ export default function AgentSurface() {
   const submitRef = useRef<(() => Promise<string | null>) | null>(null);
 
   const panelRectsLoggedRef = useRef(false);
+  /** Cycle 9: dedupe Play/Act drift dev logs when finding set is unchanged. */
+  const playActDriftLogRef = useRef<string>('');
   const flushPanelRects = useCallback(() => {
     const next: VisualizationPanelRects = {};
     const source = panelRectsContentRef.current;
@@ -455,6 +459,36 @@ export default function AgentSurface() {
     if (!PLAY_ACT_PHASE_CAPTION_ENABLED) return null;
     return getPlayActPhaseCaptionText(playActResolution, orchState);
   }, [playActResolution, orchState]);
+
+  useEffect(() => {
+    if (typeof __DEV__ === 'undefined' || !__DEV__) return;
+    const findings = detectPlayActDrift({
+      state: orchState,
+      resolution: playActResolution,
+      surface: { interactionBandEnabled },
+      visibleCaption: playActPhaseCaption,
+      a11yLabel: playActAccessibilityLabel,
+      captionEnabled: PLAY_ACT_PHASE_CAPTION_ENABLED,
+    });
+    const sig = playActDriftSignature(findings);
+    if (sig.length === 0) {
+      playActDriftLogRef.current = '';
+      return;
+    }
+    if (playActDriftLogRef.current === sig) return;
+    playActDriftLogRef.current = sig;
+    logWarn('AgentSurface', 'Play/Act drift detected (Cycle 9 measurement)', {
+      codes: findings.map(f => f.code),
+      severities: findings.map(f => f.severity),
+      suggest: findings.map(f => f.suggestedClass),
+    });
+  }, [
+    orchState,
+    playActResolution,
+    interactionBandEnabled,
+    playActPhaseCaption,
+    playActAccessibilityLabel,
+  ]);
 
   const canHoldToSpeak = !isAsking && !anyPanelVisible && !debugEnabled;
   const canSwipeContext = canRevealPanels && interactionBandEnabled;

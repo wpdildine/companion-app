@@ -25,6 +25,16 @@ export {
   getPlayActAccessibilityLabel,
   getPlayActPhaseCaptionText,
 } from './playActPhaseCopy';
+export {
+  detectPlayActDrift,
+  playActDriftSignature,
+} from './playActDrift';
+export type {
+  PlayActDriftCode,
+  PlayActDriftFinding,
+  PlayActDriftInput,
+  PlayActDriftSeverity,
+} from './playActDrift';
 export { useAgentOrchestrator } from './useAgentOrchestrator';
 export type {
   AgentOrchestratorActions,

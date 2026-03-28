@@ -21,7 +21,7 @@ export type SemanticChannelViewProps = {
   scrollEventThrottle?: number;
   /** Cycle 6: Play/Act-derived a11y label for the scroll region (orchestrator wins on error). */
   accessibilityContainerLabel?: string;
-  /** Cycle 6 Stage 2: optional non-interactive phase line; omit when null/undefined. */
+  /** Cycle 8 Stage 2: optional non-interactive phase line; omit when null/undefined. */
   phaseCaptionText?: string | null;
   phaseCaptionColor?: string;
   children: React.ReactNode;

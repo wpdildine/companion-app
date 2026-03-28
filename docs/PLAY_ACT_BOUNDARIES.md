@@ -14,7 +14,7 @@ This document does **not** change the Play/Act contract or resolver semantics; i
 - **ResultsOverlay** remains sole owner of reveal/dismiss/layout and grounded structure.
 - **Play/Act** remains a pure derived classifier + hints; consumption is **presentation interpretation only**—no gating, no mutation, no durable Act state.
 - **Hard error** UX remains `lifecycle === 'error'` (and orchestrator error payload), **not** `primaryAct` (see [PLAY_ACT_REALIZATION.md](PLAY_ACT_REALIZATION.md)).
-- **Shipped Stage 1:** semantic channel consumes Play/Act via `playActPhaseCopy` string mappers for accessibility; `affordanceHints` and `processingSubstate` are **not** consumer inputs; visible caption flag defaults **off** (`PLAY_ACT_PHASE_CAPTION_ENABLED` in `AgentSurface`).
+- **Shipped semantic channel:** `playActPhaseCopy` for accessibility **and** (Cycle 8) optional visible caption when `PLAY_ACT_PHASE_CAPTION_ENABLED` is **true** in `AgentSurface`; `affordanceHints` and `processingSubstate` remain **not** consumer inputs for UI branching.
 
 ---
 
@@ -33,7 +33,7 @@ This document does **not** change the Play/Act contract or resolver semantics; i
 | Risk | Why it matters | Current vs future |
 |------|----------------|-------------------|
 | **Accessibility copy drift from truth** | Screen reader users rely on labels; drift erodes trust. | **Current** — mitigate with regression tests on mapping table; orchestrator-first + error override. |
-| **Accidental caption expansion into authority** | Visible line could be read as a **gate** or **blocker**. | **Future** while caption is off; **current** if Stage 2 enabled without bounds. |
+| **Accidental caption expansion into authority** | Visible line could be read as a **gate** or **blocker**. | **Current** whenever Stage 2 caption is on—mitigate with neutral copy, single line, and [Stage 2 decision rule](#stage-2-decision-rule-visible-caption). |
 | **Hidden use of affordanceHints** | Hints become **shadow arbitration**. | **Future** if a consumer imports hints; not in Stage 1 if discipline holds. |
 | **Misuse of processingSubstate** | UI branching on substate = **parallel processing FSM**. | **Future** expansion risk; deferred for consumers. |
 | **Spread into overlay or shell control logic** | Act in conditionals for reveal, dismiss, scroll lock, band. | **Future** creep; prevent via review and expansion stop rules. |
@@ -90,6 +90,8 @@ This document does **not** change the Play/Act contract or resolver semantics; i
 - **No second UI FSM:** Consumers must not branch visible UI on `processingSubstate`.
 - **Mismatch = consumer bug:** Resolver policy changes only when orchestrator contract changes—not to paper over copy drift.
 
+**Cycle 9 drift predicates (read-only):** [docs/PLAY_ACT_MEASUREMENT.md](PLAY_ACT_MEASUREMENT.md) — does not change these rules; adds measurement and tests.
+
 ---
 
 ## Expansion stop rules
@@ -119,7 +121,7 @@ This document does **not** change the Play/Act contract or resolver semantics; i
 
 **READY FOR NARROW IMPLEMENTATION PLAN** for either:
 
-- Enabling Stage 2 visible caption under the **Stage 2 decision rule**, or  
+- Further tuning Stage 2 visible caption copy under the **Stage 2 decision rule** (Cycle 8 shipped the default-on flag; see [PLAY_ACT_REALIZATION.md](PLAY_ACT_REALIZATION.md) Cycle 8), or  
 - Adding **one** additional **safe** consumer (e.g. bounded overlay a11y) without new resolver outputs.
 
 **Minimal precondition:** PR re-states **output usage rules** and **validation checklist**; tests cover error override and no consumer use of `affordanceHints` until explicitly allowed.

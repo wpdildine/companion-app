@@ -95,7 +95,25 @@ The five Acts do not define a dedicated “hard error” Act. When `lifecycle ==
 
 **Surface intersection:** `resolveAgentPlayAct(orchState, { interactionBandEnabled })` uses the same band enablement boolean as [INTERACTION_CONTRACT.md](INTERACTION_CONTRACT.md) arbitration wiring in AgentSurface.
 
-**Stage 2 visible caption:** `PLAY_ACT_PHASE_CAPTION_ENABLED` in `AgentSurface` (default `false`); set `true` for optional helper line without changing ownership.
+**Stage 2 visible caption:** `PLAY_ACT_PHASE_CAPTION_ENABLED` in `AgentSurface` (see Cycle 8).
+
+---
+
+## Cycle 8 — Stage 2 visible caption (single additional consumer)
+
+**Objective:** Same semantic channel shell as Cycle 6; adds the optional **visible** one-line phase caption for sighted users, still presentation-only.
+
+**Preconditions (Stage 2 decision rule in [PLAY_ACT_BOUNDARIES.md](PLAY_ACT_BOUNDARIES.md)):** Product accepts visible phase consistency; caption stays a **single** non-interactive line in the semantic channel shell; copy is neutral (no instruction to speak/tap beyond what arbitration may allow); hard error suppresses caption; caption visibility is **not** tied to arbitration outcomes except band state as **read-only** input to `resolveAgentPlayAct` (unchanged from Cycle 6).
+
+**Consumed resolver outputs:** `primaryAct` and `commitVisibilityHint` via `playActPhaseCopy.getPlayActPhaseCaptionText` (including `commitVisibilityHint` alignment for **Respond** caption variants). Still **not** consumed: `affordanceHints`, `processingSubstate` for any UI branching.
+
+**Product flag:** `PLAY_ACT_PHASE_CAPTION_ENABLED` in `AgentSurface` is **`true`** for the shipped Cycle 8 slice; set `false` to revert to a11y-only without removing wiring.
+
+---
+
+## Cycle 9 — measurement and drift detection
+
+**Read-only** validation: [docs/PLAY_ACT_MEASUREMENT.md](PLAY_ACT_MEASUREMENT.md). Pure predicates in `src/app/agent/playActDrift.ts`; golden + violation tests in `src/app/agent/tests/playActDrift.test.ts`; optional **`__DEV__`** `logWarn` when drift signature changes in `AgentSurface` (no control impact).
 
 ---
 

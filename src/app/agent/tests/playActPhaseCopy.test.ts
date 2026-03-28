@@ -106,4 +106,61 @@ describe('getPlayActPhaseCaptionText', () => {
       ),
     ).toContain('clearer');
   });
+
+  it('Cycle 8: visible caption for intake when not error', () => {
+    expect(
+      getPlayActPhaseCaptionText(
+        res({ primaryAct: 'intake' }),
+        orch({ lifecycle: 'idle' }),
+      ),
+    ).toBe('Ready to listen');
+  });
+
+  it('Cycle 8: respond + committed_answer uses commitVisibilityHint for caption', () => {
+    expect(
+      getPlayActPhaseCaptionText(
+        res({ primaryAct: 'respond', commitVisibilityHint: 'committed_answer' }),
+        orch({ lifecycle: 'idle', responseText: 'Hi' }),
+      ),
+    ).toBe('Answer ready');
+  });
+
+  it('Cycle 8: respond + provisional caption (hint alignment, no processingSubstate branch)', () => {
+    expect(
+      getPlayActPhaseCaptionText(
+        res({ primaryAct: 'respond', commitVisibilityHint: 'provisional' }),
+        orch({ lifecycle: 'idle' }),
+      ),
+    ).toBe('Forming answer…');
+  });
+
+  it('Cycle 8: respond + cleared_or_empty caption', () => {
+    expect(
+      getPlayActPhaseCaptionText(
+        res({ primaryAct: 'respond', commitVisibilityHint: 'cleared_or_empty' }),
+        orch({ lifecycle: 'idle' }),
+      ),
+    ).toBe('No answer displayed');
+  });
+
+  it('Cycle 8: respond + speaking keeps playback caption regardless of hint', () => {
+    expect(
+      getPlayActPhaseCaptionText(
+        res({
+          primaryAct: 'respond',
+          commitVisibilityHint: 'provisional',
+        }),
+        orch({ lifecycle: 'speaking', responseText: 'Hi' }),
+      ),
+    ).toBe('Playing answer');
+  });
+
+  it('Cycle 8: error suppresses caption even if primaryAct is respond', () => {
+    expect(
+      getPlayActPhaseCaptionText(
+        res({ primaryAct: 'respond', commitVisibilityHint: 'committed_answer' }),
+        orch({ lifecycle: 'error', error: 'e' }),
+      ),
+    ).toBeNull();
+  });
 });

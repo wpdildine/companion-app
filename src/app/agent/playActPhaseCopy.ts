@@ -1,5 +1,5 @@
 /**
- * Presentation-only copy from Play/Act resolution + orchestrator truth (Cycles 6–7).
+ * Presentation-only copy from Play/Act resolution + orchestrator truth (Cycles 6–8).
  * Hard error UX must follow lifecycle === 'error', not primaryAct (PLAY_ACT_REALIZATION.md).
  * Consumer boundaries and deferred outputs: docs/PLAY_ACT_BOUNDARIES.md.
  */
@@ -37,8 +37,8 @@ export function getPlayActAccessibilityLabel(
 }
 
 /**
- * Optional visible phase caption (Cycle 6 Stage 2). Subordinate to orchestrator/error truth.
- * Returns null when error lifecycle (surface should show error UI, not duplicate banner).
+ * Visible phase caption (Cycle 8 Stage 2). Subordinate to orchestrator/error truth.
+ * Uses primaryAct + commitVisibilityHint for Respond variants; returns null when error lifecycle.
  */
 export function getPlayActPhaseCaptionText(
   resolution: AgentPlayActResolution,
@@ -61,7 +61,18 @@ export function getPlayActPhaseCaptionText(
       if (state.lifecycle === 'speaking') {
         return 'Playing answer';
       }
-      return 'Answer ready';
+      switch (resolution.commitVisibilityHint) {
+        case 'provisional':
+          return 'Forming answer…';
+        case 'cleared_or_empty':
+          return 'No answer displayed';
+        case 'supplemental_input_expected':
+          return 'More detail needed';
+        case 'uncommitted_or_hidden':
+        case 'committed_answer':
+        default:
+          return 'Answer ready';
+      }
     default:
       return null;
   }
