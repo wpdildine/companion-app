@@ -4,9 +4,9 @@ Where to put the content pack and how it gets built into the app.
 
 **Contract:** Always materialize `assets/content_pack/` as a **real directory** (no symlink semantics in the build). Use the sync script so the pack is stripped (no `models/`) and includes a pack identity stamp. Gradle and Xcode operate on real files; CI and teammates stay predictable.
 
-## 1. Build the pack (mtg_rules)
+## 1. Build the pack (pack_runtime)
 
-In the mtg_rules repo:
+In the pack_runtime repo:
 
 ```bash
 ./run.sh pack --from-flat --out ./content_pack
@@ -20,14 +20,14 @@ From the companion-app repo, run the sync script so `assets/content_pack/` is a 
 
 ```bash
 pnpm run sync-pack-small
-# Or with a custom mtg_rules path:
-node scripts/sync-pack-small.js /path/to/mtg_rules
-# Or: MTG_RULES_PATH=/path/to/mtg_rules node scripts/sync-pack-small.js
+# Or with a custom pack_runtime path:
+node scripts/sync-pack-small.js /path/to/pack_runtime
+# Or: MTG_RULES_PATH=/path/to/pack_runtime node scripts/sync-pack-small.js
 ```
 
 This script:
 
-- Copies from `mtg_rules/content_pack` into `assets/content_pack/`: manifest, router, rules, cards, hashes, context_provider_spec, and any .db files.
+- Copies from `pack_runtime/content_pack` into `assets/content_pack/`: manifest, router, rules, cards, hashes, context_provider_spec, and any .db files.
 - **Always excludes** `models/` (no 1.8GB GGUF in the app bundle).
 - Writes **`pack_identity.json`** with runtime-relevant fields only: `pack_version`, `pack_manifest_sha`, `router_map_sha256`, `router_map_sha256_prefix`, `rules_db_hash`, `cards_db_hash`, `context_provider_spec_hash`, `context_provider_spec_schema_version`, `timestamp`. Optionally include `min_provider_version` or a spec compat field in the pack manifest so the app can enforce compatibility. **Do not** add `fixture_schema_version` to pack_identity unless you actually ship fixture traces in packs (fixtures are test harness, not runtime contract). The app logs pack_identity and **app-side provider version** in debug builds.
 
@@ -60,7 +60,7 @@ assets/
     context_provider_spec.json
 ```
 
-No `models/` directory. The build never depends on symlinks; you can keep a symlink for local dev convenience (e.g. `pnpm run link-mtg-rules link` points `assets/content_pack` at `mtg_rules/content_pack`), but **before building** (and in CI) run `sync-pack-small` so the bundle uses a real directory. The iOS “Copy content pack” phase **fails** if `assets/content_pack` is a symlink, prompting you to run `sync-pack-small`.
+No `models/` directory. The build never depends on symlinks; you can keep a symlink for local dev convenience (e.g. `pnpm run link-mtg-rules link` points `assets/content_pack` at `pack_runtime/content_pack`), but **before building** (and in CI) run `sync-pack-small` so the bundle uses a real directory. The iOS “Copy content pack” phase **fails** if `assets/content_pack` is a symlink, prompting you to run `sync-pack-small`.
 
 **Build-time guard (no accidental models):** CI must fail if `assets/content_pack/models/**` exists or if the app bundle contains any `.gguf` file when you intend a small-pack build. Run `node scripts/check-pack-no-models.js` before or after the build; optionally run it with the path to the built bundle/artifact so the script greps for `.gguf` and fails if found. When using **Option B** (full pack), skip this gate or run it only after switching back to Option A.
 
@@ -68,13 +68,13 @@ No `models/` directory. The build never depends on symlinks; you can keep a syml
 
 To put the full pack including GGUF **on device once** and avoid rebundling the 1.8GB on every build:
 
-1. **In mtg_rules:** Build a full pack that includes models (e.g. `./run.sh pack --from-flat --out ./content_pack` with `--include-llm` or whatever your repo uses to include embed/LLM GGUF). Ensure `content_pack/models/` exists (e.g. `models/embed/embed.gguf`, `models/llm/model.gguf` or the layout your app expects).
+1. **In pack_runtime:** Build a full pack that includes models (e.g. `./run.sh pack --from-flat --out ./content_pack` with `--include-llm` or whatever your repo uses to include embed/LLM GGUF). Ensure `content_pack/models/` exists (e.g. `models/embed/embed.gguf`, `models/llm/model.gguf` or the layout your app expects).
 
 2. **In companion-app:** Run the **full** sync so `assets/content_pack/` contains the pack **including** `models/`:
 
    ```bash
    pnpm run sync-pack-full
-   # Or: node scripts/sync-pack-full.js [path-to-mtg_rules]
+   # Or: node scripts/sync-pack-full.js [path-to-pack_runtime]
    # Or: MTG_RULES_PATH=/path node scripts/sync-pack-full.js
    ```
 
@@ -109,9 +109,9 @@ The app’s ask path uses the **deterministic context provider** to assemble a g
 
 ## 6. Runtime-ts vs in-app runtime
 
-The app **calls the runtime provider** (**getContext**) from **`@mtg/runtime`** during normal operation. The provider runs on-device, reads the synced pack (router_map/spec + rules.db + cards.db), and returns the final context bundle; **the app does not own provider/db—the runtime does**. The **RN entrypoint** of the package (default/`react-native` export) exports the provider and is what the app imports. The **Node entrypoint** **`@mtg/runtime/node`** is for parity tests and Node tooling only; the app must never import it (ESLint enforces this). Link the runtime via `pnpm run link-mtg-rules link --deps` when the app imports the provider (so it stays in **dependencies** for Metro); use `link` without `--deps` when only scripts/tests use the Node entry.
+The app **calls the runtime provider** (**getContext**) from **`@atlas/runtime`** during normal operation. The provider runs on-device, reads the synced pack (router_map/spec + rules.db + cards.db), and returns the final context bundle; **the app does not own provider/db—the runtime does**. The **RN entrypoint** of the package (default/`react-native` export) exports the provider and is what the app imports. The **Node entrypoint** **`@atlas/runtime/node`** is for parity tests and Node tooling only; the app must never import it (ESLint enforces this). Link the runtime via `pnpm run link-mtg-rules link --deps` when the app imports the provider (so it stays in **dependencies** for Metro); use `link` without `--deps` when only scripts/tests use the Node entry.
 
-The runtime package (mtg_rules/runtime-ts) provides **one codebase, two entrypoints**: the same algorithm with an RN adapter (react-native-quick-sqlite, RN file reads) and a Node adapter (fs, better-sqlite3). The app uses the **RN adapter** via `@mtg/runtime`; parity/tools use the **Node adapter** via `@mtg/runtime/node`. Backend mode is not part of this strategy; if backend is ever allowed, treat it as a separate section. **Core logic location:** The deterministic algorithm (normalization, routing, scoring, ordering, bundle assembly) must be implemented once and shared between Node and RN where possible; adapters differ only in I/O (SQLite + file access). This prevents re-implementing logic twice. The RN provider must **consume the same context_provider_spec.json exported by mtg_rules**; no scoring/threshold constants may be hardcoded in app code (this prevents silent divergence from the reference). The RN provider must emit the same **reference trace fields** as Python/Node (at least under a debug flag) for parity debugging: `normalized_query`, `detected_entities`, `router_hit`, `selected_rule_chunks` (ids + reasons + order), `final_context_bundle_canonical`, `context_token_est`. The Node runtime remains the **reference**, **fixture exporter**, and **parity test harness** only. Parity tests and Node tooling **must** import `@mtg/runtime/node` explicitly; the app imports only `@mtg/runtime` (RN entry). Run `pnpm run verify-parity-uses-node` to ensure scripts and tests in this repo use the Node subpath. **Optional:** In debug builds, log context assembly time and SQLite query time; useful when scaling to low-end Android devices.
+The runtime package (pack_runtime/runtime-ts) provides **one codebase, two entrypoints**: the same algorithm with an RN adapter (react-native-quick-sqlite, RN file reads) and a Node adapter (fs, better-sqlite3). The app uses the **RN adapter** via `@atlas/runtime`; parity/tools use the **Node adapter** via `@atlas/runtime/node`. Backend mode is not part of this strategy; if backend is ever allowed, treat it as a separate section. **Core logic location:** The deterministic algorithm (normalization, routing, scoring, ordering, bundle assembly) must be implemented once and shared between Node and RN where possible; adapters differ only in I/O (SQLite + file access). This prevents re-implementing logic twice. The RN provider must **consume the same context_provider_spec.json exported by pack_runtime**; no scoring/threshold constants may be hardcoded in app code (this prevents silent divergence from the reference). The RN provider must emit the same **reference trace fields** as Python/Node (at least under a debug flag) for parity debugging: `normalized_query`, `detected_entities`, `router_hit`, `selected_rule_chunks` (ids + reasons + order), `final_context_bundle_canonical`, `context_token_est`. The Node runtime remains the **reference**, **fixture exporter**, and **parity test harness** only. Parity tests and Node tooling **must** import `@atlas/runtime/node` explicitly; the app imports only `@atlas/runtime` (RN entry). Run `pnpm run verify-parity-uses-node` to ensure scripts and tests in this repo use the Node subpath. **Optional:** In debug builds, log context assembly time and SQLite query time; useful when scaling to low-end Android devices.
 
 **RN SQLite constraints:** Use a single DB connection; cache prepared statements; avoid N+1 (no per-rule queries inside loops — use `IN (...)` or precomputed tables). Open DB **read-only** where possible; disable WAL if it causes write attempts.
 
@@ -119,7 +119,7 @@ The runtime package (mtg_rules/runtime-ts) provides **one codebase, two entrypoi
 
 **Version handshake (pack + provider):** Define a compat contract: **context_provider_spec_schema_version** in the pack must be supported by the provider. **Pack structure changes must increment context_provider_spec_schema_version** (forcing function for evolution). Optionally put **min_provider_version** or a spec_version in the pack manifest or stamp. **Debug builds:** Hard-fail if the spec schema version is unsupported. **Release builds:** Show a user-facing error ("Pack incompatible with app version") instead of silent misbehavior. Do not require fixture_schema_version for runtime unless you ship fixtures. **Provider context budget:** The provider context budget is defined in **context_provider_spec.json** and must not be duplicated in app config (prevents split-budget bugs).
 
-**Prompt/profile versioning:** Pin LLM behavior so "answers changed" is not blamed on retrieval when it is prompt drift. Store **prompt_profile_id** and **prompt_template_version** in **app config only** (not in pack_identity). The pack is deterministic data; prompt/profile is LLM presentation logic — keeping them separate avoids coupling retrieval and formatting. Log prompt profile and template version in debug. Align with mtg_rules prompt profiles (e.g. mobile, default) and stop token set, max output tokens.
+**Prompt/profile versioning:** Pin LLM behavior so "answers changed" is not blamed on retrieval when it is prompt drift. Store **prompt_profile_id** and **prompt_template_version** in **app config only** (not in pack_identity). The pack is deterministic data; prompt/profile is LLM presentation logic — keeping them separate avoids coupling retrieval and formatting. Log prompt profile and template version in debug. Align with pack_runtime prompt profiles (e.g. mobile, default) and stop token set, max output tokens.
 
 ## 6.1. Validation and CI gates
 
@@ -129,7 +129,7 @@ Before testing the app or cutting a release, run the integration gates:
 pnpm run validate-e2e-gates
 ```
 
-This runs: **verify-parity-uses-node** (scripts/tests must use `@mtg/runtime/node`), **check-pack-no-models** (no models/ or .gguf in pack), and **check-bundle-no-node** (if a built RN bundle exists, it must not contain Node-only modules). For the bundle check to run, build the bundle first (e.g. `react-native bundle` for iOS/Android). Node parity tests (in mtg_rules) must be run separately and must import `@mtg/runtime/node`.
+This runs: **verify-parity-uses-node** (scripts/tests must use `@atlas/runtime/node`), **check-pack-no-models** (no models/ or .gguf in pack), and **check-bundle-no-node** (if a built RN bundle exists, it must not contain Node-only modules). For the bundle check to run, build the bundle first (e.g. `react-native bundle` for iOS/Android). Node parity tests (in pack_runtime) must be run separately and must import `@atlas/runtime/node`.
 
 ## 7. Getting the pack onto the device
 

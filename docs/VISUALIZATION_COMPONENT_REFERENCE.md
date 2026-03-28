@@ -81,12 +81,11 @@ src/visualization/
   - `end` => semantic commit (`onClusterRelease`) for left/right release, unless a center hold already started or a higher-priority capture path took over
   - `cancel` => clear only
 - `InteractionProbe` (interaction/): passive diagnostic overlay used in viz debug mode. Shows live NDC, zone, and center-hold eligibility; does not capture touches.
-- `nameShapingCapture` is an active override path. When present, the band forwards band-relative NDC to that capture layer and suppresses its normal hold-to-speak and cluster-release semantics.
 - Legacy callback note: `onClusterTap` may still appear in wiring as a compatibility alias, but release is the semantic commit phase.
 - Tap mapping (in band):
   - `ndcX < -0.12` => `rules`
   - `ndcX > 0.12` => `cards`
-- Band active region: currently runtime-configured. Default top inset comes from `scene.zones.layout.bandTopInsetPx` with fallback `112`, but callers may override it (the current Name Shaping path uses `0`). Treat the inset as configurable rather than a permanently fixed architectural constant.
+- Band active region: currently runtime-configured. Default top inset comes from `scene.zones.layout.bandTopInsetPx` with fallback `112`, but callers may override it via `topInsetOverridePx`. Treat the inset as configurable rather than a permanently fixed architectural constant.
 - Continuous vs discrete split:
   - touch start/move => continuous organism field updates only
   - touch end => semantic commit (`rules/cards`) based on final release position

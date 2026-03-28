@@ -1,13 +1,14 @@
 /**
  * Single configuration for RAG + generation.
- * Defaults match mtg_rules runtime (human_short) and can be overridden by pack rag_config.json at runtime.
+ * Defaults match pack_runtime runtime (human_short) and can be overridden by pack rag_config.json at runtime.
  */
 
-import * as MtgRuntime from '@mtg/runtime';
+import * as MtgRuntime from '@atlas/runtime';
 
 /** System instruction for human-short RAG; not exported from runtime RN entrypoint so fallback. */
 const HUMAN_SHORT_BODY =
-  (typeof (MtgRuntime as { HUMAN_SHORT_BODY?: string }).HUMAN_SHORT_BODY === 'string' &&
+  (typeof (MtgRuntime as { HUMAN_SHORT_BODY?: string }).HUMAN_SHORT_BODY ===
+    'string' &&
     (MtgRuntime as { HUMAN_SHORT_BODY?: string }).HUMAN_SHORT_BODY) ||
   'You are a concise assistant. Answer using only the provided rules and card excerpts. Cite doc_id when relevant. Keep answers short.';
 
@@ -101,13 +102,21 @@ export const RAG_CONFIG: RagConfig = {
   debug: { ...DEFAULT_RAG_CONFIG.debug },
 };
 
-function applyNumeric(target: Record<string, number>, key: string, value: unknown): void {
+function applyNumeric(
+  target: Record<string, number>,
+  key: string,
+  value: unknown,
+): void {
   if (typeof value === 'number' && Number.isFinite(value)) {
     target[key] = value;
   }
 }
 
-function applyString(target: Record<string, string>, key: string, value: unknown): void {
+function applyString(
+  target: Record<string, string>,
+  key: string,
+  value: unknown,
+): void {
   if (typeof value === 'string' && value.trim()) {
     target[key] = value;
   }
@@ -117,36 +126,114 @@ function applyString(target: Record<string, string>, key: string, value: unknown
  * Apply optional pack override. Invalid/missing keys are ignored.
  * If schema_version is provided and unsupported, no override is applied.
  */
-export function applyPackRagConfig(override: PackRagConfig | null | undefined): void {
+export function applyPackRagConfig(
+  override: PackRagConfig | null | undefined,
+): void {
   if (!override || typeof override !== 'object') return;
   if (override.schema_version != null && override.schema_version !== 1) return;
 
-  applyNumeric(RAG_CONFIG as unknown as Record<string, number>, 'n_predict', override.n_predict);
-  applyNumeric(RAG_CONFIG as unknown as Record<string, number>, 'chat_n_ctx', override.chat_n_ctx);
-  applyNumeric(RAG_CONFIG as unknown as Record<string, number>, 'embed_n_ctx', override.embed_n_ctx);
-  applyNumeric(RAG_CONFIG as unknown as Record<string, number>, 'context_budget', override.context_budget);
+  applyNumeric(
+    RAG_CONFIG as unknown as Record<string, number>,
+    'n_predict',
+    override.n_predict,
+  );
+  applyNumeric(
+    RAG_CONFIG as unknown as Record<string, number>,
+    'chat_n_ctx',
+    override.chat_n_ctx,
+  );
+  applyNumeric(
+    RAG_CONFIG as unknown as Record<string, number>,
+    'embed_n_ctx',
+    override.embed_n_ctx,
+  );
+  applyNumeric(
+    RAG_CONFIG as unknown as Record<string, number>,
+    'context_budget',
+    override.context_budget,
+  );
 
   if (override.generation) {
-    applyNumeric(RAG_CONFIG.generation as unknown as Record<string, number>, 'temperature', override.generation.temperature);
-    applyNumeric(RAG_CONFIG.generation as unknown as Record<string, number>, 'top_p', override.generation.top_p);
-    applyNumeric(RAG_CONFIG.generation as unknown as Record<string, number>, 'top_k', override.generation.top_k);
-    applyNumeric(RAG_CONFIG.generation as unknown as Record<string, number>, 'penalty_repeat', override.generation.penalty_repeat);
+    applyNumeric(
+      RAG_CONFIG.generation as unknown as Record<string, number>,
+      'temperature',
+      override.generation.temperature,
+    );
+    applyNumeric(
+      RAG_CONFIG.generation as unknown as Record<string, number>,
+      'top_p',
+      override.generation.top_p,
+    );
+    applyNumeric(
+      RAG_CONFIG.generation as unknown as Record<string, number>,
+      'top_k',
+      override.generation.top_k,
+    );
+    applyNumeric(
+      RAG_CONFIG.generation as unknown as Record<string, number>,
+      'penalty_repeat',
+      override.generation.penalty_repeat,
+    );
   }
   if (override.retrieval) {
-    applyNumeric(RAG_CONFIG.retrieval as unknown as Record<string, number>, 'top_k_rules', override.retrieval.top_k_rules);
-    applyNumeric(RAG_CONFIG.retrieval as unknown as Record<string, number>, 'top_k_cards', override.retrieval.top_k_cards);
-    applyNumeric(RAG_CONFIG.retrieval as unknown as Record<string, number>, 'top_k_merge', override.retrieval.top_k_merge);
-    applyNumeric(RAG_CONFIG.retrieval as unknown as Record<string, number>, 'rules_weight', override.retrieval.rules_weight);
-    applyNumeric(RAG_CONFIG.retrieval as unknown as Record<string, number>, 'cards_weight', override.retrieval.cards_weight);
+    applyNumeric(
+      RAG_CONFIG.retrieval as unknown as Record<string, number>,
+      'top_k_rules',
+      override.retrieval.top_k_rules,
+    );
+    applyNumeric(
+      RAG_CONFIG.retrieval as unknown as Record<string, number>,
+      'top_k_cards',
+      override.retrieval.top_k_cards,
+    );
+    applyNumeric(
+      RAG_CONFIG.retrieval as unknown as Record<string, number>,
+      'top_k_merge',
+      override.retrieval.top_k_merge,
+    );
+    applyNumeric(
+      RAG_CONFIG.retrieval as unknown as Record<string, number>,
+      'rules_weight',
+      override.retrieval.rules_weight,
+    );
+    applyNumeric(
+      RAG_CONFIG.retrieval as unknown as Record<string, number>,
+      'cards_weight',
+      override.retrieval.cards_weight,
+    );
   }
   if (override.prompt) {
-    applyNumeric(RAG_CONFIG.prompt as unknown as Record<string, number>, 'max_prompt_chars', override.prompt.max_prompt_chars);
-    applyNumeric(RAG_CONFIG.prompt as unknown as Record<string, number>, 'default_max_context_chars', override.prompt.default_max_context_chars);
-    applyNumeric(RAG_CONFIG.prompt as unknown as Record<string, number>, 'chars_per_token_est', override.prompt.chars_per_token_est);
-    applyString(RAG_CONFIG.prompt as unknown as Record<string, string>, 'system_instruction', override.prompt.system_instruction);
+    applyNumeric(
+      RAG_CONFIG.prompt as unknown as Record<string, number>,
+      'max_prompt_chars',
+      override.prompt.max_prompt_chars,
+    );
+    applyNumeric(
+      RAG_CONFIG.prompt as unknown as Record<string, number>,
+      'default_max_context_chars',
+      override.prompt.default_max_context_chars,
+    );
+    applyNumeric(
+      RAG_CONFIG.prompt as unknown as Record<string, number>,
+      'chars_per_token_est',
+      override.prompt.chars_per_token_est,
+    );
+    applyString(
+      RAG_CONFIG.prompt as unknown as Record<string, string>,
+      'system_instruction',
+      override.prompt.system_instruction,
+    );
   }
   if (override.debug) {
-    applyNumeric(RAG_CONFIG.debug as unknown as Record<string, number>, 'excerpt_len', override.debug.excerpt_len);
-    applyNumeric(RAG_CONFIG.debug as unknown as Record<string, number>, 'prompt_preview_len', override.debug.prompt_preview_len);
+    applyNumeric(
+      RAG_CONFIG.debug as unknown as Record<string, number>,
+      'excerpt_len',
+      override.debug.excerpt_len,
+    );
+    applyNumeric(
+      RAG_CONFIG.debug as unknown as Record<string, number>,
+      'prompt_preview_len',
+      override.debug.prompt_preview_len,
+    );
   }
 }

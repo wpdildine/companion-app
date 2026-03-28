@@ -1,6 +1,6 @@
 /**
  * Open pack SQLite DBs (cards.db, rules.db) on React Native using react-native-quick-sqlite.
- * Exposes the same query surface as mtg_rules/runtime-ts db.ts for use by getContextRN.
+ * Exposes the same query surface as pack_runtime/runtime-ts db.ts for use by getContextRN.
  *
  * react-native-quick-sqlite open(dbName, location): native layer uses (filesDir + "/" + location + "/" + dbName).
  * So location MUST be relative to the app files dir (e.g. "content_pack/cards"), not an absolute path.
@@ -8,7 +8,9 @@
  * Requires native module to be linked: iOS run `cd ios && pod install && cd ..`, then rebuild. Android: clean & rebuild.
  */
 
-let _QuickSQLite: typeof import('react-native-quick-sqlite').QuickSQLite | null = null;
+let _QuickSQLite:
+  | typeof import('react-native-quick-sqlite').QuickSQLite
+  | null = null;
 
 function getQuickSQLite(): typeof import('react-native-quick-sqlite').QuickSQLite {
   if (_QuickSQLite != null) return _QuickSQLite;
@@ -23,13 +25,13 @@ function getQuickSQLite(): typeof import('react-native-quick-sqlite').QuickSQLit
     const msg = e instanceof Error ? e.message : String(e);
     if (/quick-sqlite|QuickSQLite/i.test(msg)) {
       throw new Error(
-        'RAG needs the native SQLite module. Rebuild the app: iOS: run `cd ios && pod install && cd ..` then build. Android: clean and rebuild. If using Expo, use a development build that includes native modules.'
+        'RAG needs the native SQLite module. Rebuild the app: iOS: run `cd ios && pod install && cd ..` then build. Android: clean and rebuild. If using Expo, use a development build that includes native modules.',
       );
     }
     throw e;
   }
   throw new Error(
-    'RAG needs the native SQLite module. Rebuild the app: iOS: run `cd ios && pod install && cd ..` then build. Android: clean and rebuild.'
+    'RAG needs the native SQLite module. Rebuild the app: iOS: run `cd ios && pod install && cd ..` then build. Android: clean and rebuild.',
   );
 }
 
@@ -51,7 +53,9 @@ export interface RulesDb {
   close(): void;
 }
 
-function rowFromResult(result: { rows?: { _array?: unknown[] } }): DbRow | null {
+function rowFromResult(result: {
+  rows?: { _array?: unknown[] };
+}): DbRow | null {
   const arr = result?.rows?._array;
   if (Array.isArray(arr) && arr.length > 0) return arr[0] as DbRow;
   return null;
@@ -63,8 +67,12 @@ function rowsFromResult(result: { rows?: { _array?: unknown[] } }): DbRow[] {
 }
 
 /** Relative location from app files dir, e.g. "content_pack/cards". packRoot is e.g. .../files/content_pack. */
-function relativeLocationForDb(packRoot: string, subdir: 'cards' | 'rules'): string {
-  const packName = packRoot.slice(packRoot.lastIndexOf('/') + 1) || 'content_pack';
+function relativeLocationForDb(
+  packRoot: string,
+  subdir: 'cards' | 'rules',
+): string {
+  const packName =
+    packRoot.slice(packRoot.lastIndexOf('/') + 1) || 'content_pack';
   return `${packName}/${subdir}`;
 }
 
@@ -75,11 +83,19 @@ export function openCardsDb(packRoot: string): CardsDb {
   QuickSQLite.open(name, location);
   return {
     cardByNameNorm(nameNorm: string): DbRow | null {
-      const r = QuickSQLite.execute(name, 'SELECT * FROM cards WHERE name_norm = ?', [nameNorm]);
+      const r = QuickSQLite.execute(
+        name,
+        'SELECT * FROM cards WHERE name_norm = ?',
+        [nameNorm],
+      );
       return rowFromResult(r);
     },
     cardByOracleId(oracleId: string): DbRow | null {
-      const r = QuickSQLite.execute(name, 'SELECT * FROM cards WHERE oracle_id = ?', [oracleId]);
+      const r = QuickSQLite.execute(
+        name,
+        'SELECT * FROM cards WHERE oracle_id = ?',
+        [oracleId],
+      );
       return rowFromResult(r);
     },
     cardsByPrefix(prefix: string, candidateCap: number): DbRow[] {
@@ -87,7 +103,7 @@ export function openCardsDb(packRoot: string): CardsDb {
       const r = QuickSQLite.execute(
         name,
         `SELECT DISTINCT c.* FROM cards c INNER JOIN card_name_prefix p ON p.oracle_id = c.oracle_id AND p.prefix = ? ORDER BY c.oracle_id ASC LIMIT ?`,
-        [prefix, candidateCap]
+        [prefix, candidateCap],
       );
       return rowsFromResult(r);
     },
@@ -96,10 +112,12 @@ export function openCardsDb(packRoot: string): CardsDb {
       const r = QuickSQLite.execute(
         name,
         'SELECT oracle_id FROM card_name_prefix WHERE prefix = ? ORDER BY oracle_id ASC LIMIT ?',
-        [prefix, candidateCap]
+        [prefix, candidateCap],
       );
       const rows = rowsFromResult(r);
-      return rows.map((row) => String((row as { oracle_id?: string }).oracle_id ?? ''));
+      return rows.map(row =>
+        String((row as { oracle_id?: string }).oracle_id ?? ''),
+      );
     },
     close() {
       try {
@@ -118,20 +136,31 @@ export function openRulesDb(packRoot: string): RulesDb {
   QuickSQLite.open(name, location);
   return {
     rulesBySection(section: number): DbRow[] {
-      const r = QuickSQLite.execute(name, 'SELECT * FROM rules WHERE section = ? ORDER BY rule_id ASC', [section]);
+      const r = QuickSQLite.execute(
+        name,
+        'SELECT * FROM rules WHERE section = ? ORDER BY rule_id ASC',
+        [section],
+      );
       return rowsFromResult(r);
     },
     ruleById(ruleId: string): DbRow | null {
-      const r = QuickSQLite.execute(name, 'SELECT * FROM rules WHERE rule_id = ?', [ruleId]);
+      const r = QuickSQLite.execute(
+        name,
+        'SELECT * FROM rules WHERE rule_id = ?',
+        [ruleId],
+      );
       return rowFromResult(r);
     },
-    ruleFromSectionContaining(section: number, substring: string): DbRow | null {
+    ruleFromSectionContaining(
+      section: number,
+      substring: string,
+    ): DbRow | null {
       const sub = (substring || '').trim().toLowerCase();
       if (!sub) return null;
       const r = QuickSQLite.execute(
         name,
         'SELECT * FROM rules WHERE section = ? AND LOWER(text) LIKE ? ORDER BY rule_id ASC LIMIT 1',
-        [section, `%${sub}%`]
+        [section, `%${sub}%`],
       );
       return rowFromResult(r);
     },
@@ -139,7 +168,7 @@ export function openRulesDb(packRoot: string): RulesDb {
       const r = QuickSQLite.execute(
         name,
         'SELECT * FROM rules WHERE rule_id LIKE ? ORDER BY rule_id ASC LIMIT 2',
-        [prefix + '%']
+        [prefix + '%'],
       );
       return rowsFromResult(r);
     },

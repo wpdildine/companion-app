@@ -40,6 +40,12 @@ local.properties
 node_modules/
 npm-debug.log
 yarn-error.log
+!scripts/native-overrides/node_modules/
+scripts/native-overrides/node_modules/*
+!scripts/native-overrides/node_modules/react-native/
+scripts/native-overrides/node_modules/react-native/*
+!scripts/native-overrides/node_modules/react-native/third-party-podspecs/
+!scripts/native-overrides/node_modules/react-native/third-party-podspecs/*.podspec
 
 # fastlane
 #

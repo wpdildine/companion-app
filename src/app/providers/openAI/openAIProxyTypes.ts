@@ -53,6 +53,16 @@ export interface OpenAIProxyError {
   code?: string;
 }
 
+/** Normalize transport errors thrown by the proxy hook (not `Error` instances). */
+export function isOpenAIProxyError(error: unknown): error is OpenAIProxyError {
+  return (
+    error != null &&
+    typeof error === 'object' &&
+    !(error instanceof Error) &&
+    typeof (error as OpenAIProxyError).message === 'string'
+  );
+}
+
 // Backward-compatible aliases while the rest of the app adopts the plan naming.
 export type SttRequest = TranscribeAudioParams;
 export type SttResult = TranscribeAudioResult;

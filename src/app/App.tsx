@@ -13,6 +13,10 @@ import AgentSurface from './AgentSurface';
 
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+const styles = {
+  root: { flex: 1 },
+};
+
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
 
@@ -21,7 +25,7 @@ function App() {
   }, []);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
         <AgentSurface />

@@ -1,26 +1,35 @@
 /**
  * Earcon hooks for listening start/end. Called once per transition from AgentSurface.
  * Assets are available at assets/sound/earcon_in.wav (start) and assets/sound/earcon_out.wav (end).
- * Implementation uses expo-audio for playback and preloads assets on startup.
+ * Implementation uses expo-audio for playback; Expo is loaded only on first playback (not at module import).
  */
 
-import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
+import type { AudioPlayer } from 'expo-audio';
 import { logInfo, logWarn } from '../logging';
 
 type EarconKind = 'start' | 'end';
 
-type EarconPlayer = ReturnType<typeof createAudioPlayer>;
+type EarconPlayer = AudioPlayer;
 
 const EARCON_MODULES: Record<EarconKind, number> = {
   start: require('../../../assets/sound/earcon_in.wav'),
   end: require('../../../assets/sound/earcon_out.wav'),
 };
 
+let expoAudioModule: typeof import('expo-audio') | null = null;
+function getExpoAudio(): typeof import('expo-audio') {
+  if (!expoAudioModule) {
+    expoAudioModule = require('expo-audio') as typeof import('expo-audio');
+  }
+  return expoAudioModule;
+}
+
 let audioModePromise: Promise<void> | null = null;
 let preparePromise: Promise<void> | null = null;
 const players = new Map<EarconKind, EarconPlayer>();
 
 async function ensureAudioMode(): Promise<void> {
+  const { setAudioModeAsync } = getExpoAudio();
   if (!audioModePromise) {
     audioModePromise = setAudioModeAsync({
       playsInSilentMode: true,
@@ -38,6 +47,7 @@ async function ensureAudioMode(): Promise<void> {
 async function getPlayer(kind: EarconKind): Promise<EarconPlayer> {
   const cached = players.get(kind);
   if (cached) return cached;
+  const { createAudioPlayer } = getExpoAudio();
   const source = EARCON_MODULES[kind];
   const player = createAudioPlayer(source);
   player.volume = 1;
@@ -46,12 +56,17 @@ async function getPlayer(kind: EarconKind): Promise<EarconPlayer> {
   return player;
 }
 
+/** Registers bundled earcon assets for playback; does not load expo-audio or configure audio session. */
 export async function prepareEarcons(): Promise<void> {
   if (!preparePromise) {
     preparePromise = (async () => {
       try {
-        await ensureAudioMode();
-        await Promise.all([getPlayer('start'), getPlayer('end')]);
+        if (
+          typeof EARCON_MODULES.start !== 'number' ||
+          typeof EARCON_MODULES.end !== 'number'
+        ) {
+          throw new Error('earcon asset module ids missing');
+        }
         logInfo('Playback', 'earcon assets preloaded');
       } catch (error) {
         preparePromise = null;
@@ -124,4 +139,5 @@ export function cleanupEarcons(): void {
   players.clear();
   audioModePromise = null;
   preparePromise = null;
+  expoAudioModule = null;
 }

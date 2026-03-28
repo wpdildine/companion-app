@@ -6,14 +6,14 @@
 
 import type { PackFileReader } from './types';
 import type { IndexMeta } from './types';
-import { ragError } from './errors';
+import { CONTEXT_BUNDLE_ERROR, ragErrorWithAttribution } from './errors';
 
 /** Decode one little-endian float16 at index i in u16 to float. Keeps vectors in f16 to avoid ~22s full decode. */
 function f16ToFloat(u16: Uint16Array, i: number): number {
   const x = u16[i]!;
-  const sign = (x >> 15) & 1;
-  const exp = (x >> 10) & 0x1f;
-  const frac = x & 0x3ff;
+  const sign = Math.floor(x / 2 ** 15) % 2;
+  const exp = Math.floor(x / 2 ** 10) % 32;
+  const frac = x % 1024;
   if (exp === 0) {
     return frac === 0 ? 0 : (sign ? -1 : 1) * Math.pow(2, -14) * (frac / 1024);
   }
@@ -54,7 +54,11 @@ export async function loadVectors(
   const dim = meta.dim;
   const nRows = Math.floor(buf.byteLength / (dim * 2));
   if (meta.max_rows != null && nRows > meta.max_rows) {
-    throw ragError('E_RETRIEVAL', `Index exceeds max_rows: ${nRows} > ${meta.max_rows}`);
+    throw ragErrorWithAttribution(
+      'E_RETRIEVAL',
+      `Index exceeds max_rows: ${nRows} > ${meta.max_rows}`,
+      CONTEXT_BUNDLE_ERROR,
+    );
   }
   const f16Data = new Uint16Array(buf);
   const index: VectorIndex = { meta, f16Data, dim, nRows };
@@ -88,7 +92,11 @@ export function searchL2(
   k: number
 ): Array<{ rowId: number; score: number }> {
   if (queryVector.length !== index.dim) {
-    throw ragError('E_RETRIEVAL', `Query dim ${queryVector.length} !== index dim ${index.dim}`);
+    throw ragErrorWithAttribution(
+      'E_RETRIEVAL',
+      `Query dim ${queryVector.length} !== index dim ${index.dim}`,
+      CONTEXT_BUNDLE_ERROR,
+    );
   }
   const { f16Data, dim, nRows } = index;
   const heap: Array<{ rowId: number; score: number }> = [];

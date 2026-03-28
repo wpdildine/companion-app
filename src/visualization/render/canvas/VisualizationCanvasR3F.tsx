@@ -20,19 +20,19 @@ import { StyleSheet, View } from 'react-native';
 import * as THREE from 'three';
 import type { TouchCallbacks } from '../../interaction/touchHandlers';
 import { TouchRaycaster } from '../../interaction/TouchRaycaster';
-import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
 import { subscribeVisualizationScene } from '../../runtime/applySceneUpdates';
+import { RuntimeLoop } from '../../runtime/RuntimeLoop';
+import type { VisualizationEngineRef } from '../../runtime/runtimeTypes';
+import {
+  DEFAULT_LAYER_DESCRIPTORS,
+  isMountIdInRegistry,
+  LAYER_REGISTRY,
+} from '../layers/layerRegistry';
 import { CameraOrbit } from './CameraOrbit';
 import {
   useDirectMountCanvasTouchHandlers,
   type CanvasTouchPolicy,
 } from './directMountCanvasTouch';
-import {
-  LAYER_REGISTRY,
-  DEFAULT_LAYER_DESCRIPTORS,
-  isMountIdInRegistry,
-} from '../layers/layerRegistry';
-import { RuntimeLoop } from '../../runtime/RuntimeLoop';
 import { PostFXPass } from './PostFXPass';
 import { subscribeVizSubsystemChange } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 
@@ -108,7 +108,8 @@ export function VisualizationCanvasR3F({
       gl.setClearColor(hex, 1);
       state.scene.background = new THREE.Color(canvasBackground);
       gl.toneMapping = THREE.NoToneMapping;
-      if ('outputColorSpace' in gl) (gl as THREE.WebGLRenderer).outputColorSpace = THREE.SRGBColorSpace;
+      if ('outputColorSpace' in gl)
+        (gl as THREE.WebGLRenderer).outputColorSpace = THREE.SRGBColorSpace;
     },
     [canvasBackground],
   );
@@ -134,11 +135,11 @@ export function VisualizationCanvasR3F({
         }}
       >
         <color attach="background" args={[canvasBackground]} />
-        {(visualizationRef.current?.scene?.layerDescriptors ??
-          DEFAULT_LAYER_DESCRIPTORS)
-          .filter(
-            d => d.enabled !== false && isMountIdInRegistry(d.id),
-          )
+        {(
+          visualizationRef.current?.scene?.layerDescriptors ??
+          DEFAULT_LAYER_DESCRIPTORS
+        )
+          .filter(d => d.enabled !== false && isMountIdInRegistry(d.id))
           .map(d => {
             const Comp = LAYER_REGISTRY[d.id];
             return Comp ? (

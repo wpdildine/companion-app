@@ -1,6 +1,6 @@
-import type { RouterMap } from '@mtg/runtime/dist/routerLoader';
+import type { RouterMap } from '@atlas/runtime/dist/routerLoader';
 
-declare module '@mtg/runtime' {
+declare module '@atlas/runtime' {
   export function getKeywordAbilities(
     routerMap: RouterMap,
   ): Record<string, { section: number; rule_prefix: string }>;

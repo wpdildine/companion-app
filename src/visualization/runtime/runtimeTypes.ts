@@ -3,6 +3,7 @@
  * Discrete mode is written by React; continuous animation advances in the runtime loop.
  */
 
+import type { AppStateStatus } from 'react-native';
 import type { GLSceneDescription } from '../scene/sceneFormations';
 import type {
   VisualizationSignalEvent,
@@ -86,6 +87,8 @@ export interface VisualizationEngineRef {
   vizIntensity: VisualizationIntensity;
   /** Reduce motion (accessibility). */
   reduceMotion: boolean;
+  /** Latest app foreground/background state. */
+  appState?: AppStateStatus;
   /** Last semantic event (for pulse/ripple). */
   lastEvent: VisualizationSignalEvent;
   /** Time of last event (clock or elapsed). */
@@ -122,8 +125,6 @@ export interface VisualizationEngineRef {
   focusZone: 'rules' | 'neutral' | 'cards' | null;
   /** Show touch zone debug meshes (rules/center/cards). Default off; toggle in Dev panel. */
   showTouchZones: boolean;
-  /** When true, the touch-zone debug layer shows six NameShaping selector regions instead of the default rules/center/cards layout. */
-  showNameShapingTouchZones: boolean;
   /** Spine planes: true = per-plane halftone shader, false = solid MeshBasicMaterial. Toggle in Dev panel. */
   spineUseHalftonePlanes: boolean;
   /** Dev: cycle-all-states toggle and timer (persists when panel closes). */

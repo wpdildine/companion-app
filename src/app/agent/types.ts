@@ -3,7 +3,14 @@
  * AgentOrchestrator owns runtime truth; VisualizationController consumes these.
  */
 
+import type { SemanticFrontDoor } from '@atlas/runtime';
 import type { ValidationSummary } from '../../rag';
+
+/** Latest front-door-blocked outcome for control/presentation binding; not a semantic cache. */
+export type LastFrontDoorOutcome = {
+  requestId: number;
+  semanticFrontDoor: SemanticFrontDoor;
+};
 
 /** Normalized agent lifecycle state. Provider-agnostic. */
 export type AgentLifecycleState =
@@ -81,5 +88,7 @@ export interface AgentOrchestratorState {
   audioSessionState?: 'idleReady' | 'starting' | 'listening' | 'stopping' | 'settling';
   /** Active recording session id when an STT session is in-flight; null otherwise. */
   recordingSessionId?: string | null;
+  /** Set when the last request ended at the semantic front door (blocked); cleared on successful answer or recovery. */
+  lastFrontDoorOutcome?: LastFrontDoorOutcome | null;
   metadata?: AgentStateMetadata;
 }

@@ -403,7 +403,6 @@ export function ContextGlyphs({
     return null;
   }
 
-  const layers = scene?.layers;
   const glyphsBackRo = getDescriptorRenderOrderBase(
     scene,
     descriptor,

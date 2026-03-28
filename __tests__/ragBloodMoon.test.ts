@@ -15,21 +15,37 @@ describe('RAG Blood Moon settlement payload', () => {
             validate: {
               schema_version: 1,
               files: {
-                rules_rule_ids: { path: 'validate/rule_ids.json', format: 'json' },
-                cards_name_lookup: { path: 'validate/name_lookup.jsonl', format: 'jsonl' },
+                rules_rule_ids: {
+                  path: 'validate/rule_ids.json',
+                  format: 'json',
+                },
+                cards_name_lookup: {
+                  path: 'validate/name_lookup.jsonl',
+                  format: 'jsonl',
+                },
               },
             },
           },
         },
       },
       rules: {
-        indexMeta: { embed_model_id: 'deterministic', dim: 1, metric: 'l2', normalize: false },
+        indexMeta: {
+          embed_model_id: 'deterministic',
+          dim: 1,
+          metric: 'l2',
+          normalize: false,
+        },
         chunksPath: 'rules/chunks.jsonl',
         vectorsPath: 'rules/vectors.bin',
         rowMapPath: 'rules/row_map.json',
       },
       cards: {
-        indexMeta: { embed_model_id: 'deterministic', dim: 1, metric: 'l2', normalize: false },
+        indexMeta: {
+          embed_model_id: 'deterministic',
+          dim: 1,
+          metric: 'l2',
+          normalize: false,
+        },
         chunksPath: 'cards/chunks.jsonl',
         vectorsPath: 'cards/vectors.bin',
         rowMapPath: 'cards/row_map.json',
@@ -40,7 +56,7 @@ describe('RAG Blood Moon settlement payload', () => {
       },
     };
 
-    jest.doMock('@mtg/runtime', () => ({
+    jest.doMock('@atlas/runtime', () => ({
       runHumanShortPipeline: jest.fn((text: string) => text),
       runPipelineHumanShort: jest.fn((text: string) => ({ finalText: text })),
     }));
@@ -56,7 +72,13 @@ describe('RAG Blood Moon settlement payload', () => {
           '[Card: Blood Moon]\nNonbasic lands are Mountains.\n\n[Rule 305.7]\nIf an effect sets a land’s subtype to one or more of the basic land types, the land has no land type other than the new one.',
         intent: 'unknown',
         contextSelection: {
-          cards: [{ name: 'Blood Moon', doc_id: 'oracle:blood-moon', oracleText: 'Nonbasic lands are Mountains.' }],
+          cards: [
+            {
+              name: 'Blood Moon',
+              doc_id: 'oracle:blood-moon',
+              oracleText: 'Nonbasic lands are Mountains.',
+            },
+          ],
           rules: [{ rule_id: '305.7' }],
         },
       })),
@@ -105,17 +127,17 @@ describe('RAG Blood Moon settlement payload', () => {
 
     const result = await rag.ask('What does blood moon do?');
 
-    expect(result.nudged).toBe('Blood Moon turns nonbasic lands into Mountains.');
-    expect(result.validationSummary.cards).toEqual(
-      [
-        expect.objectContaining({
-          canonical: 'Blood Moon',
-          doc_id: 'oracle:blood-moon',
-          oracleText: 'Nonbasic lands are Mountains.',
-          status: 'in_pack',
-        }),
-      ],
+    expect(result.nudged).toBe(
+      'Blood Moon turns nonbasic lands into Mountains.',
     );
+    expect(result.validationSummary.cards).toEqual([
+      expect.objectContaining({
+        canonical: 'Blood Moon',
+        doc_id: 'oracle:blood-moon',
+        oracleText: 'Nonbasic lands are Mountains.',
+        status: 'in_pack',
+      }),
+    ]);
     expect(result.validationSummary.rules).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

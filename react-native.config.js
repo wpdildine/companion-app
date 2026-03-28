@@ -1,12 +1,12 @@
 const path = require('path');
 
 /**
- * Local plugin root for piper-tts.
+ * Local plugin roots for file: dependencies with native code.
  *
- * pnpm handles file: deps differently (copy or store link), so node_modules/piper-tts
- * may not be a symlink to plugins/piper-tts and can be stale or missing the podspec at
- * package root. Explicitly pointing the CLI at the source folder ensures autolinking
- * and native builds use plugins/piper-tts (podspec, iOS/Android code, assets).
+ * pnpm handles file: deps differently (copy or store link), so node_modules plugin
+ * paths may not be symlinks to plugins/* and can be stale or incomplete for native
+ * autolinking. Point the RN CLI at the source folders so iOS/Android resolve the
+ * intended podspecs, package classes, and source dirs.
  */
 module.exports = {
   assets: ['./assets/fonts/'],
@@ -18,6 +18,16 @@ module.exports = {
           sourceDir: path.join(__dirname, 'plugins/piper-tts/android'),
           packageImportPath: 'import com.pipertts.PiperTtsPackage;',
           packageInstance: 'new PiperTtsPackage()',
+        },
+      },
+    },
+    'atlas-native-mic': {
+      root: path.join(__dirname, 'plugins/atlas-native-mic'),
+      platforms: {
+        android: {
+          sourceDir: path.join(__dirname, 'plugins/atlas-native-mic/android'),
+          packageImportPath: 'import com.atlasnativemic.AtlasNativeMicPackage;',
+          packageInstance: 'new AtlasNativeMicPackage()',
         },
       },
     },

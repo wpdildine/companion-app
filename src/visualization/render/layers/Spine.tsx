@@ -33,26 +33,6 @@ import { getActiveBandVerticalEnvelope } from '../../interaction/activeBandEnvel
 import { getDescriptorRenderOrderBase } from './descriptorRenderOrder';
 import { getVizSubsystemEnabled } from '../../../app/ui/components/overlays/vizSubsystemToggles';
 
-/**
- * Map engine currentMode to canonical spine mode. Transient touch modes are
- * mapped to nearby semantic modes so motion does not appear frozen.
- */
-function toCanonicalMode(mode: string): CanonicalSpineMode {
-  switch (mode) {
-    case 'idle':
-    case 'listening':
-    case 'processing':
-    case 'speaking':
-      return mode;
-    case 'touched':
-      return 'listening';
-    case 'released':
-      return 'speaking';
-    default:
-      return 'idle';
-  }
-}
-
 function getApertureSlideByMode(mode: CanonicalSpineMode): number {
   switch (mode) {
     case 'idle':

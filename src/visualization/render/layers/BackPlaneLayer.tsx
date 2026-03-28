@@ -74,7 +74,6 @@ export function BackPlaneLayer({
     if (!getVizSubsystemEnabled('r3fFrame')) return;
     const matW = getVizSubsystemEnabled('materialUniforms');
     const bp = v.scene.backPlane;
-    const layers = v.scene.layers;
     const backPlaneRo = getDescriptorRenderOrderBase(
       v.scene,
       descriptor,

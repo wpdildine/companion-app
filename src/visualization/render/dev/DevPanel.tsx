@@ -1,6 +1,6 @@
 /**
  * Developer controls: palette, easing, viz toggles. Writes only into runtime ref.
- * Gate: long-press on status header in AgentSurface sets devEnabled.
+ * Opened from the app debug HUD (AgentSurface); `onClose` is supplied by the parent shell.
  */
 
 import {
@@ -399,7 +399,7 @@ export function DevPanel({
           <Text style={[styles.section, { color: muted }]}>State tests</Text>
           <View style={[styles.row, styles.currentStateRow]}>
             <Text style={{ color: muted }}>Current state</Text>
-            <Text style={{ color: textColor, fontWeight: '600' }}>{v.currentMode}</Text>
+            <Text style={[styles.semiBoldText, { color: textColor }]}>{v.currentMode}</Text>
           </View>
           <Pressable
             onPress={() => {
@@ -436,7 +436,7 @@ export function DevPanel({
             style={[styles.row, styles.button]}
           >
             <Text style={{ color: textColor }}>
-              Restore app-driven mode (close Dev)
+              Restore app-driven mode (exit debug UI)
             </Text>
           </Pressable>
           <Text style={[styles.section, { color: muted }]}>Motion axis debug</Text>
@@ -923,6 +923,9 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 18,
+    fontWeight: '600',
+  },
+  semiBoldText: {
     fontWeight: '600',
   },
   scroll: {

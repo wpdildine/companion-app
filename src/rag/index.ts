@@ -5,30 +5,39 @@
  * See plan: Ollama RAG and validation.
  */
 
-import type { PackFileReader, PackState, RagInitParams } from './types';
-import { loadPack } from './loadPack';
 import { ragError } from './errors';
+import { loadPack } from './loadPack';
+import type { PackFileReader, PackState, RagInitParams } from './types';
 
-export type { PackState, PackFileReader, RagInitParams } from './types';
-export { RAG_USE_DETERMINISTIC_CONTEXT_ONLY } from './types';
-export { ragError } from './errors';
-export { RAG_CONFIG } from './config';
-export { applyPackRagConfig } from './config';
-export type { RagConfig, PackRagConfig } from './config';
-export type { RagErrorCode } from './errors';
-export type { ValidationSummary } from './validate';
+export { applyPackRagConfig, RAG_CONFIG } from './config';
+export type { PackRagConfig, RagConfig } from './config';
 export {
-  createThrowReader,
+  CONTEXT_BUNDLE_ERROR,
+  CONTEXT_RETRIEVAL_EMPTY,
+  ragError,
+  ragErrorWithAttribution,
+  readAttributionErrorKind,
+} from './errors';
+export type { RagErrorCode } from './errors';
+export {
+  getPackEmbedModelId,
+  PACK_EMBED_MODEL_ID_DETERMINISTIC_ONLY,
+} from './loadPack';
+export {
+  BUNDLE_PACK_ROOT,
+  copyBundlePackToDocuments,
   createBundlePackReader,
   createDocumentsPackReader,
+  createThrowReader,
   getContentPackPathInDocuments,
-  copyBundlePackToDocuments,
-  BUNDLE_PACK_ROOT,
 } from './packFileReader';
-export { getPackEmbedModelId, PACK_EMBED_MODEL_ID_DETERMINISTIC_ONLY } from './loadPack';
+export { RAG_USE_DETERMINISTIC_CONTEXT_ONLY } from './types';
+export type { PackFileReader, PackState, RagInitParams } from './types';
+export type { ValidationSummary } from './validate';
 
+import type { SemanticFrontDoor } from '@atlas/runtime';
+import { runHumanShortPipeline, runPipelineHumanShort } from '@atlas/runtime';
 import type { ValidationSummary } from './validate';
-import { runHumanShortPipeline, runPipelineHumanShort } from '@mtg/runtime';
 
 /** Payload shape for request-debug sink (same contract as app requestDebugStore.emit). */
 export type RequestDebugSinkPayload = {
@@ -69,6 +78,9 @@ export interface AskResult {
   raw: string;
   nudged: string;
   validationSummary: ValidationSummary;
+  /** Deterministic path stopped at semantic front door (no LLM / no retrieval misuse). */
+  frontDoorBlocked?: boolean;
+  semanticFrontDoor?: SemanticFrontDoor;
 }
 
 /** Set to true to disable nudge globally (for debugging prompt/chunks vs CLI). */
@@ -93,15 +105,22 @@ function appendSelectedContext(
   const cards = [...summary.cards];
   const rules = [...summary.rules];
   const seenCards = new Set(
-    cards.map(card => `${card.doc_id ?? ''}::${(card.canonical ?? card.raw).toLowerCase()}`),
+    cards.map(
+      card =>
+        `${card.doc_id ?? ''}::${(card.canonical ?? card.raw).toLowerCase()}`,
+    ),
   );
-  const seenRules = new Set(rules.map(rule => (rule.canonical ?? rule.raw).toLowerCase()));
+  const seenRules = new Set(
+    rules.map(rule => (rule.canonical ?? rule.raw).toLowerCase()),
+  );
 
   for (const card of contextSelection.cards) {
     const key = `${card.doc_id ?? ''}::${card.name.toLowerCase()}`;
     const existingIndex = cards.findIndex(
       existing =>
-        `${existing.doc_id ?? ''}::${(existing.canonical ?? existing.raw).toLowerCase()}` === key,
+        `${existing.doc_id ?? ''}::${(
+          existing.canonical ?? existing.raw
+        ).toLowerCase()}` === key,
     );
     if (existingIndex >= 0) {
       const existing = cards[existingIndex]!;
@@ -144,10 +163,14 @@ function appendSelectedContext(
   };
 }
 
-function dedupeValidationSummary(summary: ValidationSummary): ValidationSummary {
+function dedupeValidationSummary(
+  summary: ValidationSummary,
+): ValidationSummary {
   const dedupedCards = new Map<string, ValidationSummary['cards'][number]>();
   for (const card of summary.cards) {
-    const key = `${card.doc_id ?? ''}::${(card.canonical ?? card.raw).trim().toLowerCase()}`;
+    const key = `${card.doc_id ?? ''}::${(card.canonical ?? card.raw)
+      .trim()
+      .toLowerCase()}`;
     const existing = dedupedCards.get(key);
     if (!existing) {
       dedupedCards.set(key, card);
@@ -204,13 +227,15 @@ function formatCardEffectAnswer(cardName: string, oracleText: string): string {
   if (areMatch) {
     const subject = areMatch[1]?.trim().toLowerCase();
     const predicate = areMatch[2]?.trim();
-    if (subject && predicate) return `${cardName} turns ${subject} into ${predicate}.`;
+    if (subject && predicate)
+      return `${cardName} turns ${subject} into ${predicate}.`;
   }
   const isMatch = cleaned.match(/^(.+?) is (.+)$/i);
   if (isMatch) {
     const subject = isMatch[1]?.trim().toLowerCase();
     const predicate = isMatch[2]?.trim();
-    if (subject && predicate) return `${cardName} makes ${subject} ${predicate}.`;
+    if (subject && predicate)
+      return `${cardName} makes ${subject} ${predicate}.`;
   }
   return `${cardName}: ${cleaned}.`;
 }
@@ -241,21 +266,34 @@ function maybeSanitizeCardEffectAnswer(
 export async function init(
   params: RagInitParams,
   reader: PackFileReader,
-  options?: RagInitOptions
+  options?: RagInitOptions,
 ): Promise<PackState> {
   const t0 = Date.now();
-  const mark = (msg: string) => console.log(`[RAG][${Date.now() - t0}ms] ${msg}`);
+  const mark = (msg: string) =>
+    console.log(`[RAG][${Date.now() - t0}ms] ${msg}`);
   mark('init start');
   const emitInit = (type: string, payload?: Record<string, unknown>) => {
-    options?.requestDebugSink?.({ type, requestId: null, timestamp: Date.now(), ...(payload ?? {}) });
+    options?.requestDebugSink?.({
+      type,
+      requestId: null,
+      timestamp: Date.now(),
+      ...(payload ?? {}),
+    });
   };
   emitInit('rag_init_start');
-  if (packState && initParams && fileReader && initParams.packRoot === params.packRoot) {
+  if (
+    packState &&
+    initParams &&
+    fileReader &&
+    initParams.packRoot === params.packRoot
+  ) {
     mark('init end (cached)');
     emitInit('rag_init_end', { cached: true });
     return packState;
   }
-  const state = await loadPack(reader, params, (type, payload) => emitInit(type, payload));
+  const state = await loadPack(reader, params, (type, payload) =>
+    emitInit(type, payload),
+  );
   emitInit('rag_pack_identity', {
     packRoot: params.packRoot ?? undefined,
     embedModelId: params.embedModelId ?? undefined,
@@ -291,13 +329,19 @@ export function getFileReader(): PackFileReader | null {
  */
 export async function ask(
   _question: string,
-  options?: AskOptions
+  options?: AskOptions,
 ): Promise<AskResult> {
   if (!packState || !fileReader || !initParams) {
-    throw ragError('E_NOT_INITIALIZED', 'RAG layer not initialized; call init() first.');
+    throw ragError(
+      'E_NOT_INITIALIZED',
+      'RAG layer not initialized; call init() first.',
+    );
   }
   if (askInFlight) {
-    throw ragError('E_RETRIEVAL', 'Another ask is already in progress. Wait for it to finish.');
+    throw ragError(
+      'E_RETRIEVAL',
+      'Another ask is already in progress. Wait for it to finish.',
+    );
   }
   const skipNudge = options?.debugSkipNudge ?? RAG_DEBUG_SKIP_NUDGE;
   askInFlight = true;
@@ -305,15 +349,15 @@ export async function ask(
     const normalizeHumanShortLines = (text: string): string => {
       const lines = (text ?? '')
         .split('\n')
-        .map((ln) => ln.trim())
-        .filter((ln) => ln.length > 0)
-        .map((ln) => ln.replace(/^(?:-\s+|\u2022\s*|\*\s+)/, '').trim());
+        .map(ln => ln.trim())
+        .filter(ln => ln.length > 0)
+        .map(ln => ln.replace(/^(?:-\s+|\u2022\s*|\*\s+)/, '').trim());
       return lines.join('\n').trim();
     };
     const toHumanShort = (
       rawText: string,
       contextText?: string,
-      intent?: string
+      intent?: string,
     ): string => {
       if ((contextText ?? '').trim().length > 0) {
         return normalizeHumanShortLines(
@@ -321,8 +365,8 @@ export async function ask(
             rawText,
             contextText ?? '',
             _question,
-            intent ?? 'unknown'
-          ).finalText
+            intent ?? 'unknown',
+          ).finalText,
         );
       }
       return normalizeHumanShortLines(runHumanShortPipeline(rawText));
@@ -333,8 +377,26 @@ export async function ask(
       initParams,
       fileReader,
       _question,
-      options
+      options,
     );
+    if (result.frontDoorBlocked && result.semanticFrontDoor) {
+      return {
+        raw: '',
+        nudged: '',
+        validationSummary: {
+          cards: [],
+          rules: [],
+          stats: {
+            cardHitRate: 0,
+            ruleHitRate: 0,
+            unknownCardCount: 0,
+            invalidRuleCount: 0,
+          },
+        },
+        frontDoorBlocked: true,
+        semanticFrontDoor: result.semanticFrontDoor,
+      };
+    }
     if (skipNudge) {
       const nudgedText = maybeSanitizeCardEffectAnswer(
         _question,
@@ -346,11 +408,19 @@ export async function ask(
         raw: result.raw,
         nudged: nudgedText,
         validationSummary: dedupeValidationSummary(
-          appendSelectedContext({
-            cards: [],
-            rules: [],
-            stats: { cardHitRate: 0, ruleHitRate: 0, unknownCardCount: 0, invalidRuleCount: 0 },
-          }, result.contextSelection),
+          appendSelectedContext(
+            {
+              cards: [],
+              rules: [],
+              stats: {
+                cardHitRate: 0,
+                ruleHitRate: 0,
+                unknownCardCount: 0,
+                invalidRuleCount: 0,
+              },
+            },
+            result.contextSelection,
+          ),
         ),
       };
     }
@@ -359,7 +429,7 @@ export async function ask(
     const nudgeResult = await validateModule.nudgeResponse(
       result.raw,
       packState,
-      fileReader
+      fileReader,
     );
     const nudgedText = maybeSanitizeCardEffectAnswer(
       _question,

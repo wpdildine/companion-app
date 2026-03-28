@@ -71,6 +71,31 @@ function subscribeToPiperTts(): void {
   }
 }
 
+function subscribeToAtlasNativeMic(): void {
+  try {
+    const AtlasNativeMic = require('atlas-native-mic').default;
+    if (typeof AtlasNativeMic.subscribeAsPlugin === 'function') {
+      const unsub = AtlasNativeMic.subscribeAsPlugin((event: PluginEventPayload) => {
+        const entry = normalize('AtlasNativeMic', event);
+        pushAndTrim(entry, bufferSize);
+        toConsole(entry);
+        console.log('[AtlasNativeMic] validation_event', {
+          timestamp: entry.timestamp,
+          type: entry.type,
+          sessionId:
+            typeof entry.data?.sessionId === 'string' ? entry.data.sessionId : undefined,
+          phase: typeof entry.data?.phase === 'string' ? entry.data.phase : undefined,
+          stale: entry.data?.stale === true,
+          code: typeof entry.data?.code === 'string' ? entry.data.code : undefined,
+        });
+      });
+      unsubscribes.push(unsub);
+    }
+  } catch (_) {
+    // Plugin not available; skip
+  }
+}
+
 /**
  * Start the diagnostics layer: subscribe to all plugins, buffer events, log to console.
  * Safe to call multiple times; subsequent calls no-op.
@@ -87,6 +112,7 @@ export function install(options?: { bufferSize?: number }): void {
   }
 
   subscribeToPiperTts();
+  subscribeToAtlasNativeMic();
   // Add more plugins here as they expose subscribe(callback).
 }
 

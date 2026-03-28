@@ -3,15 +3,29 @@
  * Supports either on-device llama.rn (GGUF paths) or Ollama HTTP API.
  */
 
+import type {
+  GetContextOptions,
+  GetContextResult,
+  SemanticFrontDoor,
+} from '@atlas/runtime';
 import { logError, logInfo, logWarn } from '../shared/logging';
 import { RAG_CONFIG } from './config';
-import { ragError } from './errors';
+import {
+  CONTEXT_BUNDLE_ERROR,
+  CONTEXT_RETRIEVAL_EMPTY,
+  ragError,
+  ragErrorWithAttribution,
+} from './errors';
 import { loadChunksForRows, loadVectors, searchL2 } from './retrieval';
+import {
+  checkFrontDoorBeforeRetrieval,
+  shouldRunFrontDoorGateBeforeRetrieval,
+} from './frontDoorGate';
 import { buildPrompt, trimChunksToFitPrompt } from './runtimePrompt';
 import type { PackFileReader, PackState, RagInitParams } from './types';
 import { RAG_USE_DETERMINISTIC_CONTEXT_ONLY } from './types';
 
-/** Llama 3 stop sequences (not exported from @mtg/runtime RN entrypoint; define here to avoid passing undefined to native). */
+/** Llama 3 stop sequences (not exported from @atlas/runtime RN entrypoint; define here to avoid passing undefined to native). */
 const LLAMA3_STOP_SEQUENCES = ['<|eot_id|>', '<|end_of_text|>'];
 
 export interface RunRagFlowResult {
@@ -25,6 +39,9 @@ export interface RunRagFlowResult {
     cards: Array<{ name: string; doc_id?: string; oracleText?: string }>;
     rules: Array<{ rule_id: string; title?: string; excerpt?: string }>;
   };
+  /** Substrate pre-retrieval gate blocked LLM path (deterministic RN seam). */
+  semanticFrontDoor?: SemanticFrontDoor;
+  frontDoorBlocked?: boolean;
 }
 
 let embedContext: import('llama.rn').LlamaContext | null = null;
@@ -200,10 +217,13 @@ export interface RunRagFlowOptions {
 }
 
 function simplePromptHash(prompt: string): string {
+  /* eslint-disable no-bitwise */
   let h = 0;
   for (let i = 0; i < prompt.length; i++)
     h = (h << 5) - h + prompt.charCodeAt(i);
-  return (h >>> 0).toString(36);
+  const hash = (h >>> 0).toString(36);
+  /* eslint-enable no-bitwise */
+  return hash;
 }
 
 function extractTotalTokens(result: unknown): number | undefined {
@@ -212,7 +232,8 @@ function extractTotalTokens(result: unknown): number | undefined {
   const direct = rec.tokens ?? rec.token_count ?? rec.total_tokens;
   if (typeof direct === 'number') return direct;
   const usage = rec.usage as Record<string, unknown> | undefined;
-  if (usage && typeof usage.total_tokens === 'number') return usage.total_tokens;
+  if (usage && typeof usage.total_tokens === 'number')
+    return usage.total_tokens;
   return undefined;
 }
 
@@ -232,7 +253,11 @@ const BUNDLE_PREVIEW_MAX = 200;
 function toContextSelection(
   bundle:
     | {
-        cards?: Array<{ name?: string; oracle_id?: string; oracle_text?: string }>;
+        cards?: Array<{
+          name?: string;
+          oracle_id?: string;
+          oracle_text?: string;
+        }>;
         rules?: Array<{ rule_id?: string; text?: string }>;
       }
     | null
@@ -283,6 +308,8 @@ export async function runRagFlow(
 
   const listResult = runListPreClassifier(question, packState);
   if (listResult?.useListPath) {
+    // Unreachable while `useListPath` stays false. If implemented, must authorize via the same
+    // `computeSemanticFrontDoor` substrate path as getContextRN before any list retrieval (Cycle 7).
     return {
       raw: '[Deterministic list path not yet implemented]',
       intent: 'unknown',
@@ -292,7 +319,40 @@ export async function runRagFlow(
   const rulesMeta = packState.rules.indexMeta;
   const cardsMeta = packState.cards.indexMeta;
   if (rulesMeta.dim !== cardsMeta.dim) {
-    throw ragError('E_RETRIEVAL', 'Rules and cards index dim mismatch');
+    throw ragErrorWithAttribution(
+      'E_RETRIEVAL',
+      'Rules and cards index dim mismatch',
+      CONTEXT_BUNDLE_ERROR,
+    );
+  }
+
+  const packRootForGate = params.packRoot?.trim() || packState.packRoot?.trim();
+  if (
+    packRootForGate &&
+    shouldRunFrontDoorGateBeforeRetrieval(params) &&
+    reader
+  ) {
+    const gate = await checkFrontDoorBeforeRetrieval(
+      question,
+      packRootForGate,
+      reader,
+    );
+    if (gate.blocked) {
+      if (requestId != null && requestDebugSink) {
+        emitRag('rag_front_door_block', {
+          verdict: gate.semanticFrontDoor.front_door_verdict,
+          resolverMode: gate.semanticFrontDoor.resolver_mode,
+          transcriptDecision: gate.semanticFrontDoor.transcript_decision,
+        });
+      }
+      return {
+        raw: '',
+        contextText: '',
+        intent: 'unknown',
+        semanticFrontDoor: gate.semanticFrontDoor,
+        frontDoorBlocked: true,
+      };
+    }
   }
 
   let queryVec: Float32Array;
@@ -358,35 +418,54 @@ export async function runRagFlow(
     });
     options?.onRetrievalComplete?.();
     mark('context build start');
-    const { prompt, contextBlock } = trimChunksToFitPrompt(chunksForPrompt, question);
+    const { prompt, contextBlock } = trimChunksToFitPrompt(
+      chunksForPrompt,
+      question,
+    );
     mark('context build end');
     if (requestId != null && requestDebugSink) {
       emitRag('rag_retrieval_mode', { retrievalMode: 'vector' });
       emitRag('rag_context_bundle_selected', {
         contextLength: contextBlock.length,
-        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules').length,
-        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards').length,
-        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules')
+          .length,
+        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards')
+          .length,
+        bundlePreview:
+          contextBlock.slice(0, BUNDLE_PREVIEW_MAX) +
+          (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
       });
       emitRag('rag_context_assembled', {
         contextLength: contextBlock.length,
-        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules').length,
-        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards').length,
-        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules')
+          .length,
+        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards')
+          .length,
+        bundlePreview:
+          contextBlock.slice(0, BUNDLE_PREVIEW_MAX) +
+          (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
       });
       emitRag('rag_retrieval_complete', {
         retrievalMode: 'vector',
         contextLength: contextBlock.length,
-        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules').length,
-        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards').length,
-        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules')
+          .length,
+        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards')
+          .length,
+        bundlePreview:
+          contextBlock.slice(0, BUNDLE_PREVIEW_MAX) +
+          (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
       });
       emitRag('rag_prompt_built', {
         promptLength: prompt.length,
         contextLength: contextBlock.length,
-        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules').length,
-        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards').length,
-        promptPreview: prompt.slice(0, PROMPT_PREVIEW_MAX) + (prompt.length > PROMPT_PREVIEW_MAX ? '…' : ''),
+        rulesCount: chunksForPrompt.filter(c => c.source_type === 'rules')
+          .length,
+        cardsCount: chunksForPrompt.filter(c => c.source_type === 'cards')
+          .length,
+        promptPreview:
+          prompt.slice(0, PROMPT_PREVIEW_MAX) +
+          (prompt.length > PROMPT_PREVIEW_MAX ? '…' : ''),
         promptHash: simplePromptHash(prompt),
       });
       emitRag('rag_generation_request_start', {
@@ -436,47 +515,113 @@ export async function runRagFlow(
           bundleText = result.final_context_bundle_canonical ?? '';
           contextSelection = toContextSelection(result.bundle);
           if (result?.bundle) {
-            bundleRulesCount = Array.isArray(result.bundle.rules) ? result.bundle.rules.length : undefined;
-            bundleCardsCount = Array.isArray(result.bundle.cards) ? result.bundle.cards.length : undefined;
+            bundleRulesCount = Array.isArray(result.bundle.rules)
+              ? result.bundle.rules.length
+              : undefined;
+            bundleCardsCount = Array.isArray(result.bundle.cards)
+              ? result.bundle.cards.length
+              : undefined;
             bundleId = (result.bundle as { bundle_id?: string }).bundle_id;
             ruleSetId = (result.bundle as { rule_set_id?: string }).rule_set_id;
           }
           logInfo('RAG', 'getContextRN completed', {
             bundleChars: bundleText.length,
+            frontDoorVerdict: result.semanticFrontDoor?.front_door_verdict,
           });
+          if (
+            result.semanticFrontDoor &&
+            result.semanticFrontDoor.front_door_verdict !==
+              'proceed_to_retrieval'
+          ) {
+            if (requestId != null && requestDebugSink) {
+              emitRag('rag_front_door_block', {
+                verdict: result.semanticFrontDoor.front_door_verdict,
+                resolverMode: result.semanticFrontDoor.resolver_mode,
+                transcriptDecision:
+                  result.semanticFrontDoor.transcript_decision,
+              });
+            }
+            return {
+              raw: '',
+              contextText: '',
+              intent: 'unknown',
+              semanticFrontDoor: result.semanticFrontDoor,
+              frontDoorBlocked: true,
+            };
+          }
         } else {
-          const runtime = await import('@mtg/runtime');
-          const runtimeModule = runtime as {
-            getContext?: (question: string, packRoot: string) => Promise<unknown>;
+          logWarn(
+            'RAG',
+            'deterministic context: using Node getContext fallback (missing packRoot or reader); production app should use getContextRN',
+            { packRootPresent: !!packRoot, readerPresent: !!reader },
+          );
+          const runtimeModule = (await import('@atlas/runtime')) as unknown as {
+            getContext?: (question: string, packRoot: string) => unknown;
             default?: {
-              getContext?: (question: string, packRoot: string) => Promise<unknown>;
+              getContext?: (question: string, packRoot: string) => unknown;
             };
           };
-          const getContext =
-            runtimeModule.getContext ??
-            runtimeModule.default?.getContext;
+          const getContextRaw =
+            runtimeModule.getContext ?? runtimeModule.default?.getContext;
+          const getContext = getContextRaw as
+            | ((
+                q: string,
+                p: string,
+                o?: GetContextOptions,
+              ) => Promise<GetContextResult>)
+            | undefined;
           if (typeof getContext === 'function') {
             mark('getContext start');
-            const result = await getContext(question, packRoot);
+            const result = await getContext(question, packRoot, {
+              includeTrace: true,
+            });
             mark('getContext end');
+            const gc = result as GetContextResult;
+            if (
+              gc.semanticFrontDoor &&
+              gc.semanticFrontDoor.front_door_verdict !==
+                'proceed_to_retrieval'
+            ) {
+              if (requestId != null && requestDebugSink) {
+                emitRag('rag_front_door_block', {
+                  verdict: gc.semanticFrontDoor.front_door_verdict,
+                  resolverMode: gc.semanticFrontDoor.resolver_mode,
+                  transcriptDecision:
+                    gc.semanticFrontDoor.transcript_decision,
+                });
+              }
+              return {
+                raw: '',
+                contextText: '',
+                intent: 'unknown',
+                semanticFrontDoor: gc.semanticFrontDoor,
+                frontDoorBlocked: true,
+              };
+            }
             bundleText =
               typeof result === 'string'
                 ? result
-                : (result as { final_context_bundle_canonical?: string })
-                    ?.final_context_bundle_canonical ?? '';
-            const bundle = (result as { bundle?: { rules?: unknown[]; cards?: unknown[]; bundle_id?: string; rule_set_id?: string } })
-              ?.bundle;
+                : gc.trace?.final_context_bundle_canonical ?? '';
+            const bundle = gc?.bundle;
             if (bundle) {
               contextSelection = toContextSelection(
                 bundle as {
-                  cards?: Array<{ name?: string; oracle_id?: string; oracle_text?: string }>;
+                  cards?: Array<{
+                    name?: string;
+                    oracle_id?: string;
+                    oracle_text?: string;
+                  }>;
                   rules?: Array<{ rule_id?: string; text?: string }>;
                 },
               );
-              bundleRulesCount = Array.isArray(bundle.rules) ? bundle.rules.length : undefined;
-              bundleCardsCount = Array.isArray(bundle.cards) ? bundle.cards.length : undefined;
-              bundleId = bundle.bundle_id;
-              ruleSetId = bundle.rule_set_id;
+              bundleRulesCount = Array.isArray(bundle.rules)
+                ? bundle.rules.length
+                : undefined;
+              bundleCardsCount = Array.isArray(bundle.cards)
+                ? bundle.cards.length
+                : undefined;
+              bundleId = (bundle as { bundle_id?: string }).bundle_id;
+              ruleSetId = (bundle as { rule_set_id?: string }).rule_set_id;
             }
             logInfo('RAG', 'runtime deterministic context completed', {
               bundleChars: bundleText.length,
@@ -490,21 +635,23 @@ export async function runRagFlow(
           .includes('could not load bundle');
         if (packRoot && reader) {
           logError('RAG', 'getContextRN failed', { message: msg });
-          throw ragError(
+          throw ragErrorWithAttribution(
             'E_RETRIEVAL',
             `Deterministic context provider could not load bundle. Ensure content_pack is present on device and packRoot is valid.`,
+            CONTEXT_BUNDLE_ERROR,
           );
         } else {
           logError('RAG', 'runtime getContext failed', { message: msg });
           if (isBundleLoadError) {
-            throw ragError(
+            throw ragErrorWithAttribution(
               'E_RETRIEVAL',
               `Deterministic context provider could not load bundle. Ensure content_pack is present on device and packRoot is valid.`,
+              CONTEXT_BUNDLE_ERROR,
             );
           }
           throw ragError(
             'E_DETERMINISTIC_ONLY',
-            `Deterministic context provider not available: ${msg}. Ensure pack is copied to device (packRoot set) and @mtg/runtime or in-app getContextRN is used.`,
+            `Deterministic context provider not available: ${msg}. Ensure pack is copied to device (packRoot set) and @atlas/runtime or in-app getContextRN is used.`,
           );
         }
       }
@@ -513,9 +660,22 @@ export async function runRagFlow(
         try {
           const { getContextRN } = await import('./getContextRN');
           mark('getContext start');
-          const result = await getContextRN(question, packRoot, reader);
+          const retryResult = await getContextRN(question, packRoot, reader);
           mark('getContext end');
-          bundleText = result.final_context_bundle_canonical ?? '';
+          if (
+            retryResult.semanticFrontDoor &&
+            retryResult.semanticFrontDoor.front_door_verdict !==
+              'proceed_to_retrieval'
+          ) {
+            return {
+              raw: '',
+              contextText: '',
+              intent: 'unknown',
+              semanticFrontDoor: retryResult.semanticFrontDoor,
+              frontDoorBlocked: true,
+            };
+          }
+          bundleText = retryResult.final_context_bundle_canonical ?? '';
           logInfo('RAG', 'getContextRN retry completed', {
             bundleChars: bundleText.length,
           });
@@ -526,12 +686,14 @@ export async function runRagFlow(
       if (!bundleText?.trim()) {
         logWarn('RAG', 'deterministic context returned empty bundle', {
           questionChars: question.length,
-          questionPreview: question.length <= 80 ? question : `${question.slice(0, 77)}...`,
+          questionPreview:
+            question.length <= 80 ? question : `${question.slice(0, 77)}...`,
           packRootPresent: !!packRoot,
         });
-        throw ragError(
+        throw ragErrorWithAttribution(
           'E_RETRIEVAL',
           'Deterministic context provider returned empty bundle.',
+          CONTEXT_RETRIEVAL_EMPTY,
         );
       }
       options?.onRetrievalComplete?.();
@@ -546,7 +708,9 @@ export async function runRagFlow(
           ruleSetId,
           rulesCount: bundleRulesCount,
           cardsCount: bundleCardsCount,
-          bundlePreview: bundleText.slice(0, BUNDLE_PREVIEW_MAX) + (bundleText.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+          bundlePreview:
+            bundleText.slice(0, BUNDLE_PREVIEW_MAX) +
+            (bundleText.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
         });
         emitRag('rag_context_assembled', {
           contextLength: bundleText.length,
@@ -554,7 +718,9 @@ export async function runRagFlow(
           ruleSetId,
           rulesCount: bundleRulesCount,
           cardsCount: bundleCardsCount,
-          bundlePreview: bundleText.slice(0, BUNDLE_PREVIEW_MAX) + (bundleText.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+          bundlePreview:
+            bundleText.slice(0, BUNDLE_PREVIEW_MAX) +
+            (bundleText.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
         });
         emitRag('rag_retrieval_complete', {
           retrievalMode: 'deterministic',
@@ -563,14 +729,18 @@ export async function runRagFlow(
           ruleSetId,
           rulesCount: bundleRulesCount,
           cardsCount: bundleCardsCount,
-          bundlePreview: bundleText.slice(0, BUNDLE_PREVIEW_MAX) + (bundleText.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+          bundlePreview:
+            bundleText.slice(0, BUNDLE_PREVIEW_MAX) +
+            (bundleText.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
         });
         emitRag('rag_prompt_built', {
           promptLength: prompt.length,
           contextLength: bundleText.length,
           rulesCount: bundleRulesCount,
           cardsCount: bundleCardsCount,
-          promptPreview: prompt.slice(0, PROMPT_PREVIEW_MAX) + (prompt.length > PROMPT_PREVIEW_MAX ? '…' : ''),
+          promptPreview:
+            prompt.slice(0, PROMPT_PREVIEW_MAX) +
+            (prompt.length > PROMPT_PREVIEW_MAX ? '…' : ''),
           promptHash: simplePromptHash(prompt),
         });
       }
@@ -632,7 +802,9 @@ export async function runRagFlow(
               if (requestId != null && requestDebugSink) {
                 if (!firstTokenEmitted) {
                   firstTokenEmitted = true;
-                  emitRag('rag_first_token', { elapsedMs: Date.now() - completionStartedAt });
+                  emitRag('rag_first_token', {
+                    elapsedMs: Date.now() - completionStartedAt,
+                  });
                 }
                 const now = Date.now();
                 if (now - lastStreamEmitAt >= 400) {
@@ -759,34 +931,45 @@ export async function runRagFlow(
       };
     });
     options?.onRetrievalComplete?.();
-    const { prompt, contextBlock } = trimChunksToFitPrompt(chunksForPrompt, question);
+    const { prompt, contextBlock } = trimChunksToFitPrompt(
+      chunksForPrompt,
+      question,
+    );
     mark('context build end');
     if (requestId != null && requestDebugSink) {
       emitRag('rag_context_bundle_selected', {
         contextLength: contextBlock.length,
         rulesCount: rulesRowIds.length,
         cardsCount: cardsRowIds.length,
-        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+        bundlePreview:
+          contextBlock.slice(0, BUNDLE_PREVIEW_MAX) +
+          (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
       });
       emitRag('rag_context_assembled', {
         contextLength: contextBlock.length,
         rulesCount: rulesRowIds.length,
         cardsCount: cardsRowIds.length,
-        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+        bundlePreview:
+          contextBlock.slice(0, BUNDLE_PREVIEW_MAX) +
+          (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
       });
       emitRag('rag_retrieval_complete', {
         retrievalMode: 'vector',
         contextLength: contextBlock.length,
         rulesCount: rulesRowIds.length,
         cardsCount: cardsRowIds.length,
-        bundlePreview: contextBlock.slice(0, BUNDLE_PREVIEW_MAX) + (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
+        bundlePreview:
+          contextBlock.slice(0, BUNDLE_PREVIEW_MAX) +
+          (contextBlock.length > BUNDLE_PREVIEW_MAX ? '…' : ''),
       });
       emitRag('rag_prompt_built', {
         promptLength: prompt.length,
         contextLength: contextBlock.length,
         rulesCount: rulesRowIds.length,
         cardsCount: cardsRowIds.length,
-        promptPreview: prompt.slice(0, PROMPT_PREVIEW_MAX) + (prompt.length > PROMPT_PREVIEW_MAX ? '…' : ''),
+        promptPreview:
+          prompt.slice(0, PROMPT_PREVIEW_MAX) +
+          (prompt.length > PROMPT_PREVIEW_MAX ? '…' : ''),
         promptHash: simplePromptHash(prompt),
       });
     }

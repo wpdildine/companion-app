@@ -2,12 +2,12 @@
 'use strict';
 /**
  * Run integration gates before app test or release.
- * 1) Parity/tools use @mtg/runtime/node (not default RN entry).
+ * 1) Parity/tools use @atlas/runtime/node (not default RN entry).
  * 2) Pack has no models/ or .gguf.
  * 3) If a built RN bundle exists, it must not contain Node-only markers.
  *
  * For full E2E: build the bundle (e.g. react-native bundle), then run this script.
- * Node parity suite (in mtg_rules) must be run separately using @mtg/runtime/node.
+ * Node parity suite (in pack_runtime) must be run separately using @atlas/runtime/node.
  *
  * Usage: node scripts/validate-e2e-gates.js [bundle-path]
  *   With no arg: runs (1)(2) and (3) for default artifact paths if present.

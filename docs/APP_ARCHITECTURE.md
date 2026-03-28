@@ -117,6 +117,8 @@ Do not put transient event logic into art-direction files. Per-layer render file
 
 ## Runtime behavior (stabilization)
 
+**Native microphone boundary:** Capture/session semantics at the native plugin ↔ JS boundary are governed by [docs/NATIVE_MIC_CONTRACT.md](docs/NATIVE_MIC_CONTRACT.md) (hardware/session facts, plugin lifecycle, events). AgentOrchestrator remains the owner of voice input lifecycle and settlement behavior below. AV mechanics are implemented in `src/app/agent/av/`, while transcript settlement remains orchestrator-adjacent in `src/app/agent/orchestrator/`. AV entrypoints use `emitAvFact` for typed mechanical facts (including bookkeeping); **imperative adapters** for native capture/voice I/O and logging stay at the seam. All AV-originated fact interpretation goes through orchestrator `applyAvFact` only (no second public ingress).
+
 - **Transcript settlement before submit** — For hold-to-speak release, submit runs only after transcript settlement. The surface calls `stopListeningAndRequestSubmit()`; the orchestrator waits for final result, speech end (with usable partial), or a bounded timeout, then invokes `onTranscriptReadyForSubmit` once. Submit must not be triggered by direct `stopListening()` + `submit()` on release.
 - **Single active ask** — Only one ask may be in flight. New submit attempts are blocked until the current request settles. Lifecycle transitions are request-scoped (active requestId); stale completions are ignored and logged.
 - **Post-stop speech errors** — Speech recognition errors that occur after stop has been requested (finalization underway) are treated as non-fatal and do not force lifecycle into error.
@@ -153,7 +155,6 @@ Current semantic behavior:
 
 Additional current nuance:
 
-- `nameShapingCapture`, when enabled, is allowed to take over semantic handling. In that mode the band still forwards band-relative NDC to the capture handlers, but hold-to-speak and cluster-release semantics are suppressed.
 - The band can be visually marked blocked via `blocked` / `blockedUntil` while I/O guardrails are active.
 - Because this path is under active migration, treat the exact Gesture Handler ownership and activation details as implementation details, not as a frozen public contract.
 
@@ -191,7 +192,7 @@ Current implementation invariant: zone classification **MUST** use InteractionBa
 Current bounds behavior:
 
 - The band top inset defaults to `visualizationRef.current.scene?.zones.layout.bandTopInsetPx ?? 112`.
-- AgentSurface may override that inset. The current Name Shaping path sets `topInsetOverridePx={0}`.
+- Callers may override that inset via `InteractionBand`’s `topInsetOverridePx` when product layout requires it.
 - Documentation should therefore refer to a runtime-configured top inset, not assume the scene-configured value is the only active path at all times.
 
 ### Visual touch affordance
@@ -243,6 +244,8 @@ Logs are state-change and event-based only; no per-frame or render-loop logging.
 - Composition root: `src/app/AgentSurface.tsx`
 - Earcon/haptic hooks: `src/shared/feedback/earcons.ts`, `src/shared/feedback/haptics.ts` (listening start/end; assets at `assets/sound/earcon_in.wav`, `earcon_out.wav`)
 - Agent roles: `src/app/agent/` — `useAgentOrchestrator.ts`, `useVisualizationController.ts`, `types.ts`, `index.ts`
+- Agent AV mechanics: `src/app/agent/av/` — `avSurface.ts`, `sessionCoordinator.ts`, `remoteStt.ts`, `voiceNative.ts`, `avFacts.ts` (fact/event contract)
+- Agent orchestrator-adjacent helpers: `src/app/agent/orchestrator/` — `telemetry.ts`, `artifactProjector.ts`, `transcriptSettlement.ts`, `modelPaths.ts`
 - Signal hook: `src/app/hooks/useVisualizationSignals.ts`
 - UI wrappers: `src/screens/voice/SemanticChannelView.tsx`, `src/app/ui/components/overlays/SemanticChannelLoadingView.tsx`
 - Overlay/panels: `src/app/ui/components/overlays/ResultsOverlay.tsx`, `src/app/ui/components/panels/debug/PipelineTelemetryPanel.tsx`, `src/app/ui/components/panels/debug/VizDebugPanel.tsx`
@@ -256,6 +259,6 @@ Logs are state-change and event-based only; no per-frame or render-loop logging.
 ## Known In-Progress Areas
 
 - Panel gesture system from the refactor plan (header drag/snap/dismiss/restore + arbitration) is not fully implemented as a dedicated `src/screens/voice` gesture layer.
-- InteractionBand native-fast migration is still in progress. Current code uses a Pan-based RNGH host with manual activation, non-collapsable host mounting, optional probe diagnostics, and special-case capture takeover for Name Shaping. Keep docs aligned to the active code path and avoid describing this layer as finalized.
+- InteractionBand native-fast migration is still in progress. Current code uses a Pan-based RNGH host with manual activation, non-collapsable host mounting, and optional probe diagnostics. Keep docs aligned to the active code path and avoid describing this layer as finalized.
 
 **Plan D (Final Integration Pass):** Verified integration boundaries for acceptance → processing → settlement → playback → completion, telemetry ordering, and denial/stale-callback behavior; see `.cursor/plans/final_integration_pass.plan.md`.

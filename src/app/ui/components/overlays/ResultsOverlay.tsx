@@ -2,12 +2,14 @@
  * ResultsOverlay: conventional grounded answer presentation layer.
  * Owns answer panel, cards, rules, sources, reveal state, panel rect reporting.
  * Does not know provider orchestration or visualization mode selection.
+ *
+ * Semantic front door (Cycle 7): cards/rules/answer body reflect orchestrator-committed
+ * `responseText` and `validationSummary` only; blocked retrieval does not surface as a normal answer.
  */
 
 import { useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   StyleSheet,
   Text,
   View,

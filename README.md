@@ -21,9 +21,9 @@ This is a [**React Native**](https://reactnative.dev) project, bootstrapped usin
   2. Uses **router_map.json** and **context_provider_spec.json** (from the content pack) to pick rule sections and snippets.
   3. Reads **rules.db** and **cards.db** (SQLite) from the pack and assembles a small context bundle (≤ ~800 tokens by the same budget rule as Python).
   4. Passes that bundle to the on-device LLM (llama.rn) to format or summarize the answer.
-  5. Runs **validate → nudge** (same contract as mtg_rules): card names and rule refs are checked against the pack; invalid mentions are stripped/redacted so answers stay grounded.
+  5. Runs **validate → nudge** (same contract as pack_runtime): card names and rule refs are checked against the pack; invalid mentions are stripped/redacted so answers stay grounded.
 
-Context provider logic is shared with **mtg_rules**: the app consumes **@mtg/runtime** (TypeScript port of the Python context provider). When the runtime doesn’t supply a native `getContext` (e.g. on React Native), the app uses **getContextRN** in `src/rag/getContextRN.ts`, which uses `@mtg/runtime`’s portable exports (normalize, route, tokenEst, etc.) plus **react-native-quick-sqlite** to read the pack’s DBs. All constants and thresholds come from **context_provider_spec.json** in the pack — no hardcoded duplicates.
+Context provider logic is shared with **pack_runtime**: the app consumes **@atlas/runtime** (TypeScript port of the Python context provider). When the runtime doesn’t supply a native `getContext` (e.g. on React Native), the app uses **getContextRN** in `src/rag/getContextRN.ts`, which uses `@atlas/runtime`’s portable exports (normalize, route, tokenEst, etc.) plus **react-native-quick-sqlite** to read the pack’s DBs. All constants and thresholds come from **context_provider_spec.json** in the pack — no hardcoded duplicates.
 
 ---
 
@@ -45,9 +45,9 @@ The app does **not** use Skia. Graphics are driven by Three.js/R3F and the theme
 
 ---
 
-## Connection to mtg_rules
+## Connection to pack_runtime
 
-This app is the **mobile consumer** of the **mtg_rules** (Rules Service) pipeline. mtg_rules:
+This app is the **mobile consumer** of the **pack_runtime** (Rules Service) pipeline. pack_runtime:
 
 - Parses the Comprehensive Rules and Scryfall card data into structured JSON and SQLite.
 - Builds the **content pack**: router_map, rules.db, cards.db, context_provider_spec.json, validate sidecars (rule_ids.json, name_lookup.jsonl), and optionally GGUF models.
@@ -55,22 +55,22 @@ This app is the **mobile consumer** of the **mtg_rules** (Rules Service) pipelin
 
 **How they connect:**
 
-| Piece                  | In mtg_rules                                                                                        | In companion-app                                                                                                                                                                |
-| ---------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Content pack**       | `./run.sh pack` → `content_pack/`                                                                   | Synced into `assets/content_pack/` via `pnpm run sync-pack-small` (or sync-pack-full for a one-off full pack with models). Build uses a **real directory** (no symlink).        |
-| **Context provider**   | Python: `service/context_provider.py`; TS: `runtime-ts/` (same algorithm, spec-driven)              | App imports `@mtg/runtime`; uses `getContext` from runtime or **getContextRN** when runtime doesn’t provide it. Reads pack from device (e.g. Documents/content_pack) or bundle. |
-| **Spec / constants**   | Exported in pack as `context_provider_spec.json`                                                    | Loaded by runtime / getContextRN; no hardcoded scoring or thresholds in app code.                                                                                               |
-| **Validation (nudge)** | `validate_response.py`; same contract in pack’s validate sidecars                                   | App calls `nudgeResponse()` with pack state and reader; uses same rule_ids + name_lookup from pack.                                                                             |
-| **Parity & fixtures**  | Python exports reference traces to `runtime-ts/fixtures/`; TS runs `yarn test:parity` in runtime-ts | App does not run parity tests; it just consumes the runtime and pack.                                                                                                           |
+| Piece                  | In pack_runtime                                                                                     | In companion-app                                                                                                                                                                  |
+| ---------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Content pack**       | `./run.sh pack` → `content_pack/`                                                                   | Synced into `assets/content_pack/` via `pnpm run sync-pack-small` (or sync-pack-full for a one-off full pack with models). Build uses a **real directory** (no symlink).          |
+| **Context provider**   | Python: `service/context_provider.py`; TS: `runtime-ts/` (same algorithm, spec-driven)              | App imports `@atlas/runtime`; uses `getContext` from runtime or **getContextRN** when runtime doesn’t provide it. Reads pack from device (e.g. Documents/content_pack) or bundle. |
+| **Spec / constants**   | Exported in pack as `context_provider_spec.json`                                                    | Loaded by runtime / getContextRN; no hardcoded scoring or thresholds in app code.                                                                                                 |
+| **Validation (nudge)** | `validate_response.py`; same contract in pack’s validate sidecars                                   | App calls `nudgeResponse()` with pack state and reader; uses same rule_ids + name_lookup from pack.                                                                               |
+| **Parity & fixtures**  | Python exports reference traces to `runtime-ts/fixtures/`; TS runs `yarn test:parity` in runtime-ts | App does not run parity tests; it just consumes the runtime and pack.                                                                                                             |
 
 **Scripts and linking:**
 
 - **Regenerate native projects (RN CLI):** `pnpm run regen-native` — regenerates fresh `ios/` + `android/` with `@react-native-community/cli init`, then applies overrides from `scripts/native-overrides/`. You can delete `ios/` and `android/` anytime; regen recreates them. **Edit only `scripts/native-overrides/`** for native customizations (Podfile, RagPackReader, build.gradle, etc.); edits under `ios/` or `android/` will not stick after a delete/regen.
-- **Update runtime (use latest runtime-ts):** `pnpm run update-runtime` — sets `@mtg/runtime` to your local `../mtg_rules/runtime-ts` and runs `pnpm install`. Run this after you change code in mtg_rules/runtime-ts so the app picks it up.
-- **Sync pack (small, no models):** `pnpm run sync-pack-small` — copies from `mtg_rules/content_pack` into `assets/content_pack`, excludes `models/`, writes `pack_identity.json`. Use before every build / CI.
+- **Update runtime (use latest runtime-ts):** `pnpm run update-runtime` — sets `@atlas/runtime` to your local `../pack_runtime/runtime-ts` and runs `pnpm install`. Run this after you change code in pack_runtime/runtime-ts so the app picks it up.
+- **Sync pack (small, no models):** `pnpm run sync-pack-small` — copies from `pack_runtime/content_pack` into `assets/content_pack`, excludes `models/`, writes `pack_identity.json`. Use before every build / CI.
 - **Sync pack (full, with models):** `pnpm run sync-pack-full` — same but includes `models/` for one-off device install; then switch back to sync-pack-small for normal builds.
-- **Link mtg_rules for dev (optional):** `node scripts/link-mtg-rules.js link [path]` — symlinks `assets/content_pack` and wires **@mtg/runtime**. For release, run `sync-pack-small` so the bundle is a real directory.
-- **@mtg/runtime** is wired as `"file:../mtg_rules/runtime-ts"`. The app uses the React Native entrypoint; the Node entrypoint is for parity tests only.
+- **Link pack_runtime for dev (optional):** `node scripts/link-mtg-rules.js link [path]` — symlinks `assets/content_pack` and wires **@atlas/runtime**. For release, run `sync-pack-small` so the bundle is a real directory.
+- **@atlas/runtime** is wired as `"file:../pack_runtime/runtime-ts"`. The app uses the React Native entrypoint; the Node entrypoint is for parity tests only.
 
 See **[docs/CONTENT_PACK_SETUP.md](docs/CONTENT_PACK_SETUP.md)** for pack layout, build contract, and model path resolution. The plan **[TS parallel runtime and context provider](.cursor/plans/ts_parallel_runtime_and_context_provider_0bc942e0.plan.md)** (in Cursor plans) describes the spec surface, reference traces, and parity strategy between Python and TS.
 
@@ -80,17 +80,17 @@ See **[docs/CONTENT_PACK_SETUP.md](docs/CONTENT_PACK_SETUP.md)** for pack layout
 
 > **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
 
-## Step 1: Content pack (from mtg_rules)
+## Step 1: Content pack (from pack_runtime)
 
 The app needs a content pack in `assets/content_pack/` (manifest, router, rules.db, cards.db, context_provider_spec, validate sidecars). Either:
 
-- **Sync from mtg_rules:**
-  In mtg_rules run `./run.sh pack --from-flat --out ./content_pack`. Then in companion-app:
+- **Sync from pack_runtime:**
+  In pack_runtime run `./run.sh pack --from-flat --out ./content_pack`. Then in companion-app:
   `pnpm run sync-pack-small`
   (or `sync-pack-full` if you want to ship the pack with models once; see docs/CONTENT_PACK_SETUP.md.)
 
 - **Dev link:**
-  `node scripts/link-mtg-rules.js link` to symlink `assets/content_pack` to your mtg_rules repo. Before any build that must work without the symlink, run `pnpm run sync-pack-small`.
+  `node scripts/link-mtg-rules.js link` to symlink `assets/content_pack` to your pack_runtime repo. Before any build that must work without the symlink, run `pnpm run sync-pack-small`.
 
 ## Step 2: Start Metro
 
@@ -142,5 +142,5 @@ Edit `App.tsx` (or any source); [Fast Refresh](https://reactnative.dev/docs/fast
 # Learn more
 
 - [React Native](https://reactnative.dev) — docs and getting started.
-- **mtg_rules** repository (sibling or `MTG_RULES_PATH`) — rules service pipeline, content pack, context provider, and evaluation; see that repo’s README.
+- **pack_runtime** repository (sibling or `MTG_RULES_PATH`) — rules service pipeline, content pack, context provider, and evaluation; see that repo’s README.
 - [docs/CONTENT_PACK_SETUP.md](docs/CONTENT_PACK_SETUP.md) — how the app gets the pack and where models live.

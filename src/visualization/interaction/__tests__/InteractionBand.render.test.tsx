@@ -1,6 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
+import type { VisualizationEngineRef } from '../../index';
 import { InteractionBand } from '../InteractionBand';
 
 type MockPanHandlers = {
@@ -34,8 +35,7 @@ type MockPanGesture = {
 let lastGesture: MockPanGesture | null = null;
 
 jest.mock('react-native-gesture-handler', () => {
-  const React = require('react');
-  const { View } = require('react-native');
+  const { View: NativeView } = require('react-native');
 
   const createPanGesture = (): MockPanGesture => {
     const handlers: MockPanHandlers = {};
@@ -73,7 +73,7 @@ jest.mock('react-native-gesture-handler', () => {
     }: {
       gesture: MockPanGesture;
       children: React.ReactNode;
-    }) => <View testID="gesture-detector">{children}</View>,
+    }) => <NativeView testID="gesture-detector">{children}</NativeView>,
   };
 });
 
@@ -107,7 +107,7 @@ describe('InteractionBand render path', () => {
         },
       },
     },
-  });
+  }) as React.RefObject<VisualizationEngineRef | null>;
 
   beforeEach(() => {
     lastGesture = null;
@@ -147,12 +147,6 @@ describe('InteractionBand render path', () => {
   it('runs the live gesture path and avoids cancel after a successful end', () => {
     const visualizationRef = createVisualizationRef();
     const onClusterRelease = jest.fn();
-    const nameShapingCapture = {
-      onTouchStart: jest.fn(),
-      onTouchMove: jest.fn(),
-      onTouchEnd: jest.fn(),
-      onTouchCancel: jest.fn(),
-    };
 
     let renderer: TestRenderer.ReactTestRenderer;
     act(() => {
@@ -160,7 +154,6 @@ describe('InteractionBand render path', () => {
         <InteractionBand
           visualizationRef={visualizationRef}
           onClusterRelease={onClusterRelease}
-          nameShapingCapture={nameShapingCapture}
         />,
       );
     });
@@ -193,27 +186,16 @@ describe('InteractionBand render path', () => {
 
     expect(stateManager.activate).toHaveBeenCalledTimes(1);
     expect(stateManager.fail).not.toHaveBeenCalled();
-    expect(nameShapingCapture.onTouchStart).toHaveBeenCalledTimes(1);
-    expect(nameShapingCapture.onTouchEnd).toHaveBeenCalledTimes(1);
-    expect(nameShapingCapture.onTouchCancel).not.toHaveBeenCalled();
+    // Cards-side short tap: center-hold cluster path is skipped (shortTap branch).
     expect(onClusterRelease).not.toHaveBeenCalled();
   });
 
   it('uses cancel cleanup only when finalize reports an unsuccessful gesture', () => {
     const visualizationRef = createVisualizationRef();
-    const nameShapingCapture = {
-      onTouchStart: jest.fn(),
-      onTouchMove: jest.fn(),
-      onTouchEnd: jest.fn(),
-      onTouchCancel: jest.fn(),
-    };
 
     act(() => {
       TestRenderer.create(
-        <InteractionBand
-          visualizationRef={visualizationRef}
-          nameShapingCapture={nameShapingCapture}
-        />,
+        <InteractionBand visualizationRef={visualizationRef} />,
       );
     });
 
@@ -229,25 +211,16 @@ describe('InteractionBand render path', () => {
       gesture!.handlers.onFinalize?.({}, false);
     });
 
-    expect(nameShapingCapture.onTouchCancel).toHaveBeenCalledTimes(1);
-    expect(nameShapingCapture.onTouchEnd).not.toHaveBeenCalled();
+    expect(visualizationRef.current!.touchFieldActive).toBe(false);
+    expect(visualizationRef.current!.zoneArmed).toBeNull();
   });
 
   it('does not cancel after touchesUp already handled the end', () => {
     const visualizationRef = createVisualizationRef();
-    const nameShapingCapture = {
-      onTouchStart: jest.fn(),
-      onTouchMove: jest.fn(),
-      onTouchEnd: jest.fn(),
-      onTouchCancel: jest.fn(),
-    };
 
     act(() => {
       TestRenderer.create(
-        <InteractionBand
-          visualizationRef={visualizationRef}
-          nameShapingCapture={nameShapingCapture}
-        />,
+        <InteractionBand visualizationRef={visualizationRef} />,
       );
     });
 
@@ -266,8 +239,8 @@ describe('InteractionBand render path', () => {
       gesture!.handlers.onFinalize?.({}, false);
     });
 
-    expect(nameShapingCapture.onTouchEnd).toHaveBeenCalledTimes(1);
-    expect(nameShapingCapture.onTouchCancel).not.toHaveBeenCalled();
+    expect(visualizationRef.current!.touchFieldActive).toBe(false);
+    expect(visualizationRef.current!.zoneArmed).toBeNull();
   });
 
   it('bypasses the hold delay for center-lane touches when busy-audio retry feedback is enabled', () => {
@@ -357,7 +330,7 @@ describe('InteractionBand render path', () => {
     });
 
     expect(onCenterHoldShortTap).toHaveBeenCalledTimes(1);
-    expect(visualizationRef.current.pendingTapNdc).toEqual([0, 0.28]);
+    expect(visualizationRef.current!.pendingTapNdc).toEqual([0, 0.28]);
     jest.useRealTimers();
   });
 
@@ -399,7 +372,7 @@ describe('InteractionBand render path', () => {
     });
 
     expect(onCenterHoldShortTap).toHaveBeenCalledTimes(1);
-    expect(visualizationRef.current.pendingTapNdc).toBeNull();
+    expect(visualizationRef.current!.pendingTapNdc).toBeNull();
     jest.useRealTimers();
   });
 });
@@ -422,7 +395,7 @@ describe('InteractionBand contract (attempt / acceptance / release)', () => {
         },
       },
     },
-  });
+  }) as React.RefObject<VisualizationEngineRef | null>;
 
   const layoutEvent = {
     nativeEvent: { layout: { x: 0, y: 0, width: 200, height: 288 } },

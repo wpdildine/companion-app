@@ -11,13 +11,14 @@ module.exports = {
           {
             paths: [
               {
-                name: '@mtg/runtime/node',
+                name: '@atlas/runtime/node',
                 message:
-                  'App must not import Node entrypoint. Use @mtg/runtime (RN entry) only. Parity/tests use @mtg/runtime/node.',
+                  'App must not import Node entrypoint. Use @atlas/runtime (RN entry) only. Parity/tests use @atlas/runtime/node.',
               },
               {
-                name: '@mtg/runtime/node/*',
-                message: 'App must not import Node-only subpaths. Use @mtg/runtime only.',
+                name: '@atlas/runtime/node/*',
+                message:
+                  'App must not import Node-only subpaths. Use @atlas/runtime only.',
               },
             ],
           },

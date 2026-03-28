@@ -1,20 +1,71 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
-import {
-  getRecordingPermissionsAsync,
-  RecordingPresets,
-  requestRecordingPermissionsAsync,
-  setAudioModeAsync,
-  useAudioRecorder,
+import type {
+  AudioRecorder,
+  RecordingOptions,
+  RecordingOptionsAndroid,
+  RecordingOptionsIos,
+  RecordingOptionsWeb,
 } from 'expo-audio';
-import { Directory, File, Paths } from 'expo-file-system';
+import AtlasNativeMic from 'atlas-native-mic';
+import { isNativeMicCaptureEnabled } from '../../shared/config/endpointConfig';
 import { logInfo, logWarn } from '../../shared/logging';
 
-/** Ensure EXPO_OS is set before expo-audio API calls (Android). */
-function ensureExpoOsBeforeCapture(): void {
-  if (typeof process !== 'undefined' && process.env && !process.env.EXPO_OS) {
-    process.env.EXPO_OS = Platform.OS;
+type CommonRecordingOptions = {
+  extension: string;
+  sampleRate: number;
+  numberOfChannels: number;
+  bitRate: number;
+  isMeteringEnabled: boolean;
+};
+
+/** Mirrors expo-audio `createRecordingOptions` using RN `Platform` (no expo-modules-core at module load). */
+function createRecordingOptionsLocal(
+  options: RecordingOptions,
+): CommonRecordingOptions &
+  (RecordingOptionsIos | RecordingOptionsAndroid | RecordingOptionsWeb) {
+  const commonOptions: CommonRecordingOptions = {
+    extension: options.extension,
+    sampleRate: options.sampleRate,
+    numberOfChannels: options.numberOfChannels,
+    bitRate: options.bitRate,
+    isMeteringEnabled: options.isMeteringEnabled ?? false,
+  };
+
+  if (Platform.OS === 'ios') {
+    return {
+      ...commonOptions,
+      ...options.ios,
+    };
   }
+  if (Platform.OS === 'android') {
+    return {
+      ...commonOptions,
+      ...options.android,
+    };
+  }
+  return {
+    ...commonOptions,
+    ...options.web,
+  };
+}
+
+let expoAudioModule: typeof import('expo-audio') | null = null;
+function getExpoAudio(): typeof import('expo-audio') {
+  if (!expoAudioModule) {
+    expoAudioModule = require('expo-audio') as typeof import('expo-audio');
+  }
+  return expoAudioModule;
+}
+
+let expoFileSystemModule: typeof import('expo-file-system') | null = null;
+function getExpoFileSystem(): typeof import('expo-file-system') {
+  if (!expoFileSystemModule) {
+    expoFileSystemModule = require('expo-file-system') as typeof import(
+      'expo-file-system'
+    );
+  }
+  return expoFileSystemModule;
 }
 
 export interface CapturedSttAudio {
@@ -82,6 +133,7 @@ function preserveDebugCapture(
   recordingSessionId?: string,
 ): string | undefined {
   if (!canPreserveDebugCapture()) return undefined;
+  const { Directory, File, Paths } = getExpoFileSystem();
   const documentUri =
     typeof Paths.document?.uri === 'string'
       ? Paths.document.uri.replace(/\/+$/, '')
@@ -113,6 +165,7 @@ function preserveDebugCapture(
 }
 
 async function configureRecordingAudioMode(): Promise<void> {
+  const { setAudioModeAsync } = getExpoAudio();
   await setAudioModeAsync({
     allowsRecording: true,
     playsInSilentMode: true,
@@ -125,6 +178,7 @@ async function configureRecordingAudioMode(): Promise<void> {
 }
 
 async function restorePlaybackAudioMode(): Promise<void> {
+  const { setAudioModeAsync } = getExpoAudio();
   await setAudioModeAsync({
     allowsRecording: false,
     playsInSilentMode: true,
@@ -136,15 +190,151 @@ async function restorePlaybackAudioMode(): Promise<void> {
   });
 }
 
+function sessionKey(recordingSessionId?: string): string {
+  return recordingSessionId?.trim() || 'capture';
+}
+
+type MicValidationTiming = {
+  beginCaptureCalledAt?: number;
+  nativeStartedAt?: number;
+  endCaptureCalledAt?: number;
+  nativeFinalizedAt?: number;
+  cancelCalledAt?: number;
+  cancelCompletedAt?: number;
+};
+
+function nowTs(): number {
+  return Date.now();
+}
+
+function logMicValidation(
+  event: string,
+  payload: Record<string, unknown>,
+  level: 'info' | 'warn' = 'info',
+): void {
+  const body = {
+    timestamp: nowTs(),
+    ...payload,
+  };
+  if (level === 'warn') {
+    logWarn('AgentOrchestrator', `[MicValidation] ${event}`, body);
+    return;
+  }
+  logInfo('AgentOrchestrator', `[MicValidation] ${event}`, body);
+}
+
+function shouldAttemptNativeMic(): boolean {
+  return isNativeMicCaptureEnabled() && AtlasNativeMic.isAvailable();
+}
+
+function toFileUri(uri: string): string {
+  if (uri.startsWith('file://')) return uri;
+  if (uri.length === 0) return uri;
+  return `file://${uri}`;
+}
+
 export function useSttAudioCapture() {
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [isCapturing, setIsCapturing] = useState(false);
   const captureStartedAtRef = useRef<number | null>(null);
+  const validationTimingBySessionRef = useRef<Record<string, MicValidationTiming>>(
+    {},
+  );
+  const nativeMicActiveRef = useRef(false);
+  const lastNativeCaptureRef = useRef<{
+    sessionId: string;
+    capture: CapturedSttAudio;
+  } | null>(null);
+  const expoRecorderRef = useRef<AudioRecorder | null>(null);
+
+  useEffect(() => {
+    return () => {
+      expoRecorderRef.current?.release();
+      expoRecorderRef.current = null;
+    };
+  }, []);
 
   const beginCapture = useCallback(
     async (recordingSessionId?: string): Promise<boolean> => {
-      ensureExpoOsBeforeCapture();
+      const sid = sessionKey(recordingSessionId);
+      const nativeMicEnabled = isNativeMicCaptureEnabled();
+      validationTimingBySessionRef.current[sid] = {
+        ...validationTimingBySessionRef.current[sid],
+        beginCaptureCalledAt: nowTs(),
+      };
+      logMicValidation('beginCapture_called', {
+        sessionId: sid,
+        nativeMicEnabled,
+      });
       try {
+        if (shouldAttemptNativeMic()) {
+          logMicValidation('beginCapture_native_attempt', {
+            sessionId: sid,
+            nativeMicEnabled,
+            selectedPath: 'native',
+          });
+          try {
+            await AtlasNativeMic.init();
+            await AtlasNativeMic.startCapture(sid);
+            expoRecorderRef.current?.release();
+            expoRecorderRef.current = null;
+            nativeMicActiveRef.current = true;
+            lastNativeCaptureRef.current = null;
+            captureStartedAtRef.current = Date.now();
+            const t = nowTs();
+            const prior = validationTimingBySessionRef.current[sid] ?? {};
+            validationTimingBySessionRef.current[sid] = {
+              ...prior,
+              nativeStartedAt: t,
+            };
+            setIsCapturing(true);
+            logMicValidation('beginCapture_native_started', {
+              sessionId: sid,
+              nativeMicEnabled,
+              selectedPath: 'native',
+              startLatencyMs:
+                prior.beginCaptureCalledAt != null
+                  ? Math.max(0, t - prior.beginCaptureCalledAt)
+                  : undefined,
+            });
+            logInfo('AgentOrchestrator', 'stt audio capture started (native mic)', {
+              recordingSessionId,
+            });
+            return true;
+          } catch (e) {
+            nativeMicActiveRef.current = false;
+            logMicValidation(
+              'beginCapture_native_failed',
+              {
+                sessionId: sid,
+                nativeMicEnabled,
+                selectedPath: 'native',
+                message: errorMessage(e),
+              },
+              'warn',
+            );
+            logWarn(
+              'AgentOrchestrator',
+              'native mic capture start failed; falling back to expo-audio',
+              {
+                recordingSessionId,
+                message: errorMessage(e),
+              },
+            );
+            logMicValidation('beginCapture_expo_fallback', {
+              sessionId: sid,
+              nativeMicEnabled,
+              selectedPath: 'expo',
+              fallbackReason: 'native_start_failed',
+            });
+          }
+        }
+
+        const {
+          getRecordingPermissionsAsync,
+          requestRecordingPermissionsAsync,
+          RecordingPresets,
+          AudioModule,
+        } = getExpoAudio();
         let permissions: { granted: boolean; status?: string };
         try {
           const statusResult = await getRecordingPermissionsAsync();
@@ -163,9 +353,17 @@ export function useSttAudioCapture() {
           });
           return false;
         }
+
+        const recordingPreset = RecordingPresets.HIGH_QUALITY;
         await configureRecordingAudioMode();
+        let recorder = expoRecorderRef.current;
+        if (!recorder) {
+          const platformOptions = createRecordingOptionsLocal(recordingPreset);
+          recorder = new AudioModule.AudioRecorder(platformOptions);
+          expoRecorderRef.current = recorder;
+        }
         try {
-          await recorder.prepareToRecordAsync(RecordingPresets.HIGH_QUALITY);
+          await recorder.prepareToRecordAsync(recordingPreset);
         } catch (error) {
           const message = errorMessage(error);
           if (!message.toLowerCase().includes('already been prepared')) {
@@ -173,13 +371,29 @@ export function useSttAudioCapture() {
           }
         }
         recorder.record();
+        nativeMicActiveRef.current = false;
         captureStartedAtRef.current = Date.now();
         setIsCapturing(true);
+        logMicValidation('beginCapture_expo_started', {
+          sessionId: sid,
+          nativeMicEnabled,
+          selectedPath: 'expo',
+          startLatencyMs:
+            validationTimingBySessionRef.current[sid]?.beginCaptureCalledAt != null
+              ? Math.max(
+                  0,
+                  nowTs() -
+                    (validationTimingBySessionRef.current[sid]
+                      ?.beginCaptureCalledAt as number),
+                )
+              : undefined,
+        });
         logInfo('AgentOrchestrator', 'stt audio capture started', { recordingSessionId });
         return true;
       } catch (error) {
         setIsCapturing(false);
         captureStartedAtRef.current = null;
+        nativeMicActiveRef.current = false;
         logWarn('AgentOrchestrator', 'stt audio capture failed to start', {
           recordingSessionId,
           message: errorMessage(error),
@@ -192,16 +406,230 @@ export function useSttAudioCapture() {
         return false;
       }
     },
-    [recorder],
+    [],
   );
 
   const endCapture = useCallback(
     async (recordingSessionId?: string): Promise<SttAudioCaptureStopResult> => {
+      const sid = sessionKey(recordingSessionId);
+      validationTimingBySessionRef.current[sid] = {
+        ...validationTimingBySessionRef.current[sid],
+        endCaptureCalledAt: nowTs(),
+      };
+      logMicValidation('endCapture_called', {
+        sessionId: sid,
+        nativeMicEnabled: isNativeMicCaptureEnabled(),
+        selectedPath: nativeMicActiveRef.current ? 'native' : 'expo',
+      });
+
+      if (nativeMicActiveRef.current) {
+        let stopErrorMessage: string | null = null;
+        try {
+          const result = await AtlasNativeMic.stopFinalize(sid);
+          nativeMicActiveRef.current = false;
+          setIsCapturing(false);
+          if (result.duplicate) {
+            captureStartedAtRef.current = null;
+            try {
+              await restorePlaybackAudioMode();
+            } catch {
+              /* ignore */
+            }
+            const last = lastNativeCaptureRef.current;
+            if (last != null && last.sessionId === sid) {
+              logMicValidation('endCapture_native_duplicate_reused', {
+                sessionId: sid,
+                nativeMicEnabled: isNativeMicCaptureEnabled(),
+                duplicate: true,
+                selectedPath: 'native',
+                finalizeLatencyMs:
+                  validationTimingBySessionRef.current[sid]?.endCaptureCalledAt != null
+                    ? Math.max(
+                        0,
+                        nowTs() -
+                          (validationTimingBySessionRef.current[sid]
+                            ?.endCaptureCalledAt as number),
+                      )
+                    : undefined,
+              });
+              logInfo(
+                'AgentOrchestrator',
+                'stt audio capture duplicate finalize treated as idempotent no-op (native mic)',
+                { recordingSessionId },
+              );
+              return { ok: true, capture: last.capture };
+            }
+            logMicValidation(
+              'endCapture_duplicate_missing_cached_capture',
+              {
+                sessionId: sid,
+                nativeMicEnabled: isNativeMicCaptureEnabled(),
+                duplicate: true,
+                selectedPath: 'native',
+                finalizeLatencyMs:
+                  validationTimingBySessionRef.current[sid]?.endCaptureCalledAt != null
+                    ? Math.max(
+                        0,
+                        nowTs() -
+                          (validationTimingBySessionRef.current[sid]
+                            ?.endCaptureCalledAt as number),
+                      )
+                    : undefined,
+              },
+              'warn',
+            );
+            return {
+              ok: false,
+              failureKind: 'missingFileAfterStop',
+              message: 'duplicate stopFinalize without prior finalized capture (native mic)',
+            };
+          }
+          const rawUri = result.uri;
+          if (!rawUri) {
+            captureStartedAtRef.current = null;
+            try {
+              await restorePlaybackAudioMode();
+            } catch {
+              /* ignore */
+            }
+            return {
+              ok: false,
+              failureKind: 'missingFileAfterStop',
+              message: 'Native mic stop completed without capture URI',
+            };
+          }
+          const uri = toFileUri(rawUri);
+          const { File } = getExpoFileSystem();
+          const file = new File(uri);
+          const audioBase64 = await file.base64();
+          const filename = uri.split('/').pop() ?? `stt-${Date.now()}.m4a`;
+          const durationMillis =
+            result.durationMillis > 0
+              ? result.durationMillis
+              : captureStartedAtRef.current != null
+                ? Math.max(0, Date.now() - captureStartedAtRef.current)
+                : 0;
+          const mimeType = inferMimeType(uri);
+          const debugPreservedUri = preserveDebugCapture(
+            audioBase64,
+            filename,
+            recordingSessionId,
+          );
+          const payload: CapturedSttAudio = {
+            audioBase64,
+            mimeType,
+            filename,
+            durationMillis,
+            uri,
+            ...(debugPreservedUri != null && { debugPreservedUri }),
+          };
+          lastNativeCaptureRef.current = { sessionId: sid, capture: payload };
+          const finalizedAt = nowTs();
+          validationTimingBySessionRef.current[sid] = {
+            ...validationTimingBySessionRef.current[sid],
+            nativeFinalizedAt: finalizedAt,
+          };
+          logMicValidation('endCapture_native_finalized', {
+            sessionId: sid,
+            nativeMicEnabled: isNativeMicCaptureEnabled(),
+            selectedPath: 'native',
+            duplicate: !!result.duplicate,
+            filename,
+            mimeType,
+            sizeBase64Chars: audioBase64.length,
+            finalizeLatencyMs:
+              validationTimingBySessionRef.current[sid]?.endCaptureCalledAt != null
+                ? Math.max(
+                    0,
+                    finalizedAt -
+                      (validationTimingBySessionRef.current[sid]
+                        ?.endCaptureCalledAt as number),
+                  )
+                : undefined,
+          });
+          logInfo('AgentOrchestrator', 'stt audio capture completed (native mic)', {
+            recordingSessionId,
+            durationMillis,
+            filename,
+            mimeType,
+            sizeBase64Chars: audioBase64.length,
+            debugPreservedUri: debugPreservedUri ?? null,
+          });
+          captureStartedAtRef.current = null;
+          try {
+            await restorePlaybackAudioMode();
+          } catch {
+            /* ignore */
+          }
+          return { ok: true, capture: payload };
+        } catch (error) {
+          stopErrorMessage = errorMessage(error);
+          nativeMicActiveRef.current = false;
+          setIsCapturing(false);
+          captureStartedAtRef.current = null;
+          logMicValidation(
+            'endCapture_failed',
+            {
+              sessionId: sid,
+              nativeMicEnabled: isNativeMicCaptureEnabled(),
+              selectedPath: 'native',
+              duplicate: false,
+              message: stopErrorMessage,
+            },
+            'warn',
+          );
+          logWarn('AgentOrchestrator', 'stt audio capture native finalize failed', {
+            recordingSessionId,
+            message: stopErrorMessage,
+          });
+          try {
+            await restorePlaybackAudioMode();
+          } catch {
+            /* ignore */
+          }
+          return {
+            ok: false,
+            failureKind: 'finalizeFailed',
+            message: stopErrorMessage,
+          };
+        }
+      }
+
+      const expoRecorder = expoRecorderRef.current;
+      if (!expoRecorder) {
+        setIsCapturing(false);
+        captureStartedAtRef.current = null;
+        logWarn('AgentOrchestrator', 'stt audio capture missing expo recorder', {
+          recordingSessionId,
+        });
+        try {
+          await restorePlaybackAudioMode();
+        } catch {
+          /* ignore */
+        }
+        return {
+          ok: false,
+          failureKind: 'finalizeFailed',
+          message: 'Expo recorder not initialized for expo capture',
+        };
+      }
+
       let stopErrorMessage: string | null = null;
       try {
-        await recorder.stop();
+        await expoRecorder.stop();
       } catch (error) {
         stopErrorMessage = errorMessage(error);
+        logMicValidation(
+          'endCapture_failed',
+          {
+            sessionId: sid,
+            nativeMicEnabled: isNativeMicCaptureEnabled(),
+            selectedPath: 'expo',
+            duplicate: false,
+            message: stopErrorMessage,
+          },
+          'warn',
+        );
         logWarn('AgentOrchestrator', 'stt audio capture stop raised', {
           recordingSessionId,
           message: stopErrorMessage,
@@ -209,7 +637,7 @@ export function useSttAudioCapture() {
       }
       setIsCapturing(false);
       try {
-        const uri = recorder.uri;
+        const uri = expoRecorder.uri;
         if (!uri) {
           const message =
             stopErrorMessage ??
@@ -225,6 +653,7 @@ export function useSttAudioCapture() {
             message,
           };
         }
+        const { File } = getExpoFileSystem();
         const file = new File(uri);
         const audioBase64 = await file.base64();
         const filename = uri.split('/').pop() ?? `stt-${Date.now()}.m4a`;
@@ -246,6 +675,24 @@ export function useSttAudioCapture() {
           uri,
           ...(debugPreservedUri != null && { debugPreservedUri }),
         };
+        logMicValidation('endCapture_native_finalized', {
+          sessionId: sid,
+          nativeMicEnabled: isNativeMicCaptureEnabled(),
+          selectedPath: 'expo',
+          duplicate: false,
+          filename,
+          mimeType,
+          sizeBase64Chars: audioBase64.length,
+          finalizeLatencyMs:
+            validationTimingBySessionRef.current[sid]?.endCaptureCalledAt != null
+              ? Math.max(
+                  0,
+                  nowTs() -
+                    (validationTimingBySessionRef.current[sid]
+                      ?.endCaptureCalledAt as number),
+                )
+              : undefined,
+        });
         logInfo('AgentOrchestrator', 'stt audio capture completed', {
           recordingSessionId,
           durationMillis,
@@ -257,6 +704,17 @@ export function useSttAudioCapture() {
         return { ok: true, capture: payload };
       } catch (error) {
         const message = errorMessage(error);
+        logMicValidation(
+          'endCapture_failed',
+          {
+            sessionId: sid,
+            nativeMicEnabled: isNativeMicCaptureEnabled(),
+            selectedPath: 'expo',
+            duplicate: false,
+            message,
+          },
+          'warn',
+        );
         logWarn('AgentOrchestrator', 'stt audio capture failed to finalize', {
           recordingSessionId,
           message,
@@ -275,18 +733,133 @@ export function useSttAudioCapture() {
         }
       }
     },
-    [recorder],
+    [],
   );
 
   const cancelCapture = useCallback(
     async (recordingSessionId?: string): Promise<void> => {
+      const sid = sessionKey(recordingSessionId);
+      validationTimingBySessionRef.current[sid] = {
+        ...validationTimingBySessionRef.current[sid],
+        cancelCalledAt: nowTs(),
+      };
+      logMicValidation('cancelCapture_called', {
+        sessionId: sid,
+        nativeMicEnabled: isNativeMicCaptureEnabled(),
+        selectedPath: nativeMicActiveRef.current ? 'native' : 'expo',
+      });
+      if (nativeMicActiveRef.current) {
+        try {
+          await AtlasNativeMic.cancel(sid);
+        } catch (error) {
+          const message = errorMessage(error);
+          const looksDuplicateNoop =
+            message.includes('E_NO_SESSION') || message.includes('No active capture');
+          if (looksDuplicateNoop) {
+            logMicValidation('cancelCapture_duplicate_noop', {
+              sessionId: sid,
+              nativeMicEnabled: isNativeMicCaptureEnabled(),
+              selectedPath: 'native',
+              message,
+            });
+          } else {
+            logMicValidation(
+              'cancelCapture_failed',
+              {
+                sessionId: sid,
+                nativeMicEnabled: isNativeMicCaptureEnabled(),
+                selectedPath: 'native',
+                message,
+              },
+              'warn',
+            );
+          }
+        } finally {
+          lastNativeCaptureRef.current = null;
+          nativeMicActiveRef.current = false;
+          setIsCapturing(false);
+          captureStartedAtRef.current = null;
+          const completedAt = nowTs();
+          validationTimingBySessionRef.current[sid] = {
+            ...validationTimingBySessionRef.current[sid],
+            cancelCompletedAt: completedAt,
+          };
+          logMicValidation('cancelCapture_completed', {
+            sessionId: sid,
+            nativeMicEnabled: isNativeMicCaptureEnabled(),
+            selectedPath: 'native',
+            cancelLatencyMs:
+              validationTimingBySessionRef.current[sid]?.cancelCalledAt != null
+                ? Math.max(
+                    0,
+                    completedAt -
+                      (validationTimingBySessionRef.current[sid]
+                        ?.cancelCalledAt as number),
+                  )
+                : undefined,
+          });
+          try {
+            await restorePlaybackAudioMode();
+          } catch {
+            /* ignore */
+          }
+          logInfo('AgentOrchestrator', 'stt audio capture cancelled (native mic)', {
+            recordingSessionId,
+          });
+        }
+        return;
+      }
+      const expoRecorder = expoRecorderRef.current;
       try {
-        await recorder.stop();
-      } catch {
-        /* ignore */
+        if (expoRecorder) {
+          await expoRecorder.stop();
+        }
+      } catch (error) {
+        const message = errorMessage(error);
+        const looksDuplicateNoop =
+          message.toLowerCase().includes('not recording') ||
+          message.toLowerCase().includes('already');
+        if (looksDuplicateNoop) {
+          logMicValidation('cancelCapture_duplicate_noop', {
+            sessionId: sid,
+            nativeMicEnabled: isNativeMicCaptureEnabled(),
+            selectedPath: 'expo',
+            message,
+          });
+        } else {
+          logMicValidation(
+            'cancelCapture_failed',
+            {
+              sessionId: sid,
+              nativeMicEnabled: isNativeMicCaptureEnabled(),
+              selectedPath: 'expo',
+              message,
+            },
+            'warn',
+          );
+        }
       } finally {
         setIsCapturing(false);
         captureStartedAtRef.current = null;
+        const completedAt = nowTs();
+        validationTimingBySessionRef.current[sid] = {
+          ...validationTimingBySessionRef.current[sid],
+          cancelCompletedAt: completedAt,
+        };
+        logMicValidation('cancelCapture_completed', {
+          sessionId: sid,
+          nativeMicEnabled: isNativeMicCaptureEnabled(),
+          selectedPath: 'expo',
+          cancelLatencyMs:
+            validationTimingBySessionRef.current[sid]?.cancelCalledAt != null
+              ? Math.max(
+                  0,
+                  completedAt -
+                    (validationTimingBySessionRef.current[sid]
+                      ?.cancelCalledAt as number),
+                )
+              : undefined,
+        });
         try {
           await restorePlaybackAudioMode();
         } catch {
@@ -297,7 +870,7 @@ export function useSttAudioCapture() {
         });
       }
     },
-    [recorder],
+    [],
   );
 
   return {
