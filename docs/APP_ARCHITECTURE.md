@@ -105,6 +105,10 @@ No provider-specific events are fed directly into visualization code.
 | How does agent behavior become visualization behavior? | VisualizationController |
 | How are grounded results shown conventionally? | ResultsOverlay |
 
+## Play / Act (derived interaction phase)
+
+**Play/Act** is a **data-driven, derived** layer documented in [docs/PLAY_ACT_CONTRACT.md](PLAY_ACT_CONTRACT.md). It classifies the current moment into a minimal set of **Acts** (Intake, Evaluate, Clarify, Recover, Respond) from **already-normalized** orchestrator truth and surface-visible arbitration facts. It **does not** replace AgentOrchestrator (lifecycle, request, commit/clear), AgentSurface (arbitration, hold accept/reject per [docs/INTERACTION_CONTRACT.md](INTERACTION_CONTRACT.md)), or VisualizationController / ResultsOverlay (pixels and overlay layout). Optional consumption: presentation may use Act **labels and affordance hints** only in **intersection** with authoritative lifecycle and arbitration.
+
 ## Transient Effects Ownership (System-Wide)
 
 Transient effects are a cross-cutting runtime signal system. Ownership is split across three layers:
