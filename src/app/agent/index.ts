@@ -11,6 +11,16 @@ export type {
   LastFrontDoorOutcome,
   ProcessingSubstate,
 } from './types';
+export {
+  resolveAgentPlayAct,
+} from './resolveAgentPlayAct';
+export type {
+  AgentPlayActAffordanceHints,
+  AgentPlayActCommitVisibilityHint,
+  AgentPlayActResolution,
+  AgentPrimaryAct,
+  PlayActSurfaceFacts,
+} from './resolveAgentPlayAct';
 export { useAgentOrchestrator } from './useAgentOrchestrator';
 export type {
   AgentOrchestratorActions,
