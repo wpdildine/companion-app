@@ -42,6 +42,21 @@ describe('getPlayActAccessibilityLabel', () => {
     expect(label.toLowerCase()).toContain('error');
   });
 
+  it('Cycle 7: error lifecycle never implies voice intake even when intake act and hints say eligible', () => {
+    const label = getPlayActAccessibilityLabel(
+      res({
+        primaryAct: 'intake',
+        affordanceHints: {
+          voiceIntakeEligible: true,
+          playbackGesturesEligible: false,
+        },
+      }),
+      orch({ lifecycle: 'error', error: 'Network error' }),
+    );
+    expect(label).toContain('Network error');
+    expect(label).not.toContain('Awaiting voice');
+  });
+
   it('uses generic error string when error lifecycle but empty message', () => {
     const label = getPlayActAccessibilityLabel(
       res({ primaryAct: 'intake' }),

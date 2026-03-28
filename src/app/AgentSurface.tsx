@@ -80,7 +80,7 @@ const ASK_HOLD_MS = 400;
 /** Max recording duration for hold-to-speak; timeout triggers stop + submit (same as release). */
 const MAX_RECORDING_DURATION_MS = 12000;
 const DEBUG_DISABLE_PROCESSING = false;
-/** Cycle 6 Stage 2: visible phase caption in semantic channel; keep false for a11y-only (Stage 1). */
+/** Stage 2 visible caption: default off (Stage 1 a11y-only). Enable only under docs/PLAY_ACT_BOUNDARIES.md Stage 2 decision rule. */
 const PLAY_ACT_PHASE_CAPTION_ENABLED = false;
 const DEBUG_LOG_SCOPES: Array<import('../shared/logging').LogScope> = [
   'AgentOrchestrator',

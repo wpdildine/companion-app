@@ -1,6 +1,6 @@
 # Play/Act realization (Cycle 5)
 
-Canonical realization notes for the documented Play/Act layer. **Authority:** [docs/PLAY_ACT_CONTRACT.md](PLAY_ACT_CONTRACT.md), [docs/APP_ARCHITECTURE.md](APP_ARCHITECTURE.md), [docs/ARCHITECTURE.md](ARCHITECTURE.md), [docs/INTERACTION_CONTRACT.md](INTERACTION_CONTRACT.md).
+Canonical realization notes for the documented Play/Act layer. **Authority:** [docs/PLAY_ACT_CONTRACT.md](PLAY_ACT_CONTRACT.md), [docs/PLAY_ACT_BOUNDARIES.md](PLAY_ACT_BOUNDARIES.md) (hardening and expansion boundaries), [docs/APP_ARCHITECTURE.md](APP_ARCHITECTURE.md), [docs/ARCHITECTURE.md](ARCHITECTURE.md), [docs/INTERACTION_CONTRACT.md](INTERACTION_CONTRACT.md).
 
 This document captures **how** the approved contract is realized in product code at a high level. The **pure resolver** lives next to agent types (implementation); it does **not** own lifecycle, arbitration, or semantics.
 
@@ -96,6 +96,12 @@ The five Acts do not define a dedicated “hard error” Act. When `lifecycle ==
 **Surface intersection:** `resolveAgentPlayAct(orchState, { interactionBandEnabled })` uses the same band enablement boolean as [INTERACTION_CONTRACT.md](INTERACTION_CONTRACT.md) arbitration wiring in AgentSurface.
 
 **Stage 2 visible caption:** `PLAY_ACT_PHASE_CAPTION_ENABLED` in `AgentSurface` (default `false`); set `true` for optional helper line without changing ownership.
+
+---
+
+## Cycle 7 — hardening and expansion boundaries
+
+Shipped Stage 1 hardening targets, Stage 2 go/no-go, future-consumer safety categories, resolver output usage rules, validation/regression obligations, and expansion stop signals are **canonical** in **[docs/PLAY_ACT_BOUNDARIES.md](PLAY_ACT_BOUNDARIES.md)**. Do not expand Play/Act consumption without that policy.
 
 ---
 

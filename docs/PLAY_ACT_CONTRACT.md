@@ -14,7 +14,7 @@
 
 **In scope:** Act schema, minimal Act set, resolution inputs, transitions, commit alignment, resume/replace semantics, mapping to existing owners, validation rules, implementation watchpoints.
 
-**Out of scope:** Orchestrator implementation, new subsystems, visualization internals, debug/diagnostics, concrete hooks or file layout (those follow this contract when introduced). **Realization:** [docs/PLAY_ACT_REALIZATION.md](PLAY_ACT_REALIZATION.md).
+**Out of scope:** Orchestrator implementation, new subsystems, visualization internals, debug/diagnostics, concrete hooks or file layout (those follow this contract when introduced). **Realization:** [docs/PLAY_ACT_REALIZATION.md](PLAY_ACT_REALIZATION.md). **Hardening / expansion boundaries:** [docs/PLAY_ACT_BOUNDARIES.md](PLAY_ACT_BOUNDARIES.md).
 
 ---
 

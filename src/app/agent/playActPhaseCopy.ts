@@ -1,6 +1,7 @@
 /**
- * Cycle 6 — presentation-only copy derived from Play/Act resolution + orchestrator truth.
+ * Presentation-only copy from Play/Act resolution + orchestrator truth (Cycles 6–7).
  * Hard error UX must follow lifecycle === 'error', not primaryAct (PLAY_ACT_REALIZATION.md).
+ * Consumer boundaries and deferred outputs: docs/PLAY_ACT_BOUNDARIES.md.
  */
 
 import type { AgentOrchestratorState } from './types';
