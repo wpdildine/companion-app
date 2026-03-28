@@ -117,6 +117,38 @@ The five Acts do not define a dedicated “hard error” Act. When `lifecycle ==
 
 ---
 
+## Cycle 10 — overlay-adjacent accessibility (one additional passive consumer)
+
+**Objective:** Bounded **overlay-adjacent** static accessibility on the **existing** `ResultsOverlay` root container, using the **same** canonical string as the semantic channel—prove a second interpretation sink without a second mapping policy or measurement fork.
+
+**Consumer:** `ResultsOverlay` root `View` (`src/app/ui/components/overlays/ResultsOverlay.tsx`), fed from `AgentSurface` via prop `playActAccessibilityLabel` (same value as `SemanticChannelView`’s `accessibilityContainerLabel`).
+
+**Consumed resolver outputs:** Unchanged — `primaryAct` and `commitVisibilityHint` **only** via `getPlayActAccessibilityLabel` in `playActPhaseCopy.ts`. **Not consumed:** `affordanceHints`, `processingSubstate` for any UI branching.
+
+**Ownership:** `ResultsOverlay` still owns reveal, dismiss, layout, and panel semantics; the label is **annotation only** and must not gate interaction ([PLAY_ACT_BOUNDARIES.md](PLAY_ACT_BOUNDARIES.md) — overlay-adjacent static phrasing).
+
+**Measurement:** Cycle 9 predicates **unchanged**; drift observation continues to use the single `a11yLabel` passed into `detectPlayActDrift` (same string as both surfaces).
+
+### Output usage rules (restated for this cycle)
+
+| Output | Allowed here | Forbidden |
+|--------|--------------|-----------|
+| **primaryAct** | Via mapper only; phase-oriented copy. | Any control of band, overlay policy, visualization, or lifecycle. |
+| **commitVisibilityHint** | Via mapper only; wording alignment with commitment policy. | Source of truth for commit/clear; show/hide panels from hint alone. |
+| **affordanceHints** | Not consumed. | UI branching or “permission to speak” from hints. |
+| **processingSubstate** | Not consumed for UI. | Per-substate visible branches. |
+
+### Validation checklist (Cycle 10)
+
+- No lifecycle duplication; hard `error` still orchestrator-first in mapper (`lifecycle === 'error'` → error-framed label, not Act-as-permission).
+- No arbitration duplication; band / hold unchanged.
+- No visualization drift; no Act under `VisualizationController`.
+- No overlay ownership drift; reveal/dismiss/layout unchanged.
+- No hint-driven behavior; no `processingSubstate` leakage to UI.
+- Existing drift predicates remain valid and unweakened ([PLAY_ACT_MEASUREMENT.md](PLAY_ACT_MEASUREMENT.md)).
+
+---
+
 ## Cycle 7 — hardening and expansion boundaries
 
 Shipped Stage 1 hardening targets, Stage 2 go/no-go, future-consumer safety categories, resolver output usage rules, validation/regression obligations, and expansion stop signals are **canonical** in **[docs/PLAY_ACT_BOUNDARIES.md](PLAY_ACT_BOUNDARIES.md)**. Do not expand Play/Act consumption without that policy.

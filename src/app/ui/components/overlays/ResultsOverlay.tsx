@@ -5,6 +5,9 @@
  *
  * Semantic front door (Cycle 7): cards/rules/answer body reflect orchestrator-committed
  * `responseText` and `validationSummary` only; blocked retrieval does not surface as a normal answer.
+ *
+ * Cycle 10: optional `playActAccessibilityLabel` — same canonical string as `SemanticChannelView`
+ * (`getPlayActAccessibilityLabel`); labels the overlay root only; does not own reveal/dismiss or arbitration.
  */
 
 import { useEffect, useRef } from 'react';
@@ -87,6 +90,11 @@ export interface ResultsOverlayProps {
   showRevealChips?: boolean;
   /** Optional hold-to-speak row (rendered above content stack) */
   holdToSpeakSlot?: React.ReactNode;
+  /**
+   * Cycle 10: Play/Act-derived accessibility label for the overlay content region (optional).
+   * Must be the same mapper output as the semantic channel scroll (`playActPhaseCopy`); interpretation only.
+   */
+  playActAccessibilityLabel?: string;
 }
 
 const styles = StyleSheet.create({
@@ -196,6 +204,7 @@ export function ResultsOverlay({
   stubRules = [],
   showRevealChips = false,
   holdToSpeakSlot,
+  playActAccessibilityLabel,
 }: ResultsOverlayProps) {
   const showLoadingPlaceholder =
     isAsking &&
@@ -301,7 +310,10 @@ export function ResultsOverlay({
       : 'answer';
 
   return (
-    <View style={[styles.container, styles.scrollOverlay]}>
+    <View
+      style={[styles.container, styles.scrollOverlay]}
+      accessibilityLabel={playActAccessibilityLabel}
+    >
       {holdToSpeakSlot ? (
         <View style={styles.askTriggerRow}>{holdToSpeakSlot}</View>
       ) : null}

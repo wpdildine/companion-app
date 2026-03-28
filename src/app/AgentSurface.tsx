@@ -82,7 +82,10 @@ const ASK_HOLD_MS = 400;
 /** Max recording duration for hold-to-speak; timeout triggers stop + submit (same as release). */
 const MAX_RECORDING_DURATION_MS = 12000;
 const DEBUG_DISABLE_PROCESSING = false;
-/** Cycle 8 Stage 2: visible phase line in semantic channel; see docs/PLAY_ACT_REALIZATION.md Cycle 8 and docs/PLAY_ACT_BOUNDARIES.md. */
+/**
+ * Cycle 8 Stage 2: visible phase line in semantic channel; see docs/PLAY_ACT_REALIZATION.md Cycle 8 and docs/PLAY_ACT_BOUNDARIES.md.
+ * Cycle 10: `playActAccessibilityLabel` is also passed to `ResultsOverlay` root (same canonical string; drift observation unchanged).
+ */
 const PLAY_ACT_PHASE_CAPTION_ENABLED = true;
 const DEBUG_LOG_SCOPES: Array<import('../shared/logging').LogScope> = [
   'AgentOrchestrator',
@@ -1063,6 +1066,7 @@ export default function AgentSurface() {
             stubRules={stubRules}
             showRevealChips={SHOW_REVEAL_CHIPS}
             holdToSpeakSlot={holdToSpeakSlot}
+            playActAccessibilityLabel={playActAccessibilityLabel}
           />
         </SemanticChannelView>
       </VisualizationSurface>

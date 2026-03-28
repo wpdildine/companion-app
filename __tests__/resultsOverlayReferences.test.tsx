@@ -41,6 +41,56 @@ describe('ResultsOverlay cited references', () => {
     jest.clearAllMocks();
   });
 
+  it('applies playActAccessibilityLabel to the root container when provided (Cycle 10)', async () => {
+    const ReactNative = require('react-native');
+    let renderer: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        <ResultsOverlay
+          responseText={null}
+          validationSummary={null}
+          isAsking={false}
+          processingSubstate={null}
+          error={null}
+          revealedBlocks={{
+            answer: false,
+            cards: false,
+            rules: false,
+            sources: false,
+          }}
+          revealBlock={jest.fn()}
+          setRevealedBlocks={jest.fn()}
+          updatePanelRect={jest.fn()}
+          clearPanelRect={jest.fn()}
+          theme={{
+            text: '#fff',
+            textMuted: '#999',
+            background: '#000',
+            border: '#333',
+            primary: '#f00',
+            warning: '#ff0',
+          }}
+          intensity="subtle"
+          reduceMotion
+          emitEvent={jest.fn()}
+          showContentPanels
+          canRevealPanels
+          playActAccessibilityLabel="Play act phase label for overlay region"
+        />,
+      );
+    });
+    const labeled = renderer!.root.findAll(
+      (node: TestRenderer.ReactTestInstance) =>
+        node.type === ReactNative.View &&
+        node.props.accessibilityLabel ===
+          'Play act phase label for overlay region',
+    );
+    expect(labeled.length).toBeGreaterThanOrEqual(1);
+    await act(async () => {
+      renderer!.unmount();
+    });
+  });
+
   it('passes settled card and rule reference content into the cards and rules blocks', async () => {
     let renderer: TestRenderer.ReactTestRenderer;
     await act(async () => {

@@ -14,7 +14,7 @@ This document does **not** change the Play/Act contract or resolver semantics; i
 - **ResultsOverlay** remains sole owner of reveal/dismiss/layout and grounded structure.
 - **Play/Act** remains a pure derived classifier + hints; consumption is **presentation interpretation only**—no gating, no mutation, no durable Act state.
 - **Hard error** UX remains `lifecycle === 'error'` (and orchestrator error payload), **not** `primaryAct` (see [PLAY_ACT_REALIZATION.md](PLAY_ACT_REALIZATION.md)).
-- **Shipped semantic channel:** `playActPhaseCopy` for accessibility **and** (Cycle 8) optional visible caption when `PLAY_ACT_PHASE_CAPTION_ENABLED` is **true** in `AgentSurface`; `affordanceHints` and `processingSubstate` remain **not** consumer inputs for UI branching.
+- **Shipped consumers:** `playActPhaseCopy` for semantic-channel accessibility **and** (Cycle 8) optional visible caption when `PLAY_ACT_PHASE_CAPTION_ENABLED` is **true** in `AgentSurface`; **and** (Cycle 10) the same canonical accessibility string on the `ResultsOverlay` root (`playActAccessibilityLabel`)—interpretation only; `affordanceHints` and `processingSubstate` remain **not** consumer inputs for UI branching.
 
 ---
 
@@ -119,12 +119,14 @@ This document does **not** change the Play/Act contract or resolver semantics; i
 
 ## Implementation-planning readiness
 
+**Cycle 10 (shipped):** Bounded overlay-adjacent a11y on `ResultsOverlay` root — same canonical `getPlayActAccessibilityLabel` as `SemanticChannelView`; see [PLAY_ACT_REALIZATION.md](PLAY_ACT_REALIZATION.md) Cycle 10.
+
 **READY FOR NARROW IMPLEMENTATION PLAN** for either:
 
 - Further tuning Stage 2 visible caption copy under the **Stage 2 decision rule** (Cycle 8 shipped the default-on flag; see [PLAY_ACT_REALIZATION.md](PLAY_ACT_REALIZATION.md) Cycle 8), or  
-- Adding **one** additional **safe** consumer (e.g. bounded overlay a11y) without new resolver outputs.
+- Further **safe** consumers only under the future-consumer table above (one consumer per governed wave; no new resolver outputs without contract revision).
 
-**Minimal precondition:** PR re-states **output usage rules** and **validation checklist**; tests cover error override and no consumer use of `affordanceHints` until explicitly allowed.
+**Minimal precondition:** PR re-states **output usage rules** and **validation checklist** when expanding Play/Act consumption; tests cover error override and no consumer use of `affordanceHints` until explicitly allowed.
 
 ---
 
