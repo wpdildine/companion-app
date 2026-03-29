@@ -2,7 +2,7 @@
 
 Canonical specification for the **real** Act layer: a declarative, data-driven **Act descriptor** derived as a **pure read model** over **SemanticEvidence**. This is **not** a control plane, **not** lifecycle, **not** arbitration, and **not** a second state machine.
 
-**Implementation:** `resolveActDescriptor` in `src/app/agent/resolveActDescriptor.ts`, types in `src/app/agent/actDescriptorTypes.ts`.
+**Implementation:** `resolveActDescriptor` in `src/app/agent/resolveActDescriptor.ts`, types in `src/app/agent/actDescriptorTypes.ts`. **`buildAtlasSemanticChannelDebugSnapshot`** in `src/app/agent/getSemanticEvidence.ts` pairs evidence + Act for tooling.
 
 **Related:** [docs/APP_ARCHITECTURE.md](APP_ARCHITECTURE.md) (ownership), [docs/PLAY_ACT_CONTRACT.md](PLAY_ACT_CONTRACT.md) (legacy Play/Act labels may **project** from this descriptor for copy only—they are not the Act system itself), [src/app/agent/semanticEvidenceTypes.ts](../src/app/agent/semanticEvidenceTypes.ts), [src/app/agent/getSemanticEvidence.ts](../src/app/agent/getSemanticEvidence.ts).
 
@@ -90,8 +90,11 @@ Derived only from **identity**, **outcome**, and **runtime** fields on SemanticE
 
 ## 9. Consumer rules
 
+**First adopted consumer (Cycle 1):** In `__DEV__` only, `globalThis.__getAtlasSemanticChannelDebugSnapshot` (wired from [AgentSurface.tsx](../src/app/AgentSurface.tsx)) returns `{ semanticEvidence, actDescriptor }` for console inspection. This is **observational**—not the Play/Act **primaryAct** label system; do not treat the bundle as a control surface. `__getAtlasSemanticEvidence` remains raw `SemanticEvidence` for existing debugging.
+
 | Consumer | Allowed | Forbidden |
 |----------|---------|-----------|
+| **Dev introspection** | Read full `ActDescriptor` in the debug snapshot; compare to `SemanticEvidence` | Branching app behavior (even in dev) on pathways, affordances, or family |
 | **Orchestrator** | Dev-only parity checks (optional) | Control decisions from Act |
 | **AgentSurface** | Optional captions/hints, intersected with arbitration | Arbitration from Act |
 | **ResultsOverlay** | Interpretive copy/a11y | Reveal/dismiss authority from Act |
@@ -119,4 +122,4 @@ Derived only from **identity**, **outcome**, and **runtime** fields on SemanticE
 
 ## 12. Status
 
-**READY TO IMPLEMENT** — schema and resolver live in `src/app/agent/`; pathway registry is closed in `actDescriptorTypes.ts`.
+**IMPLEMENTED** — schema, resolver, and **first consumer** (`__getAtlasSemanticChannelDebugSnapshot` in dev). Pathway registry is closed in `actDescriptorTypes.ts`. Further consumers require a separate adoption audit.

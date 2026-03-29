@@ -68,8 +68,14 @@ export type { SemanticEvidenceEventsRef } from './semanticEvidenceSink';
 export { mirrorRequestIdentityFromRefs } from './semanticEvidenceMirror';
 export { getOutcomeProjection } from './getOutcomeProjection';
 export type { GetOutcomeProjectionInput } from './getOutcomeProjection';
-export { getSemanticEvidence } from './getSemanticEvidence';
-export type { GetSemanticEvidenceInput } from './getSemanticEvidence';
+export {
+  buildAtlasSemanticChannelDebugSnapshot,
+  getSemanticEvidence,
+} from './getSemanticEvidence';
+export type {
+  AtlasSemanticChannelDebugSnapshot,
+  GetSemanticEvidenceInput,
+} from './getSemanticEvidence';
 export {
   resolveActDescriptor,
   validateActDescriptorCoherence,

@@ -2,7 +2,7 @@
  * Pure aggregation of runtime state, surface snapshot, observed events, and outcome projection.
  */
 
-import type { AgentOrchestratorState } from './types';
+import type { ActDescriptor } from './actDescriptorTypes';
 import { getOutcomeProjection } from './getOutcomeProjection';
 import type {
   ObservedEvent,
@@ -10,6 +10,8 @@ import type {
   SemanticPresentationState,
   SemanticSurfaceState,
 } from './semanticEvidenceTypes';
+import type { AgentOrchestratorState } from './types';
+import { resolveActDescriptor } from './resolveActDescriptor';
 
 export type GetSemanticEvidenceInput = {
   orchestratorState: AgentOrchestratorState;
@@ -47,5 +49,24 @@ export function getSemanticEvidence(
     interaction: { observedEvents: [...observedEvents] },
     presentation: presentation ?? {},
     outcome,
+  };
+}
+
+/**
+ * __DEV__ / tooling: same snapshot as {@link getSemanticEvidence} plus Act descriptor.
+ * Observational only — do not branch app behavior on this bundle (see docs/ACT_DESCRIPTOR_SPEC.md).
+ */
+export type AtlasSemanticChannelDebugSnapshot = {
+  semanticEvidence: SemanticEvidence;
+  actDescriptor: ActDescriptor;
+};
+
+export function buildAtlasSemanticChannelDebugSnapshot(
+  input: GetSemanticEvidenceInput,
+): AtlasSemanticChannelDebugSnapshot {
+  const semanticEvidence = getSemanticEvidence(input);
+  return {
+    semanticEvidence,
+    actDescriptor: resolveActDescriptor(semanticEvidence),
   };
 }

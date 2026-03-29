@@ -1,5 +1,9 @@
 import { getOutcomeProjection } from '../getOutcomeProjection';
-import { getSemanticEvidence } from '../getSemanticEvidence';
+import {
+  buildAtlasSemanticChannelDebugSnapshot,
+  getSemanticEvidence,
+} from '../getSemanticEvidence';
+import { resolveActDescriptor } from '../resolveActDescriptor';
 import { mirrorRequestIdentityFromRefs } from '../semanticEvidenceMirror';
 import {
   appendSemanticEvidenceEvent,
@@ -427,5 +431,37 @@ describe('getSemanticEvidence', () => {
     expect(se.interaction.observedEvents).toEqual(observed);
     expect(se.interaction.observedEvents).not.toBe(observed);
     expect(se.outcome).toEqual({ class: 'recoverable', source: 'listener' });
+  });
+});
+
+describe('buildAtlasSemanticChannelDebugSnapshot', () => {
+  const defaultSurface = {
+    interactionBandEnabled: true,
+    activeInteractionOwner: 'none' as const,
+    revealedBlocks: {
+      answer: false,
+      cards: false,
+      rules: false,
+      sources: false,
+    },
+    debugEnabled: false,
+  };
+
+  it('actDescriptor matches resolveActDescriptor on the bundled semanticEvidence', () => {
+    const input = {
+      orchestratorState: baseState({
+        lifecycle: 'processing',
+        processingSubstate: 'streaming',
+        requestInFlight: true,
+        activeRequestId: 9,
+      }),
+      surfaceState: defaultSurface,
+      observedEvents: [] as const,
+    };
+    const snap = buildAtlasSemanticChannelDebugSnapshot(input);
+    expect(snap.semanticEvidence).toEqual(getSemanticEvidence(input));
+    expect(snap.actDescriptor).toEqual(
+      resolveActDescriptor(snap.semanticEvidence),
+    );
   });
 });

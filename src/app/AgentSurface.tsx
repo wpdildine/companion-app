@@ -47,6 +47,7 @@ import {
   VisualizationSurface,
 } from '../visualization';
 import {
+  buildAtlasSemanticChannelDebugSnapshot,
   detectPlayActDrift,
   getPlayActAccessibilityLabel,
   getPlayActPhaseCaptionText,
@@ -545,21 +546,28 @@ export default function AgentSurface() {
   useEffect(() => {
     if (typeof __DEV__ === 'undefined' || !__DEV__) return;
     const g = globalThis as Record<string, unknown>;
-    g.__getAtlasSemanticEvidence = () =>
-      getSemanticEvidence({
-        orchestratorState: orchState,
-        surfaceState: {
-          interactionBandEnabled,
-          activeInteractionOwner,
-          revealedBlocks,
-          debugEnabled,
-        },
-        observedEvents: semanticEvidenceEventsRef.current,
-        presentation: {
-          playActAccessibilityLabel,
-          playActPhaseCaptionText: playActPhaseCaption,
-        },
-      });
+    const devEvidenceInput = () => ({
+      orchestratorState: orchState,
+      surfaceState: {
+        interactionBandEnabled,
+        activeInteractionOwner,
+        revealedBlocks,
+        debugEnabled,
+      },
+      observedEvents: semanticEvidenceEventsRef.current,
+      presentation: {
+        playActAccessibilityLabel,
+        playActPhaseCaptionText: playActPhaseCaption,
+      },
+    });
+    /** Raw SemanticEvidence only (unchanged shape for existing console use). */
+    g.__getAtlasSemanticEvidence = () => getSemanticEvidence(devEvidenceInput());
+    /**
+     * First ActDescriptor consumer: observational bundle for debugging.
+     * Do not use pathways/affordances as permissions or to gate behavior.
+     */
+    g.__getAtlasSemanticChannelDebugSnapshot = () =>
+      buildAtlasSemanticChannelDebugSnapshot(devEvidenceInput());
   }, [
     orchState,
     interactionBandEnabled,
