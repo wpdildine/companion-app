@@ -208,4 +208,72 @@ describe('VizDebugPanel Speech Lab', () => {
       { posture: 'treated' },
     );
   });
+
+  it('sends layer2 keys on Play when Layer 2 on and delay/gain set', () => {
+    let root: TestRenderer.ReactTestRenderer;
+    act(() => {
+      root = TestRenderer.create(<VizDebugPanel {...baseProps} />);
+    });
+    expandSpeechLabSection(root!.root);
+    act(() => {
+      findOnPressSubtreeContainingText(root!.root, 'treated')!.props.onPress?.();
+    });
+    act(() => {
+      findOnPressSubtreeContainingText(root!.root, 'Layer 2 on')!.props.onPress?.();
+    });
+    act(() => {
+      findByTestId(root!.root, 'speech-lab-treated-layer2-delay-ms')!.props.onChangeText?.(
+        '40',
+      );
+    });
+    act(() => {
+      findByTestId(root!.root, 'speech-lab-treated-layer2-gain-db')!.props.onChangeText?.(
+        '-2',
+      );
+    });
+    act(() => {
+      findOnPressSubtreeContainingText(root!.root, 'Play')!.props.onPress?.();
+    });
+    expect(baseProps.onSpeechLabPlay).toHaveBeenLastCalledWith(expect.any(String), {
+      posture: 'treated',
+      treatedDebugRenderOverrides: {
+        renderLayer2Enabled: true,
+        renderLayer2DelayMs: 40,
+        renderLayer2GainDb: -2,
+      },
+    });
+  });
+
+  it('reset clears layer2 fields so Play omits layer2 keys', () => {
+    let root: TestRenderer.ReactTestRenderer;
+    act(() => {
+      root = TestRenderer.create(<VizDebugPanel {...baseProps} />);
+    });
+    expandSpeechLabSection(root!.root);
+    act(() => {
+      findOnPressSubtreeContainingText(root!.root, 'treated')!.props.onPress?.();
+    });
+    act(() => {
+      findOnPressSubtreeContainingText(root!.root, 'Layer 2 on')!.props.onPress?.();
+    });
+    act(() => {
+      findByTestId(root!.root, 'speech-lab-treated-layer2-delay-ms')!.props.onChangeText?.(
+        '10',
+      );
+    });
+    const resetRow = findOnPressSubtreeContainingText(
+      root!.root,
+      s => s.includes('Reset') && s.includes('treated'),
+    );
+    act(() => {
+      resetRow!.props.onPress?.();
+    });
+    act(() => {
+      findOnPressSubtreeContainingText(root!.root, 'Play')!.props.onPress?.();
+    });
+    expect(baseProps.onSpeechLabPlay).toHaveBeenLastCalledWith(
+      expect.any(String),
+      { posture: 'treated' },
+    );
+  });
 });

@@ -111,6 +111,32 @@ describe('resolvePiperOptions treated debug overrides', () => {
       renderHighPassHz: 120,
     });
   });
+
+  it('ignores layer2 keys in override bag for default posture', () => {
+    expect(
+      resolvePiperOptions('default', {
+        renderLayer2Enabled: true,
+        renderLayer2DelayMs: 80,
+        renderLayer2GainDb: -3,
+      }),
+    ).toEqual(mapPlaybackPostureToPiperOptions('default'));
+  });
+
+  it('treated shallow-merges layer2 overrides', () => {
+    const base = mapPlaybackPostureToPiperOptions('treated');
+    expect(
+      resolvePiperOptions('treated', {
+        renderLayer2Enabled: true,
+        renderLayer2DelayMs: 50,
+        renderLayer2GainDb: -6,
+      }),
+    ).toEqual({
+      ...base,
+      renderLayer2Enabled: true,
+      renderLayer2DelayMs: 50,
+      renderLayer2GainDb: -6,
+    });
+  });
 });
 
 describe('runAvPlaybackSpeak fallback terminal contract', () => {

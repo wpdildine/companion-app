@@ -65,11 +65,14 @@ function syncPostFxFromSubsystem(
   }
 }
 
-/** Parse hp / lead / gain strings; only finite numbers become override keys. Applied on Play only. */
-function buildTreatedDebugOverridesFromInputs(
+/** Base shaping + optional layer2 desync; only finite numbers; layer2 on Play only. */
+function buildTreatedDebugOverridesFromSpeechLab(
   hpStr: string,
   leadStr: string,
   gainStr: string,
+  layer2On: boolean,
+  layer2DelayStr: string,
+  layer2GainStr: string,
 ): TreatedDebugRenderOverrides | undefined {
   const out: TreatedDebugRenderOverrides = {};
   const h = hpStr.trim();
@@ -86,6 +89,19 @@ function buildTreatedDebugOverridesFromInputs(
   if (g !== '') {
     const n = Number(g);
     if (Number.isFinite(n)) out.renderPostGainDb = n;
+  }
+  if (layer2On) {
+    out.renderLayer2Enabled = true;
+    const d = layer2DelayStr.trim();
+    if (d !== '') {
+      const n = Number(d);
+      if (Number.isFinite(n) && n >= 0) out.renderLayer2DelayMs = n;
+    }
+    const lg = layer2GainStr.trim();
+    if (lg !== '') {
+      const n = Number(lg);
+      if (Number.isFinite(n)) out.renderLayer2GainDb = n;
+    }
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
@@ -134,6 +150,9 @@ export function VizDebugPanel({
   const [hpHz, setHpHz] = useState('');
   const [leadMs, setLeadMs] = useState('');
   const [gainDb, setGainDb] = useState('');
+  const [layer2Enabled, setLayer2Enabled] = useState(false);
+  const [layer2DelayMs, setLayer2DelayMs] = useState('');
+  const [layer2GainDb, setLayer2GainDb] = useState('');
   const selectedPresetText = useMemo(
     () => SPEECH_LAB_PRESETS.find(p => p.id === speechPresetId)?.text ?? '',
     [speechPresetId],
@@ -344,12 +363,42 @@ export function VizDebugPanel({
                     keyboardType="numbers-and-punctuation"
                     testID="speech-lab-treated-gain-db"
                   />
+                  <Text style={styles.speechSubLabel}>Layer 2 desync</Text>
+                  <Text style={styles.sttHint} numberOfLines={2}>
+                    Delayed wet mix (Piper native). Apply on Play only.
+                  </Text>
+                  <DebugMenuRow
+                    label="Layer 2 on"
+                    onPress={() => setLayer2Enabled(v => !v)}
+                    right={toggleControl(layer2Enabled)}
+                  />
+                  <TextInput
+                    style={styles.speechOverrideInput}
+                    value={layer2DelayMs}
+                    onChangeText={setLayer2DelayMs}
+                    placeholder="Layer 2 delay (ms)"
+                    placeholderTextColor={TEXT_MUTED}
+                    keyboardType="numbers-and-punctuation"
+                    testID="speech-lab-treated-layer2-delay-ms"
+                  />
+                  <TextInput
+                    style={styles.speechOverrideInput}
+                    value={layer2GainDb}
+                    onChangeText={setLayer2GainDb}
+                    placeholder="Layer 2 gain (dB, wet tap)"
+                    placeholderTextColor={TEXT_MUTED}
+                    keyboardType="numbers-and-punctuation"
+                    testID="speech-lab-treated-layer2-gain-db"
+                  />
                   <DebugMenuRow
                     label="Reset treated render defaults"
                     onPress={() => {
                       setHpHz('');
                       setLeadMs('');
                       setGainDb('');
+                      setLayer2Enabled(false);
+                      setLayer2DelayMs('');
+                      setLayer2GainDb('');
                     }}
                     right={<Text style={styles.presetAction}>Clear</Text>}
                   />
@@ -391,7 +440,14 @@ export function VizDebugPanel({
                   if (!text.trim()) return;
                   const bag =
                     speechPosture === 'treated'
-                      ? buildTreatedDebugOverridesFromInputs(hpHz, leadMs, gainDb)
+                      ? buildTreatedDebugOverridesFromSpeechLab(
+                          hpHz,
+                          leadMs,
+                          gainDb,
+                          layer2Enabled,
+                          layer2DelayMs,
+                          layer2GainDb,
+                        )
                       : undefined;
                   void onSpeechLabPlay(text, {
                     posture: speechPosture,

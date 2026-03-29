@@ -40,6 +40,15 @@ export type SpeakOptions = {
   renderLeadSilenceMs?: number;
   /** First-order high-pass cutoff Hz in native playPcm; 0 or omit = off. */
   renderHighPassHz?: number;
+  /**
+   * Post-synth treated desync: mix a delayed copy of the buffer (wet) with dry.
+   * When false or omitted, layer2 path is off. No effect on default RN-TTS fallback.
+   */
+  renderLayer2Enabled?: boolean;
+  /** Wet tap delay in ms (non-negative). Ignored when layer2 disabled. */
+  renderLayer2DelayMs?: number;
+  /** Gain in dB applied to the delayed tap only. Ignored when layer2 disabled. */
+  renderLayer2GainDb?: number;
 };
 
 /** Subscribe to Piper TTS events (speak_start, speak_end, error). Returns unsubscribe. */

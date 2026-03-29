@@ -13,6 +13,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.ShortBuffer
 import java.util.concurrent.Executors
 import java.util.regex.Pattern
 import kotlin.math.PI
@@ -400,7 +401,43 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
         if (hpHz > 0) {
             applyHighPassPcm16LE(work, sampleRate, hpHz)
         }
-        return work
+        return applyLayer2DesyncPcm16LE(work, sampleRate, opts)
+    }
+
+    /** Dry + delayed wet (gain on wet only); extends PCM length. No-op when layer2 disabled. */
+    private fun applyLayer2DesyncPcm16LE(pcm: ByteArray, sampleRate: Int, opts: ReadableMap): ByteArray {
+        if (!opts.hasKey("renderLayer2Enabled") || !opts.getBoolean("renderLayer2Enabled")) {
+            return pcm
+        }
+        if (sampleRate <= 0 || pcm.size < 2) return pcm
+        val delayMs = if (opts.hasKey("renderLayer2DelayMs")) {
+            opts.getDouble("renderLayer2DelayMs").coerceAtLeast(0.0)
+        } else {
+            0.0
+        }
+        val gainDb = if (opts.hasKey("renderLayer2GainDb")) opts.getDouble("renderLayer2GainDb") else 0.0
+        val nSamples = pcm.size / 2
+        val dSamples = (sampleRate * delayMs / 1000.0).toInt().coerceIn(0, 100_000)
+        var linear = 10.0.pow(gainDb / 20.0)
+        if (linear < 0 || linear.isNaN() || linear.isInfinite()) linear = 0.0
+        val outSamples = nSamples + dSamples
+        val out = ByteArray(outSamples * 2)
+        val inputShorts: ShortBuffer =
+            ByteBuffer.wrap(pcm).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+        val outShorts: ShortBuffer =
+            ByteBuffer.wrap(out).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+        for (i in 0 until outSamples) {
+            var sum = 0.0
+            if (i < nSamples) {
+                sum += inputShorts.get(i).toDouble()
+            }
+            val srcIdx = i - dSamples
+            if (srcIdx >= 0 && srcIdx < nSamples) {
+                sum += inputShorts.get(srcIdx).toDouble() * linear
+            }
+            outShorts.put(i, sum.roundToInt().coerceIn(-32768, 32767).toShort())
+        }
+        return out
     }
 
     private fun applyHighPassPcm16LE(pcm: ByteArray, sampleRate: Int, cutoffHz: Double) {

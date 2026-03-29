@@ -79,6 +79,70 @@ static void PiperApplyHighPassFloatMono(float *data, AVAudioFrameCount frameCoun
   }
 }
 
+static BOOL PiperOptsBoolForLayer2(NSDictionary *opts) {
+  if (![opts isKindOfClass:[NSDictionary class]]) return NO;
+  id v = opts[@"renderLayer2Enabled"];
+  if (!v || v == [NSNull null]) return NO;
+  if ([v isKindOfClass:[NSNumber class]]) return [v boolValue];
+  return NO;
+}
+
+/** Dry + delayed wet (gain on wet only); extends length by delay. Returns nil on alloc failure. */
+static AVAudioPCMBuffer *PiperApplyLayer2DesyncFloatMono(
+  AVAudioPCMBuffer *dry,
+  NSDictionary *opts,
+  AVAudioFormat *format) {
+  if (!dry || dry.frameLength == 0) return dry;
+  if (![opts isKindOfClass:[NSDictionary class]] || !PiperOptsBoolForLayer2(opts)) return dry;
+  if (!format || format.channelCount != 1) return dry;
+  float *inCh = dry.floatChannelData[0];
+  if (!inCh) return dry;
+
+  double delayMs = 0;
+  id dObj = opts[@"renderLayer2DelayMs"];
+  if (dObj && dObj != [NSNull null] && [dObj respondsToSelector:@selector(doubleValue)]) {
+    delayMs = [dObj doubleValue];
+  }
+  if (delayMs < 0 || isnan(delayMs)) delayMs = 0;
+
+  double gainDb = 0;
+  id gObj = opts[@"renderLayer2GainDb"];
+  if (gObj && gObj != [NSNull null] && [gObj respondsToSelector:@selector(doubleValue)]) {
+    gainDb = [gObj doubleValue];
+  }
+  if (isnan(gainDb) || isinf(gainDb)) gainDb = 0;
+
+  double sr = format.sampleRate;
+  if (sr <= 0) return dry;
+  AVAudioFrameCount N = dry.frameLength;
+  NSInteger D = (NSInteger)llround(delayMs * sr / 1000.0);
+  if (D < 0) D = 0;
+  if (D > 100000) D = 100000;
+
+  double linear = pow(10.0, gainDb / 20.0);
+  if (linear < 0 || isnan(linear) || isinf(linear)) linear = 0;
+
+  AVAudioFrameCount outN = N + (AVAudioFrameCount)D;
+  AVAudioPCMBuffer *outBuf = [[AVAudioPCMBuffer alloc] initWithPCMFormat:format frameCapacity:outN];
+  if (!outBuf || !outBuf.floatChannelData[0]) return nil;
+  float *out = outBuf.floatChannelData[0];
+  memset(out, 0, sizeof(float) * outN);
+
+  for (AVAudioFrameCount i = 0; i < outN; i++) {
+    double sum = 0.0;
+    if (i < N) sum += (double)inCh[i];
+    NSInteger j = (NSInteger)i - D;
+    if (j >= 0 && j < (NSInteger)N) {
+      sum += (double)inCh[(AVAudioFrameCount)j] * linear;
+    }
+    if (sum > 1.0) sum = 1.0;
+    if (sum < -1.0) sum = -1.0;
+    out[i] = (float)sum;
+  }
+  outBuf.frameLength = outN;
+  return outBuf;
+}
+
 @interface PiperTtsModule ()
 @property (nonatomic, strong) AVAudioEngine *playbackEngine;
 @property (nonatomic, strong) AVAudioPlayerNode *playbackPlayer;
@@ -231,8 +295,8 @@ RCT_EXPORT_METHOD(setOptions:(NSDictionary *)options)
     return;
   }
   self.lastSpeakOptions = [options copy];
-  RCTLogInfo(@"[PiperTts] setOptions: stored keys=%@ noiseScale=%@ lengthScale=%@ noiseW=%@ gainDb=%@ interSentenceSilenceMs=%@ interCommaSilenceMs=%@ renderPostGainDb=%@ renderLeadSilenceMs=%@ renderHighPassHz=%@",
-             [options allKeys], options[@"noiseScale"], options[@"lengthScale"], options[@"noiseW"], options[@"gainDb"], options[@"interSentenceSilenceMs"], options[@"interCommaSilenceMs"], options[@"renderPostGainDb"], options[@"renderLeadSilenceMs"], options[@"renderHighPassHz"]);
+  RCTLogInfo(@"[PiperTts] setOptions: stored keys=%@ noiseScale=%@ lengthScale=%@ noiseW=%@ gainDb=%@ interSentenceSilenceMs=%@ interCommaSilenceMs=%@ renderPostGainDb=%@ renderLeadSilenceMs=%@ renderHighPassHz=%@ renderLayer2Enabled=%@ renderLayer2DelayMs=%@ renderLayer2GainDb=%@",
+             [options allKeys], options[@"noiseScale"], options[@"lengthScale"], options[@"noiseW"], options[@"gainDb"], options[@"interSentenceSilenceMs"], options[@"interCommaSilenceMs"], options[@"renderPostGainDb"], options[@"renderLeadSilenceMs"], options[@"renderHighPassHz"], options[@"renderLayer2Enabled"], options[@"renderLayer2DelayMs"], options[@"renderLayer2GainDb"]);
 }
 
 // Selectors must match TurboModule spec: resolve:/reject: (not resolver:/rejecter:)
@@ -620,6 +684,14 @@ RCT_EXPORT_METHOD(stop)
     }
     if (hpHz > 0 && toPlay != nil && toPlay.floatChannelData[0] != NULL) {
       PiperApplyHighPassFloatMono(toPlay.floatChannelData[0], toPlay.frameLength, playbackFormat.sampleRate, hpHz);
+    }
+
+    if (toPlay != nil && PiperOptsBoolForLayer2(renderOpts)) {
+      AVAudioPCMBuffer *mixed = PiperApplyLayer2DesyncFloatMono(toPlay, renderOpts, playbackFormat);
+      if (mixed != nil) {
+        toPlay = mixed;
+        self.lastBufferFrameLength = toPlay.frameLength;
+      }
     }
   }
 

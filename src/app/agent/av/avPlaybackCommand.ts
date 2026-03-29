@@ -19,6 +19,9 @@ export type TreatedDebugRenderOverrides = Partial<{
   renderPostGainDb: number;
   renderLeadSilenceMs: number;
   renderHighPassHz: number;
+  renderLayer2Enabled: boolean;
+  renderLayer2DelayMs: number;
+  renderLayer2GainDb: number;
 }>;
 
 const PIPER_DEFAULT_SYNTH_OPTIONS = {
@@ -39,15 +42,20 @@ const PIPER_CALM_SYNTH_OPTIONS = {
   interCommaSilenceMs: 140,
 } as const;
 
+/** Optional post-synth render keys Piper understands (layer2 off unless merged from debug overrides). */
+type PiperRenderOptionKeys = Partial<{
+  renderPostGainDb: number;
+  renderLeadSilenceMs: number;
+  renderHighPassHz: number;
+  renderLayer2Enabled: boolean;
+  renderLayer2DelayMs: number;
+  renderLayer2GainDb: number;
+}>;
+
 /** Maps declarative posture to Piper `setOptions` payload (mechanical; no semantics in orchestrator). */
 export function mapPlaybackPostureToPiperOptions(
   posture: PlaybackPosture,
-): typeof PIPER_DEFAULT_SYNTH_OPTIONS &
-  Partial<{
-    renderPostGainDb: number;
-    renderLeadSilenceMs: number;
-    renderHighPassHz: number;
-  }> {
+): typeof PIPER_DEFAULT_SYNTH_OPTIONS & PiperRenderOptionKeys {
   switch (posture) {
     case 'calm':
       return { ...PIPER_CALM_SYNTH_OPTIONS };
@@ -91,6 +99,19 @@ export function resolvePiperOptions(
   }
   if (typeof o.renderHighPassHz === 'number' && Number.isFinite(o.renderHighPassHz)) {
     out.renderHighPassHz = o.renderHighPassHz;
+  }
+  if (typeof o.renderLayer2Enabled === 'boolean') {
+    out.renderLayer2Enabled = o.renderLayer2Enabled;
+  }
+  if (
+    typeof o.renderLayer2DelayMs === 'number' &&
+    Number.isFinite(o.renderLayer2DelayMs) &&
+    o.renderLayer2DelayMs >= 0
+  ) {
+    out.renderLayer2DelayMs = o.renderLayer2DelayMs;
+  }
+  if (typeof o.renderLayer2GainDb === 'number' && Number.isFinite(o.renderLayer2GainDb)) {
+    out.renderLayer2GainDb = o.renderLayer2GainDb;
   }
   return out;
 }
