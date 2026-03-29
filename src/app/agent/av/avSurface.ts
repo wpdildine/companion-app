@@ -22,10 +22,15 @@ export type AvStartRoute =
 export type AvPlaybackRoute = 'piper' | 'react-native-tts';
 
 export type AvPlaybackFact = {
-  kind: 'av.playback.started' | 'av.playback.completed' | 'av.playback.cancelled';
+  kind:
+    | 'av.playback.started'
+    | 'av.playback.completed'
+    | 'av.playback.cancelled'
+    | 'av.playback.failed';
   provider: AvPlaybackRoute;
   requestId: number | null;
   at: number;
+  details?: { message?: string };
 };
 
 export type RemoteStopFinalizeFact = Extract<
@@ -263,22 +268,34 @@ export function finishAvPlaybackLifecycleMechanics(args: {
   endedAt: number;
   playbackRequestId: number | null;
   activePlaybackProviderRef: { current: AvPlaybackRoute | null };
-  event?: 'completed' | 'cancelled';
+  event?: 'completed' | 'cancelled' | 'failed';
+  failureMessage?: string;
 }): AvPlaybackFact {
   const {
     endedAt,
     playbackRequestId,
     activePlaybackProviderRef,
     event = 'completed',
+    failureMessage,
   } = args;
   const provider = activePlaybackProviderRef.current ?? 'react-native-tts';
   activePlaybackProviderRef.current = null;
-  return {
-    kind: event === 'cancelled' ? 'av.playback.cancelled' : 'av.playback.completed',
+  const kind: AvPlaybackFact['kind'] =
+    event === 'cancelled'
+      ? 'av.playback.cancelled'
+      : event === 'failed'
+        ? 'av.playback.failed'
+        : 'av.playback.completed';
+  const fact: AvPlaybackFact = {
+    kind,
     provider,
     requestId: playbackRequestId,
     at: endedAt,
   };
+  if (event === 'failed' && failureMessage) {
+    fact.details = { message: failureMessage };
+  }
+  return fact;
 }
 
 export async function runRemoteStopFinalizeMechanics(args: {

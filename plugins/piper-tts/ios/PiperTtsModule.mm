@@ -24,6 +24,9 @@
 @property (nonatomic) double lastFormatSampleRate;
 @property (nonatomic) uint32_t lastBufferFrameLength;
 @property (nonatomic) double lastBufferFormatSampleRate;
+@property (atomic, assign) BOOL speakAbortRequested;
+@property (nonatomic, copy) RCTPromiseResolveBlock pendingSpeakResolve;
+@property (nonatomic, copy) RCTPromiseRejectBlock pendingSpeakReject;
 @end
 
 @implementation PiperTtsModule
@@ -175,8 +178,37 @@ RCT_EXPORT_METHOD(speak:(NSString *)text
   // espeak-ng is not thread-safe; run synthesis on main thread to avoid EXC_BAD_ACCESS.
   RCTLogInfo(@"[PiperTts] speak: dispatching to main (espeak not thread-safe)");
   dispatch_async(dispatch_get_main_queue(), ^{
+    self.speakAbortRequested = NO;
     [self speakOffMain:text resolver:resolve rejecter:reject];
   });
+}
+
+RCT_EXPORT_METHOD(stop)
+{
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self abortCurrentSpeakPipeline];
+  });
+}
+
+- (void)abortCurrentSpeakPipeline
+{
+  self.speakAbortRequested = YES;
+  AVAudioPlayerNode *player = self.playbackPlayer;
+  AVAudioEngine *engine = self.playbackEngine;
+  if (player.isPlaying) {
+    [player stop];
+  }
+  if (engine.isRunning) {
+    [engine stop];
+  }
+  RCTPromiseRejectBlock rej = self.pendingSpeakReject;
+  RCTPromiseResolveBlock res = self.pendingSpeakResolve;
+  self.pendingSpeakReject = nil;
+  self.pendingSpeakResolve = nil;
+  if (rej) {
+    rej(@"E_CANCELLED", @"Playback stopped", nil);
+  }
+  (void)res;
 }
 
 - (void)speakOffMain:(NSString *)text
@@ -234,6 +266,11 @@ RCT_EXPORT_METHOD(speak:(NSString *)text
              opts != nil ? @"(set)" : @"nil", useOverrides, overrides.noise_scale, overrides.length_scale, overrides.noise_w, overrides.gain_db, (long)interSentenceSilenceMs, (long)interCommaSilenceMs);
   const piper::SynthesizeOverrides *overridesPtr = useOverrides ? &overrides : nullptr;
 
+  if (self.speakAbortRequested) {
+    reject(@"E_CANCELLED", @"Playback stopped", nil);
+    return;
+  }
+
   BOOL usedSegmentPath = NO;
   if (interSentenceSilenceMs > 0 || interCommaSilenceMs > 0) {
     NSArray<NSDictionary<NSString *, id> *> *segments = [PiperTtsModule segmentsWithSilenceFromText:text
@@ -264,6 +301,10 @@ RCT_EXPORT_METHOD(speak:(NSString *)text
         if (silenceMs > 0) {
           size_t silenceSamples = (size_t)((double)combinedRate * (double)silenceMs / 1000.0);
           for (size_t j = 0; j < silenceSamples; j++) combinedPcm.push_back(0);
+        }
+        if (self.speakAbortRequested) {
+          reject(@"E_CANCELLED", @"Playback stopped", nil);
+          return;
         }
       }
       pcm = std::move(combinedPcm);
@@ -312,6 +353,11 @@ RCT_EXPORT_METHOD(speak:(NSString *)text
     reject(@"E_SYNTHESIS", message, nil);
     return;
   }
+  }
+
+  if (self.speakAbortRequested) {
+    reject(@"E_CANCELLED", @"Playback stopped", nil);
+    return;
   }
 
   NSUInteger sampleCount = pcm.size();
@@ -492,12 +538,19 @@ RCT_EXPORT_METHOD(speak:(NSString *)text
     return;
   }
 
+  if (self.speakAbortRequested) {
+    reject(@"E_CANCELLED", @"Playback stopped", nil);
+    return;
+  }
+
+  self.pendingSpeakResolve = [resolve copy];
+  self.pendingSpeakReject = [reject copy];
+
   // 8) Schedule and resolve ONLY on completion
   __block BOOL didResolve = NO;
   [player stop];
 
   __weak PiperTtsModule *wself = self;
-  RCTPromiseResolveBlock resolveCopy = [resolve copy];
   [player scheduleBuffer:toPlay
                   atTime:nil
                  options:0
@@ -505,8 +558,17 @@ RCT_EXPORT_METHOD(speak:(NSString *)text
          if (didResolve) return;
          didResolve = YES;
          dispatch_async(dispatch_get_main_queue(), ^{
-           if (!wself) return;
-           if (resolveCopy) resolveCopy(@(YES));
+           PiperTtsModule *s = wself;
+           if (!s) return;
+           if (s.speakAbortRequested) {
+             s.pendingSpeakResolve = nil;
+             s.pendingSpeakReject = nil;
+             return;
+           }
+           RCTPromiseResolveBlock r = s.pendingSpeakResolve;
+           s.pendingSpeakResolve = nil;
+           s.pendingSpeakReject = nil;
+           if (r) r(@(YES));
          });
        }];
 

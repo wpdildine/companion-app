@@ -159,7 +159,11 @@ type ContractEvent =
   | { type: 'lifecycle'; value: string }
   | { type: 'request_start'; requestId: number }
   | { type: 'request_failed'; requestId: number; lifecycle?: string }
-  | { type: 'request_complete'; requestId: number }
+  | {
+      type: 'request_complete';
+      requestId: number;
+      playbackOutcome?: string;
+    }
   | { type: 'response_settled'; requestId: number }
   | { type: 'tts_start'; requestId: number }
   | { type: 'tts_end'; requestId: number };
@@ -200,6 +204,7 @@ function createHarness(
     type: string;
     requestId?: number | null;
     lifecycle?: string;
+    playbackOutcome?: string;
   }) => void) | null>();
   let currentState: AgentOrchestratorState | null = null;
   let currentActions: AgentOrchestratorActions | null = null;
@@ -208,6 +213,7 @@ function createHarness(
     type: string;
     requestId?: number | null;
     lifecycle?: string;
+    playbackOutcome?: string;
   }) => {
     const requestId = payload.requestId;
     if (typeof requestId !== 'number') return;
@@ -222,7 +228,11 @@ function createHarness(
     } else if (payload.type === 'tts_end') {
       recorder.record({ type: 'tts_end', requestId });
     } else if (payload.type === 'request_complete') {
-      recorder.record({ type: 'request_complete', requestId });
+      recorder.record({
+        type: 'request_complete',
+        requestId,
+        playbackOutcome: payload.playbackOutcome,
+      });
     }
   };
 
@@ -296,9 +306,14 @@ describe('AgentOrchestrator contract events', () => {
     mockRecorderUri = 'file:///tmp/mock-recording.m4a';
     (rag.ask as jest.Mock).mockReset();
     (rag.ask as jest.Mock).mockResolvedValue(mockAskResult());
-    const piperTts = require('piper-tts').default as { speak: jest.Mock };
+    const piperTts = require('piper-tts').default as {
+      speak: jest.Mock;
+      stop: jest.Mock;
+    };
     piperTts.speak.mockReset();
     piperTts.speak.mockImplementation(() => Promise.resolve());
+    piperTts.stop.mockReset();
+    piperTts.stop.mockImplementation(() => undefined);
   });
 
   it('success path ordering', async () => {
@@ -630,6 +645,87 @@ describe('AgentOrchestrator contract events', () => {
     expect(ttsStartIndex).toBeLessThan(ttsEndIndex);
     expect(ttsEndIndex).toBeLessThan(idleIndex);
     expect(idleIndex).toBeLessThan(requestCompleteIndex);
+
+    harness.unmount();
+  });
+
+  it('playback cancel emits exactly one tts_end and request_complete with cancelled outcome', async () => {
+    const recorder = createEventRecorder();
+    const harness = createHarness(recorder);
+    const piperTts = require('piper-tts').default as {
+      speak: jest.Mock;
+      stop: jest.Mock;
+    };
+    let rejectSpeak: ((e: unknown) => void) | undefined;
+    piperTts.speak.mockImplementation(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectSpeak = reject;
+        }),
+    );
+    piperTts.stop.mockImplementation(() => {
+      rejectSpeak?.(
+        Object.assign(new Error('Playback stopped'), { code: 'E_CANCELLED' }),
+      );
+    });
+
+    await emitFinalTranscript(harness, 'Hello there');
+
+    await act(async () => {
+      await harness.actions.submit();
+      await flushPromises();
+      await flushPromises();
+    });
+
+    expect(harness.getState().lifecycle).toBe('speaking');
+
+    await act(async () => {
+      harness.actions.cancelPlayback();
+      await flushPromises();
+      await flushPromises();
+      await new Promise<void>(r => setTimeout(r, 60));
+      await flushPromises();
+    });
+
+    expect(recorder.events.filter(e => e.type === 'tts_end').length).toBe(1);
+    const reqComplete = recorder.events.find(
+      (e): e is Extract<ContractEvent, { type: 'request_complete' }> =>
+        e.type === 'request_complete',
+    );
+    expect(reqComplete).toBeDefined();
+    expect(reqComplete?.playbackOutcome).toBe('cancelled');
+    expect(harness.getState().lifecycle).toBe('idle');
+
+    harness.unmount();
+  });
+
+  it('playback failure emits one tts_end and request_complete with failed outcome', async () => {
+    const recorder = createEventRecorder();
+    const harness = createHarness(recorder);
+    const piperTts = require('piper-tts').default as { speak: jest.Mock };
+    piperTts.speak.mockImplementation(() =>
+      Promise.reject(
+        Object.assign(new Error('synth failed'), { code: 'E_SYNTHESIS' }),
+      ),
+    );
+
+    await emitFinalTranscript(harness, 'Hello there');
+
+    await act(async () => {
+      await harness.actions.submit();
+      await flushPromises();
+      await flushPromises();
+      await new Promise<void>(r => setTimeout(r, 60));
+      await flushPromises();
+    });
+
+    expect(recorder.events.filter(e => e.type === 'tts_end').length).toBe(1);
+    const reqComplete = recorder.events.find(
+      (e): e is Extract<ContractEvent, { type: 'request_complete' }> =>
+        e.type === 'request_complete',
+    );
+    expect(reqComplete?.playbackOutcome).toBe('failed');
+    expect(harness.getState().lifecycle).toBe('error');
 
     harness.unmount();
   });

@@ -24,6 +24,15 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
     @Volatile
     private var lastSpeakOptions: ReadableMap? = null
 
+    @Volatile
+    private var stopPlaybackRequested: Boolean = false
+
+    @Volatile
+    private var activeSpeakPromise: Promise? = null
+
+    @Volatile
+    private var activeAudioTrack: AudioTrack? = null
+
     init {
         // Copy model from assets to files/piper/ as soon as the module loads so it's on device before any JS or speak().
         executor.execute {
@@ -47,6 +56,33 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
     @ReactMethod
     fun setOptions(options: ReadableMap?) {
         lastSpeakOptions = options
+    }
+
+    @ReactMethod
+    fun stop() {
+        executor.execute {
+            stopPlaybackRequested = true
+            val t = activeAudioTrack
+            activeAudioTrack = null
+            if (t != null) {
+                try {
+                    t.stop()
+                } catch (_: Exception) {
+                }
+                try {
+                    t.release()
+                } catch (_: Exception) {
+                }
+            }
+            val p = activeSpeakPromise
+            activeSpeakPromise = null
+            if (p != null) {
+                try {
+                    p.reject("E_CANCELLED", "Playback stopped", null)
+                } catch (_: Exception) {
+                }
+            }
+        }
     }
 
     /** Copy Piper ONNX model from app assets to files/piper/ so synthesis can run. Call on app startup. */
@@ -78,16 +114,20 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
             return
         }
         executor.execute {
+            stopPlaybackRequested = false
+            activeSpeakPromise = promise
             try {
                 val (modelPath, configPath) = getModelPaths() ?: run {
                     Log.e(TAG, "[E_NO_MODEL] Piper model not found. Run: pnpm run download-piper then rebuild the app.")
                     promise.reject("E_NO_MODEL", "Piper model not found. Run: pnpm run download-piper then rebuild the app.")
+                    activeSpeakPromise = null
                     return@execute
                 }
                 val espeakPath = getEspeakDataPath()
                 if (espeakPath == null) {
                     Log.e(TAG, "[E_NO_ESPEAK_DATA] espeak-ng-data not found. Run: ./scripts/download-espeak-ng-data.sh then rebuild the app.")
                     promise.reject("E_NO_ESPEAK_DATA", "espeak-ng-data not found. Run: ./scripts/download-espeak-ng-data.sh then rebuild the app.")
+                    activeSpeakPromise = null
                     return@execute
                 }
                 val sentenceMs = getOptionInt("interSentenceSilenceMs", 0)
@@ -95,12 +135,16 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
                 val segments = segmentsWithSilenceFromText(text.trim(), sentenceMs, commaMs)
                 val (pcm, sampleRate) = if (segments.size > 1 && (sentenceMs > 0 || commaMs > 0)) {
                     synthesizeSegmentsWithSilence(modelPath, configPath, espeakPath, segments, promise)
-                        ?: return@execute
+                        ?: run {
+                            activeSpeakPromise = null
+                            return@execute
+                        }
                 } else {
                     val result = nativeSynthesize(modelPath, configPath, espeakPath, text)
                     if (result == null || result.size < 2) {
                         Log.e(TAG, "[E_SYNTHESIS] Native synthesize returned invalid result")
                         promise.reject("E_SYNTHESIS", "Synthesis failed. Native Piper pipeline returned no result.")
+                        activeSpeakPromise = null
                         return@execute
                     }
                     val first = result[0]
@@ -108,23 +152,27 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
                     if (first == null && second is String) {
                         Log.e(TAG, "[E_SYNTHESIS] $second")
                         promise.reject("E_SYNTHESIS", second)
+                        activeSpeakPromise = null
                         return@execute
                     }
                     @Suppress("UNCHECKED_CAST")
                     val pcmBytes = first as? ByteArray ?: run {
                         promise.reject("E_SYNTHESIS", "Native synthesize returned no audio.")
+                        activeSpeakPromise = null
                         return@execute
                     }
                     val rate = (second as? Number)?.toInt() ?: 0
                     if (pcmBytes.isEmpty() || rate <= 0) {
                         promise.reject("E_SYNTHESIS", "Native synthesize returned empty audio")
+                        activeSpeakPromise = null
                         return@execute
                     }
                     Pair(pcmBytes, rate)
                 }
-                playPcm(pcm, sampleRate, promise)
+                playPcm(pcm, sampleRate)
             } catch (e: Exception) {
                 Log.e(TAG, "[E_PIPER] Piper speak failed", e)
+                activeSpeakPromise = null
                 promise.reject("E_PIPER", e.message ?: "Piper synthesis failed")
             }
         }
@@ -137,7 +185,16 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
         text: String
     ): Array<Any>?
 
-    private fun playPcm(pcm: ByteArray, sampleRate: Int, promise: Promise) {
+    private fun playPcm(pcm: ByteArray, sampleRate: Int) {
+        val promise = activeSpeakPromise ?: return
+        if (stopPlaybackRequested) {
+            activeSpeakPromise = null
+            try {
+                promise.reject("E_CANCELLED", "Playback stopped", null)
+            } catch (_: Exception) {
+            }
+            return
+        }
         val bufferSize = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val track = AudioTrack.Builder()
             .setAudioAttributes(
@@ -156,14 +213,40 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
             .setBufferSizeInBytes(maxOf(bufferSize, pcm.size))
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
+        activeAudioTrack = track
         track.play()
         track.write(pcm, 0, pcm.size)
         val totalFrames = pcm.size / 2
         while (track.playbackHeadPosition < totalFrames && track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+            if (stopPlaybackRequested) {
+                try {
+                    track.stop()
+                } catch (_: Exception) {
+                }
+                try {
+                    track.release()
+                } catch (_: Exception) {
+                }
+                activeAudioTrack = null
+                activeSpeakPromise = null
+                try {
+                    promise.reject("E_CANCELLED", "Playback stopped", null)
+                } catch (_: Exception) {
+                }
+                return
+            }
             Thread.sleep(50)
         }
-        track.stop()
-        track.release()
+        try {
+            track.stop()
+        } catch (_: Exception) {
+        }
+        try {
+            track.release()
+        } catch (_: Exception) {
+        }
+        activeAudioTrack = null
+        activeSpeakPromise = null
         promise.resolve(null)
     }
 

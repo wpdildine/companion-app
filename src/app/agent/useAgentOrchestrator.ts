@@ -111,6 +111,30 @@ import {
 /** Non-authoritative artifact projection; failures must not abort request completion. */
 const ARTIFACT_PROJECTION_HELPER = 'extractIntentSignals';
 
+/** Piper/native TurboModule rejection `code` when available. */
+function readNativeErrorCode(e: unknown): string {
+  if (
+    e !== null &&
+    typeof e === 'object' &&
+    'code' in e &&
+    typeof (e as { code: unknown }).code === 'string'
+  ) {
+    return (e as { code: string }).code;
+  }
+  return '';
+}
+
+/** At most one terminal fact per playback attempt id (handles deferred macrotasks vs new playText). */
+function consumePlaybackTerminalSlot(
+  awaiting: { current: Set<number> },
+  attemptId: number,
+): boolean {
+  const s = awaiting.current;
+  if (!s.has(attemptId)) return false;
+  s.delete(attemptId);
+  return true;
+}
+
 function emitContextArtifactDebug(
   sinkRef: RequestDebugSinkRef | null | undefined,
   base: { requestId: number; timestamp: number },
@@ -349,6 +373,12 @@ export function useAgentOrchestrator(
   const modeRef = useRef(mode);
   const lifecycleRef = useRef(lifecycle);
   const playbackInterruptedRef = useRef(false);
+  /** Monotonic id per `playText` entry; deferred handlers ignore stale attempts. */
+  const playbackAttemptSeqRef = useRef(0);
+  /** Set for the in-flight attempt until a terminal playback fact is applied. */
+  const playbackInflightAttemptIdRef = useRef<number | null>(null);
+  /** Attempt ids expecting exactly one terminal `av.playback.*` end fact. */
+  const playbackAwaitingTerminalRef = useRef<Set<number>>(new Set());
   const activePlaybackProviderRef = useRef<AvPlaybackRoute | null>(null);
   const lastRemoteSttEmptyRef = useRef(false);
   /**
@@ -384,6 +414,7 @@ export function useAgentOrchestrator(
   const pendingPlaybackCompleteRef = useRef<{
     requestId: number;
     endedAt: number;
+    playbackOutcome: 'completed' | 'cancelled' | 'failed';
   } | null>(null);
   const previousCommittedResponseRef = useRef<string | null>(null);
   const previousCommittedValidationRef = useRef<ValidationSummary | null>(null);
@@ -875,33 +906,52 @@ export function useAgentOrchestrator(
       }
       if (
         fact.kind === 'av.playback.completed' ||
-        fact.kind === 'av.playback.cancelled'
+        fact.kind === 'av.playback.cancelled' ||
+        fact.kind === 'av.playback.failed'
       ) {
+        const playbackOutcome: 'completed' | 'cancelled' | 'failed' =
+          fact.kind === 'av.playback.cancelled'
+            ? 'cancelled'
+            : fact.kind === 'av.playback.failed'
+              ? 'failed'
+              : 'completed';
         emitRequestDebug(requestDebugSinkRef, {
           type: 'tts_end',
           requestId: fact.requestId ?? null,
           ttsEndedAt: fact.at,
           timestamp: fact.at,
-          lifecycle: 'idle',
+          lifecycle: playbackOutcome === 'failed' ? 'error' : 'idle',
+          playbackOutcome,
         });
-        if (fact.kind === 'av.playback.completed' && fact.requestId != null) {
+        if (fact.requestId != null) {
           pendingPlaybackCompleteRef.current = {
             requestId: fact.requestId,
             endedAt: fact.at,
+            playbackOutcome,
           };
         }
         playbackRequestIdRef.current = null;
+        playbackInflightAttemptIdRef.current = null;
         setProcessingSubstate(null);
         setMode('idle');
-        setLifecycle('idle');
+        if (fact.kind === 'av.playback.failed') {
+          setLifecycle('error');
+          setError(fact.details?.message ?? 'Playback failed');
+        } else {
+          setLifecycle('idle');
+        }
         setAudioState('idleReady', {
           reason:
             fact.kind === 'av.playback.cancelled'
               ? 'playbackCancelled'
-              : 'playbackComplete',
+              : fact.kind === 'av.playback.failed'
+                ? 'playbackFailed'
+                : 'playbackComplete',
         });
         if (fact.kind === 'av.playback.cancelled') {
           logInfo('AgentOrchestrator', 'playback cancelled');
+        } else if (fact.kind === 'av.playback.failed') {
+          logInfo('AgentOrchestrator', 'playback failed');
         } else {
           logInfo('AgentOrchestrator', 'playback completed');
         }
@@ -1258,10 +1308,15 @@ export function useAgentOrchestrator(
   );
 
   const finishAvPlaybackLifecycle = useCallback(
-    (endedAt: number, event: 'completed' | 'cancelled' = 'completed'): AvPlaybackFact => {
+    (
+      endedAt: number,
+      event: 'completed' | 'cancelled' | 'failed' = 'completed',
+      failureMessage?: string,
+    ): AvPlaybackFact => {
       return finishAvPlaybackLifecycleMechanics({
         endedAt,
         event,
+        failureMessage,
         playbackRequestId: playbackRequestIdRef.current,
         activePlaybackProviderRef,
       });
@@ -2025,6 +2080,34 @@ export function useAgentOrchestrator(
       }
       setError(null);
       playbackInterruptedRef.current = false;
+
+      if (
+        lifecycleRef.current === 'speaking' ||
+        modeRef.current === 'speaking'
+      ) {
+        const supersededId = playbackInflightAttemptIdRef.current;
+        if (supersededId != null) {
+          playbackAwaitingTerminalRef.current.delete(supersededId);
+          try {
+            const P = require('piper-tts').default;
+            if (typeof P?.stop === 'function') P.stop();
+          } catch {
+            /* ignore */
+          }
+          try {
+            ttsRef.current?.stop();
+          } catch {
+            /* ignore */
+          }
+          const fact = finishAvPlaybackLifecycle(Date.now(), 'cancelled');
+          emitAvFact(fact);
+        }
+      }
+
+      const attemptId = ++playbackAttemptSeqRef.current;
+      playbackInflightAttemptIdRef.current = attemptId;
+      playbackAwaitingTerminalRef.current.add(attemptId);
+
       const PiperTts = require('piper-tts').default;
       let canUsePiper = piperAvailable;
       if (!canUsePiper && PiperTts?.isModelAvailable) {
@@ -2049,29 +2132,49 @@ export function useAgentOrchestrator(
           interSentenceSilenceMs: 250,
           interCommaSilenceMs: 125,
         });
-        // Experiment: invoke speak() first, defer speaking-state fanout to next macrotask.
         const speakPromise = PiperTts.speak(normalized);
-        setTimeout(() => {
+        queueMicrotask(() => {
+          if (playbackInflightAttemptIdRef.current !== attemptId) return;
           const fact = startAvPlaybackLifecycle(playbackRoute);
           emitAvFact(fact);
-        }, 0);
+        });
         try {
           await speakPromise;
         } catch (e) {
-          if (!playbackInterruptedRef.current) {
+          if (playbackInflightAttemptIdRef.current !== attemptId) return;
+          if (
+            !consumePlaybackTerminalSlot(playbackAwaitingTerminalRef, attemptId)
+          )
+            return;
+          const code = readNativeErrorCode(e);
+          if (playbackInterruptedRef.current || code === 'E_CANCELLED') {
+            const fact = finishAvPlaybackLifecycle(Date.now(), 'cancelled');
+            emitAvFact(fact);
+          } else {
             const message =
               e instanceof Error ? e.message : 'Piper playback failed';
-            setError(message);
             logError('Playback', 'piper playback failed', {
               message,
               textChars: normalized.length,
             });
+            const fact = finishAvPlaybackLifecycle(
+              Date.now(),
+              'failed',
+              message,
+            );
+            emitAvFact(fact);
           }
         } finally {
           const ttsEndedAt = Date.now();
-          // Defer `tts_end` + idle lifecycle fanout so `tts_start` (timers phase) cannot
-          // be observed after `tts_end` when `speak()` resolves immediately in tests/mocks.
           setTimeout(() => {
+            if (playbackInflightAttemptIdRef.current !== attemptId) return;
+            if (
+              !consumePlaybackTerminalSlot(
+                playbackAwaitingTerminalRef,
+                attemptId,
+              )
+            )
+              return;
             const fact = finishAvPlaybackLifecycle(ttsEndedAt, 'completed');
             emitAvFact(fact);
           }, 0);
@@ -2084,6 +2187,8 @@ export function useAgentOrchestrator(
         Tts = require('react-native-tts').default as TtsModule;
         ttsRef.current = Tts;
       } catch (e) {
+        playbackAwaitingTerminalRef.current.delete(attemptId);
+        playbackInflightAttemptIdRef.current = null;
         const message = e instanceof Error ? e.message : 'TTS failed to load';
         setError(message);
         logError('Playback', 'tts module load failed', { message });
@@ -2096,25 +2201,38 @@ export function useAgentOrchestrator(
           provider: 'react-native-tts',
           textChars: normalized.length,
         });
-        const onFinish = () => {
+        const endFallbackPlayback = (fromCancelEvent: boolean) => {
+          if (playbackInflightAttemptIdRef.current !== attemptId) return;
+          if (
+            !consumePlaybackTerminalSlot(playbackAwaitingTerminalRef, attemptId)
+          )
+            return;
+          const wantCancel = fromCancelEvent;
           const ttsEndedAt = Date.now();
-          const fact = finishAvPlaybackLifecycle(ttsEndedAt, 'completed');
-          emitAvFact(fact);
           try {
             if (typeof Tts.removeEventListener === 'function') {
-              Tts.removeEventListener('tts-finish', onFinish);
-              Tts.removeEventListener('tts-cancel', onFinish);
+              Tts.removeEventListener('tts-finish', onFinishNatural);
+              Tts.removeEventListener('tts-cancel', onFinishCancel);
             }
           } catch {
             /* ignore */
           }
+          const fact = finishAvPlaybackLifecycle(
+            ttsEndedAt,
+            wantCancel ? 'cancelled' : 'completed',
+          );
+          emitAvFact(fact);
         };
-        Tts.addEventListener('tts-finish', onFinish);
-        Tts.addEventListener('tts-cancel', onFinish);
+        const onFinishNatural = () => endFallbackPlayback(false);
+        const onFinishCancel = () => endFallbackPlayback(true);
+        Tts.addEventListener('tts-finish', onFinishNatural);
+        Tts.addEventListener('tts-cancel', onFinishCancel);
         const fact = startAvPlaybackLifecycle(playbackRoute);
         emitAvFact(fact);
         Tts.speak(normalized);
       } catch (e) {
+        playbackAwaitingTerminalRef.current.delete(attemptId);
+        playbackInflightAttemptIdRef.current = null;
         if (!playbackInterruptedRef.current) {
           const message =
             e instanceof Error ? e.message : 'TTS playback failed';
@@ -2126,8 +2244,6 @@ export function useAgentOrchestrator(
             message,
             textChars: normalized.length,
           });
-          // TTS error before tts_end: we do not emit request_complete. request_complete is only emitted
-          // after tts_end (via pendingPlaybackCompleteRef effect). Playback failure leaves lifecycle 'error' for user recovery.
         }
       }
     },
@@ -2143,6 +2259,15 @@ export function useAgentOrchestrator(
   playTextRef.current = playText;
 
   const cancelPlayback = useCallback(() => {
+    if (
+      lifecycleRef.current !== 'speaking' &&
+      modeRef.current !== 'speaking'
+    ) {
+      return;
+    }
+    const aid = playbackInflightAttemptIdRef.current;
+    if (aid == null) return;
+    if (!consumePlaybackTerminalSlot(playbackAwaitingTerminalRef, aid)) return;
     logInfo('AgentOrchestrator', 'playback interrupted');
     playbackInterruptedRef.current = true;
     try {
@@ -2284,21 +2409,25 @@ export function useAgentOrchestrator(
   }, [lifecycle]);
 
   useEffect(() => {
-    if (lifecycle !== 'idle') return;
+    if (lifecycle !== 'idle' && lifecycle !== 'error') return;
     const pending = pendingPlaybackCompleteRef.current;
     if (!pending) return;
     pendingPlaybackCompleteRef.current = null;
+    const completeLifecycle =
+      pending.playbackOutcome === 'failed' ? 'error' : 'idle';
     emitRequestDebug(requestDebugSinkRef, {
       type: 'request_complete',
       requestId: pending.requestId,
       status: 'completed',
       completedAt: pending.endedAt,
-      lifecycle: 'idle',
+      lifecycle: completeLifecycle,
       timestamp: pending.endedAt,
+      playbackOutcome: pending.playbackOutcome,
     });
     logInfo('AgentOrchestrator', 'request_complete', {
       requestId: pending.requestId,
-      lifecycle: 'idle',
+      lifecycle: completeLifecycle,
+      playbackOutcome: pending.playbackOutcome,
     });
     activeRequestIdRef.current = 0;
     logInfo('AgentOrchestrator', 'active requestId cleared', {
@@ -2307,7 +2436,12 @@ export function useAgentOrchestrator(
     logInfo('ResponseSurface', 'response_surface_concealed_after_playback', {
       requestId: pending.requestId,
       lifecycle: 'idle',
-      reason: 'playbackComplete',
+      reason:
+        pending.playbackOutcome === 'cancelled'
+          ? 'playbackCancelled'
+          : pending.playbackOutcome === 'failed'
+            ? 'playbackFailed'
+            : 'playbackComplete',
     });
   }, [lifecycle, requestDebugSinkRef]);
 

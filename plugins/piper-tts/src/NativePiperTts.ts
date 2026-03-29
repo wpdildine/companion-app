@@ -10,6 +10,8 @@ import type { UnsafeObject } from 'react-native/Libraries/Types/CodegenTypes';
 export interface Spec extends TurboModule {
   /** Set options used by the next speak() call. UnsafeObject → NSDictionary/ReadableMap. */
   setOptions(options?: UnsafeObject | null): void;
+  /** Stop in-flight synthesis/playback; in-flight speak() rejects with code E_CANCELLED. */
+  stop(): void;
   /** Copy Piper model from app assets to files dir (Android). Resolves with path or rejects. */
   copyModelToFiles(): Promise<string>;
   speak(text: string): Promise<void>;

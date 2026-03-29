@@ -57,6 +57,12 @@ export default {
     NativePiperTts.setOptions(options as Parameters<typeof NativePiperTts.setOptions>[0]);
   },
 
+  stop(): void {
+    if (NativePiperTts == null) return;
+    if (typeof NativePiperTts.stop !== 'function') return;
+    NativePiperTts.stop();
+  },
+
   async speak(text: string, _options?: SpeakOptions | null): Promise<void> {
     if (NativePiperTts == null) {
       emit({ type: 'error', message: MODULE_MISSING_MSG, data: { code: 'E_NOT_LINKED' } });

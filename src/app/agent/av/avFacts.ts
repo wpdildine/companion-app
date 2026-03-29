@@ -10,6 +10,7 @@ export type AvFactKind =
   | 'av.playback.started'
   | 'av.playback.completed'
   | 'av.playback.cancelled'
+  | 'av.playback.failed'
   | 'av.capture.failed'
   | 'av.stt.timeout'
   | 'av.stt.unavailable'
@@ -27,6 +28,7 @@ export type AvBaseFact = {
   kind: AvFactKind;
   at: number;
   recordingSessionId?: string;
+  /** On `av.playback.*`, non-null when playback is bound to auto-play after a request; null for manual replay. */
   requestId?: number | null;
   provider?: string;
   code?: string;
@@ -38,6 +40,8 @@ export type AvBaseFact = {
     durationMillis?: number;
     sizeBase64Chars?: number;
     startLatencyMs?: number;
+    /** Playback failure message (observational; `av.playback.failed` only). */
+    message?: string;
   };
 };
 
@@ -49,7 +53,13 @@ export type AvSessionTransitionFact = AvBaseFact & {
 export type AvFact =
   | AvSessionTransitionFact
   | (AvBaseFact & { kind: 'av.start.route_selected'; route: string })
-  | (AvBaseFact & { kind: 'av.playback.started' | 'av.playback.completed' | 'av.playback.cancelled' })
+  | (AvBaseFact & {
+      kind:
+        | 'av.playback.started'
+        | 'av.playback.completed'
+        | 'av.playback.cancelled'
+        | 'av.playback.failed';
+    })
   | (AvBaseFact & {
       kind: 'av.capture.failed';
       failureKind: string;
