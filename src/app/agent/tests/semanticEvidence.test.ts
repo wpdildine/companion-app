@@ -5,7 +5,7 @@ import {
   appendSemanticEvidenceEvent,
   SEMANTIC_EVIDENCE_DEFAULT_MAX_EVENTS,
 } from '../semanticEvidenceSink';
-import type { ObservedEvent } from '../semanticEvidenceTypes';
+import type { ObservedEvent, ObservedEventKind } from '../semanticEvidenceTypes';
 import type { AgentOrchestratorState, LastFrontDoorOutcome } from '../types';
 
 function baseState(
@@ -64,7 +64,30 @@ describe('appendSemanticEvidenceEvent', () => {
   it('default max constant is 50', () => {
     expect(SEMANTIC_EVIDENCE_DEFAULT_MAX_EVENTS).toBe(50);
   });
+
+  it('preserves append order after trim (FIFO)', () => {
+    const ref = { current: [] as ObservedEvent[] };
+    const cap = 4;
+    const kinds = ['a', 'b', 'c', 'd', 'e', 'f'] as const;
+    for (const k of kinds) {
+      appendSemanticEvidenceEvent(
+        ref,
+        { kind: k, source: 'orchestrator', timestamp: 0 },
+        cap,
+      );
+    }
+    expect(ref.current.map(e => e.kind)).toEqual(['c', 'd', 'e', 'f']);
+  });
 });
+
+/** Compile-time anchor: catalogued kinds remain assignable to ObservedEventKind. */
+const _observedKindSamples = [
+  'onRequestStart',
+  'onComplete',
+  'hold_end',
+  'tapCitation',
+] as const satisfies readonly ObservedEventKind[];
+void _observedKindSamples;
 
 describe('getOutcomeProjection', () => {
   it('returns null for processing', () => {
@@ -175,6 +198,88 @@ describe('getOutcomeProjection', () => {
     ).toEqual({ class: 'success', source: 'lifecycle' });
   });
 
+  it('success when speaking with committed response', () => {
+    expect(
+      getOutcomeProjection({
+        lifecycle: 'speaking',
+        error: null,
+        lastFrontDoorOutcome: null,
+        observedEvents: [],
+        hasCommittedResponse: true,
+      }),
+    ).toEqual({ class: 'success', source: 'lifecycle' });
+  });
+
+  it('blocked takes precedence over recoverable listener tail', () => {
+    const fd = {
+      requestId: 1,
+      semanticFrontDoor: {
+        contract_version: 1,
+        working_query: 'q',
+        resolver_mode: 'resolved' as const,
+        transcript_decision: 'pass_through' as const,
+        front_door_verdict: 'clarify_entity' as const,
+      },
+    } satisfies LastFrontDoorOutcome;
+    const events: ObservedEvent[] = [
+      {
+        kind: 'onRequestStart',
+        source: 'orchestrator',
+        timestamp: 1,
+        payload: { requestId: 1 },
+      },
+      {
+        kind: 'onRecoverableFailure',
+        source: 'orchestrator',
+        timestamp: 2,
+        payload: { requestId: 1 },
+      },
+    ];
+    expect(
+      getOutcomeProjection({
+        lifecycle: 'idle',
+        error: null,
+        lastFrontDoorOutcome: fd,
+        observedEvents: events,
+        hasCommittedResponse: false,
+      }),
+    ).toEqual({ class: 'blocked', source: 'frontDoor' });
+  });
+
+  it('non-empty error takes precedence over front door outcome', () => {
+    const fd = {
+      requestId: 1,
+      semanticFrontDoor: {
+        contract_version: 1,
+        working_query: 'q',
+        resolver_mode: 'resolved' as const,
+        transcript_decision: 'pass_through' as const,
+        front_door_verdict: 'clarify_entity' as const,
+      },
+    } satisfies LastFrontDoorOutcome;
+    expect(
+      getOutcomeProjection({
+        lifecycle: 'idle',
+        error: 'network',
+        lastFrontDoorOutcome: fd,
+        observedEvents: [],
+        hasCommittedResponse: true,
+      }),
+    ).toEqual({ class: 'terminal', source: 'error' });
+  });
+
+  it('error lifecycle takes precedence over success-shaped fields', () => {
+    expect(
+      getOutcomeProjection({
+        lifecycle: 'error',
+        error: null,
+        lastFrontDoorOutcome: null,
+        observedEvents: [],
+        hasCommittedResponse: true,
+      }),
+    ).toEqual({ class: 'terminal', source: 'lifecycle' });
+  });
+
   it('null when idle with no response and no recoverable tail', () => {
     expect(
       getOutcomeProjection({
@@ -252,5 +357,75 @@ describe('getSemanticEvidence', () => {
     });
     expect(se.outcome).toEqual({ class: 'success', source: 'lifecycle' });
     expect(se.presentation.playActAccessibilityLabel).toBe('x');
+  });
+
+  it('identity slice always matches orchestrator state request fields', () => {
+    const orch = baseState({
+      activeRequestId: 42,
+      requestInFlight: true,
+      playbackRequestId: 42,
+      lifecycle: 'processing',
+      responseText: null,
+    });
+    const se = getSemanticEvidence({
+      orchestratorState: orch,
+      surfaceState: {
+        interactionBandEnabled: true,
+        activeInteractionOwner: 'none',
+        revealedBlocks: {
+          answer: false,
+          cards: false,
+          rules: false,
+          sources: false,
+        },
+        debugEnabled: false,
+      },
+      observedEvents: [],
+    });
+    expect(se.identity).toEqual({
+      activeRequestId: orch.activeRequestId,
+      requestInFlight: orch.requestInFlight,
+      playbackRequestId: orch.playbackRequestId,
+    });
+    expect(se.runtime.activeRequestId).toBe(se.identity.activeRequestId);
+    expect(se.outcome).toBeNull();
+  });
+
+  it('copies observed events in order and derives outcome from them', () => {
+    const observed: ObservedEvent[] = [
+      {
+        kind: 'onRequestStart',
+        source: 'orchestrator',
+        timestamp: 10,
+        payload: { requestId: 1 },
+      },
+      {
+        kind: 'onRecoverableFailure',
+        source: 'orchestrator',
+        timestamp: 20,
+        payload: { requestId: 1 },
+      },
+    ];
+    const se = getSemanticEvidence({
+      orchestratorState: baseState({
+        lifecycle: 'idle',
+        responseText: null,
+      }),
+      surfaceState: {
+        interactionBandEnabled: true,
+        activeInteractionOwner: 'none',
+        revealedBlocks: {
+          answer: false,
+          cards: false,
+          rules: false,
+          sources: false,
+        },
+        debugEnabled: false,
+      },
+      observedEvents: observed,
+    });
+    expect(se.interaction.observedEvents).toEqual(observed);
+    expect(se.interaction.observedEvents).not.toBe(observed);
+    expect(se.outcome).toEqual({ class: 'recoverable', source: 'listener' });
   });
 });

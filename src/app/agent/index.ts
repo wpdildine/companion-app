@@ -54,6 +54,7 @@ export type {
 } from './requestDebugTypes';
 export type {
   ObservedEvent,
+  ObservedEventKind,
   ObservedEventSource,
   OutcomeProjection,
   OutcomeProjectionClass,

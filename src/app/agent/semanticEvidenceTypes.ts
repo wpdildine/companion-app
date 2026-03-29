@@ -11,6 +11,47 @@ export type ObservedEventSource =
   | 'interaction'
   | 'overlay';
 
+/**
+ * Inventory of `kind` values appended from production call sites (orchestrator,
+ * executeRequest, AgentSurface). Overlay rows use `String(VisualizationSignalEvent)` —
+ * see `VisualizationSignalEvent` in visualizationSignals — so kinds there mirror that
+ * union (including `shortTap`, `firstToken`, etc.; not every surface `short_tap`).
+ * Runtime rows may still use other strings; this type is documentation + test anchor.
+ */
+export type ObservedEventKind =
+  | 'onListeningStart'
+  | 'onListeningEnd'
+  | 'onRequestStart'
+  | 'onRetrievalStart'
+  | 'onRecoverableFailure'
+  | 'onPlaybackStart'
+  | 'onPlaybackEnd'
+  | 'onTranscriptReadyForSubmit'
+  | 'onTranscriptUpdate'
+  | 'onError'
+  | 'onGenerationStart'
+  | 'onFirstToken'
+  | 'onRetrievalEnd'
+  | 'onGenerationEnd'
+  | 'onComplete'
+  | 'hold_end'
+  | 'hold_rejected'
+  | 'hold_accepted'
+  | 'playback_tap_double'
+  | 'playback_tap_single'
+  | 'cluster_release'
+  | 'reveal_panel'
+  | 'clear_error'
+  | 'short_tap'
+  | 'tapCitation'
+  | 'chunkAccepted'
+  | 'warning'
+  | 'tapCard'
+  | 'softFail'
+  | 'terminalFail'
+  | 'firstToken'
+  | 'shortTap';
+
 /** Appended at existing listener/handler sites only; kind is a stable string id. */
 export type ObservedEvent = {
   kind: string;
@@ -61,6 +102,7 @@ export type SemanticPresentationState = {
 
 export type SemanticEvidence = {
   runtime: AgentOrchestratorState;
+  /** Denormalized mirror of `runtime` request-identity fields; not a second source of truth. */
   identity: {
     activeRequestId: number | null;
     requestInFlight: boolean;

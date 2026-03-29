@@ -1,6 +1,10 @@
 /**
  * Append-only bounded buffer for observed semantic evidence.
  * Suppressed recoverable/terminal paths that skip listener fanout also skip append (no new truth).
+ *
+ * FIFO trim: when length exceeds `maxEvents`, oldest rows drop first. Heuristics that scan for
+ * `onRequestStart` / `onRecoverableFailure` (e.g. outcome projection) can mis-classify if those
+ * markers fall off the tail of a long session.
  */
 
 import type { ObservedEvent, ObservedEventSource } from './semanticEvidenceTypes';
