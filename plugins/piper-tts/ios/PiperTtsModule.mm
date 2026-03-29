@@ -8,6 +8,76 @@
 #import "piper_engine.h"
 #include <string>
 #include <vector>
+#include <math.h>
+
+/** Prepend lead silence (int16 zeros) and optional post-synth dB gain on int16 PCM. Returns `pcm` unchanged when no work. */
+static NSData *PiperApplyInt16LeadSilenceAndGain(NSData *pcm, unsigned sampleRate, NSDictionary *opts) {
+  if (!pcm.length) return pcm;
+  if (![opts isKindOfClass:[NSDictionary class]]) return pcm;
+
+  double leadMs = 0;
+  id leadObj = opts[@"renderLeadSilenceMs"];
+  if (leadObj && leadObj != [NSNull null] && [leadObj respondsToSelector:@selector(doubleValue)]) {
+    leadMs = [leadObj doubleValue];
+  }
+  BOOL hasGainKey = ([opts objectForKey:@"renderPostGainDb"] != nil);
+  double gainDb = 0;
+  if (hasGainKey) {
+    id g = opts[@"renderPostGainDb"];
+    if (g && g != [NSNull null] && [g respondsToSelector:@selector(doubleValue)]) {
+      gainDb = [g doubleValue];
+    }
+  }
+
+  BOOL needLead = leadMs > 0 && sampleRate > 0;
+  BOOL needGain = hasGainKey;
+  if (!needLead && !needGain) return pcm;
+
+  NSMutableData *work = nil;
+  if (needLead) {
+    double nDouble = (double)sampleRate * leadMs / 1000.0 + 0.5;
+    if (nDouble <= 0 || nDouble >= 1e7) {
+      work = [NSMutableData dataWithData:pcm];
+    } else {
+      size_t n = (size_t)nDouble;
+      work = [NSMutableData dataWithLength:n * sizeof(int16_t)];
+      memset(work.mutableBytes, 0, n * sizeof(int16_t));
+      [work appendData:pcm];
+    }
+  } else {
+    work = [NSMutableData dataWithData:pcm];
+  }
+
+  if (needGain) {
+    double linear = pow(10.0, gainDb / 20.0);
+    if (linear < 0) linear = 0;
+    int16_t *samples = (int16_t *)work.mutableBytes;
+    size_t count = work.length / sizeof(int16_t);
+    for (size_t i = 0; i < count; i++) {
+      double v = (double)samples[i] * linear;
+      if (v > 32767.0) v = 32767.0;
+      if (v < -32768.0) v = -32768.0;
+      samples[i] = (int16_t)lrint(v);
+    }
+  }
+
+  return work;
+}
+
+static void PiperApplyHighPassFloatMono(float *data, AVAudioFrameCount frameCount, double sampleRate, double cutoffHz) {
+  if (!data || frameCount == 0 || cutoffHz <= 0 || sampleRate <= 0) return;
+  double R = exp(-2.0 * M_PI * cutoffHz / sampleRate);
+  if (R < 0.0) R = 0.0;
+  if (R > 0.999999) R = 0.999999;
+  float x1 = 0.f, y1 = 0.f;
+  for (AVAudioFrameCount i = 0; i < frameCount; i++) {
+    float x0 = data[i];
+    float y0 = x0 - x1 + (float)(R * y1);
+    x1 = x0;
+    y1 = y0;
+    data[i] = y0;
+  }
+}
 
 @interface PiperTtsModule ()
 @property (nonatomic, strong) AVAudioEngine *playbackEngine;
@@ -161,8 +231,8 @@ RCT_EXPORT_METHOD(setOptions:(NSDictionary *)options)
     return;
   }
   self.lastSpeakOptions = [options copy];
-  RCTLogInfo(@"[PiperTts] setOptions: stored keys=%@ noiseScale=%@ lengthScale=%@ noiseW=%@ gainDb=%@ interSentenceSilenceMs=%@ interCommaSilenceMs=%@",
-             [options allKeys], options[@"noiseScale"], options[@"lengthScale"], options[@"noiseW"], options[@"gainDb"], options[@"interSentenceSilenceMs"], options[@"interCommaSilenceMs"]);
+  RCTLogInfo(@"[PiperTts] setOptions: stored keys=%@ noiseScale=%@ lengthScale=%@ noiseW=%@ gainDb=%@ interSentenceSilenceMs=%@ interCommaSilenceMs=%@ renderPostGainDb=%@ renderLeadSilenceMs=%@ renderHighPassHz=%@",
+             [options allKeys], options[@"noiseScale"], options[@"lengthScale"], options[@"noiseW"], options[@"gainDb"], options[@"interSentenceSilenceMs"], options[@"interCommaSilenceMs"], options[@"renderPostGainDb"], options[@"renderLeadSilenceMs"], options[@"renderHighPassHz"]);
 }
 
 // Selectors must match TurboModule spec: resolve:/reject: (not resolver:/rejecter:)
@@ -390,6 +460,15 @@ RCT_EXPORT_METHOD(stop)
     return;
   }
 
+  NSDictionary *renderOpts = self.lastSpeakOptions;
+  NSData *processedPcm = PiperApplyInt16LeadSilenceAndGain(pcm, sampleRate, renderOpts);
+  pcm = processedPcm;
+  NSUInteger renderedFrames = pcm.length / sizeof(int16_t);
+  self.lastAudioSampleCount = renderedFrames;
+  self.lastExpectedDurationSec = (double)renderedFrames / (double)sampleRate;
+  self.lastPcmBytes = pcm.length;
+  self.lastPcmLength = pcm.length;
+
   NSError *err = nil;
 
   // 1) Audio session
@@ -531,6 +610,17 @@ RCT_EXPORT_METHOD(stop)
     self.lastFormatSampleRate = playbackFormat.sampleRate;
     self.lastBufferFrameLength = toPlay.frameLength;
     self.lastBufferFormatSampleRate = toPlay.format.sampleRate;
+  }
+
+  if ([renderOpts isKindOfClass:[NSDictionary class]]) {
+    id hpObj = renderOpts[@"renderHighPassHz"];
+    double hpHz = 0;
+    if (hpObj && hpObj != [NSNull null] && [hpObj respondsToSelector:@selector(doubleValue)]) {
+      hpHz = [hpObj doubleValue];
+    }
+    if (hpHz > 0 && toPlay != nil && toPlay.floatChannelData[0] != NULL) {
+      PiperApplyHighPassFloatMono(toPlay.floatChannelData[0], toPlay.frameLength, playbackFormat.sampleRate, hpHz);
+    }
   }
 
   if (!toPlay || toPlay.frameLength == 0) {

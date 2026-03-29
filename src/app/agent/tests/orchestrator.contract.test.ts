@@ -78,6 +78,13 @@ jest.mock('piper-tts', () => ({
   },
 }));
 
+const mockRnTts = () =>
+  require('react-native-tts').default as {
+    getInitStatus: jest.Mock;
+    speak: jest.Mock;
+    removeEventListener: jest.Mock;
+  };
+
 jest.mock('react-native-tts', () => ({
   __esModule: true,
   default: {
@@ -309,11 +316,18 @@ describe('AgentOrchestrator contract events', () => {
     const piperTts = require('piper-tts').default as {
       speak: jest.Mock;
       stop: jest.Mock;
+      isModelAvailable: jest.Mock;
     };
     piperTts.speak.mockReset();
     piperTts.speak.mockImplementation(() => Promise.resolve());
     piperTts.stop.mockReset();
     piperTts.stop.mockImplementation(() => undefined);
+    piperTts.isModelAvailable.mockReset();
+    piperTts.isModelAvailable.mockResolvedValue(true);
+    mockRnTts().getInitStatus.mockReset();
+    mockRnTts().getInitStatus.mockResolvedValue(undefined);
+    mockRnTts().speak.mockReset();
+    mockRnTts().removeEventListener.mockReset();
   });
 
   it('success path ordering', async () => {
@@ -719,6 +733,39 @@ describe('AgentOrchestrator contract events', () => {
       await flushPromises();
     });
 
+    expect(recorder.events.filter(e => e.type === 'tts_end').length).toBe(1);
+    const reqComplete = recorder.events.find(
+      (e): e is Extract<ContractEvent, { type: 'request_complete' }> =>
+        e.type === 'request_complete',
+    );
+    expect(reqComplete?.playbackOutcome).toBe('failed');
+    expect(harness.getState().lifecycle).toBe('error');
+
+    harness.unmount();
+  });
+
+  it('fallback tts: sync speak failure after start emits one tts_end failed via applyAvFact', async () => {
+    const recorder = createEventRecorder();
+    const piperTts = require('piper-tts').default as {
+      isModelAvailable: jest.Mock;
+    };
+    piperTts.isModelAvailable.mockResolvedValue(false);
+    mockRnTts().speak.mockImplementation(() => {
+      throw new Error('fallback sync speak error');
+    });
+    const harness = createHarness(recorder);
+
+    await emitFinalTranscript(harness, 'Hello there');
+
+    await act(async () => {
+      await harness.actions.submit();
+      await flushPromises();
+      await flushPromises();
+      await new Promise<void>(r => setTimeout(r, 60));
+      await flushPromises();
+    });
+
+    expect(recorder.events.filter(e => e.type === 'tts_start').length).toBe(1);
     expect(recorder.events.filter(e => e.type === 'tts_end').length).toBe(1);
     const reqComplete = recorder.events.find(
       (e): e is Extract<ContractEvent, { type: 'request_complete' }> =>

@@ -11,8 +11,14 @@ import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.Executors
 import java.util.regex.Pattern
+import kotlin.math.PI
+import kotlin.math.exp
+import kotlin.math.pow
+import kotlin.math.roundToInt
 
 class PiperTtsModule(reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -195,6 +201,7 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
             }
             return
         }
+        val processed = applyPiperPostSynthesisRender(pcm, sampleRate)
         val bufferSize = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val track = AudioTrack.Builder()
             .setAudioAttributes(
@@ -210,13 +217,13 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
                     .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                     .build()
             )
-            .setBufferSizeInBytes(maxOf(bufferSize, pcm.size))
+            .setBufferSizeInBytes(maxOf(bufferSize, processed.size))
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
         activeAudioTrack = track
         track.play()
-        track.write(pcm, 0, pcm.size)
-        val totalFrames = pcm.size / 2
+        track.write(processed, 0, processed.size)
+        val totalFrames = processed.size / 2
         while (track.playbackHeadPosition < totalFrames && track.playState == AudioTrack.PLAYSTATE_PLAYING) {
             if (stopPlaybackRequested) {
                 try {
@@ -359,6 +366,60 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
     private fun getOptionInt(key: String, default: Int): Int {
         val opts = lastSpeakOptions ?: return default
         return if (opts.hasKey(key)) opts.getDouble(key).toInt() else default
+    }
+
+    /** Post-synth: leading silence, optional dB gain, optional high-pass on int16 LE PCM (same keys as iOS). */
+    private fun applyPiperPostSynthesisRender(pcm: ByteArray, sampleRate: Int): ByteArray {
+        val opts = lastSpeakOptions ?: return pcm
+        var work = pcm
+        if (opts.hasKey("renderLeadSilenceMs")) {
+            val leadMs = opts.getDouble("renderLeadSilenceMs").toLong()
+            if (leadMs > 0 && sampleRate > 0) {
+                val n = (sampleRate * leadMs / 1000).toInt().coerceIn(0, 10_000_000)
+                if (n > 0) {
+                    val silence = ByteArray(n * 2)
+                    val combined = ByteArray(silence.size + work.size)
+                    silence.copyInto(combined)
+                    work.copyInto(combined, silence.size)
+                    work = combined
+                }
+            }
+        }
+        if (opts.hasKey("renderPostGainDb")) {
+            val gainDb = opts.getDouble("renderPostGainDb")
+            val linear = 10.0.pow(gainDb / 20.0)
+            val bb = ByteBuffer.wrap(work).order(ByteOrder.LITTLE_ENDIAN)
+            val samples = work.size / 2
+            for (i in 0 until samples) {
+                val s = bb.getShort(i * 2).toInt()
+                val v = (s * linear).roundToInt().coerceIn(-32768, 32767)
+                bb.putShort(i * 2, v.toShort())
+            }
+        }
+        val hpHz = if (opts.hasKey("renderHighPassHz")) opts.getDouble("renderHighPassHz") else 0.0
+        if (hpHz > 0) {
+            applyHighPassPcm16LE(work, sampleRate, hpHz)
+        }
+        return work
+    }
+
+    private fun applyHighPassPcm16LE(pcm: ByteArray, sampleRate: Int, cutoffHz: Double) {
+        if (pcm.size < 2 || cutoffHz <= 0 || sampleRate <= 0) return
+        var r = exp(-2.0 * PI * cutoffHz / sampleRate)
+        if (r < 0.0) r = 0.0
+        if (r > 0.999999) r = 0.999999
+        var x1 = 0f
+        var y1 = 0f
+        val bb = ByteBuffer.wrap(pcm).order(ByteOrder.LITTLE_ENDIAN)
+        val n = pcm.size / 2
+        for (i in 0 until n) {
+            val x0 = bb.getShort(i * 2) / 32768f
+            val y0 = x0 - x1 + (r * y1).toFloat()
+            x1 = x0
+            y1 = y0
+            val out = (y0 * 32768f).roundToInt().coerceIn(-32768, 32767)
+            bb.putShort(i * 2, out.toShort())
+        }
     }
 
     private fun getModelPaths(): Pair<String, String>? {

@@ -2124,6 +2124,8 @@ export function useAgentOrchestrator(
         });
         return;
       }
+      // Pre-`av.playback.started` fallback failures only; post-start failures emit
+      // `av.playback.failed` from AV so `applyAvFact` is the sole terminal path.
       if (result.kind === 'fallback_tts_play_failed') {
         playbackAwaitingTerminalRef.current.delete(attemptId);
         playbackInflightAttemptIdRef.current = null;

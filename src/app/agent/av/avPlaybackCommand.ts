@@ -3,7 +3,7 @@
  * Emits observational `av.playback.*` facts via injected `emitFact`; does not commit orchestrator lifecycle.
  */
 
-import { logError, logWarn } from '../../../shared/logging';
+import { logError, logInfo, logWarn } from '../../../shared/logging';
 import type { AvFact } from './avFacts';
 import {
   finishAvPlaybackLifecycleMechanics,
@@ -12,39 +12,48 @@ import {
   type AvPlaybackRoute,
 } from './avSurface';
 
-export type PlaybackPosture = 'default' | 'calm';
+export type PlaybackPosture = 'default' | 'calm' | 'treated';
+
+const PIPER_DEFAULT_SYNTH_OPTIONS = {
+  lengthScale: 1.08,
+  noiseScale: 0.62,
+  noiseW: 0.8,
+  gainDb: 0,
+  interSentenceSilenceMs: 250,
+  interCommaSilenceMs: 125,
+} as const;
+
+const PIPER_CALM_SYNTH_OPTIONS = {
+  lengthScale: 1.15,
+  noiseScale: 0.55,
+  noiseW: 0.72,
+  gainDb: -2,
+  interSentenceSilenceMs: 280,
+  interCommaSilenceMs: 140,
+} as const;
 
 /** Maps declarative posture to Piper `setOptions` payload (mechanical; no semantics in orchestrator). */
 export function mapPlaybackPostureToPiperOptions(
   posture: PlaybackPosture,
-): {
-  lengthScale: number;
-  noiseScale: number;
-  noiseW: number;
-  gainDb: number;
-  interSentenceSilenceMs: number;
-  interCommaSilenceMs: number;
-} {
+): typeof PIPER_DEFAULT_SYNTH_OPTIONS &
+  Partial<{
+    renderPostGainDb: number;
+    renderLeadSilenceMs: number;
+    renderHighPassHz: number;
+  }> {
   switch (posture) {
     case 'calm':
+      return { ...PIPER_CALM_SYNTH_OPTIONS };
+    case 'treated':
       return {
-        lengthScale: 1.15,
-        noiseScale: 0.55,
-        noiseW: 0.72,
-        gainDb: -2,
-        interSentenceSilenceMs: 280,
-        interCommaSilenceMs: 140,
+        ...PIPER_DEFAULT_SYNTH_OPTIONS,
+        renderPostGainDb: -1,
+        renderLeadSilenceMs: 40,
+        renderHighPassHz: 80,
       };
     case 'default':
     default:
-      return {
-        lengthScale: 1.08,
-        noiseScale: 0.62,
-        noiseW: 0.8,
-        gainDb: 0,
-        interSentenceSilenceMs: 250,
-        interCommaSilenceMs: 125,
-      };
+      return { ...PIPER_DEFAULT_SYNTH_OPTIONS };
   }
 }
 
@@ -63,7 +72,7 @@ export type AvPiperModule = {
   isModelAvailable?: () => Promise<boolean>;
 };
 
-type AvPlaybackLog = typeof sharedLogInfo;
+type AvPlaybackLog = typeof logInfo;
 
 export type AvPlaybackSpeakDeps = {
   emitFact: (fact: AvFact) => void;
@@ -229,6 +238,9 @@ export async function runAvPlaybackSpeak(args: {
     return { kind: 'fallback_tts_module_load_failed', message };
   }
 
+  let fallbackPlaybackStartedEmitted = false;
+  let onFinishNatural: () => void;
+  let onFinishCancel: () => void;
   try {
     await Tts.getInitStatus();
     if (deps.platformOs === 'android') Tts.stop();
@@ -264,8 +276,8 @@ export async function runAvPlaybackSpeak(args: {
       });
       deps.emitFact(fact);
     };
-    const onFinishNatural = () => endFallbackPlayback(false);
-    const onFinishCancel = () => endFallbackPlayback(true);
+    onFinishNatural = () => endFallbackPlayback(false);
+    onFinishCancel = () => endFallbackPlayback(true);
     Tts.addEventListener('tts-finish', onFinishNatural);
     Tts.addEventListener('tts-cancel', onFinishCancel);
     const started = startAvPlaybackLifecycleMechanics({
@@ -276,10 +288,45 @@ export async function runAvPlaybackSpeak(args: {
       logInfo: deps.logInfo,
     });
     deps.emitFact(started);
+    fallbackPlaybackStartedEmitted = true;
     Tts.speak(text);
     return { kind: 'ok' };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'TTS playback failed';
+    if (fallbackPlaybackStartedEmitted) {
+      if (deps.playbackInflightAttemptIdRef.current !== attemptId) {
+        return { kind: 'ok' };
+      }
+      if (
+        !deps.consumePlaybackTerminalSlot(
+          deps.playbackAwaitingTerminalRef,
+          attemptId,
+        )
+      ) {
+        return { kind: 'ok' };
+      }
+      try {
+        if (typeof Tts.removeEventListener === 'function') {
+          Tts.removeEventListener('tts-finish', onFinishNatural);
+          Tts.removeEventListener('tts-cancel', onFinishCancel);
+        }
+      } catch {
+        /* ignore */
+      }
+      logError('Playback', 'tts playback failed', {
+        message,
+        textChars: text.length,
+      });
+      const fact = finishAvPlaybackLifecycleMechanics({
+        endedAt: Date.now(),
+        playbackRequestId: boundRequestId,
+        activePlaybackProviderRef: deps.activePlaybackProviderRef,
+        event: 'failed',
+        failureMessage: message,
+      });
+      deps.emitFact(fact);
+      return { kind: 'ok' };
+    }
     return { kind: 'fallback_tts_play_failed', message };
   }
 }

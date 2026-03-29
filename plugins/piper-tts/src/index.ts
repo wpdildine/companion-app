@@ -34,6 +34,12 @@ export type SpeakOptions = {
   interSentenceSilenceMs?: number;
   /** Insert this many ms of silence after commas (0 = off). E.g. 125 for a short pause. */
   interCommaSilenceMs?: number;
+  /** Post-synthesis gain in dB applied in native playPcm (omit = no change). */
+  renderPostGainDb?: number;
+  /** Prepend this many ms of silence before playback in native playPcm (omit or 0 = off). */
+  renderLeadSilenceMs?: number;
+  /** First-order high-pass cutoff Hz in native playPcm; 0 or omit = off. */
+  renderHighPassHz?: number;
 };
 
 /** Subscribe to Piper TTS events (speak_start, speak_end, error). Returns unsubscribe. */
