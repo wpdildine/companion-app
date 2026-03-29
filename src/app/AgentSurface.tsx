@@ -1337,6 +1337,14 @@ export default function AgentSurface() {
                 onToggleStubRules={() =>
                   setDebugStubRulesEnabled(prev => !prev)
                 }
+                onSpeechLabPlay={(text, options) => {
+                  void orchActions.playText(text, options).catch(() => undefined);
+                }}
+                onSpeechLabCancel={() => orchActions.cancelPlayback()}
+                speechLabReadout={{
+                  lifecycle: orchState.lifecycle,
+                  error: orchState.error,
+                }}
                 maxHeight={
                   telemetryLayout.height > 0
                     ? telemetryLayout.height -

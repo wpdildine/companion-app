@@ -3,8 +3,16 @@
  * Uses same shell as pipeline telemetry panel. No harness/trace instrumentation.
  */
 
-import React, { useEffect, useState } from 'react';
-import { Dimensions, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Dimensions,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import type { RefObject } from 'react';
 import type { VisualizationEngineRef } from '../../../../../visualization';
 import { DevPanel } from '../../../../../visualization';
@@ -24,8 +32,10 @@ import {
   type VizSubsystemKey,
 } from '../../overlays/vizSubsystemToggles';
 import { logInfo } from '../../../../../shared/logging';
+import type { PlaybackPosture } from '../../../../agent';
 import { DebugMenuSection } from './DebugMenuSection';
 import { DebugMenuRow } from './DebugMenuRow';
+import { SPEECH_LAB_PRESETS } from './speechLabPresets';
 
 const PANEL_WIDTH = 360;
 const BG = 'rgba(15,17,21,0.9)';
@@ -61,6 +71,14 @@ export type VizDebugPanelProps = {
   onToggleStubRules: () => void;
   maxHeight?: number;
   maxWidth?: number;
+  /** Dev-only: real orchestrator playback path (no duplicate TTS pipeline). */
+  onSpeechLabPlay: (
+    text: string,
+    options?: { posture?: PlaybackPosture },
+  ) => void;
+  onSpeechLabCancel: () => void;
+  /** Observational readout only; panel does not interpret lifecycle. */
+  speechLabReadout?: { lifecycle: string; error: string | null };
 };
 
 export function VizDebugPanel({
@@ -72,10 +90,20 @@ export function VizDebugPanel({
   onToggleStubRules,
   maxHeight,
   maxWidth,
+  onSpeechLabPlay,
+  onSpeechLabCancel,
+  speechLabReadout,
 }: VizDebugPanelProps) {
   const [, bumpSub] = useState(0);
   const [, forceLogGatesRefresh] = useState(0);
   const [, bumpSttOverrideUi] = useState(0);
+  const [speechPosture, setSpeechPosture] = useState<PlaybackPosture>('default');
+  const [speechPresetId, setSpeechPresetId] = useState(SPEECH_LAB_PRESETS[0]!.id);
+  const [speechFreeform, setSpeechFreeform] = useState('');
+  const selectedPresetText = useMemo(
+    () => SPEECH_LAB_PRESETS.find(p => p.id === speechPresetId)?.text ?? '',
+    [speechPresetId],
+  );
   useEffect(
     () => subscribeVizSubsystemChange(() => bumpSub(n => n + 1)),
     [],
@@ -219,6 +247,80 @@ export function VizDebugPanel({
                 right={<Text style={styles.presetAction}>Clear</Text>}
               />
             </DebugMenuSection>
+            <DebugMenuSection title="Speech Lab" defaultExpanded>
+              <Text style={styles.sttHint} numberOfLines={3}>
+                Freeform overrides preset. playText / cancelPlayback (real path).
+              </Text>
+              {speechLabReadout ? (
+                <Text style={styles.sttHint} numberOfLines={3}>
+                  lifecycle={speechLabReadout.lifecycle}
+                  {speechLabReadout.error
+                    ? ` error=${speechLabReadout.error}`
+                    : ''}
+                </Text>
+              ) : null}
+              <Text style={styles.speechSubLabel}>Posture</Text>
+              {(['default', 'calm', 'treated'] as const).map(p => (
+                <DebugMenuRow
+                  key={p}
+                  label={p}
+                  onPress={() => setSpeechPosture(p)}
+                  right={
+                    <Text
+                      style={[
+                        styles.toggleRight,
+                        speechPosture === p && styles.toggleOn,
+                      ]}
+                    >
+                      {speechPosture === p ? 'ON' : 'set'}
+                    </Text>
+                  }
+                />
+              ))}
+              <Text style={styles.speechSubLabel}>Preset</Text>
+              {SPEECH_LAB_PRESETS.map(pr => (
+                <DebugMenuRow
+                  key={pr.id}
+                  label={pr.label}
+                  onPress={() => setSpeechPresetId(pr.id)}
+                  right={
+                    <Text
+                      style={[
+                        styles.toggleRight,
+                        speechPresetId === pr.id && styles.toggleOn,
+                      ]}
+                    >
+                      {speechPresetId === pr.id ? 'ON' : 'set'}
+                    </Text>
+                  }
+                />
+              ))}
+              <Text style={styles.speechSubLabel}>Freeform</Text>
+              <TextInput
+                style={styles.speechInput}
+                value={speechFreeform}
+                onChangeText={setSpeechFreeform}
+                placeholder="Overrides preset when non-empty"
+                placeholderTextColor={TEXT_MUTED}
+                multiline
+                editable
+              />
+              <DebugMenuRow
+                label="Play"
+                onPress={() => {
+                  const raw = speechFreeform.trim();
+                  const text = raw.length > 0 ? raw : selectedPresetText;
+                  if (!text.trim()) return;
+                  void onSpeechLabPlay(text, { posture: speechPosture });
+                }}
+                right={<Text style={styles.presetAction}>Run</Text>}
+              />
+              <DebugMenuRow
+                label="Stop / cancel playback"
+                onPress={onSpeechLabCancel}
+                right={<Text style={styles.presetAction}>Run</Text>}
+              />
+            </DebugMenuSection>
             <DebugMenuSection title="Runtime Presets" defaultExpanded>
               <DebugMenuRow
                 label="All on"
@@ -345,5 +447,26 @@ const styles = StyleSheet.create({
     fontFamily: fontMono,
     marginBottom: 6,
     paddingHorizontal: 2,
+  },
+  speechSubLabel: {
+    color: TEXT_PRIMARY,
+    fontSize: 11,
+    fontFamily: fontMono,
+    fontWeight: '600',
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  speechInput: {
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 4,
+    color: TEXT_PRIMARY,
+    fontFamily: fontMono,
+    fontSize: 11,
+    minHeight: 56,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    marginBottom: 6,
+    textAlignVertical: 'top',
   },
 });
