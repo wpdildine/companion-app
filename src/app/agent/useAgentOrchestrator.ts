@@ -72,7 +72,10 @@ import type {
 } from './types';
 import { createRemoteSttCoordinator } from './av/remoteStt';
 import type { AvFact } from './av/avFacts';
-import type { PlaybackPosture } from './av/avPlaybackCommand';
+import type {
+  PlaybackPosture,
+  TreatedDebugRenderOverrides,
+} from './av/avPlaybackCommand';
 import {
   runAvPlaybackSpeak,
   stopSpokenOutputEngines,
@@ -308,7 +311,10 @@ export interface AgentOrchestratorActions {
   submit: () => Promise<string | null>;
   playText: (
     text: string,
-    options?: { posture?: PlaybackPosture },
+    options?: {
+      posture?: PlaybackPosture;
+      treatedDebugRenderOverrides?: TreatedDebugRenderOverrides;
+    },
   ) => Promise<void>;
   cancelPlayback: () => void;
   setTranscribedText: (text: string) => void;
@@ -416,7 +422,13 @@ export function useAgentOrchestrator(
   const firstFinalAtRef = useRef<number | null>(null);
   const lastPartialNormalizedRef = useRef('');
   const playTextRef = useRef<
-    (text: string, options?: { posture?: PlaybackPosture }) => Promise<void>
+    (
+      text: string,
+      options?: {
+        posture?: PlaybackPosture;
+        treatedDebugRenderOverrides?: TreatedDebugRenderOverrides;
+      },
+    ) => Promise<void>
   >(null);
   const ioBlockedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPlaybackCompleteRef = useRef<{
@@ -2063,13 +2075,23 @@ export function useAgentOrchestrator(
   }, [listenersRef, requestDebugSinkRef, semanticEvidenceEventsRef, setAudioState]);
 
   const playText = useCallback(
-    async (text: string, options?: { posture?: PlaybackPosture }) => {
+    async (
+      text: string,
+      options?: {
+        posture?: PlaybackPosture;
+        treatedDebugRenderOverrides?: TreatedDebugRenderOverrides;
+      },
+    ) => {
       const normalized = text.trim();
       if (!normalized) {
         logWarn('AgentOrchestrator', 'playback skipped: empty text');
         return;
       }
       const posture: PlaybackPosture = options?.posture ?? 'default';
+      const treatedDebugRenderOverrides =
+        typeof __DEV__ !== 'undefined' && __DEV__
+          ? options?.treatedDebugRenderOverrides
+          : undefined;
       setError(null);
       playbackInterruptedRef.current = false;
 
@@ -2097,6 +2119,7 @@ export function useAgentOrchestrator(
         boundRequestId,
         posture,
         attemptId,
+        treatedDebugRenderOverrides,
         deps: {
           emitFact: emitAvFact,
           activePlaybackProviderRef,

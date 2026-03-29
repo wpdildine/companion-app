@@ -14,6 +14,13 @@ import {
 
 export type PlaybackPosture = 'default' | 'calm' | 'treated';
 
+/** Debug-only partial render knobs; merged over treated preset in AV when posture is treated. */
+export type TreatedDebugRenderOverrides = Partial<{
+  renderPostGainDb: number;
+  renderLeadSilenceMs: number;
+  renderHighPassHz: number;
+}>;
+
 const PIPER_DEFAULT_SYNTH_OPTIONS = {
   lengthScale: 1.08,
   noiseScale: 0.62,
@@ -55,6 +62,37 @@ export function mapPlaybackPostureToPiperOptions(
     default:
       return { ...PIPER_DEFAULT_SYNTH_OPTIONS };
   }
+}
+
+type PiperSpeakOptions = ReturnType<typeof mapPlaybackPostureToPiperOptions>;
+
+/**
+ * Piper `setOptions` payload: posture map, with optional debug-only shallow merge on treated only.
+ * default/calm ignore `treatedDebugRenderOverrides` entirely.
+ */
+export function resolvePiperOptions(
+  posture: PlaybackPosture,
+  treatedDebugRenderOverrides?: TreatedDebugRenderOverrides,
+): PiperSpeakOptions {
+  const base = mapPlaybackPostureToPiperOptions(posture);
+  if (posture !== 'treated' || !treatedDebugRenderOverrides) {
+    return base;
+  }
+  const o = treatedDebugRenderOverrides;
+  const out: PiperSpeakOptions = { ...base };
+  if (typeof o.renderPostGainDb === 'number' && Number.isFinite(o.renderPostGainDb)) {
+    out.renderPostGainDb = o.renderPostGainDb;
+  }
+  if (
+    typeof o.renderLeadSilenceMs === 'number' &&
+    Number.isFinite(o.renderLeadSilenceMs)
+  ) {
+    out.renderLeadSilenceMs = o.renderLeadSilenceMs;
+  }
+  if (typeof o.renderHighPassHz === 'number' && Number.isFinite(o.renderHighPassHz)) {
+    out.renderHighPassHz = o.renderHighPassHz;
+  }
+  return out;
 }
 
 export type AvTtsModule = {
@@ -126,9 +164,18 @@ export async function runAvPlaybackSpeak(args: {
   boundRequestId: number | null;
   posture: PlaybackPosture;
   attemptId: number;
+  /** Debug-only; applied only when posture is treated (see resolvePiperOptions). */
+  treatedDebugRenderOverrides?: TreatedDebugRenderOverrides;
   deps: AvPlaybackSpeakDeps;
 }): Promise<AvPlaybackSpeakResult> {
-  const { text, boundRequestId, posture, attemptId, deps } = args;
+  const {
+    text,
+    boundRequestId,
+    posture,
+    attemptId,
+    treatedDebugRenderOverrides,
+    deps,
+  } = args;
   const PiperTts = loadPiperDefault();
   let canUsePiper = deps.piperAvailableCache;
   if (!canUsePiper && PiperTts?.isModelAvailable) {
@@ -147,7 +194,9 @@ export async function runAvPlaybackSpeak(args: {
       textChars: text.length,
       posture,
     });
-    PiperTts.setOptions(mapPlaybackPostureToPiperOptions(posture));
+    PiperTts.setOptions(
+      resolvePiperOptions(posture, treatedDebugRenderOverrides),
+    );
     const speakPromise = PiperTts.speak(text);
     queueMicrotask(() => {
       if (deps.playbackInflightAttemptIdRef.current !== attemptId) return;

@@ -21,6 +21,7 @@ jest.mock('react-native-tts', () => ({
 
 import {
   mapPlaybackPostureToPiperOptions,
+  resolvePiperOptions,
   runAvPlaybackSpeak,
   type PlaybackPosture,
 } from './avPlaybackCommand';
@@ -75,6 +76,40 @@ describe('avPlaybackCommand contract', () => {
   it('PlaybackPosture is a closed small union at compile time', () => {
     const p: PlaybackPosture = 'default';
     expect(p).toBe('default');
+  });
+});
+
+describe('resolvePiperOptions treated debug overrides', () => {
+  const bogus: { renderPostGainDb: number } = { renderPostGainDb: 99 };
+
+  it('ignores override bag for default posture', () => {
+    expect(resolvePiperOptions('default', bogus)).toEqual(
+      mapPlaybackPostureToPiperOptions('default'),
+    );
+  });
+
+  it('ignores override bag for calm posture', () => {
+    expect(resolvePiperOptions('calm', bogus)).toEqual(
+      mapPlaybackPostureToPiperOptions('calm'),
+    );
+  });
+
+  it('treated with no overrides matches treated map', () => {
+    expect(resolvePiperOptions('treated', undefined)).toEqual(
+      mapPlaybackPostureToPiperOptions('treated'),
+    );
+  });
+
+  it('treated shallow-merges partial overrides over treated defaults', () => {
+    const base = mapPlaybackPostureToPiperOptions('treated');
+    expect(resolvePiperOptions('treated', { renderPostGainDb: 2 })).toEqual({
+      ...base,
+      renderPostGainDb: 2,
+    });
+    expect(resolvePiperOptions('treated', { renderHighPassHz: 120 })).toEqual({
+      ...base,
+      renderHighPassHz: 120,
+    });
   });
 });
 

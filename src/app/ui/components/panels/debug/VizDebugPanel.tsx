@@ -32,7 +32,10 @@ import {
   type VizSubsystemKey,
 } from '../../overlays/vizSubsystemToggles';
 import { logInfo } from '../../../../../shared/logging';
-import type { PlaybackPosture } from '../../../../agent';
+import type {
+  PlaybackPosture,
+  TreatedDebugRenderOverrides,
+} from '../../../../agent';
 import { DebugMenuSection } from './DebugMenuSection';
 import { DebugMenuRow } from './DebugMenuRow';
 import { SPEECH_LAB_PRESETS } from './speechLabPresets';
@@ -62,6 +65,31 @@ function syncPostFxFromSubsystem(
   }
 }
 
+/** Parse hp / lead / gain strings; only finite numbers become override keys. Applied on Play only. */
+function buildTreatedDebugOverridesFromInputs(
+  hpStr: string,
+  leadStr: string,
+  gainStr: string,
+): TreatedDebugRenderOverrides | undefined {
+  const out: TreatedDebugRenderOverrides = {};
+  const h = hpStr.trim();
+  if (h !== '') {
+    const n = Number(h);
+    if (Number.isFinite(n)) out.renderHighPassHz = n;
+  }
+  const l = leadStr.trim();
+  if (l !== '') {
+    const n = Number(l);
+    if (Number.isFinite(n)) out.renderLeadSilenceMs = n;
+  }
+  const g = gainStr.trim();
+  if (g !== '') {
+    const n = Number(g);
+    if (Number.isFinite(n)) out.renderPostGainDb = n;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 export type VizDebugPanelProps = {
   visualizationRef: RefObject<VisualizationEngineRef | null>;
   onClose: () => void;
@@ -74,7 +102,10 @@ export type VizDebugPanelProps = {
   /** Dev-only: real orchestrator playback path (no duplicate TTS pipeline). */
   onSpeechLabPlay: (
     text: string,
-    options?: { posture?: PlaybackPosture },
+    options?: {
+      posture?: PlaybackPosture;
+      treatedDebugRenderOverrides?: TreatedDebugRenderOverrides;
+    },
   ) => void;
   onSpeechLabCancel: () => void;
   /** Observational readout only; panel does not interpret lifecycle. */
@@ -100,6 +131,9 @@ export function VizDebugPanel({
   const [speechPosture, setSpeechPosture] = useState<PlaybackPosture>('default');
   const [speechPresetId, setSpeechPresetId] = useState(SPEECH_LAB_PRESETS[0]!.id);
   const [speechFreeform, setSpeechFreeform] = useState('');
+  const [hpHz, setHpHz] = useState('');
+  const [leadMs, setLeadMs] = useState('');
+  const [gainDb, setGainDb] = useState('');
   const selectedPresetText = useMemo(
     () => SPEECH_LAB_PRESETS.find(p => p.id === speechPresetId)?.text ?? '',
     [speechPresetId],
@@ -130,7 +164,7 @@ export function VizDebugPanel({
         {typeof __DEV__ !== 'undefined' && __DEV__ ? (
           <>
             <Text style={styles.groupLabel}>Runtime Controls</Text>
-            <DebugMenuSection title="Log Gates" defaultExpanded>
+            <DebugMenuSection title="Log Gates">
               <DebugMenuRow
                 label="Disable hot path logs"
                 onPress={() => {
@@ -192,7 +226,7 @@ export function VizDebugPanel({
                 );
               })()}
             </DebugMenuSection>
-            <DebugMenuSection title="STT provider (override)" defaultExpanded>
+            <DebugMenuSection title="STT provider (override)">
               {(() => {
                 const ov = getSttOverride();
                 const env = getSttProvider();
@@ -247,7 +281,7 @@ export function VizDebugPanel({
                 right={<Text style={styles.presetAction}>Clear</Text>}
               />
             </DebugMenuSection>
-            <DebugMenuSection title="Speech Lab" defaultExpanded>
+            <DebugMenuSection title="Speech Lab">
               <Text style={styles.sttHint} numberOfLines={3}>
                 Freeform overrides preset. playText / cancelPlayback (real path).
               </Text>
@@ -277,6 +311,50 @@ export function VizDebugPanel({
                   }
                 />
               ))}
+              {speechPosture === 'treated' ? (
+                <>
+                  <Text style={styles.speechSubLabel}>Treated overrides</Text>
+                  <Text style={styles.sttHint} numberOfLines={2}>
+                    High-pass (Hz), lead silence (ms), gain (dB). Values apply on Play only.
+                  </Text>
+                  <TextInput
+                    style={styles.speechOverrideInput}
+                    value={hpHz}
+                    onChangeText={setHpHz}
+                    placeholder="High-pass (Hz)"
+                    placeholderTextColor={TEXT_MUTED}
+                    keyboardType="numbers-and-punctuation"
+                    testID="speech-lab-treated-highpass-hz"
+                  />
+                  <TextInput
+                    style={styles.speechOverrideInput}
+                    value={leadMs}
+                    onChangeText={setLeadMs}
+                    placeholder="Lead silence (ms)"
+                    placeholderTextColor={TEXT_MUTED}
+                    keyboardType="numbers-and-punctuation"
+                    testID="speech-lab-treated-lead-ms"
+                  />
+                  <TextInput
+                    style={styles.speechOverrideInput}
+                    value={gainDb}
+                    onChangeText={setGainDb}
+                    placeholder="Gain (dB)"
+                    placeholderTextColor={TEXT_MUTED}
+                    keyboardType="numbers-and-punctuation"
+                    testID="speech-lab-treated-gain-db"
+                  />
+                  <DebugMenuRow
+                    label="Reset treated render defaults"
+                    onPress={() => {
+                      setHpHz('');
+                      setLeadMs('');
+                      setGainDb('');
+                    }}
+                    right={<Text style={styles.presetAction}>Clear</Text>}
+                  />
+                </>
+              ) : null}
               <Text style={styles.speechSubLabel}>Preset</Text>
               {SPEECH_LAB_PRESETS.map(pr => (
                 <DebugMenuRow
@@ -311,7 +389,14 @@ export function VizDebugPanel({
                   const raw = speechFreeform.trim();
                   const text = raw.length > 0 ? raw : selectedPresetText;
                   if (!text.trim()) return;
-                  void onSpeechLabPlay(text, { posture: speechPosture });
+                  const bag =
+                    speechPosture === 'treated'
+                      ? buildTreatedDebugOverridesFromInputs(hpHz, leadMs, gainDb)
+                      : undefined;
+                  void onSpeechLabPlay(text, {
+                    posture: speechPosture,
+                    ...(bag ? { treatedDebugRenderOverrides: bag } : {}),
+                  });
                 }}
                 right={<Text style={styles.presetAction}>Run</Text>}
               />
@@ -321,7 +406,7 @@ export function VizDebugPanel({
                 right={<Text style={styles.presetAction}>Run</Text>}
               />
             </DebugMenuSection>
-            <DebugMenuSection title="Runtime Presets" defaultExpanded>
+            <DebugMenuSection title="Runtime Presets">
               <DebugMenuRow
                 label="All on"
                 onPress={() => {
@@ -339,7 +424,7 @@ export function VizDebugPanel({
                 right={<Text style={styles.presetAction}>Apply</Text>}
               />
             </DebugMenuSection>
-            <DebugMenuSection title="Subsystem Gates" defaultExpanded>
+            <DebugMenuSection title="Subsystem Gates">
               {VIZ_SUBSYSTEM_KEYS.map((k: VizSubsystemKey) => {
                 const on = getVizSubsystemEnabled(k);
                 return (
@@ -468,5 +553,17 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     marginBottom: 6,
     textAlignVertical: 'top',
+  },
+  speechOverrideInput: {
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 4,
+    color: TEXT_PRIMARY,
+    fontFamily: fontMono,
+    fontSize: 11,
+    minHeight: 34,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    marginBottom: 4,
   },
 });

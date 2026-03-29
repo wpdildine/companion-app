@@ -29,6 +29,17 @@ function walkInstances(
   }
 }
 
+function findByTestId(
+  root: TestRenderer.ReactTestInstance,
+  testID: string,
+): TestRenderer.ReactTestInstance | null {
+  let hit: TestRenderer.ReactTestInstance | null = null;
+  walkInstances(root, n => {
+    if (n.props?.testID === testID) hit = n;
+  });
+  return hit;
+}
+
 function findOnPressSubtreeContainingText(
   root: TestRenderer.ReactTestInstance,
   textMatch: string | ((s: string) => boolean),
@@ -55,6 +66,15 @@ function findOnPressSubtreeContainingText(
   return null;
 }
 
+/** Section bodies mount only when expanded; open Speech Lab before interacting. */
+function expandSpeechLabSection(root: TestRenderer.ReactTestInstance): void {
+  const header = findOnPressSubtreeContainingText(root, 'Speech Lab');
+  expect(header).toBeTruthy();
+  act(() => {
+    header!.props.onPress?.();
+  });
+}
+
 describe('VizDebugPanel Speech Lab', () => {
   const baseProps = {
     visualizationRef: { current: null } as React.RefObject<null>,
@@ -77,6 +97,7 @@ describe('VizDebugPanel Speech Lab', () => {
     act(() => {
       root = TestRenderer.create(<VizDebugPanel {...baseProps} />);
     });
+    expandSpeechLabSection(root!.root);
     const row = findOnPressSubtreeContainingText(root!.root, 'Play');
     expect(row).toBeTruthy();
     act(() => {
@@ -94,6 +115,7 @@ describe('VizDebugPanel Speech Lab', () => {
     act(() => {
       root = TestRenderer.create(<VizDebugPanel {...baseProps} />);
     });
+    expandSpeechLabSection(root!.root);
     const treatedRow = findOnPressSubtreeContainingText(root!.root, 'treated');
     expect(treatedRow).toBeTruthy();
     act(() => {
@@ -115,6 +137,7 @@ describe('VizDebugPanel Speech Lab', () => {
     act(() => {
       root = TestRenderer.create(<VizDebugPanel {...baseProps} />);
     });
+    expandSpeechLabSection(root!.root);
     const stopRow = findOnPressSubtreeContainingText(
       root!.root,
       s => s.includes('Stop') && s.includes('cancel'),
@@ -124,5 +147,65 @@ describe('VizDebugPanel Speech Lab', () => {
       stopRow!.props.onPress?.();
     });
     expect(baseProps.onSpeechLabCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends treatedDebugRenderOverrides on Play when treated and gain field is set', () => {
+    let root: TestRenderer.ReactTestRenderer;
+    act(() => {
+      root = TestRenderer.create(<VizDebugPanel {...baseProps} />);
+    });
+    expandSpeechLabSection(root!.root);
+    const treatedRow = findOnPressSubtreeContainingText(root!.root, 'treated');
+    act(() => {
+      treatedRow!.props.onPress?.();
+    });
+    const gainInput = findByTestId(root!.root, 'speech-lab-treated-gain-db');
+    expect(gainInput).toBeTruthy();
+    act(() => {
+      gainInput!.props.onChangeText?.('3');
+    });
+    const playRow = findOnPressSubtreeContainingText(root!.root, 'Play');
+    act(() => {
+      playRow!.props.onPress?.();
+    });
+    expect(baseProps.onSpeechLabPlay).toHaveBeenLastCalledWith(
+      expect.any(String),
+      {
+        posture: 'treated',
+        treatedDebugRenderOverrides: { renderPostGainDb: 3 },
+      },
+    );
+  });
+
+  it('reset clears treated overrides so Play omits treatedDebugRenderOverrides', () => {
+    let root: TestRenderer.ReactTestRenderer;
+    act(() => {
+      root = TestRenderer.create(<VizDebugPanel {...baseProps} />);
+    });
+    expandSpeechLabSection(root!.root);
+    const treatedRow = findOnPressSubtreeContainingText(root!.root, 'treated');
+    act(() => {
+      treatedRow!.props.onPress?.();
+    });
+    const gainInput = findByTestId(root!.root, 'speech-lab-treated-gain-db');
+    act(() => {
+      gainInput!.props.onChangeText?.('5');
+    });
+    const resetRow = findOnPressSubtreeContainingText(
+      root!.root,
+      s => s.includes('Reset') && s.includes('treated'),
+    );
+    expect(resetRow).toBeTruthy();
+    act(() => {
+      resetRow!.props.onPress?.();
+    });
+    const playRow = findOnPressSubtreeContainingText(root!.root, 'Play');
+    act(() => {
+      playRow!.props.onPress?.();
+    });
+    expect(baseProps.onSpeechLabPlay).toHaveBeenLastCalledWith(
+      expect.any(String),
+      { posture: 'treated' },
+    );
   });
 });

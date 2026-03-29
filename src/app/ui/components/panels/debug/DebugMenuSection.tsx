@@ -8,7 +8,7 @@ const TEXT_MUTED = '#8b949e';
 
 export function DebugMenuSection({
   title,
-  defaultExpanded = true,
+  defaultExpanded = false,
   deemphasized = false,
   children,
 }: {
