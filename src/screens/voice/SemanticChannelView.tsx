@@ -21,6 +21,11 @@ export type SemanticChannelViewProps = {
   scrollEventThrottle?: number;
   /** Cycle 6: Play/Act-derived a11y label for the scroll region (orchestrator wins on error). */
   accessibilityContainerLabel?: string;
+  /**
+   * Act descriptor situation gloss (supplementary); Play/Act label remains canonical.
+   * Omit when null/undefined/empty.
+   */
+  accessibilityContainerHint?: string | null;
   /** Cycle 8 Stage 2: optional non-interactive phase line; omit when null/undefined. */
   phaseCaptionText?: string | null;
   phaseCaptionColor?: string;
@@ -51,12 +56,18 @@ export function SemanticChannelView({
   onScroll,
   scrollEventThrottle = 16,
   accessibilityContainerLabel,
+  accessibilityContainerHint,
   phaseCaptionText,
   phaseCaptionColor,
   children,
 }: SemanticChannelViewProps) {
   const showCaption =
     typeof phaseCaptionText === 'string' && phaseCaptionText.length > 0;
+  const hint =
+    typeof accessibilityContainerHint === 'string' &&
+    accessibilityContainerHint.trim().length > 0
+      ? accessibilityContainerHint.trim()
+      : undefined;
 
   return (
     <ScrollView
@@ -70,6 +81,7 @@ export function SemanticChannelView({
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator
       accessibilityLabel={accessibilityContainerLabel}
+      accessibilityHint={hint}
     >
       {showCaption ? (
         <Text

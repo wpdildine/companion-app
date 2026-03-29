@@ -95,3 +95,4 @@ export {
   ACT_DESCRIPTOR_SCHEMA_VERSION,
   ACT_PATHWAY_TAGS_ALL,
 } from './actDescriptorTypes';
+export { getActDescriptorSemanticChannelHint } from './actDescriptorSemanticChannelHint';

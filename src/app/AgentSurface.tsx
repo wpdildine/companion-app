@@ -49,12 +49,14 @@ import {
 import {
   buildAtlasSemanticChannelDebugSnapshot,
   detectPlayActDrift,
+  getActDescriptorSemanticChannelHint,
   getPlayActAccessibilityLabel,
   getPlayActPhaseCaptionText,
   getSemanticEvidence,
   getState as getRequestDebugState,
   emit as requestDebugEmit,
   playActDriftSignature,
+  resolveActDescriptor,
   resolveAgentPlayAct,
   subscribe as subscribeRequestDebug,
   appendSemanticEvidenceEvent,
@@ -91,6 +93,8 @@ const DEBUG_DISABLE_PROCESSING = false;
  * Cycle 10: `playActAccessibilityLabel` is also passed to `ResultsOverlay` root (same canonical string; drift observation unchanged).
  */
 const PLAY_ACT_PHASE_CAPTION_ENABLED = true;
+/** Act descriptor → supplementary semantic channel accessibility hint; label/caption stay Play/Act. */
+const ACT_DESCRIPTOR_SEMANTIC_CHANNEL_HINT_ENABLED = true;
 const DEBUG_LOG_SCOPES: Array<import('../shared/logging').LogScope> = [
   'AgentOrchestrator',
   'Interaction',
@@ -529,6 +533,36 @@ export default function AgentSurface() {
     : orchState.lifecycle === 'speaking'
     ? 'playbackTap'
     : 'none';
+
+  const actDescriptorSemanticChannelHint = useMemo(() => {
+    if (!ACT_DESCRIPTOR_SEMANTIC_CHANNEL_HINT_ENABLED) return null;
+    const evidence = getSemanticEvidence({
+      orchestratorState: orchState,
+      surfaceState: {
+        interactionBandEnabled,
+        activeInteractionOwner,
+        revealedBlocks,
+        debugEnabled,
+      },
+      observedEvents: semanticEvidenceEventsRef.current,
+      presentation: {
+        playActAccessibilityLabel,
+        playActPhaseCaptionText: playActPhaseCaption,
+      },
+    });
+    return getActDescriptorSemanticChannelHint(
+      resolveActDescriptor(evidence),
+      orchState,
+    );
+  }, [
+    orchState,
+    interactionBandEnabled,
+    activeInteractionOwner,
+    revealedBlocks,
+    debugEnabled,
+    playActAccessibilityLabel,
+    playActPhaseCaption,
+  ]);
 
   const prevInteractionOwnerRef = useRef<ActiveInteractionOwner>(
     activeInteractionOwner,
@@ -1156,6 +1190,7 @@ export default function AgentSurface() {
           contentPaddingBottom={insets.bottom}
           onScroll={handleOverlayScroll}
           accessibilityContainerLabel={playActAccessibilityLabel}
+          accessibilityContainerHint={actDescriptorSemanticChannelHint}
           phaseCaptionText={playActPhaseCaption}
           phaseCaptionColor={mutedColor}
         >
