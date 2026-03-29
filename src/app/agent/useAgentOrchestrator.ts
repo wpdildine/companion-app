@@ -72,15 +72,18 @@ import type {
 } from './types';
 import { createRemoteSttCoordinator } from './av/remoteStt';
 import type { AvFact } from './av/avFacts';
+import type { PlaybackPosture } from './av/avPlaybackCommand';
+import {
+  runAvPlaybackSpeak,
+  stopSpokenOutputEngines,
+} from './av/avPlaybackCommand';
 import {
   cleanupPendingIosStopIfNeededMechanics,
   finishAvPlaybackLifecycleMechanics,
   runNativeStopWithLoggingMechanics,
   runRemoteStopFinalizeMechanics as runRemoteStopFinalizeMechanicsUnit,
-  selectAvPlaybackRouteMechanics,
   selectAvStartRouteMechanics,
   startAvLocalVoiceListeningMechanics,
-  startAvPlaybackLifecycleMechanics,
   startAvRemoteCaptureListeningMechanics,
   type AvPlaybackFact,
   type AvPlaybackRoute,
@@ -303,7 +306,10 @@ export interface AgentOrchestratorActions {
   /** For hold-to-speak release: stop and request submit only after transcript settlement. Submit must be triggered via onTranscriptReadyForSubmit. */
   stopListeningAndRequestSubmit: () => Promise<void>;
   submit: () => Promise<string | null>;
-  playText: (text: string) => Promise<void>;
+  playText: (
+    text: string,
+    options?: { posture?: PlaybackPosture },
+  ) => Promise<void>;
   cancelPlayback: () => void;
   setTranscribedText: (text: string) => void;
   clearError: () => void;
@@ -409,7 +415,9 @@ export function useAgentOrchestrator(
   const firstPartialAtRef = useRef<number | null>(null);
   const firstFinalAtRef = useRef<number | null>(null);
   const lastPartialNormalizedRef = useRef('');
-  const playTextRef = useRef<(text: string) => Promise<void>>(null);
+  const playTextRef = useRef<
+    (text: string, options?: { posture?: PlaybackPosture }) => Promise<void>
+  >(null);
   const ioBlockedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPlaybackCompleteRef = useRef<{
     requestId: number;
@@ -1290,23 +1298,6 @@ export function useAgentOrchestrator(
   );
 
   // ===== AV isolation: playback command coordination mechanics =====
-  const selectAvPlaybackRoute = useCallback((canUsePiper: boolean): AvPlaybackRoute => {
-    return selectAvPlaybackRouteMechanics(canUsePiper);
-  }, []);
-
-  const startAvPlaybackLifecycle = useCallback(
-    (provider: AvPlaybackRoute): AvPlaybackFact => {
-      return startAvPlaybackLifecycleMechanics({
-        provider,
-        playbackRequestId: playbackRequestIdRef.current,
-        activePlaybackProviderRef,
-        isPlaybackHandoffLogEnabled: isLogGateEnabled('playbackHandoff'),
-        logInfo,
-      });
-    },
-    [],
-  );
-
   const finishAvPlaybackLifecycle = useCallback(
     (
       endedAt: number,
@@ -2072,12 +2063,13 @@ export function useAgentOrchestrator(
   }, [listenersRef, requestDebugSinkRef, semanticEvidenceEventsRef, setAudioState]);
 
   const playText = useCallback(
-    async (text: string) => {
+    async (text: string, options?: { posture?: PlaybackPosture }) => {
       const normalized = text.trim();
       if (!normalized) {
         logWarn('AgentOrchestrator', 'playback skipped: empty text');
         return;
       }
+      const posture: PlaybackPosture = options?.posture ?? 'default';
       setError(null);
       playbackInterruptedRef.current = false;
 
@@ -2088,17 +2080,7 @@ export function useAgentOrchestrator(
         const supersededId = playbackInflightAttemptIdRef.current;
         if (supersededId != null) {
           playbackAwaitingTerminalRef.current.delete(supersededId);
-          try {
-            const P = require('piper-tts').default;
-            if (typeof P?.stop === 'function') P.stop();
-          } catch {
-            /* ignore */
-          }
-          try {
-            ttsRef.current?.stop();
-          } catch {
-            /* ignore */
-          }
+          stopSpokenOutputEngines(ttsRef);
           const fact = finishAvPlaybackLifecycle(Date.now(), 'cancelled');
           emitAvFact(fact);
         }
@@ -2108,152 +2090,56 @@ export function useAgentOrchestrator(
       playbackInflightAttemptIdRef.current = attemptId;
       playbackAwaitingTerminalRef.current.add(attemptId);
 
-      const PiperTts = require('piper-tts').default;
-      let canUsePiper = piperAvailable;
-      if (!canUsePiper && PiperTts?.isModelAvailable) {
-        try {
-          canUsePiper = !!(await PiperTts.isModelAvailable());
-          setPiperAvailable(canUsePiper);
-        } catch {
-          canUsePiper = false;
-        }
-      }
-      if (canUsePiper) {
-        const playbackRoute = selectAvPlaybackRoute(true);
-        logInfo('Playback', 'tts path selected', {
-          provider: 'piper',
-          textChars: normalized.length,
-        });
-        PiperTts.setOptions({
-          lengthScale: 1.08,
-          noiseScale: 0.62,
-          noiseW: 0.8,
-          gainDb: 0,
-          interSentenceSilenceMs: 250,
-          interCommaSilenceMs: 125,
-        });
-        const speakPromise = PiperTts.speak(normalized);
-        queueMicrotask(() => {
-          if (playbackInflightAttemptIdRef.current !== attemptId) return;
-          const fact = startAvPlaybackLifecycle(playbackRoute);
-          emitAvFact(fact);
-        });
-        try {
-          await speakPromise;
-        } catch (e) {
-          if (playbackInflightAttemptIdRef.current !== attemptId) return;
-          if (
-            !consumePlaybackTerminalSlot(playbackAwaitingTerminalRef, attemptId)
-          )
-            return;
-          const code = readNativeErrorCode(e);
-          if (playbackInterruptedRef.current || code === 'E_CANCELLED') {
-            const fact = finishAvPlaybackLifecycle(Date.now(), 'cancelled');
-            emitAvFact(fact);
-          } else {
-            const message =
-              e instanceof Error ? e.message : 'Piper playback failed';
-            logError('Playback', 'piper playback failed', {
-              message,
-              textChars: normalized.length,
-            });
-            const fact = finishAvPlaybackLifecycle(
-              Date.now(),
-              'failed',
-              message,
-            );
-            emitAvFact(fact);
-          }
-        } finally {
-          const ttsEndedAt = Date.now();
-          setTimeout(() => {
-            if (playbackInflightAttemptIdRef.current !== attemptId) return;
-            if (
-              !consumePlaybackTerminalSlot(
-                playbackAwaitingTerminalRef,
-                attemptId,
-              )
-            )
-              return;
-            const fact = finishAvPlaybackLifecycle(ttsEndedAt, 'completed');
-            emitAvFact(fact);
-          }, 0);
-        }
-        return;
-      }
-      const playbackRoute = selectAvPlaybackRoute(false);
-      let Tts: TtsModule;
-      try {
-        Tts = require('react-native-tts').default as TtsModule;
-        ttsRef.current = Tts;
-      } catch (e) {
+      const boundRequestId = playbackRequestIdRef.current;
+
+      const result = await runAvPlaybackSpeak({
+        text: normalized,
+        boundRequestId,
+        posture,
+        attemptId,
+        deps: {
+          emitFact: emitAvFact,
+          activePlaybackProviderRef,
+          ttsModuleRef: ttsRef,
+          logInfo,
+          isPlaybackHandoffLogEnabled: isLogGateEnabled('playbackHandoff'),
+          platformOs: Platform.OS,
+          playbackInflightAttemptIdRef,
+          attemptId,
+          consumePlaybackTerminalSlot,
+          playbackAwaitingTerminalRef,
+          isPlaybackInterrupted: () => playbackInterruptedRef.current,
+          readPiperErrorCode: readNativeErrorCode,
+          setPiperAvailableFlag: setPiperAvailable,
+          piperAvailableCache: piperAvailable,
+        },
+      });
+
+      if (result.kind === 'fallback_tts_module_load_failed') {
         playbackAwaitingTerminalRef.current.delete(attemptId);
         playbackInflightAttemptIdRef.current = null;
-        const message = e instanceof Error ? e.message : 'TTS failed to load';
-        setError(message);
-        logError('Playback', 'tts module load failed', { message });
+        setError(result.message);
+        logError('Playback', 'tts module load failed', {
+          message: result.message,
+        });
         return;
       }
-      try {
-        await Tts.getInitStatus();
-        if (Platform.OS === 'android') Tts.stop();
-        logInfo('Playback', 'tts path selected', {
-          provider: 'react-native-tts',
-          textChars: normalized.length,
-        });
-        const endFallbackPlayback = (fromCancelEvent: boolean) => {
-          if (playbackInflightAttemptIdRef.current !== attemptId) return;
-          if (
-            !consumePlaybackTerminalSlot(playbackAwaitingTerminalRef, attemptId)
-          )
-            return;
-          const wantCancel = fromCancelEvent;
-          const ttsEndedAt = Date.now();
-          try {
-            if (typeof Tts.removeEventListener === 'function') {
-              Tts.removeEventListener('tts-finish', onFinishNatural);
-              Tts.removeEventListener('tts-cancel', onFinishCancel);
-            }
-          } catch {
-            /* ignore */
-          }
-          const fact = finishAvPlaybackLifecycle(
-            ttsEndedAt,
-            wantCancel ? 'cancelled' : 'completed',
-          );
-          emitAvFact(fact);
-        };
-        const onFinishNatural = () => endFallbackPlayback(false);
-        const onFinishCancel = () => endFallbackPlayback(true);
-        Tts.addEventListener('tts-finish', onFinishNatural);
-        Tts.addEventListener('tts-cancel', onFinishCancel);
-        const fact = startAvPlaybackLifecycle(playbackRoute);
-        emitAvFact(fact);
-        Tts.speak(normalized);
-      } catch (e) {
+      if (result.kind === 'fallback_tts_play_failed') {
         playbackAwaitingTerminalRef.current.delete(attemptId);
         playbackInflightAttemptIdRef.current = null;
         if (!playbackInterruptedRef.current) {
-          const message =
-            e instanceof Error ? e.message : 'TTS playback failed';
-          setError(message);
+          setError(result.message);
           setProcessingSubstate(null);
           setMode('idle');
           setLifecycle('error');
           logError('Playback', 'tts playback failed', {
-            message,
+            message: result.message,
             textChars: normalized.length,
           });
         }
       }
     },
-    [
-      emitAvFact,
-      finishAvPlaybackLifecycle,
-      piperAvailable,
-      selectAvPlaybackRoute,
-      startAvPlaybackLifecycle,
-    ],
+    [emitAvFact, finishAvPlaybackLifecycle, piperAvailable],
   );
 
   playTextRef.current = playText;
@@ -2270,17 +2156,7 @@ export function useAgentOrchestrator(
     if (!consumePlaybackTerminalSlot(playbackAwaitingTerminalRef, aid)) return;
     logInfo('AgentOrchestrator', 'playback interrupted');
     playbackInterruptedRef.current = true;
-    try {
-      const PiperTts = require('piper-tts').default;
-      if (typeof PiperTts?.stop === 'function') PiperTts.stop();
-    } catch {
-      /* ignore */
-    }
-    try {
-      ttsRef.current?.stop();
-    } catch {
-      /* ignore */
-    }
+    stopSpokenOutputEngines(ttsRef);
     const fact = finishAvPlaybackLifecycle(Date.now(), 'cancelled');
     emitAvFact(fact);
     setTimeout(() => {

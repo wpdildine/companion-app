@@ -50,6 +50,7 @@ export type {
   RequestDebugSink,
   UseAgentOrchestratorOptions,
 } from './useAgentOrchestrator';
+export type { PlaybackPosture } from './av/avPlaybackCommand';
 export { useVisualizationController } from './useVisualizationController';
 export type { UseVisualizationControllerOptions } from './useVisualizationController';
 export { emit, getState, subscribe } from './requestDebugStore';
