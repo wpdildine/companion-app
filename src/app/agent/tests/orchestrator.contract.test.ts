@@ -887,7 +887,9 @@ describe('AgentOrchestrator contract events', () => {
       await flushPromises();
     });
 
-    expect(harness.getState().responseText).toBe('Lightning Bolt\nBolt Bend');
+    expect(harness.getState().responseText).toBe(
+      'Which did you mean?\n\nLightning Bolt\nBolt Bend',
+    );
     expect(harness.getState().validationSummary).toBeNull();
     expect(harness.getState().lastFrontDoorOutcome?.semanticFrontDoor.front_door_verdict).toBe(
       'clarify_entity',

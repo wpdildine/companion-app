@@ -53,6 +53,7 @@ import {
   projectSettlementArtifact,
 } from './orchestrator/artifactProjector';
 import { committedResponseFromSemanticFrontDoor } from './orchestrator/frontDoorCommit';
+import { resolveScriptedAnswerSlot } from './scripted/resolveScriptedAnswerSlot';
 import {
   emitRequestDebug,
   type RequestDebugSinkRef,
@@ -1777,7 +1778,14 @@ export function useAgentOrchestrator(
       });
       const fd = runResult.semanticFrontDoor;
       const committed = committedResponseFromSemanticFrontDoor(fd);
-      setResponseText(committed.text.length > 0 ? committed.text : null);
+      const proposed = resolveScriptedAnswerSlot({
+        path: 'front_door',
+        kind: committed.kind,
+        draftText: committed.text,
+      });
+      setResponseText(
+        proposed != null && proposed.trim().length > 0 ? proposed : null,
+      );
       setValidationSummary(null);
       previousCommittedResponseRef.current = null;
       previousCommittedValidationRef.current = null;

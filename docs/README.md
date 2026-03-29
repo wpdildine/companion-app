@@ -16,6 +16,7 @@ Primary documentation map for this repository.
 ## Agent / semantic output
 
 - [Scripted Response Seam — scope and ownership](../src/app/agent/scripted/SCOPE.md)
+- [Scripted Response Seam — answer resolution](../src/app/agent/scripted/ANSWER_RESOLUTION.md)
 
 ## Contracts
 

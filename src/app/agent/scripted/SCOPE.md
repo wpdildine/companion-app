@@ -1,6 +1,6 @@
 # Scripted Response Seam — Scope and Ownership
 
-Canonical scope and ownership definition for the **Scripted Response Seam**: app/agent semantic output that is **pre-commit**, **non-AV**, and **non-visualization**. This document is **plan-level governance only**—no implementation, schema, or API.
+Canonical scope and ownership definition for the **Scripted Response Seam**: app/agent semantic output that is **pre-commit**, **non-AV**, and **non-visualization**. This document is **plan-level governance only**—no implementation, schema, or API. **Answer resolution (commit path and merge):** [ANSWER_RESOLUTION.md](./ANSWER_RESOLUTION.md).
 
 **Anchors:** [docs/ARCHITECTURE.md](../../../../docs/ARCHITECTURE.md), [docs/APP_ARCHITECTURE.md](../../../../docs/APP_ARCHITECTURE.md), orchestrator contract in `useAgentOrchestrator.ts` (single `responseText` slot, commit authority).
 
@@ -104,7 +104,7 @@ Intent **families** the seam may eventually key:
 
 ---
 
-## 5. Posture constraints (merge semantics deferred)
+## 5. Posture constraints
 
 The seam **conceptually** supports:
 
@@ -112,7 +112,7 @@ The seam **conceptually** supports:
 - **Additive** — App text prepended/appended to model output or payload-derived text.
 - **Augmentation** — Templated injection, headers, or light transforms around model or payload content.
 
-**Deferred (next plan):** ordering, precedence when multiple intents apply, **streaming partials** vs **final commit**, and single-slot invariants under each posture.
+**Answer resolution governance:** ordering, precedence, **streaming vs settle**, and single-slot invariants are defined in [ANSWER_RESOLUTION.md](./ANSWER_RESOLUTION.md). **Deferred (implementation):** multi-intent arbitration at a single insertion point if product requires it.
 
 ---
 
@@ -149,8 +149,8 @@ flowchart LR
 
 | Topic | Why deferred |
 |--------|----------------|
-| **Commit-path semantics** | Call sites and ordering change behavior; next phase names minimal integration boundary. |
-| **Streaming vs final** | Partials today mirror model into the slot; posture vs stream vs settle **not solved here**. |
+| **Commit-path semantics** | Resolved in [ANSWER_RESOLUTION.md](./ANSWER_RESOLUTION.md) (insertion points, precedence, integration contract). |
+| **Streaming vs final** | Resolved in [ANSWER_RESOLUTION.md](./ANSWER_RESOLUTION.md) (§6 Streaming model). |
 | **Clarify payload vs prose** | Entity names as data vs copy affects **D**; seam may own presentation until policy is fixed. |
 | **Unifying B and A** | Optional; out of v1 scope unless requirements change. |
 
@@ -160,4 +160,4 @@ flowchart LR
 
 - **Seam v1 domain:** **A** — answer-slot app-authored and app-shaped committed language (fallback + front-door clarify presentation + abstain-as-policy), not chrome (**B**) or raw infra errors (**C**).
 - **Invariants:** Seam supplies **text proposals**; orchestrator retains **commit authority** and **one slot**.
-- **Next phase:** Commit-path and streaming/final **merge semantics** (separate plan).
+- **Answer resolution:** See [ANSWER_RESOLUTION.md](./ANSWER_RESOLUTION.md).

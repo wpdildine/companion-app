@@ -30,10 +30,13 @@ import type { RequestDebugEmitPayload } from '../requestDebugTypes';
 import { appendSemanticEvidenceEvent } from '../semanticEvidenceSink';
 import type { ObservedEvent } from '../semanticEvidenceTypes';
 import type { AgentOrchestratorListeners, ProcessingSubstate } from '../types';
+import { resolveScriptedAnswerSlot } from '../scripted/resolveScriptedAnswerSlot';
+import { SCRIPTED_EMPTY_OUTPUT_MESSAGE } from '../scripted/v1Copy';
 
 export const PARTIAL_EMIT_THROTTLE_MS = 400;
 export const RESPONSE_TEXT_UPDATE_THROTTLE_MS = 150;
-export const EMPTY_RESPONSE_FALLBACK_MESSAGE = 'No answer generated';
+/** @deprecated Prefer SCRIPTED_EMPTY_OUTPUT_MESSAGE from scripted/v1Copy; kept for tests and call sites. */
+export const EMPTY_RESPONSE_FALLBACK_MESSAGE = SCRIPTED_EMPTY_OUTPUT_MESSAGE;
 
 const CHAT_MODEL_FILENAME = 'model.gguf';
 
@@ -353,8 +356,10 @@ export async function executeRequest(
       return { status: 'stale' };
     }
     const nudgedRaw = result.nudged;
-    const committedText =
-      nudgedRaw.trim().length > 0 ? nudgedRaw : EMPTY_RESPONSE_FALLBACK_MESSAGE;
+    const committedText = resolveScriptedAnswerSlot({
+      path: 'settle',
+      nudgedRaw,
+    });
     const isEmptyOutput = nudgedRaw.trim().length === 0;
     if (isEmptyOutput) {
       logInfo('ResponseSurface', 'response_surface_empty_output', {

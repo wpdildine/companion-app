@@ -105,3 +105,11 @@ export {
   ACT_PATHWAY_TAGS_ALL,
 } from './actDescriptorTypes';
 export { getActDescriptorSemanticChannelHint } from './actDescriptorSemanticChannelHint';
+export { resolveScriptedAnswerSlot } from './scripted/resolveScriptedAnswerSlot';
+export type {
+  ScriptedAnswerSlotFrontDoorInput,
+  ScriptedAnswerSlotInput,
+  ScriptedAnswerSlotSettleInput,
+  ScriptedFrontDoorCommitKind,
+} from './scripted/resolveScriptedAnswerSlot';
+export { SCRIPTED_EMPTY_OUTPUT_MESSAGE } from './scripted/v1Copy';
