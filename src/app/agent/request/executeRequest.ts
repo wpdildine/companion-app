@@ -27,6 +27,8 @@ import {
   recoverableReasonKeyForFrontDoorVerdict,
 } from '../failureClassification';
 import type { RequestDebugEmitPayload } from '../requestDebugTypes';
+import { appendSemanticEvidenceEvent } from '../semanticEvidenceSink';
+import type { ObservedEvent } from '../semanticEvidenceTypes';
 import type { AgentOrchestratorListeners, ProcessingSubstate } from '../types';
 
 export const PARTIAL_EMIT_THROTTLE_MS = 400;
@@ -77,6 +79,8 @@ export interface ExecuteRequestOptions {
   ) => Promise<{ embedModelPath: string; chatModelPath: string }>;
   previousCommittedResponseRef: Ref<string | null>;
   previousCommittedValidationRef: Ref<ValidationSummary | null>;
+  /** Optional mirror of listener milestones for semantic evidence (read-only). */
+  semanticEvidenceEventsRef?: Ref<ObservedEvent[]>;
 }
 
 export type ExecuteRequestResult =
@@ -125,6 +129,7 @@ export async function executeRequest(
     getOnDeviceModelPaths,
     previousCommittedResponseRef,
     previousCommittedValidationRef,
+    semanticEvidenceEventsRef,
   } = options;
 
   let firstChunkSent = false;
@@ -177,6 +182,11 @@ export async function executeRequest(
     });
     logInfo('AgentOrchestrator', 'generation started', { requestId: reqId });
     listenersRef.current?.onGenerationStart?.();
+    appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+      kind: 'onGenerationStart',
+      source: 'orchestrator',
+      payload: { requestId: reqId },
+    });
     const result = await ragAsk(question, {
       requestId: reqId,
       requestDebugSink: requestDebugSink ?? undefined,
@@ -265,6 +275,11 @@ export async function executeRequest(
             partialChars: accumulatedText.length,
           });
           listenersRef.current?.onFirstToken?.();
+          appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+            kind: 'onFirstToken',
+            source: 'orchestrator',
+            payload: { requestId: reqId },
+          });
         } else {
           if (
             now - lastResponseTextUpdateAt >=
@@ -295,6 +310,11 @@ export async function executeRequest(
     });
     logInfo('AgentOrchestrator', 'retrieval completed', { requestId: reqId });
     listenersRef.current?.onRetrievalEnd?.();
+    appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+      kind: 'onRetrievalEnd',
+      source: 'orchestrator',
+      payload: { requestId: reqId },
+    });
     if (result.frontDoorBlocked && result.semanticFrontDoor) {
       const fd = result.semanticFrontDoor;
       const recoverable = classifyRecoverableFailure(
@@ -350,6 +370,11 @@ export async function executeRequest(
         requestId: reqId,
       });
       listenersRef.current?.onFirstToken?.();
+      appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+        kind: 'onFirstToken',
+        source: 'orchestrator',
+        payload: { requestId: reqId },
+      });
     }
     const generationEndedAt = Date.now();
     requestDebugSink?.({
@@ -374,7 +399,17 @@ export async function executeRequest(
       cardsCount: result.validationSummary.cards.length,
     });
     listenersRef.current?.onGenerationEnd?.();
+    appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+      kind: 'onGenerationEnd',
+      source: 'orchestrator',
+      payload: { requestId: reqId },
+    });
     listenersRef.current?.onComplete?.();
+    appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+      kind: 'onComplete',
+      source: 'orchestrator',
+      payload: { requestId: reqId },
+    });
     const validationEndedAt = Date.now();
     const settlingStartedAt = validationEndedAt;
     setProcessingSubstate('settling');

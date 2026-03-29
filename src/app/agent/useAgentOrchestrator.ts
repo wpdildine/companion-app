@@ -59,6 +59,9 @@ import {
 } from './orchestrator/telemetry';
 import { executeRequest } from './request/executeRequest';
 import type { RequestDebugEmitPayload } from './requestDebugTypes';
+import { appendSemanticEvidenceEvent } from './semanticEvidenceSink';
+import { mirrorRequestIdentityFromRefs } from './semanticEvidenceMirror';
+import type { ObservedEvent } from './semanticEvidenceTypes';
 import type {
   AgentLifecycleState,
   AgentOrchestratorListeners,
@@ -260,6 +263,11 @@ export interface UseAgentOrchestratorOptions {
   listenersRef?: React.RefObject<AgentOrchestratorListeners | null>;
   /** Optional ref to request-debug sink; orchestrator will emit lifecycle events here. */
   requestDebugSinkRef?: React.RefObject<RequestDebugSink | null>;
+  /**
+   * Optional append-only buffer mirroring listener fanout (read-only projection).
+   * Suppressed failures that skip listeners also skip appends.
+   */
+  semanticEvidenceEventsRef?: React.MutableRefObject<ObservedEvent[]>;
 }
 
 export interface AgentOrchestratorActions {
@@ -285,7 +293,20 @@ export interface AgentOrchestratorActions {
 export function useAgentOrchestrator(
   options: UseAgentOrchestratorOptions = {},
 ): { state: AgentOrchestratorState; actions: AgentOrchestratorActions } {
-  const { listenersRef, requestDebugSinkRef } = options;
+  const { listenersRef, requestDebugSinkRef, semanticEvidenceEventsRef } =
+    options;
+
+  const appendOrchEvidenceRef = useRef<
+    (kind: string, payload?: Record<string, unknown>) => void
+  >(() => {});
+  appendOrchEvidenceRef.current = (kind, payload) => {
+    appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+      kind,
+      source: 'orchestrator',
+      payload,
+    });
+  };
+
   /** Set only from `snapshotSttResolution()` at `startListening` entry — not mount (avoids stale env-only mode before override applies). */
   const sessionSttProviderRef = useRef<SttProvider | null>(null);
   const sessionSttOverrideAppliedRef = useRef<boolean | null>(null);
@@ -372,12 +393,14 @@ export function useAgentOrchestrator(
   const playListenIn = useCallback(() => {
     logInfo('AgentOrchestrator', 'voice listen started');
     listenersRef?.current?.onListeningStart?.();
+    appendOrchEvidenceRef.current('onListeningStart');
   }, [listenersRef]);
   const playListenOut = useCallback(() => {
     logInfo('AgentOrchestrator', 'voice listen stopped');
   }, []);
   const playError = useCallback(() => {
     listenersRef?.current?.onError?.();
+    appendOrchEvidenceRef.current('onError', { reason: undefined });
   }, [listenersRef]);
   const getFailureLedgerKey = useCallback(
     (recordingSessionId?: string) =>
@@ -469,6 +492,15 @@ export function useAgentOrchestrator(
         telemetryReason: classification.telemetryReason,
       });
       const requestId = activeRequestIdRef.current;
+      appendOrchEvidenceRef.current('onRecoverableFailure', {
+        reason: classification.kind,
+        requestId: requestId !== 0 ? requestId : undefined,
+        telemetryReason: classification.telemetryReason,
+        stage: classification.stage,
+        recoverability: classification.recoverability,
+        transientEvent: classification.transientEvent,
+        ...details,
+      });
       emitRequestDebug(requestDebugSinkRef, {
         type: 'recoverable_failure',
         requestId: requestId !== 0 ? requestId : null,
@@ -511,6 +543,15 @@ export function useAgentOrchestrator(
         listenersRef?.current?.onError?.(reason, {
           ...details,
           transientEvent: 'terminalFail',
+        });
+        appendOrchEvidenceRef.current('onError', {
+          reason,
+          transientEvent: 'terminalFail',
+          requestId:
+            activeRequestIdRef.current !== 0
+              ? activeRequestIdRef.current
+              : undefined,
+          ...details,
         });
       }
       return true;
@@ -793,6 +834,10 @@ export function useAgentOrchestrator(
     ) => {
       settlementCoordinator.finalizeStop(reason, recordingSessionId);
       listenersRef?.current?.onListeningEnd?.();
+      appendOrchEvidenceRef.current('onListeningEnd', {
+        recordingSessionId,
+        reason,
+      });
       onSettlementFinalizeComplete(opts);
       logInfo('AgentOrchestrator', 'voice listen stopped', {
         recordingSessionId,
@@ -822,6 +867,9 @@ export function useAgentOrchestrator(
           lifecycle: 'speaking',
         });
         listenersRef?.current?.onPlaybackStart?.();
+        appendOrchEvidenceRef.current('onPlaybackStart', {
+          requestId: fact.requestId ?? undefined,
+        });
         return;
       }
       if (
@@ -857,6 +905,10 @@ export function useAgentOrchestrator(
           logInfo('AgentOrchestrator', 'playback completed');
         }
         listenersRef?.current?.onPlaybackEnd?.();
+        appendOrchEvidenceRef.current('onPlaybackEnd', {
+          requestId: fact.requestId ?? undefined,
+          kind: fact.kind,
+        });
         return;
       }
       if (fact.kind === 'av.bookkeeping.next_listen_local_preference_cleared') {
@@ -950,6 +1002,9 @@ export function useAgentOrchestrator(
           },
         );
         listenersRef?.current?.onTranscriptReadyForSubmit?.();
+        appendOrchEvidenceRef.current('onTranscriptReadyForSubmit', {
+          recordingSessionId: fact.recordingSessionId,
+        });
         setAudioState('settling', {
           recordingSessionId: fact.recordingSessionId,
           reason: 'remoteTranscriptReady',
@@ -1048,6 +1103,10 @@ export function useAgentOrchestrator(
       if (readySubmit) {
         finalizeStop(reason, recordingSessionId, { keepLifecycle: true });
         listenersRef?.current?.onTranscriptReadyForSubmit?.();
+        appendOrchEvidenceRef.current('onTranscriptReadyForSubmit', {
+          recordingSessionId,
+          reason,
+        });
       }
       const nextAudioState = outcome.shouldSubmit ? 'settling' : 'idleReady';
       setAudioState(nextAudioState, {
@@ -1663,6 +1722,7 @@ export function useAgentOrchestrator(
       transcriptPreview: transcriptPreview(question),
     });
     listenersRef?.current?.onRequestStart?.();
+    appendOrchEvidenceRef.current('onRequestStart', { requestId: reqId });
     const retrievalStartedAt = Date.now();
     emitRequestDebug(requestDebugSinkRef, {
       type: 'retrieval_start',
@@ -1672,6 +1732,7 @@ export function useAgentOrchestrator(
     });
     logInfo('AgentOrchestrator', 'retrieval started', { requestId: reqId });
     listenersRef?.current?.onRetrievalStart?.();
+    appendOrchEvidenceRef.current('onRetrievalStart', { requestId: reqId });
     let runResult: Awaited<ReturnType<typeof executeRequest>> | null = null;
     try {
       runResult = await executeRequest({
@@ -1696,6 +1757,7 @@ export function useAgentOrchestrator(
         getOnDeviceModelPaths,
         previousCommittedResponseRef,
         previousCommittedValidationRef,
+        semanticEvidenceEventsRef,
       });
     } catch {
       requestInFlightRef.current = false;
@@ -1808,6 +1870,14 @@ export function useAgentOrchestrator(
       );
       setError(runResult.displayMessage);
       listenersRef?.current?.onError?.(runResult.classification.kind, {
+        stage: runResult.classification.stage,
+        recoverability: runResult.classification.recoverability,
+        transientEvent: runResult.classification.transientEvent,
+        telemetryReason: runResult.classification.telemetryReason,
+      });
+      appendOrchEvidenceRef.current('onError', {
+        reason: runResult.classification.kind,
+        requestId: reqId,
         stage: runResult.classification.stage,
         recoverability: runResult.classification.recoverability,
         transientEvent: runResult.classification.transientEvent,
@@ -1936,7 +2006,7 @@ export function useAgentOrchestrator(
       });
     }
     return runResult.committedText;
-  }, [listenersRef, requestDebugSinkRef, setAudioState]);
+  }, [listenersRef, requestDebugSinkRef, semanticEvidenceEventsRef, setAudioState]);
 
   const playText = useCallback(
     async (text: string) => {
@@ -2361,6 +2431,9 @@ export function useAgentOrchestrator(
         });
       }
       listenersRef?.current?.onTranscriptUpdate?.();
+      appendOrchEvidenceRef.current('onTranscriptUpdate', {
+        recordingSessionId: sessionId,
+      });
       if (
         settlementCoordinator.getPendingSubmitWhenReady() &&
         recordingSessionRef.current ===
@@ -2434,6 +2507,10 @@ export function useAgentOrchestrator(
         normalizedPartialPreview: transcriptPreview(normalizedPartial),
       });
       listenersRef?.current?.onTranscriptUpdate?.();
+      appendOrchEvidenceRef.current('onTranscriptUpdate', {
+        recordingSessionId: sessionId,
+        partial: true,
+      });
     };
     V.onSpeechError = e => {
       const sessionId = recordingSessionRef.current ?? undefined;
@@ -2684,6 +2761,12 @@ export function useAgentOrchestrator(
 
   const emittedLifecycle: AgentLifecycleState = error ? 'error' : lifecycle;
 
+  const requestIdentity = mirrorRequestIdentityFromRefs(
+    activeRequestIdRef.current,
+    requestInFlightRef.current,
+    playbackRequestIdRef.current,
+  );
+
   const state: AgentOrchestratorState = {
     lifecycle: emittedLifecycle,
     processingSubstate:
@@ -2699,6 +2782,7 @@ export function useAgentOrchestrator(
     recordingSessionId: recordingSessionRef.current,
     lastFrontDoorOutcome,
     metadata: undefined,
+    ...requestIdentity,
   };
 
   const actions = useMemo<AgentOrchestratorActions>(

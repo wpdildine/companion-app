@@ -21,6 +21,9 @@ function orch(over: Partial<AgentOrchestratorState>): AgentOrchestratorState {
     responseText: null,
     validationSummary: null,
     lastFrontDoorOutcome: null,
+    activeRequestId: null,
+    requestInFlight: false,
+    playbackRequestId: null,
     ...over,
   };
 }

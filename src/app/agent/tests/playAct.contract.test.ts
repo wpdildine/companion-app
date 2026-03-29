@@ -22,6 +22,9 @@ function base(over: Partial<AgentOrchestratorState> = {}): AgentOrchestratorStat
     responseText: null,
     validationSummary: null,
     lastFrontDoorOutcome: null,
+    activeRequestId: null,
+    requestInFlight: false,
+    playbackRequestId: null,
     ...over,
   };
 }

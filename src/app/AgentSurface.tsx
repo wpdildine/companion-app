@@ -50,13 +50,16 @@ import {
   detectPlayActDrift,
   getPlayActAccessibilityLabel,
   getPlayActPhaseCaptionText,
+  getSemanticEvidence,
   getState as getRequestDebugState,
   emit as requestDebugEmit,
   playActDriftSignature,
   resolveAgentPlayAct,
   subscribe as subscribeRequestDebug,
+  appendSemanticEvidenceEvent,
   useAgentOrchestrator,
   useVisualizationController,
+  type ObservedEvent,
   type RequestDebugState,
 } from './agent';
 import { useVisualizationSignals } from './hooks/useVisualizationSignals';
@@ -129,7 +132,12 @@ export default function AgentSurface() {
       requestDebugEmit(payload);
     },
   );
-  const orch = useAgentOrchestrator({ listenersRef, requestDebugSinkRef });
+  const semanticEvidenceEventsRef = useRef<ObservedEvent[]>([]);
+  const orch = useAgentOrchestrator({
+    listenersRef,
+    requestDebugSinkRef,
+    semanticEvidenceEventsRef,
+  });
   const { state: orchState, actions: orchActions } = orch;
 
   const [requestDebugState, setRequestDebugState] =
@@ -192,6 +200,19 @@ export default function AgentSurface() {
   }, [orchState.lifecycle, orchState.processingSubstate, requestDebugState]);
 
   const { setSignals, emitEvent } = useVisualizationSignals(visualizationRef);
+
+  const emitEventWithEvidence = useCallback(
+    (e: VisualizationSignalEvent) => {
+      appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+        kind: String(e),
+        source: 'overlay',
+        payload: { event: e },
+      });
+      emitEvent(e);
+    },
+    [emitEvent],
+  );
+
   useVisualizationController(visualizationRef, orchState, listenersRef, {
     debugEnabled,
     debugScenario: DEBUG_SCENARIO,
@@ -521,9 +542,42 @@ export default function AgentSurface() {
     }
   }, [activeInteractionOwner]);
 
+  useEffect(() => {
+    if (typeof __DEV__ === 'undefined' || !__DEV__) return;
+    const g = globalThis as Record<string, unknown>;
+    g.__getAtlasSemanticEvidence = () =>
+      getSemanticEvidence({
+        orchestratorState: orchState,
+        surfaceState: {
+          interactionBandEnabled,
+          activeInteractionOwner,
+          revealedBlocks,
+          debugEnabled,
+        },
+        observedEvents: semanticEvidenceEventsRef.current,
+        presentation: {
+          playActAccessibilityLabel,
+          playActPhaseCaptionText: playActPhaseCaption,
+        },
+      });
+  }, [
+    orchState,
+    interactionBandEnabled,
+    activeInteractionOwner,
+    revealedBlocks,
+    debugEnabled,
+    playActAccessibilityLabel,
+    playActPhaseCaption,
+  ]);
+
   const stopListeningAndSubmit = useCallback(
     async (reason: 'hold release' | 'hold release delayed' | 'timeout') => {
       if (holdCompletionInFlightRef.current) return;
+      appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+        kind: 'hold_end',
+        source: 'surface',
+        payload: { reason },
+      });
       holdCompletionInFlightRef.current = true;
       centerHoldActiveRef.current = false;
       userModeLongPressActiveRef.current = false;
@@ -560,6 +614,11 @@ export default function AgentSurface() {
       };
       if (holdCompletionInFlightRef.current) {
         reportAccepted(false);
+        appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+          kind: 'hold_rejected',
+          source: 'surface',
+          payload: { interactionReason: 'holdCompletionInFlight' },
+        });
         reportRecoverableInteractionFailure('holdCompletionInFlight');
         return;
       }
@@ -574,19 +633,33 @@ export default function AgentSurface() {
             : 'unknown',
         });
         reportAccepted(false);
-        reportRecoverableInteractionFailure('holdBlocked', {
-          blockedBy: isAsking
-            ? 'active request'
-            : anyPanelVisible
+        const blockedBy = isAsking
+          ? 'active request'
+          : anyPanelVisible
             ? 'overlay'
             : debugEnabled
-            ? 'debug'
-            : 'unknown',
+              ? 'debug'
+              : 'unknown';
+        appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+          kind: 'hold_rejected',
+          source: 'surface',
+          payload: { interactionReason: 'holdBlocked', blockedBy },
+        });
+        reportRecoverableInteractionFailure('holdBlocked', {
+          blockedBy,
         });
         return;
       }
       if (orchState.audioSessionState !== 'idleReady') {
         reportAccepted(false);
+        appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+          kind: 'hold_rejected',
+          source: 'surface',
+          payload: {
+            interactionReason: 'audioNotIdleReady',
+            audioSessionState: orchState.audioSessionState,
+          },
+        });
         reportRecoverableInteractionFailure('audioNotIdleReady', {
           audioSessionState: orchState.audioSessionState,
         });
@@ -610,6 +683,14 @@ export default function AgentSurface() {
         }
         if (!result.ok) {
           reportAccepted(false);
+          appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+            kind: 'hold_rejected',
+            source: 'surface',
+            payload: {
+              interactionReason: 'startListeningRejected',
+              startReason: result.reason ?? 'unknown',
+            },
+          });
           reportRecoverableInteractionFailure('startListeningRejected', {
             startReason: result.reason ?? 'unknown',
           });
@@ -617,6 +698,11 @@ export default function AgentSurface() {
         }
         centerHoldActiveRef.current = true;
         reportAccepted(true);
+        appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+          kind: 'hold_accepted',
+          source: 'surface',
+          payload: {},
+        });
         if (!centerHoldActiveRef.current || holdCompletionInFlightRef.current)
           return;
         recordingTimeoutRef.current = setTimeout(() => {
@@ -630,6 +716,11 @@ export default function AgentSurface() {
         centerHoldActiveRef.current = false;
         holdStartPromiseRef.current = null;
         reportAccepted(false);
+        appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+          kind: 'hold_rejected',
+          source: 'surface',
+          payload: { interactionReason: 'startListeningThrew' },
+        });
         reportRecoverableInteractionFailure('startListeningThrew');
       });
     },
@@ -696,13 +787,25 @@ export default function AgentSurface() {
       }
       lastTapAtRef.current = 0;
       const answer = (orchState.responseText ?? '').trim();
-      if (answer) orchActions.playText(answer);
+      if (answer) {
+        appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+          kind: 'playback_tap_double',
+          source: 'surface',
+          payload: {},
+        });
+        orchActions.playText(answer);
+      }
       return;
     }
     lastTapAtRef.current = now;
     if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
     singleTapTimerRef.current = setTimeout(() => {
       singleTapTimerRef.current = null;
+      appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+        kind: 'playback_tap_single',
+        source: 'surface',
+        payload: {},
+      });
       orchActions.cancelPlayback();
     }, DOUBLE_TAP_MS + 20);
   }, [orchState.lifecycle, orchState.responseText, orchActions]);
@@ -811,6 +914,11 @@ export default function AgentSurface() {
       if (!canSwipeContext) {
         return;
       }
+      appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+        kind: 'cluster_release',
+        source: 'interaction',
+        payload: { cluster },
+      });
       if (cluster === 'rules') {
         setRevealedBlocks({
           answer: false,
@@ -842,6 +950,11 @@ export default function AgentSurface() {
               requestDebugState.recentRequestIds.length - 1
             ]
           : null);
+      appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+        kind: 'reveal_panel',
+        source: 'surface',
+        payload: { key, requestId: requestId ?? undefined },
+      });
       logInfo('ResponseSurface', 'response_surface_revealed_by_user', {
         requestId: requestId ?? undefined,
         lifecycle: orchState.lifecycle,
@@ -878,6 +991,11 @@ export default function AgentSurface() {
   }, [clearHoldInteractionState]);
 
   const handleClearError = useCallback(() => {
+    appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+      kind: 'clear_error',
+      source: 'surface',
+      payload: {},
+    });
     orchActions.recoverFromRequestFailure();
     resetInteractionSurface();
   }, [orchActions, resetInteractionSurface]);
@@ -1055,7 +1173,7 @@ export default function AgentSurface() {
             }}
             intensity={visualizationRef.current?.vizIntensity ?? 'subtle'}
             reduceMotion={visualizationRef.current?.reduceMotion ?? false}
-            emitEvent={emitEvent}
+            emitEvent={emitEventWithEvidence}
             showContentPanels={!!(DEBUG_SCENARIO || showContentPanels)}
             canRevealPanels={canRevealPanels}
             debugScenario={DEBUG_SCENARIO}
@@ -1078,7 +1196,16 @@ export default function AgentSurface() {
         }
         onCenterHoldEnd={!debugEnabled ? handleCenterHoldEnd : undefined}
         onCenterHoldShortTap={
-          !debugEnabled ? () => emitEvent('shortTap') : undefined
+          !debugEnabled
+            ? () => {
+                appendSemanticEvidenceEvent(semanticEvidenceEventsRef, {
+                  kind: 'short_tap',
+                  source: 'interaction',
+                  payload: {},
+                });
+                emitEvent('shortTap');
+              }
+            : undefined
         }
         enabled={interactionBandEnabled}
         blocked={orchState.ioBlockedUntil != null}

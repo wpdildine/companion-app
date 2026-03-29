@@ -91,4 +91,10 @@ export interface AgentOrchestratorState {
   /** Set when the last request ended at the semantic front door (blocked); cleared on successful answer or recovery. */
   lastFrontDoorOutcome?: LastFrontDoorOutcome | null;
   metadata?: AgentStateMetadata;
+  /** Mirror of activeRequestIdRef: null when ref is 0 (no active request). */
+  activeRequestId: number | null;
+  /** Mirror of requestInFlightRef. */
+  requestInFlight: boolean;
+  /** Mirror of playbackRequestIdRef while playback is bound to a request. */
+  playbackRequestId: number | null;
 }

@@ -52,3 +52,20 @@ export type {
   RequestDebugEmitPayload,
   RequestDebugStatus,
 } from './requestDebugTypes';
+export type {
+  ObservedEvent,
+  ObservedEventSource,
+  OutcomeProjection,
+  OutcomeProjectionClass,
+  OutcomeProjectionSource,
+  SemanticEvidence,
+  SemanticPresentationState,
+  SemanticSurfaceState,
+} from './semanticEvidenceTypes';
+export { appendSemanticEvidenceEvent } from './semanticEvidenceSink';
+export type { SemanticEvidenceEventsRef } from './semanticEvidenceSink';
+export { mirrorRequestIdentityFromRefs } from './semanticEvidenceMirror';
+export { getOutcomeProjection } from './getOutcomeProjection';
+export type { GetOutcomeProjectionInput } from './getOutcomeProjection';
+export { getSemanticEvidence } from './getSemanticEvidence';
+export type { GetSemanticEvidenceInput } from './getSemanticEvidence';
