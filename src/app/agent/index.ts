@@ -70,3 +70,22 @@ export { getOutcomeProjection } from './getOutcomeProjection';
 export type { GetOutcomeProjectionInput } from './getOutcomeProjection';
 export { getSemanticEvidence } from './getSemanticEvidence';
 export type { GetSemanticEvidenceInput } from './getSemanticEvidence';
+export {
+  resolveActDescriptor,
+  validateActDescriptorCoherence,
+} from './resolveActDescriptor';
+export type { ActDescriptorValidationIssue } from './resolveActDescriptor';
+export type {
+  ActAffordanceTag,
+  ActContinuationMode,
+  ActDescriptor,
+  ActPathwayDescriptor,
+  ActPathwayTag,
+  ActSituationFamily,
+  GestureChannelId,
+  GestureInterpretiveRole,
+} from './actDescriptorTypes';
+export {
+  ACT_DESCRIPTOR_SCHEMA_VERSION,
+  ACT_PATHWAY_TAGS_ALL,
+} from './actDescriptorTypes';
