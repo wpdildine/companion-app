@@ -13,6 +13,10 @@ Primary documentation map for this repository.
 
 - [Content Pack Setup](./CONTENT_PACK_SETUP.md)
 
+## Agent / semantic output
+
+- [Scripted Response Seam — scope and ownership](../src/app/agent/scripted/SCOPE.md)
+
 ## Contracts
 
 - [Plugin Contract](./PLUGIN_CONTRACT.md)
