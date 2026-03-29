@@ -7,7 +7,7 @@
  * `responseText` and `validationSummary` only; blocked retrieval does not surface as a normal answer.
  *
  * Cycle 10: optional `playActAccessibilityLabel` — same canonical string as `SemanticChannelView`
- * (`getPlayActAccessibilityLabel`); labels the overlay root only; does not own reveal/dismiss or arbitration.
+ * (`getSemanticChannelAccessibilityLabel` / legacy shim); labels the overlay root only; does not own reveal/dismiss or arbitration.
  */
 
 import { useEffect, useRef } from 'react';

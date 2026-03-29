@@ -1,7 +1,9 @@
 /**
  * Cycle 9 — read-only Play/Act drift detection (docs/PLAY_ACT_MEASUREMENT.md).
- * Compares orchestrator truth, resolver output, and rendered caption/a11y strings.
- * Does not mutate state or influence control flow; consumers log or test only.
+ * Compares orchestrator truth, legacy resolver output, and rendered caption/a11y strings.
+ * Semantic-channel label/caption are produced by `semanticChannelCanonicalCopy` (shared phase
+ * table with `deriveSemanticChannelCopyCore`); drift still validates resolver ↔ lifecycle
+ * invariants and copy ↔ orchestrator heuristics. Does not mutate state or influence control flow.
  */
 
 import type { AgentOrchestratorState } from './types';

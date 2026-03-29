@@ -1,79 +1,38 @@
 /**
  * Presentation-only copy from Play/Act resolution + orchestrator truth (Cycles 6–8).
  * Hard error UX must follow lifecycle === 'error', not primaryAct (PLAY_ACT_REALIZATION.md).
- * Consumer boundaries and deferred outputs: docs/PLAY_ACT_BOUNDARIES.md.
+ *
+ * **Shim:** string policy lives in `semanticChannelCanonicalCopy.ts`; these entry points
+ * preserve the legacy `(resolution, state)` signature for tests and drift tooling.
  */
 
 import type { AgentOrchestratorState } from './types';
 import type { AgentPlayActResolution } from './resolveAgentPlayAct';
+import {
+  mapSemanticChannelAccessibilityLabel,
+  mapSemanticChannelPhaseCaptionText,
+} from './semanticChannelCanonicalCopy';
 
-/** Screen reader / accessibility label for the semantic channel container. */
+/**
+ * Screen reader / accessibility label for the semantic channel container.
+ * @deprecated Prefer `getSemanticChannelAccessibilityLabel` from `semanticChannelCanonicalCopy`
+ * (via `getSemanticEvidence` + `resolveActDescriptor`); kept for drift/tests and the legacy signature.
+ */
 export function getPlayActAccessibilityLabel(
   resolution: AgentPlayActResolution,
   state: AgentOrchestratorState,
 ): string {
-  if (state.lifecycle === 'error') {
-    const msg = state.error?.trim();
-    return msg ? `Error. ${msg}` : 'Error. Voice or system issue.';
-  }
-
-  switch (resolution.primaryAct) {
-    case 'intake':
-      return 'Agent ready. Awaiting voice input.';
-    case 'evaluate':
-      return 'Processing your question.';
-    case 'clarify':
-      return 'Clarification needed. Refine your question.';
-    case 'recover':
-      return 'Could not complete. You can try again.';
-    case 'respond':
-      if (state.lifecycle === 'speaking') {
-        return 'Playing answer.';
-      }
-      return 'Answer displayed.';
-    default:
-      return 'Agent';
-  }
+  return mapSemanticChannelAccessibilityLabel(resolution, state);
 }
 
 /**
  * Visible phase caption (Cycle 8 Stage 2). Subordinate to orchestrator/error truth.
  * Uses primaryAct + commitVisibilityHint for Respond variants; returns null when error lifecycle.
+ * @deprecated Prefer `getSemanticChannelPhaseCaptionText` from `semanticChannelCanonicalCopy`.
  */
 export function getPlayActPhaseCaptionText(
   resolution: AgentPlayActResolution,
   state: AgentOrchestratorState,
 ): string | null {
-  if (state.lifecycle === 'error') {
-    return null;
-  }
-
-  switch (resolution.primaryAct) {
-    case 'intake':
-      return 'Ready to listen';
-    case 'evaluate':
-      return 'Working on it…';
-    case 'clarify':
-      return 'Needs a clearer question';
-    case 'recover':
-      return 'Try again when ready';
-    case 'respond':
-      if (state.lifecycle === 'speaking') {
-        return 'Playing answer';
-      }
-      switch (resolution.commitVisibilityHint) {
-        case 'provisional':
-          return 'Forming answer…';
-        case 'cleared_or_empty':
-          return 'No answer displayed';
-        case 'supplemental_input_expected':
-          return 'More detail needed';
-        case 'uncommitted_or_hidden':
-        case 'committed_answer':
-        default:
-          return 'Answer ready';
-      }
-    default:
-      return null;
-  }
+  return mapSemanticChannelPhaseCaptionText(resolution, state);
 }

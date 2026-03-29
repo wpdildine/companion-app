@@ -89,7 +89,7 @@ The five Acts do not define a dedicated “hard error” Act. When `lifecycle ==
 
 **Consumer:** `SemanticChannelView` (shell wrapping `ResultsOverlay`), fed from `AgentSurface` (`src/screens/voice/SemanticChannelView.tsx`, `src/app/AgentSurface.tsx`).
 
-**Consumed resolver outputs:** `primaryAct` and `commitVisibilityHint` only **via** `src/app/agent/playActPhaseCopy.ts` string mappers—not read directly in the view. **Not consumed this cycle:** `affordanceHints`, `processingSubstate` for UI branching.
+**Consumed phase outputs:** `primaryAct` and `commitVisibilityHint` only **via** `src/app/agent/semanticChannelCanonicalCopy.ts` string mappers (AgentSurface: `getSemanticEvidence` + `resolveActDescriptor` + `getSemanticChannelAccessibilityLabel` / `getSemanticChannelPhaseCaptionText`). Legacy `playActPhaseCopy` shims the same mappers. **Not consumed this cycle:** `affordanceHints`, `processingSubstate` for UI branching.
 
 **Orchestrator overrides:** `lifecycle === 'error'` → accessibility label from `error` string, not Act; visible phase caption suppressed on error (overlay owns error presentation).
 
@@ -103,9 +103,9 @@ The five Acts do not define a dedicated “hard error” Act. When `lifecycle ==
 
 **Objective:** Same semantic channel shell as Cycle 6; adds the optional **visible** one-line phase caption for sighted users, still presentation-only.
 
-**Preconditions (Stage 2 decision rule in [PLAY_ACT_BOUNDARIES.md](PLAY_ACT_BOUNDARIES.md)):** Product accepts visible phase consistency; caption stays a **single** non-interactive line in the semantic channel shell; copy is neutral (no instruction to speak/tap beyond what arbitration may allow); hard error suppresses caption; caption visibility is **not** tied to arbitration outcomes except band state as **read-only** input to `resolveAgentPlayAct` (unchanged from Cycle 6).
+**Preconditions (Stage 2 decision rule in [PLAY_ACT_BOUNDARIES.md](PLAY_ACT_BOUNDARIES.md)):** Product accepts visible phase consistency; caption stays a **single** non-interactive line in the semantic channel shell; copy is neutral (no instruction to speak/tap beyond what arbitration may allow); hard error suppresses caption; caption visibility is **not** tied to arbitration outcomes except band state as **read-only** input to `resolveAgentPlayAct` for **affordance hints** (unchanged from Cycle 6; copy phase table does not branch on band).
 
-**Consumed resolver outputs:** `primaryAct` and `commitVisibilityHint` via `playActPhaseCopy.getPlayActPhaseCaptionText` (including `commitVisibilityHint` alignment for **Respond** caption variants). Still **not** consumed: `affordanceHints`, `processingSubstate` for any UI branching.
+**Consumed phase outputs:** `primaryAct` and `commitVisibilityHint` via `getSemanticChannelPhaseCaptionText` / `playActPhaseCopy.getPlayActPhaseCaptionText` shim (including `commitVisibilityHint` alignment for **Respond** caption variants). Still **not** consumed: `affordanceHints`, `processingSubstate` for any UI branching.
 
 **Product flag:** `PLAY_ACT_PHASE_CAPTION_ENABLED` in `AgentSurface` is **`true`** for the shipped Cycle 8 slice; set `false` to revert to a11y-only without removing wiring.
 
@@ -123,7 +123,7 @@ The five Acts do not define a dedicated “hard error” Act. When `lifecycle ==
 
 **Consumer:** `ResultsOverlay` root `View` (`src/app/ui/components/overlays/ResultsOverlay.tsx`), fed from `AgentSurface` via prop `playActAccessibilityLabel` (same value as `SemanticChannelView`’s `accessibilityContainerLabel`).
 
-**Consumed resolver outputs:** Unchanged — `primaryAct` and `commitVisibilityHint` **only** via `getPlayActAccessibilityLabel` in `playActPhaseCopy.ts`. **Not consumed:** `affordanceHints`, `processingSubstate` for any UI branching.
+**Consumed phase outputs:** Unchanged — `primaryAct` and `commitVisibilityHint` **only** via `getSemanticChannelAccessibilityLabel` / `getPlayActAccessibilityLabel` shim. **Not consumed:** `affordanceHints`, `processingSubstate` for any UI branching.
 
 **Ownership:** `ResultsOverlay` still owns reveal, dismiss, layout, and panel semantics; the label is **annotation only** and must not gate interaction ([PLAY_ACT_BOUNDARIES.md](PLAY_ACT_BOUNDARIES.md) — overlay-adjacent static phrasing).
 

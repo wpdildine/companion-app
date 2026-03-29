@@ -50,8 +50,8 @@ import {
   buildAtlasSemanticChannelDebugSnapshot,
   detectPlayActDrift,
   getActDescriptorSemanticChannelHint,
-  getPlayActAccessibilityLabel,
-  getPlayActPhaseCaptionText,
+  getSemanticChannelAccessibilityLabel,
+  getSemanticChannelPhaseCaptionText,
   getSemanticEvidence,
   getState as getRequestDebugState,
   emit as requestDebugEmit,
@@ -93,7 +93,7 @@ const DEBUG_DISABLE_PROCESSING = false;
  * Cycle 10: `playActAccessibilityLabel` is also passed to `ResultsOverlay` root (same canonical string; drift observation unchanged).
  */
 const PLAY_ACT_PHASE_CAPTION_ENABLED = true;
-/** Act descriptor → supplementary semantic channel accessibility hint; label/caption stay Play/Act. */
+/** Act descriptor → supplementary semantic channel accessibility hint; label/caption are canonical (`semanticChannelCanonicalCopy`). */
 const ACT_DESCRIPTOR_SEMANTIC_CHANNEL_HINT_ENABLED = true;
 const DEBUG_LOG_SCOPES: Array<import('../shared/logging').LogScope> = [
   'AgentOrchestrator',
@@ -471,6 +471,65 @@ export default function AgentSurface() {
   const interactionBandEnabled =
     !debugEnabled && !anyPanelVisible && orchState.lifecycle !== 'processing';
 
+  const canHoldToSpeak = !isAsking && !anyPanelVisible && !debugEnabled;
+  const canSwipeContext = canRevealPanels && interactionBandEnabled;
+  const activeInteractionOwner: ActiveInteractionOwner = debugEnabled
+    ? 'debug'
+    : anyPanelVisible
+    ? 'overlay'
+    : orchState.lifecycle === 'listening'
+    ? 'holdToSpeak'
+    : canRevealPanels &&
+      (orchState.lifecycle === 'idle' || orchState.lifecycle === 'error')
+    ? 'swipeContext'
+    : orchState.lifecycle === 'speaking'
+    ? 'playbackTap'
+    : 'none';
+
+  const semanticEvidenceBase = useMemo(
+    () =>
+      getSemanticEvidence({
+        orchestratorState: orchState,
+        surfaceState: {
+          interactionBandEnabled,
+          activeInteractionOwner,
+          revealedBlocks,
+          debugEnabled,
+        },
+        observedEvents: semanticEvidenceEventsRef.current,
+        presentation: {},
+      }),
+    [
+      orchState,
+      interactionBandEnabled,
+      activeInteractionOwner,
+      revealedBlocks,
+      debugEnabled,
+    ],
+  );
+
+  const actDescriptorForChannel = useMemo(
+    () => resolveActDescriptor(semanticEvidenceBase),
+    [semanticEvidenceBase],
+  );
+
+  const playActAccessibilityLabel = useMemo(
+    () =>
+      getSemanticChannelAccessibilityLabel(
+        semanticEvidenceBase,
+        actDescriptorForChannel,
+      ),
+    [semanticEvidenceBase, actDescriptorForChannel],
+  );
+
+  const playActPhaseCaption = useMemo(() => {
+    if (!PLAY_ACT_PHASE_CAPTION_ENABLED) return null;
+    return getSemanticChannelPhaseCaptionText(
+      semanticEvidenceBase,
+      actDescriptorForChannel,
+    );
+  }, [semanticEvidenceBase, actDescriptorForChannel]);
+
   const playActResolution = useMemo(
     () =>
       resolveAgentPlayAct(orchState, {
@@ -478,16 +537,6 @@ export default function AgentSurface() {
       }),
     [orchState, interactionBandEnabled],
   );
-
-  const playActAccessibilityLabel = useMemo(
-    () => getPlayActAccessibilityLabel(playActResolution, orchState),
-    [playActResolution, orchState],
-  );
-
-  const playActPhaseCaption = useMemo(() => {
-    if (!PLAY_ACT_PHASE_CAPTION_ENABLED) return null;
-    return getPlayActPhaseCaptionText(playActResolution, orchState);
-  }, [playActResolution, orchState]);
 
   useEffect(() => {
     if (typeof __DEV__ === 'undefined' || !__DEV__) return;
@@ -518,21 +567,6 @@ export default function AgentSurface() {
     playActPhaseCaption,
     playActAccessibilityLabel,
   ]);
-
-  const canHoldToSpeak = !isAsking && !anyPanelVisible && !debugEnabled;
-  const canSwipeContext = canRevealPanels && interactionBandEnabled;
-  const activeInteractionOwner: ActiveInteractionOwner = debugEnabled
-    ? 'debug'
-    : anyPanelVisible
-    ? 'overlay'
-    : orchState.lifecycle === 'listening'
-    ? 'holdToSpeak'
-    : canRevealPanels &&
-      (orchState.lifecycle === 'idle' || orchState.lifecycle === 'error')
-    ? 'swipeContext'
-    : orchState.lifecycle === 'speaking'
-    ? 'playbackTap'
-    : 'none';
 
   const actDescriptorSemanticChannelHint = useMemo(() => {
     if (!ACT_DESCRIPTOR_SEMANTIC_CHANNEL_HINT_ENABLED) return null;

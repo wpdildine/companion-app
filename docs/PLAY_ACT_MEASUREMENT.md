@@ -1,6 +1,6 @@
 # Play/Act measurement and drift detection (Cycle 9)
 
-Canonical **read-only** drift model: orchestrator truth vs `resolveAgentPlayAct` vs caption / accessibility strings. **Authority:** [docs/PLAY_ACT_CONTRACT.md](PLAY_ACT_CONTRACT.md), [docs/PLAY_ACT_REALIZATION.md](PLAY_ACT_REALIZATION.md), [docs/PLAY_ACT_BOUNDARIES.md](PLAY_ACT_BOUNDARIES.md), [docs/APP_ARCHITECTURE.md](APP_ARCHITECTURE.md).
+Canonical **read-only** drift model: orchestrator truth vs `resolveAgentPlayAct` vs rendered caption / accessibility strings. **Rendered** label and caption are produced by [`semanticChannelCanonicalCopy.ts`](../src/app/agent/semanticChannelCanonicalCopy.ts) (shared phase table with `deriveSemanticChannelCopyCore`); drift still ties **lifecycle ↔ resolver** and **copy ↔ orchestrator** heuristics. **Authority:** [docs/PLAY_ACT_CONTRACT.md](PLAY_ACT_CONTRACT.md), [docs/PLAY_ACT_REALIZATION.md](PLAY_ACT_REALIZATION.md), [docs/PLAY_ACT_BOUNDARIES.md](PLAY_ACT_BOUNDARIES.md), [docs/APP_ARCHITECTURE.md](APP_ARCHITECTURE.md), [docs/semanticChannelCopyParity.matrix.md](semanticChannelCopyParity.matrix.md).
 
 This cycle **does not** change product behavior, copy, contracts, or consumers. It adds **predicates**, **tests**, and optional **`__DEV__` logging** only.
 

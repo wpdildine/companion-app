@@ -26,6 +26,15 @@ export {
   getPlayActPhaseCaptionText,
 } from './playActPhaseCopy';
 export {
+  SEMANTIC_CHANNEL_COPY_REVISION,
+  deriveSemanticChannelCopyCore,
+  getSemanticChannelAccessibilityLabel,
+  getSemanticChannelPhaseCaptionText,
+  mapSemanticChannelAccessibilityLabel,
+  mapSemanticChannelPhaseCaptionText,
+} from './semanticChannelCanonicalCopy';
+export type { SemanticChannelCopyCore } from './semanticChannelCanonicalCopy';
+export {
   detectPlayActDrift,
   playActDriftSignature,
 } from './playActDrift';

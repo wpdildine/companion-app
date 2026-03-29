@@ -14,7 +14,7 @@ This document does **not** change the Play/Act contract or resolver semantics; i
 - **ResultsOverlay** remains sole owner of reveal/dismiss/layout and grounded structure.
 - **Play/Act** remains a pure derived classifier + hints; consumption is **presentation interpretation only**—no gating, no mutation, no durable Act state.
 - **Hard error** UX remains `lifecycle === 'error'` (and orchestrator error payload), **not** `primaryAct` (see [PLAY_ACT_REALIZATION.md](PLAY_ACT_REALIZATION.md)).
-- **Shipped consumers:** `playActPhaseCopy` for semantic-channel accessibility **and** (Cycle 8) optional visible caption when `PLAY_ACT_PHASE_CAPTION_ENABLED` is **true** in `AgentSurface`; **and** (Cycle 10) the same canonical accessibility string on the `ResultsOverlay` root (`playActAccessibilityLabel`)—interpretation only; `affordanceHints` and `processingSubstate` remain **not** consumer inputs for UI branching.
+- **Shipped consumers:** `semanticChannelCanonicalCopy` for semantic-channel accessibility **and** (Cycle 8) optional visible caption when `PLAY_ACT_PHASE_CAPTION_ENABLED` is **true** in `AgentSurface`; **and** (Cycle 10) the same canonical accessibility string on the `ResultsOverlay` root (`playActAccessibilityLabel`). `playActPhaseCopy` remains a **shim** (legacy signature) over the same mappers. Interpretation only; `affordanceHints` and `processingSubstate` remain **not** consumer inputs for UI branching. Parity matrix: [semanticChannelCopyParity.matrix.md](semanticChannelCopyParity.matrix.md).
 
 ---
 
@@ -46,7 +46,7 @@ This document does **not** change the Play/Act contract or resolver semantics; i
 
 1. Product explicitly wants **visible** phase consistency (not only a11y).
 2. Caption stays a **single**, **non-interactive** line in the **semantic channel shell** (not overlay chrome that owns panels).
-3. **No** branch on `affordanceHints` or `processingSubstate`; copy still from `primaryAct` + `commitVisibilityHint` (+ orchestrator fields for error/speaking), same as Stage 1 mappers.
+3. **No** branch on `affordanceHints` or `processingSubstate`; copy still from the shared phase table (`deriveSemanticChannelCopyCore`: `primaryAct` + `commitVisibilityHint` + orchestrator fields for error/speaking), same policy as Stage 1 mappers.
 4. **Hard error:** caption **suppressed**; error UX remains orchestrator/overlay-owned.
 5. **Copy review:** strings do not read as instructions for actions the band or overlay may still block (prefer neutral phase labels).
 
@@ -119,7 +119,7 @@ This document does **not** change the Play/Act contract or resolver semantics; i
 
 ## Implementation-planning readiness
 
-**Cycle 10 (shipped):** Bounded overlay-adjacent a11y on `ResultsOverlay` root — same canonical `getPlayActAccessibilityLabel` as `SemanticChannelView`; see [PLAY_ACT_REALIZATION.md](PLAY_ACT_REALIZATION.md) Cycle 10.
+**Cycle 10 (shipped):** Bounded overlay-adjacent a11y on `ResultsOverlay` root — same canonical `getSemanticChannelAccessibilityLabel` / legacy shim `getPlayActAccessibilityLabel` string as `SemanticChannelView`; see [PLAY_ACT_REALIZATION.md](PLAY_ACT_REALIZATION.md) Cycle 10.
 
 **READY FOR NARROW IMPLEMENTATION PLAN** for either:
 

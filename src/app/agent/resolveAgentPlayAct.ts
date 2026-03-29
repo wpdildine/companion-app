@@ -1,10 +1,16 @@
 /**
  * Derived Play/Act resolution: pure classifier over orchestrator-published state.
+ * Copy-related fields (`primaryAct`, `processingSubstate`, `commitVisibilityHint`) are
+ * delegated to {@link deriveSemanticChannelCopyCore} in `semanticChannelCanonicalCopy.ts`.
  * See docs/PLAY_ACT_CONTRACT.md and docs/PLAY_ACT_REALIZATION.md.
+ *
+ * @deprecated for new presentation work — canonical semantic-channel label/caption use
+ * `getSemanticChannelAccessibilityLabel` / `getSemanticChannelPhaseCaptionText`; this
+ * resolver remains for affordance hints and drift/compat until removed.
  */
 
-import type { FrontDoorVerdict } from '@atlas/runtime';
 import type { AgentOrchestratorState, ProcessingSubstate } from './types';
+import { deriveSemanticChannelCopyCore } from './semanticChannelCanonicalCopy';
 
 /** Five documented Acts (stable string ids). */
 export type AgentPrimaryAct =
@@ -51,14 +57,40 @@ function hasTrimmedResponse(state: AgentOrchestratorState): boolean {
   return typeof t === 'string' && t.trim().length > 0;
 }
 
-function frontDoorVerdict(
+function affordanceHintsForCore(
   state: AgentOrchestratorState,
-): FrontDoorVerdict | null {
-  return state.lastFrontDoorOutcome?.semanticFrontDoor.front_door_verdict ?? null;
-}
-
-function isAbstainVerdict(v: FrontDoorVerdict | null): boolean {
-  return v === 'abstain_no_grounding' || v === 'abstain_transcript';
+  bandOk: boolean,
+  core: ReturnType<typeof deriveSemanticChannelCopyCore>,
+): AgentPlayActAffordanceHints {
+  const hasAnswer = hasTrimmedResponse(state);
+  switch (core.primaryAct) {
+    case 'evaluate':
+      return { voiceIntakeEligible: false, playbackGesturesEligible: false };
+    case 'respond':
+      if (state.lifecycle === 'speaking') {
+        return {
+          voiceIntakeEligible: false,
+          playbackGesturesEligible: bandOk && hasAnswer,
+        };
+      }
+      return {
+        voiceIntakeEligible: false,
+        playbackGesturesEligible: bandOk && hasAnswer,
+      };
+    case 'clarify':
+      return { voiceIntakeEligible: bandOk, playbackGesturesEligible: false };
+    case 'recover':
+      return { voiceIntakeEligible: bandOk, playbackGesturesEligible: false };
+    case 'intake':
+    default:
+      if (state.lifecycle === 'error') {
+        return { voiceIntakeEligible: false, playbackGesturesEligible: false };
+      }
+      return {
+        voiceIntakeEligible: bandOk,
+        playbackGesturesEligible: bandOk && hasAnswer,
+      };
+  }
 }
 
 /**
@@ -70,94 +102,11 @@ export function resolveAgentPlayAct(
   surface?: PlayActSurfaceFacts,
 ): AgentPlayActResolution {
   const bandOk = surface?.interactionBandEnabled !== false;
-  const { lifecycle } = state;
-
-  if (lifecycle === 'processing') {
-    return {
-      primaryAct: 'evaluate',
-      processingSubstate: state.processingSubstate,
-      affordanceHints: {
-        voiceIntakeEligible: false,
-        playbackGesturesEligible: false,
-      },
-      commitVisibilityHint: 'provisional',
-    };
-  }
-
-  if (lifecycle === 'speaking') {
-    return {
-      primaryAct: 'respond',
-      processingSubstate: null,
-      affordanceHints: {
-        voiceIntakeEligible: false,
-        playbackGesturesEligible: bandOk && hasTrimmedResponse(state),
-      },
-      commitVisibilityHint: 'committed_answer',
-    };
-  }
-
-  if (lifecycle === 'error') {
-    return {
-      primaryAct: 'intake',
-      processingSubstate: null,
-      affordanceHints: {
-        voiceIntakeEligible: false,
-        playbackGesturesEligible: false,
-      },
-      commitVisibilityHint: 'cleared_or_empty',
-    };
-  }
-
-  const v = frontDoorVerdict(state);
-  const listenOrIdle = lifecycle === 'listening' || lifecycle === 'idle';
-
-  if (listenOrIdle && v === 'clarify_entity') {
-    return {
-      primaryAct: 'clarify',
-      processingSubstate: null,
-      affordanceHints: {
-        voiceIntakeEligible: bandOk,
-        playbackGesturesEligible: false,
-      },
-      commitVisibilityHint: 'supplemental_input_expected',
-    };
-  }
-
-  /** Abstain beats idle+responseText so retry/recover framing wins over stale answer chrome. */
-  if (listenOrIdle && isAbstainVerdict(v)) {
-    return {
-      primaryAct: 'recover',
-      processingSubstate: null,
-      affordanceHints: {
-        voiceIntakeEligible: bandOk,
-        playbackGesturesEligible: false,
-      },
-      commitVisibilityHint: 'cleared_or_empty',
-    };
-  }
-
-  if (lifecycle === 'idle' && hasTrimmedResponse(state)) {
-    return {
-      primaryAct: 'respond',
-      processingSubstate: null,
-      affordanceHints: {
-        voiceIntakeEligible: false,
-        playbackGesturesEligible: bandOk,
-      },
-      commitVisibilityHint: 'committed_answer',
-    };
-  }
-
-  const hasAnswerVisible = hasTrimmedResponse(state);
+  const core = deriveSemanticChannelCopyCore(state);
   return {
-    primaryAct: 'intake',
-    processingSubstate: null,
-    affordanceHints: {
-      voiceIntakeEligible: bandOk,
-      playbackGesturesEligible: bandOk && hasAnswerVisible,
-    },
-    commitVisibilityHint: hasAnswerVisible
-      ? 'committed_answer'
-      : 'uncommitted_or_hidden',
+    primaryAct: core.primaryAct,
+    processingSubstate: core.processingSubstate,
+    commitVisibilityHint: core.commitVisibilityHint,
+    affordanceHints: affordanceHintsForCore(state, bandOk, core),
   };
 }
