@@ -62,9 +62,12 @@ export function mapPlaybackPostureToPiperOptions(
     case 'treated':
       return {
         ...PIPER_DEFAULT_SYNTH_OPTIONS,
-        renderPostGainDb: -1,
-        renderLeadSilenceMs: 40,
-        renderHighPassHz: 80,
+        renderHighPassHz: 200,
+        renderLeadSilenceMs: 0,
+        renderPostGainDb: 4,
+        renderLayer2Enabled: true,
+        renderLayer2DelayMs: 270,
+        renderLayer2GainDb: -26,
       };
     case 'default':
     default:
