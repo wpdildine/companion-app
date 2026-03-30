@@ -1974,7 +1974,9 @@ export function useAgentOrchestrator(
           },
         );
       }
-      playTextRef.current?.(runResult.committedText).catch(() => undefined);
+      playTextRef.current
+        ?.(runResult.committedText, { posture: 'treated' })
+        .catch(() => undefined);
 
       // Defer artifact emission so we do not block the Piper TTS macrotask
       // responsible for lifecycle fanout + `tts_start` debug evidence.
