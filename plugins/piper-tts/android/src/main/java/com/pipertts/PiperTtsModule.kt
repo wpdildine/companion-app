@@ -40,6 +40,8 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
     @Volatile
     private var activeAudioTrack: AudioTrack? = null
 
+    private val tailFadeMs = 8.0
+
     init {
         // Copy model from assets to files/piper/ as soon as the module loads so it's on device before any JS or speak().
         executor.execute {
@@ -401,7 +403,9 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
         if (hpHz > 0) {
             applyHighPassPcm16LE(work, sampleRate, hpHz)
         }
-        return applyLayer2DesyncPcm16LE(work, sampleRate, opts)
+        work = applyLayer2DesyncPcm16LE(work, sampleRate, opts)
+        applyEndFadePcm16LE(work, sampleRate, tailFadeMs)
+        return work
     }
 
     /** Dry + delayed wet (gain on wet only); extends PCM length. No-op when layer2 disabled. */
@@ -456,6 +460,23 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
             y1 = y0
             val out = (y0 * 32768f).roundToInt().coerceIn(-32768, 32767)
             bb.putShort(i * 2, out.toShort())
+        }
+    }
+
+    private fun applyEndFadePcm16LE(pcm: ByteArray, sampleRate: Int, fadeMs: Double) {
+        if (pcm.size < 2 || sampleRate <= 0 || fadeMs <= 0.0) return
+        val samples = pcm.size / 2
+        var fadeSamples = (sampleRate * fadeMs / 1000.0).roundToInt()
+        if (fadeSamples <= 0) return
+        if (fadeSamples > samples) fadeSamples = samples
+        val start = samples - fadeSamples
+        val bb = ByteBuffer.wrap(pcm).order(ByteOrder.LITTLE_ENDIAN)
+        for (i in 0 until fadeSamples) {
+            val idx = start + i
+            val s = bb.getShort(idx * 2).toInt()
+            val gain = (fadeSamples - i - 1).toDouble() / fadeSamples.toDouble()
+            val out = (s * gain).roundToInt().coerceIn(-32768, 32767)
+            bb.putShort(idx * 2, out.toShort())
         }
     }
 

@@ -79,6 +79,18 @@ static void PiperApplyHighPassFloatMono(float *data, AVAudioFrameCount frameCoun
   }
 }
 
+static void PiperApplyEndFadeFloatMono(float *data, AVAudioFrameCount frameCount, double sampleRate, double fadeMs) {
+  if (!data || frameCount == 0 || sampleRate <= 0 || fadeMs <= 0) return;
+  AVAudioFrameCount fadeFrames = (AVAudioFrameCount)llround(sampleRate * fadeMs / 1000.0);
+  if (fadeFrames == 0) return;
+  if (fadeFrames > frameCount) fadeFrames = frameCount;
+  AVAudioFrameCount start = frameCount - fadeFrames;
+  for (AVAudioFrameCount i = 0; i < fadeFrames; i++) {
+    double gain = (double)(fadeFrames - i - 1) / (double)fadeFrames;
+    data[start + i] = (float)(data[start + i] * gain);
+  }
+}
+
 static BOOL PiperOptsBoolForLayer2(NSDictionary *opts) {
   if (![opts isKindOfClass:[NSDictionary class]]) return NO;
   id v = opts[@"renderLayer2Enabled"];
@@ -515,6 +527,7 @@ RCT_EXPORT_METHOD(stop)
        resolver:(RCTPromiseResolveBlock)resolve
        rejecter:(RCTPromiseRejectBlock)reject
 {
+  static const double kTailFadeMs = 8.0;
   if (!pcm.length || sampleRate == 0) {
     reject(@"E_AUDIO", @"Invalid PCM or sampleRate", nil);
     return;
@@ -693,6 +706,10 @@ RCT_EXPORT_METHOD(stop)
         self.lastBufferFrameLength = toPlay.frameLength;
       }
     }
+  }
+
+  if (toPlay != nil && toPlay.floatChannelData[0] != NULL) {
+    PiperApplyEndFadeFloatMono(toPlay.floatChannelData[0], toPlay.frameLength, playbackFormat.sampleRate, kTailFadeMs);
   }
 
   if (!toPlay || toPlay.frameLength == 0) {
