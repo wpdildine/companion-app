@@ -9,12 +9,15 @@
 /* Begin PBXBuildFile section */
 		0C80B921A6F3F58F76C31292 /* libPods-ATLAS00.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-ATLAS00.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
+		A200CDE01DEA1100FAC00001 /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = A200CDE01DEA1100FAC00002 /* AppDelegate.mm */; };
+		A200CDE01DEA1100FAC00003 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = A200CDE01DEA1100FAC00004 /* main.m */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		821D1092978CCFB35D352E6C /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6CC2969297C41056B943D6 /* ExpoModulesProvider.swift */; };
 		ESPK001A2B3C4D5E6F7890AB /* libespeak-ng in Frameworks */ = {isa = PBXBuildFile; productRef = ESPK001A2B3C4D5E6F7890AC /* libespeak-ng */; };
 		FDC231951099F7CECF20EAAE /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		RAGRDR01M2CA45674006654EE /* RagPackReaderModule.m in Sources */ = {isa = PBXBuildFile; fileRef = RAGRDR02M2CA45674006654EE /* RagPackReaderModule.m */; };
+		94F4FEC942304CA7971A2A59 /* BootSplash.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 9B875F66B32F43B1A89268D4 /* BootSplash.storyboard */; };
+		DC30446CFD31467C8E13DD90 /* Colors.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9735C48DAFF74E7A92187F1D /* Colors.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -25,7 +28,9 @@
 		3B4392A12AC88292D35C810B /* Pods-ATLAS00.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ATLAS00.debug.xcconfig"; path = "Target Support Files/Pods-ATLAS00/Pods-ATLAS00.debug.xcconfig"; sourceTree = "<group>"; };
 		5709B34CF0A7D63546082F79 /* Pods-ATLAS00.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ATLAS00.release.xcconfig"; path = "Target Support Files/Pods-ATLAS00/Pods-ATLAS00.release.xcconfig"; sourceTree = "<group>"; };
 		5DCACB8F33CDC322A6C60F78 /* libPods-ATLAS00.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-ATLAS00.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = ATLAS00/AppDelegate.swift; sourceTree = "<group>"; };
+		A200CDE01DEA1100FAC00002 /* AppDelegate.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = AppDelegate.mm; path = ATLAS00/AppDelegate.mm; sourceTree = "<group>"; };
+		A200CDE01DEA1100FAC00004 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = main.m; path = ATLAS00/main.m; sourceTree = "<group>"; };
+		A200CDE01DEA1100FAC00005 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AppDelegate.h; path = ATLAS00/AppDelegate.h; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = ATLAS00/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		8E6CC2969297C41056B943D6 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-ATLAS00/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		E1E2E3E42CA45674006654EF /* ATLAS00.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ATLAS00.entitlements; sourceTree = "<group>"; };
@@ -34,6 +39,8 @@
 		P1P3R0M0D3L0NNX00002 /* model.onnx.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = model.onnx.json; sourceTree = "<group>"; };
 		RAGRDR02M2CA45674006654EE /* RagPackReaderModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ATLAS00/RagPackReaderModule.m; sourceTree = "<group>"; };
 		RAGRDR03M2CA45674006654EE /* RagPackReaderModule.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ATLAS00/RagPackReaderModule.h; sourceTree = "<group>"; };
+		9B875F66B32F43B1A89268D4 /* BootSplash.storyboard */ = {isa = PBXFileReference; name = "BootSplash.storyboard"; path = "ATLAS00/BootSplash.storyboard"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
+		9735C48DAFF74E7A92187F1D /* Colors.xcassets */ = {isa = PBXFileReference; name = "Colors.xcassets"; path = "ATLAS00/Colors.xcassets"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = folder.assetcatalog; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -49,11 +56,13 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		13B07FAE1A68108700A75B9A /* ATLAS */ = {
+		13B07FAE1A68108700A75B9A /* ATLAS00 */ = {
 			isa = PBXGroup;
 			children = (
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
-				761780EC2CA45674006654EE /* AppDelegate.swift */,
+				A200CDE01DEA1100FAC00005 /* AppDelegate.h */,
+				A200CDE01DEA1100FAC00002 /* AppDelegate.mm */,
+				A200CDE01DEA1100FAC00004 /* main.m */,
 				E1E2E3E42CA45674006654EF /* ATLAS00.entitlements */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
@@ -61,6 +70,8 @@
 				P1P3R0M0D3L0NNX00005 /* PiperModel */,
 				RAGRDR02M2CA45674006654EE /* RagPackReaderModule.m */,
 				RAGRDR03M2CA45674006654EE /* RagPackReaderModule.h */,
+				9B875F66B32F43B1A89268D4 /* BootSplash.storyboard */,
+				9735C48DAFF74E7A92187F1D /* Colors.xcassets */,
 			);
 			name = ATLAS00;
 			sourceTree = "<group>";
@@ -77,7 +88,7 @@
 		70F477553E71DFF0D14ECD68 /* ExpoModulesProviders */ = {
 			isa = PBXGroup;
 			children = (
-				944C8FF78CD9830D81B350B8 /* ATLAS */,
+				944C8FF78CD9830D81B350B8 /* ATLAS00 */,
 			);
 			name = ExpoModulesProviders;
 			sourceTree = "<group>";
@@ -92,7 +103,7 @@
 		83CBB9F61A601CBA00E9B192 = {
 			isa = PBXGroup;
 			children = (
-				13B07FAE1A68108700A75B9A /* ATLAS */,
+				13B07FAE1A68108700A75B9A /* ATLAS00 */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
@@ -112,7 +123,7 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		944C8FF78CD9830D81B350B8 /* ATLAS */ = {
+		944C8FF78CD9830D81B350B8 /* ATLAS00 */ = {
 			isa = PBXGroup;
 			children = (
 				8E6CC2969297C41056B943D6 /* ExpoModulesProvider.swift */,
@@ -142,7 +153,7 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		13B07F861A680F5B00A75B9A /* ATLAS */ = {
+		13B07F861A680F5B00A75B9A /* ATLAS00 */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "ATLAS00" */;
 			buildPhases = (
@@ -199,7 +210,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				13B07F861A680F5B00A75B9A /* ATLAS */,
+				13B07F861A680F5B00A75B9A /* ATLAS00 */,
 			);
 		};
 /* End PBXProject section */
@@ -212,6 +223,8 @@
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				FDC231951099F7CECF20EAAE /* PrivacyInfo.xcprivacy in Resources */,
+				94F4FEC942304CA7971A2A59 /* BootSplash.storyboard in Resources */,
+				DC30446CFD31467C8E13DD90 /* Colors.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -366,7 +379,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
+				A200CDE01DEA1100FAC00001 /* AppDelegate.mm in Sources */,
+				A200CDE01DEA1100FAC00003 /* main.m in Sources */,
 				RAGRDR01M2CA45674006654EE /* RagPackReaderModule.m in Sources */,
 				821D1092978CCFB35D352E6C /* ExpoModulesProvider.swift in Sources */,
 			);
