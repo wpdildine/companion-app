@@ -33,6 +33,10 @@ export function committedResponseFromSemanticFrontDoor(
     case 'abstain_no_grounding':
     case 'abstain_transcript':
       return { text: '', kind: 'abstain' };
+    case 'restates_request':
+      throw new Error(
+        'committedResponseFromSemanticFrontDoor: restates_request is handled in useAgentOrchestrator (scriptedResponses)',
+      );
     case 'proceed_to_retrieval':
       throw new Error(
         'committedResponseFromSemanticFrontDoor: proceed_to_retrieval is not a blocked front-door outcome',

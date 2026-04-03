@@ -55,6 +55,10 @@ import {
 import { committedResponseFromSemanticFrontDoor } from './orchestrator/frontDoorCommit';
 import { resolveScriptedAnswerSlot } from './scripted/resolveScriptedAnswerSlot';
 import {
+  pickRandomResponse,
+  RESTATES_REQUEST_RESPONSES,
+} from './scripted/scriptedResponses';
+import {
   emitRequestDebug,
   type RequestDebugSinkRef,
 } from './orchestrator/telemetry';
@@ -1829,12 +1833,92 @@ export function useAgentOrchestrator(
     }
     if (runResult.status === 'front_door') {
       requestInFlightRef.current = false;
+      const fd = runResult.semanticFrontDoor;
+
+      if (fd.front_door_verdict === 'restates_request') {
+        logInfo('AgentOrchestrator', 'semantic front door restates_request', {
+          requestId: reqId,
+        });
+        const phrase =
+          pickRandomResponse(RESTATES_REQUEST_RESPONSES).trim() ||
+          RESTATES_REQUEST_RESPONSES[0] ||
+          '';
+        setResponseText(phrase.length > 0 ? phrase : null);
+        setValidationSummary(null);
+        previousCommittedResponseRef.current = null;
+        previousCommittedValidationRef.current = null;
+        setLastFrontDoorOutcome({ requestId: reqId, semanticFrontDoor: fd });
+        setProcessingSubstate(null);
+        emitRequestDebug(requestDebugSinkRef, {
+          type: 'processing_substate',
+          requestId: reqId,
+          processingSubstate: null,
+          timestamp: Date.now(),
+        });
+        setError(null);
+        playbackRequestIdRef.current = reqId;
+        if (isLogGateEnabled('playbackHandoff')) {
+          logInfo(
+            'ResponseSurface',
+            'response_surface_playback_bound_to_committed_response',
+            {
+              requestId: reqId,
+              speakingBoundToCommittedResponse: true,
+              committedChars: phrase.length,
+              source: 'restates_request',
+            },
+          );
+        }
+        if (phrase.length > 0) {
+          playTextRef.current
+            ?.(phrase, { posture: 'default' })
+            .catch(() => undefined);
+        }
+        setTimeout(() => {
+          const completedAtForArtifacts = Date.now();
+          emitContextArtifactDebug(
+            requestDebugSinkRef,
+            {
+              requestId: reqId,
+              timestamp: completedAtForArtifacts,
+            },
+            () =>
+              projectContextArtifact({
+                requestId: reqId,
+                timestampMs: completedAtForArtifacts,
+                rawText: acceptedTranscript,
+                normalizedText: normalizedTranscript,
+                domainValid: true,
+                validationSummary: null,
+                fallbackUsed: false,
+              }),
+          );
+          emitSettlementArtifactDebug(
+            requestDebugSinkRef,
+            {
+              requestId: reqId,
+              timestamp: completedAtForArtifacts,
+            },
+            () =>
+              projectSettlementArtifact({
+                requestId: reqId,
+                timestampMs: completedAtForArtifacts,
+                lifecycle: lifecycleRef.current,
+                rawText: acceptedTranscript,
+                normalizedText: normalizedTranscript,
+                responseText: phrase,
+                validationSummary: null,
+              }),
+          );
+        }, 0);
+        return phrase.length > 0 ? phrase : null;
+      }
+
       activeRequestIdRef.current = 0;
       logInfo('AgentOrchestrator', 'active requestId cleared', {
         requestId: reqId,
         reason: 'semantic_front_door',
       });
-      const fd = runResult.semanticFrontDoor;
       const committed = committedResponseFromSemanticFrontDoor(fd);
       const proposed = resolveScriptedAnswerSlot({
         path: 'front_door',

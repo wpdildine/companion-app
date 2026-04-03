@@ -60,4 +60,10 @@ describe('recoverableReasonKeyForFrontDoorVerdict', () => {
     expect(ng).toBe('semanticFrontDoorNoGrounding');
     expect(cl).toBe('semanticFrontDoorClarify');
   });
+
+  it('maps restates_request to semanticFrontDoorRestates', () => {
+    expect(recoverableReasonKeyForFrontDoorVerdict('restates_request')).toBe(
+      'semanticFrontDoorRestates',
+    );
+  });
 });

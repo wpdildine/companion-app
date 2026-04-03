@@ -65,4 +65,14 @@ describe('committedResponseFromSemanticFrontDoor', () => {
       ),
     ).toThrow(/proceed_to_retrieval/);
   });
+
+  it('throws for restates_request (orchestrator owns scripted copy)', () => {
+    expect(() =>
+      committedResponseFromSemanticFrontDoor(
+        baseFd({
+          front_door_verdict: 'restates_request',
+        }),
+      ),
+    ).toThrow(/restates_request/);
+  });
 });
