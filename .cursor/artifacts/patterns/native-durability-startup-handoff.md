@@ -1,3 +1,9 @@
+# BOUNDARY ARTIFACT (pattern)
+
+**Seam moved:** Yes — native durability authority for Cycle 1 startup handoff is explicit at `scripts/native-overrides` + apply/regen plumbing, not only in generated trees.
+
+---
+
 # Pattern: native durability authority — startup handoff (BootSplash)
 
 ## Authority

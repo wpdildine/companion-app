@@ -1,9 +1,17 @@
 /**
  * Full-screen boot seam: matches native bootsplash until release is signaled.
+ * Staged presentation only: idle → alive → ready (Cycle 2).
  * @format
  */
 
-import { Image, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Animated,
+  Easing,
+  Image,
+  StyleSheet,
+  View,
+} from 'react-native';
 
 const LOGO = require('../../assets/bootsplash/logo.png');
 
@@ -14,13 +22,87 @@ export type BootHandoffSurfaceProps = {
 export default function BootHandoffSurface({
   onSafeToReleaseNative,
 }: BootHandoffSurfaceProps) {
+  const [stage, setStage] = useState<'idle' | 'alive' | 'ready'>('idle');
+  const didStartRef = useRef(false);
+  const aliveLoopRef = useRef<ReturnType<typeof Animated.loop> | null>(null);
+
+  const opacity = useRef(new Animated.Value(1)).current;
+  const scale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    return () => {
+      aliveLoopRef.current?.stop();
+      opacity.stopAnimation();
+      scale.stopAnimation();
+    };
+  }, []);
+
   return (
     <View
       style={styles.root}
       onLayout={() => {
-        requestAnimationFrame(() => onSafeToReleaseNative());
+        if (didStartRef.current) {
+          return;
+        }
+        didStartRef.current = true;
+
+        requestAnimationFrame(() => {
+          setStage('alive');
+
+          aliveLoopRef.current = Animated.loop(
+            Animated.sequence([
+              Animated.parallel([
+                Animated.timing(opacity, {
+                  toValue: 0.92,
+                  duration: 600,
+                  easing: Easing.inOut(Easing.ease),
+                  useNativeDriver: true,
+                }),
+                Animated.timing(scale, {
+                  toValue: 1.02,
+                  duration: 600,
+                  easing: Easing.inOut(Easing.ease),
+                  useNativeDriver: true,
+                }),
+              ]),
+              Animated.parallel([
+                Animated.timing(opacity, {
+                  toValue: 1,
+                  duration: 600,
+                  easing: Easing.inOut(Easing.ease),
+                  useNativeDriver: true,
+                }),
+                Animated.timing(scale, {
+                  toValue: 1,
+                  duration: 600,
+                  easing: Easing.inOut(Easing.ease),
+                  useNativeDriver: true,
+                }),
+              ]),
+            ]),
+          );
+          aliveLoopRef.current.start();
+
+          requestAnimationFrame(() => {
+            setStage('ready');
+
+            aliveLoopRef.current?.stop();
+            opacity.stopAnimation(() => opacity.setValue(1));
+            scale.stopAnimation(() => scale.setValue(1));
+
+            onSafeToReleaseNative();
+          });
+        });
       }}>
-      <Image source={LOGO} style={styles.logo} resizeMode="contain" />
+      <Animated.View
+        style={[
+          styles.logoWrap,
+          stage === 'idle'
+            ? undefined
+            : { opacity, transform: [{ scale }] },
+        ]}>
+        <Image source={LOGO} style={styles.logo} resizeMode="contain" />
+      </Animated.View>
     </View>
   );
 }
@@ -29,6 +111,12 @@ const styles = StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#1a2332',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoWrap: {
+    width: 100,
+    height: 99,
     alignItems: 'center',
     justifyContent: 'center',
   },
