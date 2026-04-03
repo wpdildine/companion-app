@@ -5,7 +5,7 @@
  * (completed, failed, or stale).
  */
 
-import type { SemanticFrontDoor } from '@atlas/runtime';
+import type { FailureIntent, SemanticFrontDoor } from '@atlas/runtime';
 import { Platform } from 'react-native';
 import {
   ask as ragAsk,
@@ -92,6 +92,7 @@ export type ExecuteRequestResult =
       committedText: string;
       validationSummary: ValidationSummary;
       shouldPlay: boolean;
+      failureIntent?: FailureIntent | null;
     }
   | {
       status: 'failed';
@@ -356,9 +357,11 @@ export async function executeRequest(
       return { status: 'stale' };
     }
     const nudgedRaw = result.nudged;
+    const failureIntent: FailureIntent | null = result.failure_intent ?? null;
     const committedText = resolveScriptedAnswerSlot({
       path: 'settle',
       nudgedRaw,
+      failureIntent,
     });
     const isEmptyOutput = nudgedRaw.trim().length === 0;
     if (isEmptyOutput) {
@@ -484,6 +487,7 @@ export async function executeRequest(
       committedText,
       validationSummary: result.validationSummary,
       shouldPlay: committedText.length > 0 && !isEmptyOutput,
+      failureIntent,
     };
   } catch (e) {
     const msg = errorMessage(e);

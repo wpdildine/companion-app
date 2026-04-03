@@ -1,4 +1,5 @@
 import { resolveScriptedAnswerSlot } from './resolveScriptedAnswerSlot';
+import * as scriptedResponses from './scriptedResponses';
 import {
   SCRIPTED_CLARIFY_ENTITY_PREFIX,
   SCRIPTED_EMPTY_OUTPUT_MESSAGE,
@@ -51,6 +52,18 @@ describe('resolveScriptedAnswerSlot', () => {
       expect(
         resolveScriptedAnswerSlot({ path: 'settle', nudgedRaw: 'Hello' }),
       ).toBe('Hello');
+    });
+
+    it('replaces insufficient_context with scripted line (runtime failureIntent)', () => {
+      jest.spyOn(scriptedResponses, 'pickRandomResponse').mockReturnValue('SCRIPTED_INSUFFICIENT');
+      expect(
+        resolveScriptedAnswerSlot({
+          path: 'settle',
+          nudgedRaw: 'Insufficient retrieved context.',
+          failureIntent: 'insufficient_context',
+        }),
+      ).toBe('SCRIPTED_INSUFFICIENT');
+      jest.restoreAllMocks();
     });
   });
 });

@@ -75,6 +75,7 @@ describe('resolveActDescriptor', () => {
         resolver_mode: 'resolved' as const,
         transcript_decision: 'pass_through' as const,
         front_door_verdict: 'clarify_entity' as const,
+        failure_intent: 'ambiguous_entity' as const,
       },
     } satisfies LastFrontDoorOutcome;
     const orch = baseOrch({ lastFrontDoorOutcome: fd });

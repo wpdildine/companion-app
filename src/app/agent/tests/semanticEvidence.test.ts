@@ -151,6 +151,7 @@ describe('getOutcomeProjection', () => {
         resolver_mode: 'resolved' as const,
         transcript_decision: 'pass_through' as const,
         front_door_verdict: 'clarify_entity' as const,
+        failure_intent: 'ambiguous_entity' as const,
       },
     } satisfies LastFrontDoorOutcome;
     expect(
@@ -223,6 +224,7 @@ describe('getOutcomeProjection', () => {
         resolver_mode: 'resolved' as const,
         transcript_decision: 'pass_through' as const,
         front_door_verdict: 'clarify_entity' as const,
+        failure_intent: 'ambiguous_entity' as const,
       },
     } satisfies LastFrontDoorOutcome;
     const events: ObservedEvent[] = [
@@ -259,6 +261,7 @@ describe('getOutcomeProjection', () => {
         resolver_mode: 'resolved' as const,
         transcript_decision: 'pass_through' as const,
         front_door_verdict: 'clarify_entity' as const,
+        failure_intent: 'ambiguous_entity' as const,
       },
     } satisfies LastFrontDoorOutcome;
     expect(

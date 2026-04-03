@@ -13,6 +13,7 @@ import {
 } from './executeRequest';
 import type { ValidationSummary } from '../../../rag';
 import { CONTEXT_RETRIEVAL_EMPTY } from '../../../rag/errors';
+import * as scriptedResponses from '../scripted/scriptedResponses';
 
 jest.mock('../../../rag', () => {
   const actual = jest.requireActual<typeof import('../../../rag')>('../../../rag');
@@ -114,11 +115,12 @@ describe('executeRequest', () => {
         validationSummary: emptyValidationSummary,
         frontDoorBlocked: true,
         semanticFrontDoor: {
-          contract_version: 1,
+          contract_version: 7,
           working_query: 'x',
           resolver_mode: 'none',
           transcript_decision: 'insufficient_signal',
           front_door_verdict: 'abstain_transcript',
+          failure_intent: 'restate_request',
           routing_readiness: { sections_selected: [] },
         },
       });
@@ -137,6 +139,32 @@ describe('executeRequest', () => {
       );
       expect(options.setResponseText).not.toHaveBeenCalled();
       expect(options.setValidationSummary).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('insufficient_context settle', () => {
+    it('commits scripted line instead of sentinel when failure_intent is set', async () => {
+      jest
+        .spyOn(scriptedResponses, 'pickRandomResponse')
+        .mockReturnValue('PICKED_INSUFFICIENT_LINE');
+      getMockRagAsk().mockResolvedValue({
+        nudged: 'Insufficient retrieved context.',
+        raw: 'Insufficient retrieved context.',
+        failure_intent: 'insufficient_context',
+        validationSummary: emptyValidationSummary,
+      });
+
+      const options = makeBaseOptions();
+      const result = await executeRequest(options);
+
+      expect(result).toMatchObject({
+        status: 'completed',
+        committedText: 'PICKED_INSUFFICIENT_LINE',
+        failureIntent: 'insufficient_context',
+        shouldPlay: true,
+      });
+      expect(options.setResponseText).toHaveBeenCalledWith('PICKED_INSUFFICIENT_LINE');
+      jest.restoreAllMocks();
     });
   });
 

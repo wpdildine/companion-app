@@ -5,6 +5,12 @@ import type { AgentOrchestratorActions } from '../useAgentOrchestrator';
 import type { AgentOrchestratorListeners, AgentOrchestratorState } from '../types';
 import Voice from '@react-native-voice/voice';
 import * as rag from '../../../rag';
+import * as scriptedResponses from '../scripted/scriptedResponses';
+import {
+  AMBIGUOUS_ENTITY_RESPONSES,
+  INSUFFICIENT_CONTEXT_RESPONSES,
+  RESTATES_REQUEST_RESPONSES,
+} from '../scripted/scriptedResponses';
 
 const mockGetSttProvider = jest.fn<
   'local' | 'remote' | 'remote_with_local_fallback',
@@ -371,6 +377,44 @@ describe('AgentOrchestrator contract events', () => {
     expect(idleIndex).toBeLessThan(requestCompleteIndex);
     expect(requestCompleteIndex).toBeGreaterThan(idleIndex);
 
+    harness.unmount();
+  });
+
+  it('insufficient_context completion commits scripted line and plays TTS', async () => {
+    jest
+      .spyOn(scriptedResponses, 'pickRandomResponse')
+      .mockImplementation(list => list[0] ?? '');
+    const recorder = createEventRecorder();
+    const harness = createHarness(recorder);
+    (rag.ask as jest.Mock).mockResolvedValueOnce({
+      raw: 'Insufficient retrieved context.',
+      nudged: 'Insufficient retrieved context.',
+      failure_intent: 'insufficient_context',
+      validationSummary: {
+        cards: [],
+        rules: [],
+        stats: {
+          cardHitRate: 0,
+          ruleHitRate: 0,
+          unknownCardCount: 0,
+          invalidRuleCount: 0,
+        },
+      },
+    });
+
+    await emitFinalTranscript(harness, 'test query');
+
+    await act(async () => {
+      await harness.actions.submit();
+      await flushPromises();
+      await flushPromises();
+      await new Promise<void>(resolve => setTimeout(resolve, 40));
+      await flushPromises();
+    });
+
+    expect(harness.getState().responseText).toBe(INSUFFICIENT_CONTEXT_RESPONSES[0] ?? null);
+    expect(recorder.events.some(e => e.type === 'tts_start')).toBe(true);
+    jest.restoreAllMocks();
     harness.unmount();
   });
 
@@ -935,7 +979,10 @@ describe('AgentOrchestrator contract events', () => {
     harness.unmount();
   });
 
-  it('semantic front door abstain_transcript: recoverable, no TTS, committed response cleared', async () => {
+  it('semantic front door abstain_transcript: scripted restate_request, TTS, no recoverable overlay', async () => {
+    jest
+      .spyOn(scriptedResponses, 'pickRandomResponse')
+      .mockImplementation(list => list[0] ?? '');
     const onRecoverableFailure = jest.fn();
     const recorder = createEventRecorder();
     const harness = createHarness(recorder, { onRecoverableFailure });
@@ -954,11 +1001,12 @@ describe('AgentOrchestrator contract events', () => {
       },
       frontDoorBlocked: true,
       semanticFrontDoor: {
-        contract_version: 1,
+        contract_version: 7,
         working_query: 'x',
         resolver_mode: 'none',
         transcript_decision: 'insufficient_signal',
         front_door_verdict: 'abstain_transcript',
+        failure_intent: 'restate_request',
         routing_readiness: { sections_selected: [] },
       },
     });
@@ -972,29 +1020,22 @@ describe('AgentOrchestrator contract events', () => {
     });
 
     expect(harness.getState().lifecycle).toBe('idle');
-    expect(harness.getState().responseText).toBeNull();
+    expect(harness.getState().responseText).toBe(RESTATES_REQUEST_RESPONSES[0] ?? null);
     expect(harness.getState().validationSummary).toBeNull();
     expect(harness.getState().lastFrontDoorOutcome?.semanticFrontDoor.front_door_verdict).toBe(
       'abstain_transcript',
     );
-    expect(
-      recorder.events.some(event => event.type === 'tts_start'),
-    ).toBe(false);
-    expect(onRecoverableFailure).toHaveBeenCalledWith(
-      'semantic_front_door',
-      expect.objectContaining({
-        stage: 'request',
-        frontDoorVerdict: 'abstain_transcript',
-        semanticFrontDoor: expect.objectContaining({
-          front_door_verdict: 'abstain_transcript',
-        }),
-      }),
-    );
+    expect(recorder.events.some(event => event.type === 'tts_start')).toBe(true);
+    expect(onRecoverableFailure).not.toHaveBeenCalled();
+    jest.restoreAllMocks();
 
     harness.unmount();
   });
 
-  it('semantic front door clarify_entity commits candidate names and lastFrontDoorOutcome', async () => {
+  it('semantic front door clarify_entity: scripted ambiguous_entity + TTS + lastFrontDoorOutcome', async () => {
+    jest
+      .spyOn(scriptedResponses, 'pickRandomResponse')
+      .mockImplementation(list => list[0] ?? '');
     const recorder = createEventRecorder();
     const harness = createHarness(recorder);
     (rag.ask as jest.Mock).mockResolvedValueOnce({
@@ -1012,11 +1053,12 @@ describe('AgentOrchestrator contract events', () => {
       },
       frontDoorBlocked: true,
       semanticFrontDoor: {
-        contract_version: 1,
+        contract_version: 7,
         working_query: 'bolt',
         resolver_mode: 'ambiguous',
         transcript_decision: 'pass_through',
         front_door_verdict: 'clarify_entity',
+        failure_intent: 'ambiguous_entity',
         ambiguous_candidates: [{ name: 'Lightning Bolt' }, { name: 'Bolt Bend' }],
         routing_readiness: { sections_selected: [] },
       },
@@ -1030,21 +1072,21 @@ describe('AgentOrchestrator contract events', () => {
       await flushPromises();
     });
 
-    expect(harness.getState().responseText).toBe(
-      'Which did you mean?\n\nLightning Bolt\nBolt Bend',
-    );
+    expect(harness.getState().responseText).toBe(AMBIGUOUS_ENTITY_RESPONSES[0] ?? null);
     expect(harness.getState().validationSummary).toBeNull();
     expect(harness.getState().lastFrontDoorOutcome?.semanticFrontDoor.front_door_verdict).toBe(
       'clarify_entity',
     );
-    expect(
-      recorder.events.some(event => event.type === 'tts_start'),
-    ).toBe(false);
+    expect(recorder.events.some(event => event.type === 'tts_start')).toBe(true);
+    jest.restoreAllMocks();
 
     harness.unmount();
   });
 
   it('successful completion clears lastFrontDoorOutcome after prior front door', async () => {
+    jest
+      .spyOn(scriptedResponses, 'pickRandomResponse')
+      .mockImplementation(list => list[0] ?? '');
     const recorder = createEventRecorder();
     const harness = createHarness(recorder);
     (rag.ask as jest.Mock)
@@ -1063,11 +1105,12 @@ describe('AgentOrchestrator contract events', () => {
         },
         frontDoorBlocked: true,
         semanticFrontDoor: {
-          contract_version: 1,
+          contract_version: 7,
           working_query: 'x',
           resolver_mode: 'none',
           transcript_decision: 'insufficient_signal',
           front_door_verdict: 'abstain_transcript',
+          failure_intent: 'restate_request',
           routing_readiness: { sections_selected: [] },
         },
       })
@@ -1099,6 +1142,7 @@ describe('AgentOrchestrator contract events', () => {
       await flushPromises();
     });
 
+    jest.restoreAllMocks();
     harness.unmount();
   });
 });

@@ -67,6 +67,7 @@ function projectFrontDoor(fd: SemanticFrontDoor): Record<string, unknown> {
     resolver_mode: fd.resolver_mode,
     transcript_decision: fd.transcript_decision,
     front_door_verdict: fd.front_door_verdict,
+    failure_intent: fd.failure_intent,
     resolver_query_norm: fd.resolver_query_norm ?? undefined,
     ambiguous_candidates: fd.ambiguous_candidates ?? undefined,
     routing_readiness: fd.routing_readiness,

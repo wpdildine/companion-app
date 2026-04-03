@@ -26,6 +26,7 @@ describe('frontDoorGate', () => {
         resolver_mode: 'none',
         transcript_decision: 'pass_through',
         front_door_verdict: 'abstain_no_grounding',
+        failure_intent: null,
         routing_readiness: { sections_selected: [] },
       },
     });
@@ -64,6 +65,7 @@ describe('frontDoorGate', () => {
         resolver_mode: 'resolved',
         transcript_decision: 'pass_through',
         front_door_verdict: 'proceed_to_retrieval',
+        failure_intent: null,
         routing_readiness: { sections_selected: ['100'] },
       },
     });

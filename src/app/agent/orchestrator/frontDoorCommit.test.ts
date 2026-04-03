@@ -1,16 +1,24 @@
 import { committedResponseFromSemanticFrontDoor } from './frontDoorCommit';
-import type { SemanticFrontDoor } from '@atlas/runtime';
+import {
+  failureIntentFromFrontDoorVerdict,
+  SEMANTIC_FRONT_DOOR_CONTRACT_VERSION,
+  type SemanticFrontDoor,
+} from '@atlas/runtime';
 
 function baseFd(
   overrides: Partial<SemanticFrontDoor> & Pick<SemanticFrontDoor, 'front_door_verdict'>,
 ): SemanticFrontDoor {
+  const { front_door_verdict, failure_intent: fiOverride, ...rest } = overrides;
   return {
-    contract_version: 1,
+    contract_version: SEMANTIC_FRONT_DOOR_CONTRACT_VERSION,
     working_query: 'q',
     resolver_mode: 'none',
-    transcript_decision: 'sufficient_signal',
+    transcript_decision: 'pass_through',
     routing_readiness: { sections_selected: [] },
-    ...overrides,
+    front_door_verdict,
+    failure_intent:
+      fiOverride ?? failureIntentFromFrontDoorVerdict(front_door_verdict),
+    ...rest,
   } as SemanticFrontDoor;
 }
 

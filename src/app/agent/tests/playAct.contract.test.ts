@@ -1,14 +1,19 @@
-import type { SemanticFrontDoor } from '@atlas/runtime';
+import {
+  failureIntentFromFrontDoorVerdict,
+  SEMANTIC_FRONT_DOOR_CONTRACT_VERSION,
+  type SemanticFrontDoor,
+} from '@atlas/runtime';
 import { resolveAgentPlayAct } from '../resolveAgentPlayAct';
 import type { AgentOrchestratorState } from '../types';
 
 function fd(front_door_verdict: SemanticFrontDoor['front_door_verdict']): SemanticFrontDoor {
   return {
-    contract_version: 1,
+    contract_version: SEMANTIC_FRONT_DOOR_CONTRACT_VERSION,
     working_query: 'q',
     resolver_mode: 'resolved',
     transcript_decision: 'pass_through',
     front_door_verdict,
+    failure_intent: failureIntentFromFrontDoorVerdict(front_door_verdict),
   };
 }
 

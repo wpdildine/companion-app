@@ -56,7 +56,7 @@ import { committedResponseFromSemanticFrontDoor } from './orchestrator/frontDoor
 import { resolveScriptedAnswerSlot } from './scripted/resolveScriptedAnswerSlot';
 import {
   pickRandomResponse,
-  RESTATES_REQUEST_RESPONSES,
+  scriptedResponsesForFailureIntent,
 } from './scripted/scriptedResponses';
 import {
   emitRequestDebug,
@@ -1835,14 +1835,15 @@ export function useAgentOrchestrator(
       requestInFlightRef.current = false;
       const fd = runResult.semanticFrontDoor;
 
-      if (fd.front_door_verdict === 'restates_request') {
-        logInfo('AgentOrchestrator', 'semantic front door restates_request', {
+      const scriptedFi = fd.failure_intent;
+      if (scriptedFi === 'restate_request' || scriptedFi === 'ambiguous_entity') {
+        logInfo('AgentOrchestrator', 'semantic front door scripted failure_intent', {
           requestId: reqId,
+          failure_intent: scriptedFi,
         });
+        const list = scriptedResponsesForFailureIntent(scriptedFi);
         const phrase =
-          pickRandomResponse(RESTATES_REQUEST_RESPONSES).trim() ||
-          RESTATES_REQUEST_RESPONSES[0] ||
-          '';
+          pickRandomResponse(list).trim() || list[0] || '';
         setResponseText(phrase.length > 0 ? phrase : null);
         setValidationSummary(null);
         previousCommittedResponseRef.current = null;
@@ -1865,7 +1866,7 @@ export function useAgentOrchestrator(
               requestId: reqId,
               speakingBoundToCommittedResponse: true,
               committedChars: phrase.length,
-              source: 'restates_request',
+              source: scriptedFi,
             },
           );
         }

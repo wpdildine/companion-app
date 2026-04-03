@@ -3,7 +3,11 @@
  * Matrix: docs/semanticChannelCopyParity.matrix.md
  */
 
-import type { SemanticFrontDoor } from '@atlas/runtime';
+import {
+  failureIntentFromFrontDoorVerdict,
+  SEMANTIC_FRONT_DOOR_CONTRACT_VERSION,
+  type SemanticFrontDoor,
+} from '@atlas/runtime';
 import { getSemanticEvidence } from '../getSemanticEvidence';
 import {
   deriveSemanticChannelCopyCore,
@@ -19,11 +23,12 @@ import type { SemanticSurfaceState } from '../semanticEvidenceTypes';
 
 function fd(verdict: SemanticFrontDoor['front_door_verdict']): SemanticFrontDoor {
   return {
-    contract_version: 1,
+    contract_version: SEMANTIC_FRONT_DOOR_CONTRACT_VERSION,
     working_query: 'q',
     resolver_mode: 'resolved',
     transcript_decision: 'pass_through',
     front_door_verdict: verdict,
+    failure_intent: failureIntentFromFrontDoorVerdict(verdict),
   };
 }
 

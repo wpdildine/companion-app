@@ -35,8 +35,12 @@ export { RAG_USE_DETERMINISTIC_CONTEXT_ONLY } from './types';
 export type { PackFileReader, PackState, RagInitParams } from './types';
 export type { ValidationSummary } from './validate';
 
-import type { SemanticFrontDoor } from '@atlas/runtime';
-import { runHumanShortPipeline, runPipelineHumanShort } from '@atlas/runtime';
+import type { FailureIntent, SemanticFrontDoor } from '@atlas/runtime';
+import {
+  failureIntentFromSettledNudgedText,
+  runHumanShortPipeline,
+  runPipelineHumanShort,
+} from '@atlas/runtime';
 import type { ValidationSummary } from './validate';
 
 /** Payload shape for request-debug sink (same contract as app requestDebugStore.emit). */
@@ -81,6 +85,8 @@ export interface AskResult {
   /** Deterministic path stopped at semantic front door (no LLM / no retrieval misuse). */
   frontDoorBlocked?: boolean;
   semanticFrontDoor?: SemanticFrontDoor;
+  /** Runtime-owned; mirrors `semanticFrontDoor.failure_intent` when front-blocked, else from settle sentinel. */
+  failure_intent?: FailureIntent | null;
 }
 
 /** Set to true to disable nudge globally (for debugging prompt/chunks vs CLI). */
@@ -380,6 +386,7 @@ export async function ask(
       options,
     );
     if (result.frontDoorBlocked && result.semanticFrontDoor) {
+      const fd = result.semanticFrontDoor;
       return {
         raw: '',
         nudged: '',
@@ -394,7 +401,8 @@ export async function ask(
           },
         },
         frontDoorBlocked: true,
-        semanticFrontDoor: result.semanticFrontDoor,
+        semanticFrontDoor: fd,
+        failure_intent: fd.failure_intent,
       };
     }
     if (skipNudge) {
@@ -404,6 +412,7 @@ export async function ask(
         result.contextText,
         result.contextSelection,
       );
+      const failure_intent = failureIntentFromSettledNudgedText(nudgedText);
       return {
         raw: result.raw,
         nudged: nudgedText,
@@ -422,6 +431,7 @@ export async function ask(
             result.contextSelection,
           ),
         ),
+        failure_intent,
       };
     }
     options?.onValidationStart?.();
@@ -437,12 +447,14 @@ export async function ask(
       result.contextText,
       result.contextSelection,
     );
+    const failure_intent = failureIntentFromSettledNudgedText(nudgedText);
     return {
       raw: result.raw,
       nudged: nudgedText,
       validationSummary: dedupeValidationSummary(
         appendSelectedContext(nudgeResult.summary, result.contextSelection),
       ),
+      failure_intent,
     };
   } finally {
     askInFlight = false;

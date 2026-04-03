@@ -24,6 +24,7 @@ describe('getContextRN land-type rule hydration', () => {
         resolver_mode: 'resolved',
         transcript_decision: 'pass_through',
         front_door_verdict: 'proceed_to_retrieval',
+        failure_intent: null,
         routing_readiness: { sections_selected: [] },
       })),
       analyzeQuery: jest.fn(() => ({

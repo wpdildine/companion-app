@@ -3,6 +3,11 @@
  * Stateless; no I/O. See ANSWER_RESOLUTION.md (W2 settle, W3 front-door).
  */
 
+import type { FailureIntent } from '@atlas/runtime';
+import {
+  INSUFFICIENT_CONTEXT_RESPONSES,
+  pickRandomResponse,
+} from './scriptedResponses';
 import {
   SCRIPTED_CLARIFY_ENTITY_PREFIX,
   SCRIPTED_EMPTY_OUTPUT_MESSAGE,
@@ -22,6 +27,8 @@ export type ScriptedAnswerSlotSettleInput = {
   path: 'settle';
   /** Raw `nudged` from RAG; empty trim selects empty-output canonical copy. */
   nudgedRaw: string;
+  /** Runtime `AskResult.failure_intent`; replaces sentinel with scripted line only. */
+  failureIntent?: FailureIntent | null;
 };
 
 export type ScriptedAnswerSlotInput =
@@ -46,6 +53,14 @@ export function resolveScriptedAnswerSlot(
       return null;
     }
     return `${SCRIPTED_CLARIFY_ENTITY_PREFIX}${body}`;
+  }
+
+  if (input.failureIntent === 'insufficient_context') {
+    const line =
+      pickRandomResponse(INSUFFICIENT_CONTEXT_RESPONSES).trim() ||
+      INSUFFICIENT_CONTEXT_RESPONSES[0] ||
+      '';
+    return line.length > 0 ? line : SCRIPTED_EMPTY_OUTPUT_MESSAGE;
   }
 
   const n = input.nudgedRaw;
