@@ -1,6 +1,6 @@
 /**
  * Full-screen boot seam: matches native bootsplash until release is signaled.
- * Staged presentation only: idle → alive → ready (Cycle 2).
+ * Staged presentation: idle → alive → ready; one pulse cycle before release (Cycle 3).
  * @format
  */
 
@@ -24,14 +24,12 @@ export default function BootHandoffSurface({
 }: BootHandoffSurfaceProps) {
   const [stage, setStage] = useState<'idle' | 'alive' | 'ready'>('idle');
   const didStartRef = useRef(false);
-  const aliveLoopRef = useRef<ReturnType<typeof Animated.loop> | null>(null);
 
   const opacity = useRef(new Animated.Value(1)).current;
   const scale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     return () => {
-      aliveLoopRef.current?.stop();
       opacity.stopAnimation();
       scale.stopAnimation();
     };
@@ -49,46 +47,46 @@ export default function BootHandoffSurface({
         requestAnimationFrame(() => {
           setStage('alive');
 
-          aliveLoopRef.current = Animated.loop(
-            Animated.sequence([
-              Animated.parallel([
-                Animated.timing(opacity, {
-                  toValue: 0.92,
-                  duration: 600,
-                  easing: Easing.inOut(Easing.ease),
-                  useNativeDriver: true,
-                }),
-                Animated.timing(scale, {
-                  toValue: 1.02,
-                  duration: 600,
-                  easing: Easing.inOut(Easing.ease),
-                  useNativeDriver: true,
-                }),
-              ]),
-              Animated.parallel([
-                Animated.timing(opacity, {
-                  toValue: 1,
-                  duration: 600,
-                  easing: Easing.inOut(Easing.ease),
-                  useNativeDriver: true,
-                }),
-                Animated.timing(scale, {
-                  toValue: 1,
-                  duration: 600,
-                  easing: Easing.inOut(Easing.ease),
-                  useNativeDriver: true,
-                }),
-              ]),
+          const pulse = Animated.sequence([
+            Animated.parallel([
+              Animated.timing(opacity, {
+                toValue: 0.92,
+                duration: 600,
+                easing: Easing.inOut(Easing.ease),
+                useNativeDriver: true,
+              }),
+              Animated.timing(scale, {
+                toValue: 1.02,
+                duration: 600,
+                easing: Easing.inOut(Easing.ease),
+                useNativeDriver: true,
+              }),
             ]),
-          );
-          aliveLoopRef.current.start();
+            Animated.parallel([
+              Animated.timing(opacity, {
+                toValue: 1,
+                duration: 600,
+                easing: Easing.inOut(Easing.ease),
+                useNativeDriver: true,
+              }),
+              Animated.timing(scale, {
+                toValue: 1,
+                duration: 600,
+                easing: Easing.inOut(Easing.ease),
+                useNativeDriver: true,
+              }),
+            ]),
+          ]);
 
-          requestAnimationFrame(() => {
+          pulse.start(({ finished }) => {
+            if (!finished) {
+              return;
+            }
+
             setStage('ready');
 
-            aliveLoopRef.current?.stop();
-            opacity.stopAnimation(() => opacity.setValue(1));
-            scale.stopAnimation(() => scale.setValue(1));
+            opacity.setValue(1);
+            scale.setValue(1);
 
             onSafeToReleaseNative();
           });
