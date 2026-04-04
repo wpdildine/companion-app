@@ -98,6 +98,7 @@ import {
   runAvPlaybackSpeak,
   stopSpokenOutputEngines,
 } from './av/avPlaybackCommand';
+import { toSpeechText } from './speech/speechTransform';
 import {
   cleanupPendingIosStopIfNeededMechanics,
   finishAvPlaybackLifecycleMechanics,
@@ -348,6 +349,8 @@ export interface AgentOrchestratorActions {
     options?: {
       posture?: PlaybackPosture;
       treatedDebugRenderOverrides?: TreatedDebugRenderOverrides;
+      /** When true, apply `toSpeechText` (committed response → TTS only). */
+      speechTransform?: boolean;
     },
   ) => Promise<void>;
   cancelPlayback: () => void;
@@ -469,6 +472,7 @@ export function useAgentOrchestrator(
       options?: {
         posture?: PlaybackPosture;
         treatedDebugRenderOverrides?: TreatedDebugRenderOverrides;
+        speechTransform?: boolean;
       },
     ) => Promise<void>
   >(null);
@@ -2308,7 +2312,10 @@ export function useAgentOrchestrator(
         );
       }
       playTextRef.current
-        ?.(runResult.committedText, { posture: 'treated' })
+        ?.(runResult.committedText, {
+          posture: 'treated',
+          speechTransform: true,
+        })
         .catch(() => undefined);
 
       // Defer artifact emission so we do not block the Piper TTS macrotask
@@ -2415,9 +2422,12 @@ export function useAgentOrchestrator(
       options?: {
         posture?: PlaybackPosture;
         treatedDebugRenderOverrides?: TreatedDebugRenderOverrides;
+        speechTransform?: boolean;
       },
     ) => {
-      const normalized = text.trim();
+      const raw =
+        options?.speechTransform === true ? toSpeechText(text) : text;
+      const normalized = raw.trim();
       if (!normalized) {
         logWarn('AgentOrchestrator', 'playback skipped: empty text');
         return;

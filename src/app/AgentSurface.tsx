@@ -869,7 +869,7 @@ export default function AgentSurface() {
           source: 'surface',
           payload: {},
         });
-        orchActions.playText(answer);
+        orchActions.playText(answer, { speechTransform: true });
       }
       return;
     }
