@@ -81,6 +81,13 @@ const RECOVERABLE_FAILURES: Record<string, FailureClassification> = {
     transientEvent: 'softFail',
     telemetryReason: 'semanticFrontDoorRestates',
   },
+  semanticFrontDoorRepairRequest: {
+    kind: 'semantic_front_door',
+    stage: 'request',
+    recoverability: 'recoverable',
+    transientEvent: 'softFail',
+    telemetryReason: 'semanticFrontDoorRepairRequest',
+  },
 };
 
 const TERMINAL_FAILURES: Record<string, FailureClassification> = {
@@ -199,7 +206,8 @@ export function recoverableReasonKeyForFrontDoorVerdict(
     | 'clarify_entity'
     | 'abstain_no_grounding'
     | 'abstain_transcript'
-    | 'restates_request',
+    | 'restates_request'
+    | 'repair_request',
 ): keyof typeof RECOVERABLE_FAILURES {
   switch (verdict) {
     case 'abstain_transcript':
@@ -210,6 +218,8 @@ export function recoverableReasonKeyForFrontDoorVerdict(
       return 'semanticFrontDoorClarify';
     case 'restates_request':
       return 'semanticFrontDoorRestates';
+    case 'repair_request':
+      return 'semanticFrontDoorRepairRequest';
     case 'proceed_to_retrieval':
       throw new Error(
         'recoverableReasonKeyForFrontDoorVerdict: proceed_to_retrieval is not a blocked front-door verdict',

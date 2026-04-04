@@ -97,4 +97,9 @@ export interface AgentOrchestratorState {
   requestInFlight: boolean;
   /** Mirror of playbackRequestIdRef while playback is bound to a request. */
   playbackRequestId: number | null;
+  /**
+   * Runtime-proposed repair candidate awaiting follow-up classification (AO storage only).
+   * Cleared on confirm/reject/unrelated, completion, or failure.
+   */
+  pendingRepair?: { repairedQuery: string; requestId: number } | null;
 }

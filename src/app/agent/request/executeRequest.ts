@@ -6,6 +6,7 @@
  */
 
 import type { FailureIntent, SemanticFrontDoor } from '@atlas/runtime';
+import type { RepairFollowUpKind } from '../../../rag/repairFollowUp';
 import { Platform } from 'react-native';
 import {
   ask as ragAsk,
@@ -84,6 +85,8 @@ export interface ExecuteRequestOptions {
   previousCommittedValidationRef: Ref<ValidationSummary | null>;
   /** Optional mirror of listener milestones for semantic evidence (read-only). */
   semanticEvidenceEventsRef?: Ref<ObservedEvent[]>;
+  /** When set, RAG classifies follow-up vs proposed repair before normal ask (runtime seam). */
+  pendingRepair?: { repairedQuery: string; requestId: number };
 }
 
 export type ExecuteRequestResult =
@@ -105,7 +108,13 @@ export type ExecuteRequestResult =
     }
   | {
       status: 'stale';
+    }
+  | {
+      status: 'repair_follow_up';
+      kind: RepairFollowUpKind;
     };
+
+export type { RepairFollowUpKind };
 
 /**
  * Runs one RAG request and returns a terminal result for the orchestrator to commit.
@@ -134,6 +143,7 @@ export async function executeRequest(
     previousCommittedResponseRef,
     previousCommittedValidationRef,
     semanticEvidenceEventsRef,
+    pendingRepair,
   } = options;
 
   let firstChunkSent = false;
@@ -141,6 +151,24 @@ export async function executeRequest(
   let lastResponseTextUpdateAt = 0;
 
   try {
+    if (pendingRepair != null) {
+      if (reqId !== activeRequestIdRef.current) {
+        previousCommittedResponseRef.current = null;
+        previousCommittedValidationRef.current = null;
+        return { status: 'stale' };
+      }
+      const repairAsk = await ragAsk(question, {
+        requestId: reqId,
+        requestDebugSink: requestDebugSink ?? undefined,
+        pendingRepairCandidate: pendingRepair,
+      });
+      if (repairAsk.repairFollowUp) {
+        return {
+          status: 'repair_follow_up',
+          kind: repairAsk.repairFollowUp,
+        };
+      }
+    }
     if (!getPackStateFn()) {
       let packRoot: string;
       try {

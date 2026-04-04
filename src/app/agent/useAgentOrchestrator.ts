@@ -22,6 +22,17 @@ import {
   getPackState,
   type ValidationSummary,
 } from '../../rag';
+
+const EMPTY_SETTLEMENT_VALIDATION_SUMMARY: ValidationSummary = {
+  cards: [],
+  rules: [],
+  stats: {
+    cardHitRate: 0,
+    ruleHitRate: 0,
+    unknownCardCount: 0,
+    invalidRuleCount: 0,
+  },
+};
 import {
   getEndpointBaseUrl,
   getSttProvider,
@@ -56,6 +67,8 @@ import { committedResponseFromSemanticFrontDoor } from './orchestrator/frontDoor
 import { resolveScriptedAnswerSlot } from './scripted/resolveScriptedAnswerSlot';
 import {
   pickRandomResponse,
+  REPAIR_REJECT_RESPONSES,
+  REPAIR_REQUEST_RESPONSES,
   scriptedResponsesForFailureIntent,
 } from './scripted/scriptedResponses';
 import {
@@ -63,6 +76,7 @@ import {
   type RequestDebugSinkRef,
 } from './orchestrator/telemetry';
 import { executeRequest } from './request/executeRequest';
+import type { SemanticFrontDoor } from '@atlas/runtime';
 import type { RequestDebugEmitPayload } from './requestDebugTypes';
 import { appendSemanticEvidenceEvent } from './semanticEvidenceSink';
 import { mirrorRequestIdentityFromRefs } from './semanticEvidenceMirror';
@@ -117,6 +131,22 @@ import {
   NATIVE_RESTART_GUARD_MS,
   runNativeStopFlow,
 } from './av/voiceNative';
+
+/** Read runtime-provided repair candidate (duck-typed until @atlas/runtime widens SemanticFrontDoor). */
+function readRepairedQueryFromSemanticFrontDoor(fd: SemanticFrontDoor): string | null {
+  const x = fd as SemanticFrontDoor & {
+    repaired_query?: string;
+    repairedQuery?: string;
+  };
+  const s =
+    typeof x.repaired_query === 'string'
+      ? x.repaired_query
+      : typeof x.repairedQuery === 'string'
+        ? x.repairedQuery
+        : null;
+  const t = s?.trim();
+  return t && t.length > 0 ? t : null;
+}
 
 /** Non-authoritative artifact projection; failures must not abort request completion. */
 const ARTIFACT_PROJECTION_HELPER = 'extractIntentSignals';
@@ -374,6 +404,14 @@ export function useAgentOrchestrator(
     useState<AudioSessionState>('idleReady');
   const [lastFrontDoorOutcome, setLastFrontDoorOutcome] =
     useState<LastFrontDoorOutcome | null>(null);
+  const [pendingRepair, setPendingRepair] = useState<{
+    repairedQuery: string;
+    requestId: number;
+  } | null>(null);
+  const pendingRepairRef = useRef(pendingRepair);
+  useEffect(() => {
+    pendingRepairRef.current = pendingRepair;
+  }, [pendingRepair]);
 
   const voiceRef = useRef<VoiceModule | null>(null);
   const ttsRef = useRef<TtsModule | null>(null);
@@ -1821,9 +1859,13 @@ export function useAgentOrchestrator(
         previousCommittedResponseRef,
         previousCommittedValidationRef,
         semanticEvidenceEventsRef,
+        ...(pendingRepairRef.current != null
+          ? { pendingRepair: pendingRepairRef.current }
+          : {}),
       });
     } catch {
       requestInFlightRef.current = false;
+      setPendingRepair(null);
       setAudioState('idleReady', { reason: 'requestFailed' });
       return null;
     }
@@ -1831,9 +1873,213 @@ export function useAgentOrchestrator(
       requestInFlightRef.current = false;
       return null;
     }
+    if (runResult.status === 'repair_follow_up') {
+      if (runResult.kind === 'confirm_repair') {
+        const pr = pendingRepairRef.current;
+        const rq = pr?.repairedQuery;
+        setPendingRepair(null);
+        if (rq) {
+          updateTranscript(rq);
+        }
+        try {
+          runResult = await executeRequest({
+            requestId: reqId,
+            question: normalizeTranscript(transcribedTextRef.current),
+            requestDebugSink: requestDebugSinkRef?.current ?? undefined,
+            activeRequestIdRef,
+            setResponseText,
+            setValidationSummary,
+            setProcessingSubstate,
+            listenersRef: listenersRef ?? { current: null },
+            getPackState: () => !!getPackState(),
+            copyBundlePackToDocuments,
+            getContentPackPathInDocuments,
+            createDocumentsPackReader,
+            createBundlePackReader,
+            createThrowReader,
+            getPackEmbedModelId: (reader: unknown) =>
+              getPackEmbedModelId(
+                reader as Parameters<typeof getPackEmbedModelId>[0],
+              ),
+            getOnDeviceModelPaths,
+            previousCommittedResponseRef,
+            previousCommittedValidationRef,
+            semanticEvidenceEventsRef,
+          });
+        } catch {
+          requestInFlightRef.current = false;
+          setPendingRepair(null);
+          setAudioState('idleReady', { reason: 'requestFailed' });
+          return null;
+        }
+      } else if (runResult.kind === 'reject_repair') {
+        setPendingRepair(null);
+        requestInFlightRef.current = false;
+        activeRequestIdRef.current = 0;
+        setProcessingSubstate(null);
+        emitRequestDebug(requestDebugSinkRef, {
+          type: 'processing_substate',
+          requestId: reqId,
+          processingSubstate: null,
+          timestamp: Date.now(),
+        });
+        setMode('idle');
+        setLifecycle('idle');
+        setAudioState('idleReady', { reason: 'repairReject' });
+        const phrase =
+          pickRandomResponse(REPAIR_REJECT_RESPONSES).trim() ||
+          REPAIR_REJECT_RESPONSES[0] ||
+          '';
+        if (phrase.length > 0) {
+          playTextRef.current?.(phrase, { posture: 'default' }).catch(() => undefined);
+        }
+        return null;
+      } else {
+        setPendingRepair(null);
+        try {
+          runResult = await executeRequest({
+            requestId: reqId,
+            question,
+            requestDebugSink: requestDebugSinkRef?.current ?? undefined,
+            activeRequestIdRef,
+            setResponseText,
+            setValidationSummary,
+            setProcessingSubstate,
+            listenersRef: listenersRef ?? { current: null },
+            getPackState: () => !!getPackState(),
+            copyBundlePackToDocuments,
+            getContentPackPathInDocuments,
+            createDocumentsPackReader,
+            createBundlePackReader,
+            createThrowReader,
+            getPackEmbedModelId: (reader: unknown) =>
+              getPackEmbedModelId(
+                reader as Parameters<typeof getPackEmbedModelId>[0],
+              ),
+            getOnDeviceModelPaths,
+            previousCommittedResponseRef,
+            previousCommittedValidationRef,
+            semanticEvidenceEventsRef,
+          });
+        } catch {
+          requestInFlightRef.current = false;
+          setPendingRepair(null);
+          setAudioState('idleReady', { reason: 'requestFailed' });
+          return null;
+        }
+      }
+    }
+    if (!runResult || runResult.status === 'stale') {
+      requestInFlightRef.current = false;
+      return null;
+    }
+    if (runResult.status === 'repair_follow_up') {
+      requestInFlightRef.current = false;
+      return null;
+    }
     if (runResult.status === 'front_door') {
       requestInFlightRef.current = false;
       const fd = runResult.semanticFrontDoor;
+      const verdictStr = fd.front_door_verdict as string;
+
+      if (verdictStr === 'repair_request') {
+        const repairedQuery = readRepairedQueryFromSemanticFrontDoor(fd);
+        if (repairedQuery) {
+          setPendingRepair({ repairedQuery, requestId: reqId });
+          setLastFrontDoorOutcome({ requestId: reqId, semanticFrontDoor: fd });
+          const list = REPAIR_REQUEST_RESPONSES;
+          const phrase = pickRandomResponse(list).trim() || list[0] || '';
+          setResponseText(phrase.length > 0 ? phrase : null);
+          setValidationSummary(null);
+          previousCommittedResponseRef.current = null;
+          previousCommittedValidationRef.current = null;
+          setProcessingSubstate(null);
+          emitRequestDebug(requestDebugSinkRef, {
+            type: 'processing_substate',
+            requestId: reqId,
+            processingSubstate: null,
+            timestamp: Date.now(),
+          });
+          setError(null);
+          playbackRequestIdRef.current = reqId;
+          emitRecoverableFailure(
+            recoverableReasonKeyForFrontDoorVerdict('repair_request'),
+            {
+              frontDoorVerdict: 'repair_request',
+              resolverMode: fd.resolver_mode,
+              semanticFrontDoor: fd,
+            },
+          );
+          if (isLogGateEnabled('playbackHandoff')) {
+            logInfo(
+              'ResponseSurface',
+              'response_surface_playback_bound_to_committed_response',
+              {
+                requestId: reqId,
+                speakingBoundToCommittedResponse: true,
+                committedChars: phrase.length,
+                source: 'repair_request',
+              },
+            );
+          }
+          if (phrase.length > 0) {
+            playTextRef.current
+              ?.(phrase, { posture: 'default' })
+              .catch(() => undefined);
+          }
+          setTimeout(() => {
+            const completedAtForArtifacts = Date.now();
+            emitContextArtifactDebug(
+              requestDebugSinkRef,
+              {
+                requestId: reqId,
+                timestamp: completedAtForArtifacts,
+              },
+              () =>
+                projectContextArtifact({
+                  requestId: reqId,
+                  timestampMs: completedAtForArtifacts,
+                  rawText: acceptedTranscript,
+                  normalizedText: normalizedTranscript,
+                  domainValid: true,
+                  validationSummary: null,
+                  fallbackUsed: false,
+                }),
+            );
+            emitSettlementArtifactDebug(
+              requestDebugSinkRef,
+              {
+                requestId: reqId,
+                timestamp: completedAtForArtifacts,
+              },
+              () =>
+                projectSettlementArtifact({
+                  requestId: reqId,
+                  timestampMs: completedAtForArtifacts,
+                  lifecycle: lifecycleRef.current,
+                  rawText: acceptedTranscript,
+                  normalizedText: normalizedTranscript,
+                  responseText: phrase,
+                  validationSummary: EMPTY_SETTLEMENT_VALIDATION_SUMMARY,
+                }),
+            );
+          }, 0);
+          return phrase.length > 0 ? phrase : null;
+        }
+        setPendingRepair(null);
+        emitRecoverableFailure('semanticFrontDoorRepairRequest', {
+          frontDoorVerdict: 'repair_request',
+          resolverMode: fd.resolver_mode,
+          semanticFrontDoor: fd,
+        });
+        setProcessingSubstate(null);
+        setMode('idle');
+        setLifecycle('idle');
+        setAudioState('idleReady', { reason: 'semanticFrontDoor' });
+        return null;
+      }
+
+      setPendingRepair(null);
 
       const scriptedFi = fd.failure_intent;
       if (scriptedFi === 'restate_request' || scriptedFi === 'ambiguous_entity') {
@@ -1908,7 +2154,7 @@ export function useAgentOrchestrator(
                 rawText: acceptedTranscript,
                 normalizedText: normalizedTranscript,
                 responseText: phrase,
-                validationSummary: null,
+                validationSummary: EMPTY_SETTLEMENT_VALIDATION_SUMMARY,
               }),
           );
         }, 0);
@@ -1966,6 +2212,7 @@ export function useAgentOrchestrator(
     if (runResult.status === 'failed') {
       requestInFlightRef.current = false;
       activeRequestIdRef.current = 0;
+      setPendingRepair(null);
       logInfo('AgentOrchestrator', 'active requestId cleared', {
         requestId: reqId,
       });
@@ -2039,6 +2286,7 @@ export function useAgentOrchestrator(
     requestInFlightRef.current = false;
     setError(null);
     setLastFrontDoorOutcome(null);
+    setPendingRepair(null);
     setProcessingSubstate(null);
     emitRequestDebug(requestDebugSinkRef, {
       type: 'processing_substate',
@@ -2293,6 +2541,7 @@ export function useAgentOrchestrator(
     setError(null);
     setProcessingSubstate(null);
     setLastFrontDoorOutcome(null);
+    setPendingRepair(null);
     setMode('idle');
     setLifecycle('idle');
     logInfo('AgentOrchestrator', 'retryable idle state restored');
@@ -2912,6 +3161,7 @@ export function useAgentOrchestrator(
     recordingSessionId: recordingSessionRef.current,
     lastFrontDoorOutcome,
     metadata: undefined,
+    pendingRepair,
     ...requestIdentity,
   };
 

@@ -37,6 +37,10 @@ export type { ValidationSummary } from './validate';
 
 import type { FailureIntent, SemanticFrontDoor } from '@atlas/runtime';
 import {
+  classifyRepairFollowUp,
+  type RepairFollowUpKind,
+} from './repairFollowUp';
+import {
   failureIntentFromSettledNudgedText,
   runHumanShortPipeline,
   runPipelineHumanShort,
@@ -75,6 +79,10 @@ export interface AskOptions {
   onGenerationStart?: () => void;
   /** Called once after runRagFlow returns, before nudgeResponse (post-generation validation). */
   onValidationStart?: () => void;
+  /**
+   * When set, ask() classifies follow-up vs a runtime-proposed repair (RAG seam; no pack init).
+   */
+  pendingRepairCandidate?: { repairedQuery: string; requestId: number };
 }
 
 /** Result of ask(question). */
@@ -87,6 +95,8 @@ export interface AskResult {
   semanticFrontDoor?: SemanticFrontDoor;
   /** Runtime-owned; mirrors `semanticFrontDoor.failure_intent` when front-blocked, else from settle sentinel. */
   failure_intent?: FailureIntent | null;
+  /** Set when pendingRepairCandidate classification runs (runtime seam). */
+  repairFollowUp?: RepairFollowUpKind;
 }
 
 /** Set to true to disable nudge globally (for debugging prompt/chunks vs CLI). */
@@ -98,6 +108,19 @@ let fileReader: PackFileReader | null = null;
 
 /** Guard: only one ask() at a time to avoid concurrent inference and duplicate class issues. */
 let askInFlight = false;
+
+const EMPTY_ASK_VALIDATION_SUMMARY: ValidationSummary = {
+  cards: [],
+  rules: [],
+  stats: {
+    cardHitRate: 0,
+    ruleHitRate: 0,
+    unknownCardCount: 0,
+    invalidRuleCount: 0,
+  },
+};
+
+export type { RepairFollowUpKind } from './repairFollowUp';
 
 function appendSelectedContext(
   summary: ValidationSummary,
@@ -352,6 +375,19 @@ export async function ask(
   const skipNudge = options?.debugSkipNudge ?? RAG_DEBUG_SKIP_NUDGE;
   askInFlight = true;
   try {
+    if (options?.pendingRepairCandidate) {
+      const kind = classifyRepairFollowUp(
+        _question,
+        options.pendingRepairCandidate.repairedQuery,
+      );
+      return {
+        raw: '',
+        nudged: '',
+        validationSummary: EMPTY_ASK_VALIDATION_SUMMARY,
+        frontDoorBlocked: true,
+        repairFollowUp: kind,
+      };
+    }
     const normalizeHumanShortLines = (text: string): string => {
       const lines = (text ?? '')
         .split('\n')

@@ -18,7 +18,7 @@ export const RESTATES_REQUEST_RESPONSES: readonly string[] = [
   'You speedran that—slow it down and try again.',
   'That sounded like autocorrect gave up—retry?',
   'I caught vibes, not meaning. Try again.',
-  'Close… but also not at all. Go again?',
+  'Close …  but also not at all. Go again?',
   'That input needs a patch—run it back.',
   'You almost had it—one more try.',
   'I think your words are buffering—say it again?',
@@ -69,6 +69,22 @@ export const AMBIGUOUS_ENTITY_RESPONSES: readonly string[] = [
   'That’s not specific enough—try again.',
   'Give me the exact one.',
   'Help me help you—clarify.',
+];
+
+/** Scripted copy when runtime requests repair confirmation (AO turnstile only). */
+export const REPAIR_REQUEST_RESPONSES: readonly string[] = [
+  'I can run a cleaned-up version of that—want to use it?',
+  'I have a clearer phrasing—should I run with that?',
+  'Want me to search using this fixed version instead?',
+  'I can retry with a repaired query—go ahead?',
+  'Use the repaired wording I suggest?',
+];
+
+/** Optional short line after user rejects the proposed repair. */
+export const REPAIR_REJECT_RESPONSES: readonly string[] = [
+  'Okay—say what you meant whenever you’re ready.',
+  'No problem. Ask again when you want.',
+  'Got it. Try a new question when you like.',
 ];
 
 export const INSUFFICIENT_CONTEXT_RESPONSES: readonly string[] = [
