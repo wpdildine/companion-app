@@ -6,11 +6,11 @@ import type { AgentOrchestratorListeners, AgentOrchestratorState } from '../type
 import Voice from '@react-native-voice/voice';
 import * as rag from '../../../rag';
 import * as scriptedResponses from '../scripted/scriptedResponses';
+import { INSUFFICIENT_CONTEXT_RESPONSES } from '../scripted/scriptedResponses';
 import {
-  AMBIGUOUS_ENTITY_RESPONSES,
-  INSUFFICIENT_CONTEXT_RESPONSES,
-  RESTATES_REQUEST_RESPONSES,
-} from '../scripted/scriptedResponses';
+  STUB_ABSTAIN_MESSAGE,
+  STUB_CLARIFY_MESSAGE,
+} from '../response/normalizeOutcomeToResponse';
 
 const mockGetSttProvider = jest.fn<
   'local' | 'remote' | 'remote_with_local_fallback',
@@ -979,7 +979,7 @@ describe('AgentOrchestrator contract events', () => {
     harness.unmount();
   });
 
-  it('semantic front door abstain_transcript: scripted restate_request, TTS, no recoverable overlay', async () => {
+  it('semantic front door abstain_transcript: stub message, TTS, recoverable overlay', async () => {
     jest
       .spyOn(scriptedResponses, 'pickRandomResponse')
       .mockImplementation(list => list[0] ?? '');
@@ -1019,15 +1019,20 @@ describe('AgentOrchestrator contract events', () => {
       await flushPromises();
     });
 
+    await act(async () => {
+      await new Promise<void>(resolve => setTimeout(resolve, 150));
+      await flushPromises();
+    });
+
     expect(harness.getState().lifecycle).toBe('idle');
-    expect(harness.getState().responseText).toBe(RESTATES_REQUEST_RESPONSES[0] ?? null);
+    expect(harness.getState().responseText).toBe(STUB_ABSTAIN_MESSAGE);
     expect(harness.getState().validationSummary).toBeNull();
     expect(harness.getState().lastFrontDoorOutcome?.semanticFrontDoor.front_door_verdict).toBe(
       'abstain_transcript',
     );
     expect(recorder.events.some(event => event.type === 'tts_start')).toBe(true);
-    expect(onRecoverableFailure).not.toHaveBeenCalled();
-    jest.restoreAllMocks();
+    expect(onRecoverableFailure).toHaveBeenCalled();
+  jest.restoreAllMocks();
 
     harness.unmount();
   });
@@ -1072,7 +1077,12 @@ describe('AgentOrchestrator contract events', () => {
       await flushPromises();
     });
 
-    expect(harness.getState().responseText).toBe(AMBIGUOUS_ENTITY_RESPONSES[0] ?? null);
+    await act(async () => {
+      await new Promise<void>(resolve => setTimeout(resolve, 150));
+      await flushPromises();
+    });
+
+    expect(harness.getState().responseText).toBe(STUB_CLARIFY_MESSAGE);
     expect(harness.getState().validationSummary).toBeNull();
     expect(harness.getState().lastFrontDoorOutcome?.semanticFrontDoor.front_door_verdict).toBe(
       'clarify_entity',
@@ -1124,6 +1134,11 @@ describe('AgentOrchestrator contract events', () => {
       await flushPromises();
     });
     expect(harness.getState().lastFrontDoorOutcome).not.toBeNull();
+
+    await act(async () => {
+      await new Promise<void>(resolve => setTimeout(resolve, 120));
+      await flushPromises();
+    });
 
     await emitFinalTranscript(harness, 'Hello there second');
 

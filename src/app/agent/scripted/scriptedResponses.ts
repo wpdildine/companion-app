@@ -130,6 +130,8 @@ export function scriptedResponsesForFailureIntent(
       return AMBIGUOUS_ENTITY_RESPONSES;
     case 'insufficient_context':
       return INSUFFICIENT_CONTEXT_RESPONSES;
+    case 'repair_request':
+      return REPAIR_REQUEST_RESPONSES;
     default: {
       const _exhaustive: never = fi;
       return _exhaustive;

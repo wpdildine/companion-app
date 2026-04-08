@@ -74,6 +74,13 @@ const RECOVERABLE_FAILURES: Record<string, FailureClassification> = {
     transientEvent: 'softFail',
     telemetryReason: 'semanticFrontDoorClarify',
   },
+  noGroundingClarify: {
+    kind: 'semantic_front_door',
+    stage: 'request',
+    recoverability: 'recoverable',
+    transientEvent: 'softFail',
+    telemetryReason: 'no_grounding_clarify',
+  },
   semanticFrontDoorRestates: {
     kind: 'semantic_front_door',
     stage: 'request',
@@ -204,6 +211,7 @@ export function recoverableReasonKeyForFrontDoorVerdict(
   verdict:
     | 'proceed_to_retrieval'
     | 'clarify_entity'
+    | 'clarify_no_grounding'
     | 'abstain_no_grounding'
     | 'abstain_transcript'
     | 'restates_request'
@@ -216,6 +224,8 @@ export function recoverableReasonKeyForFrontDoorVerdict(
       return 'semanticFrontDoorNoGrounding';
     case 'clarify_entity':
       return 'semanticFrontDoorClarify';
+    case 'clarify_no_grounding':
+      return 'noGroundingClarify';
     case 'restates_request':
       return 'semanticFrontDoorRestates';
     case 'repair_request':

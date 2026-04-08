@@ -549,6 +549,8 @@ export async function runRagFlow(
               frontDoorBlocked: true,
             };
           }
+          // Runtime `semanticFrontDoor` is authoritative after getContextRN; do not re-derive
+          // clarify/no_grounding from routing_trace here (see AO execution: single semantic authority).
         } else {
           logWarn(
             'RAG',

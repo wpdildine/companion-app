@@ -140,6 +140,35 @@ describe('executeRequest', () => {
       expect(options.setResponseText).not.toHaveBeenCalled();
       expect(options.setValidationSummary).not.toHaveBeenCalled();
     });
+
+    it('does not return front_door when frontDoorBlocked disagrees but verdict is proceed_to_retrieval', async () => {
+      getMockRagAsk().mockResolvedValue({
+        nudged: 'Grounded answer',
+        raw: 'Grounded answer',
+        validationSummary: emptyValidationSummary,
+        frontDoorBlocked: true,
+        semanticFrontDoor: {
+          contract_version: 7,
+          working_query: 'blood moon',
+          resolver_mode: 'none',
+          transcript_decision: 'pass_through',
+          front_door_verdict: 'proceed_to_retrieval',
+          failure_intent: null,
+          routing_readiness: { sections_selected: [] },
+        },
+      });
+
+      const options = makeBaseOptions();
+      const result = await executeRequest(options);
+
+      expect(result).toMatchObject({
+        status: 'completed',
+        committedText: 'Grounded answer',
+      });
+      expect(options.requestDebugSink).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'semantic_front_door' }),
+      );
+    });
   });
 
   describe('insufficient_context settle', () => {

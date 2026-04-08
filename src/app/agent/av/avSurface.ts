@@ -84,6 +84,8 @@ export async function startAvLocalVoiceListeningMechanics(args: {
   getSessionSttOverrideApplied: () => boolean;
   getRecordingStartAt: () => number | null;
   logInfo: AvLog;
+  /** Called after native voice start succeeds, before emitting listening transition facts. */
+  onNativeCaptureReady?: (recordingSessionId: string) => void;
 }): Promise<void> {
   const {
     recordingSessionId,
@@ -95,6 +97,7 @@ export async function startAvLocalVoiceListeningMechanics(args: {
     getSessionSttOverrideApplied,
     getRecordingStartAt,
     logInfo,
+    onNativeCaptureReady,
   } = args;
   const now = () => Date.now();
 
@@ -121,6 +124,7 @@ export async function startAvLocalVoiceListeningMechanics(args: {
     });
   }
   await startVoice();
+  onNativeCaptureReady?.(recordingSessionId);
   emitAvFact?.({
     kind: 'av.bookkeeping.listen_path',
     at: now(),
@@ -172,6 +176,8 @@ export async function startAvRemoteCaptureListeningMechanics(args: {
   getSessionSttOverrideApplied: () => boolean;
   getRecordingStartAt: () => number | null;
   logInfo: AvLog;
+  /** Called after native capture begins successfully, before emitting listening transition facts. */
+  onNativeCaptureReady?: (recordingSessionId: string) => void;
 }): Promise<boolean> {
   const {
     recordingSessionId,
@@ -182,12 +188,14 @@ export async function startAvRemoteCaptureListeningMechanics(args: {
     getSessionSttOverrideApplied,
     getRecordingStartAt,
     logInfo,
+    onNativeCaptureReady,
   } = args;
   const now = () => Date.now();
   const captureStarted = await beginCapture(recordingSessionId);
   if (!captureStarted) {
     return false;
   }
+  onNativeCaptureReady?.(recordingSessionId);
   emitAvFact?.({
     kind: 'av.bookkeeping.listen_path',
     at: now(),

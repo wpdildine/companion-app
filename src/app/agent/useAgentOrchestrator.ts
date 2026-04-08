@@ -63,14 +63,16 @@ import {
   projectFailureArtifact,
   projectSettlementArtifact,
 } from './orchestrator/artifactProjector';
-import { committedResponseFromSemanticFrontDoor } from './orchestrator/frontDoorCommit';
-import { resolveScriptedAnswerSlot } from './scripted/resolveScriptedAnswerSlot';
 import {
   pickRandomResponse,
   REPAIR_REJECT_RESPONSES,
-  REPAIR_REQUEST_RESPONSES,
-  scriptedResponsesForFailureIntent,
 } from './scripted/scriptedResponses';
+import {
+  normalizeExecutionFailureToResponse,
+  normalizeOutcomeToResponse,
+  normalizeUnknownExecutionFailureToResponse,
+} from './response/normalizeOutcomeToResponse';
+import { semanticFrontDoorToRuntimeOutcome } from './response/runtimeOutcome';
 import {
   emitRequestDebug,
   type RequestDebugSinkRef,
@@ -458,6 +460,8 @@ export function useAgentOrchestrator(
 
   const recordingSessionRef = useRef<string | null>(null);
   const recordingSessionSeqRef = useRef(0);
+  /** True while `startListening` is awaiting native capture/voice (replaces long-lived `starting` for shouldBlockStart). */
+  const listenStartInFlightRef = useRef(false);
   const pendingCapturedAudioRef = useRef<CapturedSttAudio | null>(null);
   const sessionFailureLedgerRef = useRef(
     new Map<string, SessionFailureLedgerEntry>(),
@@ -1330,9 +1334,11 @@ export function useAgentOrchestrator(
           sessionSttOverrideAppliedRef.current ?? false,
         getRecordingStartAt: () => recordingStartAtRef.current,
         logInfo,
+        onNativeCaptureReady: () =>
+          setAudioState('starting', { recordingSessionId }),
       });
     },
-    [emitAvFact],
+    [emitAvFact, setAudioState],
   );
 
   const startAvRemoteCaptureListening = useCallback(
@@ -1350,9 +1356,11 @@ export function useAgentOrchestrator(
           sessionSttOverrideAppliedRef.current ?? false,
         getRecordingStartAt: () => recordingStartAtRef.current,
         logInfo,
+        onNativeCaptureReady: () =>
+          setAudioState('starting', { recordingSessionId }),
       });
     },
-    [emitAvFact, sttAudioCapture],
+    [emitAvFact, setAudioState, sttAudioCapture],
   );
 
   // ===== AV isolation: playback command coordination mechanics =====
@@ -1578,6 +1586,13 @@ export function useAgentOrchestrator(
         );
         return { ok: false, reason: 'lifecycleBlocked' };
       }
+      if (listenStartInFlightRef.current) {
+        logWarn(
+          'AgentOrchestrator',
+          'start attempt rejected: listen start already in flight',
+        );
+        return { ok: false, reason: 'listenStartInFlight' };
+      }
       setError(null);
       if (fresh) {
         committedTextRef.current = '';
@@ -1604,8 +1619,12 @@ export function useAgentOrchestrator(
       recordingStartAtRef.current = Date.now();
       firstPartialAtRef.current = null;
       firstFinalAtRef.current = null;
-      setAudioState('starting', { recordingSessionId });
+      const failStart = (reason: string) => {
+        recordingSessionRef.current = null;
+        setAudioState('idleReady', { recordingSessionId, reason });
+      };
       try {
+        listenStartInFlightRef.current = true;
         const startRoute = selectAvStartRoute({
           sttProvider,
           hasVoiceModule: !!V,
@@ -1616,7 +1635,7 @@ export function useAgentOrchestrator(
           if (!endpointBaseUrl) {
             const message =
               'OpenAI proxy base URL not configured (ENDPOINT_BASE_URL)';
-            setAudioState('idleReady', { recordingSessionId });
+            failStart('sttBaseUrlMissing');
             setError(message);
             logError(
               'AgentOrchestrator',
@@ -1635,7 +1654,7 @@ export function useAgentOrchestrator(
           if (!remoteOk) {
             if (sttProvider === 'remote') {
               const message = 'Remote STT audio capture unavailable';
-              setAudioState('idleReady', { recordingSessionId });
+              failStart('sttCaptureUnavailable');
               setError(message);
               logError(
                 'AgentOrchestrator',
@@ -1658,6 +1677,7 @@ export function useAgentOrchestrator(
             'AgentOrchestrator',
             'start attempt rejected: voice module unavailable',
           );
+          failStart('voiceUnavailable');
           return { ok: false, reason: 'voiceUnavailable' };
         }
         await startAvLocalVoiceListening(recordingSessionId, sttProvider, {
@@ -1674,10 +1694,10 @@ export function useAgentOrchestrator(
           pendingCapturedAudioRef.current = null;
           await sttAudioCapture.cancelCapture(recordingSessionId);
         }
-        setAudioState('idleReady', { recordingSessionId });
         const message =
           e instanceof Error ? e.message : 'Failed to start voice';
         if (isRecognizerReentrancyError(message)) {
+          failStart('nativeReentrancy');
           logWarn(
             'AgentOrchestrator',
             'voice listen start blocked by native reentrancy',
@@ -1692,6 +1712,7 @@ export function useAgentOrchestrator(
           applyIoBlock('nativeReentrancy');
           return { ok: false, reason: 'nativeReentrancy' };
         }
+        failStart('startFailed');
         setError(message);
         setProcessingSubstate(null);
         setMode('idle');
@@ -1701,6 +1722,8 @@ export function useAgentOrchestrator(
           message,
         });
         return { ok: false, reason: 'startFailed' };
+      } finally {
+        listenStartInFlightRef.current = false;
       }
     },
     [
@@ -1869,8 +1892,26 @@ export function useAgentOrchestrator(
       });
     } catch {
       requestInFlightRef.current = false;
+      activeRequestIdRef.current = 0;
       setPendingRepair(null);
+      const thrown = normalizeUnknownExecutionFailureToResponse(
+        'executeRequestThrown',
+      );
+      setResponseText(thrown.message);
+      setValidationSummary(null);
+      previousCommittedResponseRef.current = null;
+      previousCommittedValidationRef.current = null;
+      setProcessingSubstate(null);
+      emitRequestDebug(requestDebugSinkRef, {
+        type: 'processing_substate',
+        requestId: reqId,
+        processingSubstate: null,
+        timestamp: Date.now(),
+      });
+      setMode('idle');
+      setLifecycle('idle');
       setAudioState('idleReady', { reason: 'requestFailed' });
+      setError(null);
       return null;
     }
     if (!runResult || runResult.status === 'stale') {
@@ -1912,8 +1953,26 @@ export function useAgentOrchestrator(
           });
         } catch {
           requestInFlightRef.current = false;
+          activeRequestIdRef.current = 0;
           setPendingRepair(null);
+          const thrown = normalizeUnknownExecutionFailureToResponse(
+            'executeRequestThrown',
+          );
+          setResponseText(thrown.message);
+          setValidationSummary(null);
+          previousCommittedResponseRef.current = null;
+          previousCommittedValidationRef.current = null;
+          setProcessingSubstate(null);
+          emitRequestDebug(requestDebugSinkRef, {
+            type: 'processing_substate',
+            requestId: reqId,
+            processingSubstate: null,
+            timestamp: Date.now(),
+          });
+          setMode('idle');
+          setLifecycle('idle');
           setAudioState('idleReady', { reason: 'requestFailed' });
+          setError(null);
           return null;
         }
       } else if (runResult.kind === 'reject_repair') {
@@ -1967,8 +2026,26 @@ export function useAgentOrchestrator(
           });
         } catch {
           requestInFlightRef.current = false;
+          activeRequestIdRef.current = 0;
           setPendingRepair(null);
+          const thrown = normalizeUnknownExecutionFailureToResponse(
+            'executeRequestThrown',
+          );
+          setResponseText(thrown.message);
+          setValidationSummary(null);
+          previousCommittedResponseRef.current = null;
+          previousCommittedValidationRef.current = null;
+          setProcessingSubstate(null);
+          emitRequestDebug(requestDebugSinkRef, {
+            type: 'processing_substate',
+            requestId: reqId,
+            processingSubstate: null,
+            timestamp: Date.now(),
+          });
+          setMode('idle');
+          setLifecycle('idle');
           setAudioState('idleReady', { reason: 'requestFailed' });
+          setError(null);
           return null;
         }
       }
@@ -1982,18 +2059,64 @@ export function useAgentOrchestrator(
       return null;
     }
     if (runResult.status === 'front_door') {
+      if (__DEV__) {
+        const v = runResult.semanticFrontDoor.front_door_verdict;
+        console.assert(
+          v !== 'proceed_to_retrieval',
+          'semantic authority: proceed_to_retrieval must not reach front_door branch',
+        );
+      }
       requestInFlightRef.current = false;
       const fd = runResult.semanticFrontDoor;
-      const verdictStr = fd.front_door_verdict as string;
+      const normalized = normalizeOutcomeToResponse(
+        semanticFrontDoorToRuntimeOutcome(fd),
+      );
+      const phrase = normalized.message;
 
-      if (verdictStr === 'repair_request') {
+      const emitFrontDoorArtifacts = () => {
+        const completedAtForArtifacts = Date.now();
+        emitContextArtifactDebug(
+          requestDebugSinkRef,
+          {
+            requestId: reqId,
+            timestamp: completedAtForArtifacts,
+          },
+          () =>
+            projectContextArtifact({
+              requestId: reqId,
+              timestampMs: completedAtForArtifacts,
+              rawText: acceptedTranscript,
+              normalizedText: normalizedTranscript,
+              domainValid: true,
+              validationSummary: null,
+              fallbackUsed: false,
+            }),
+        );
+        emitSettlementArtifactDebug(
+          requestDebugSinkRef,
+          {
+            requestId: reqId,
+            timestamp: completedAtForArtifacts,
+          },
+          () =>
+            projectSettlementArtifact({
+              requestId: reqId,
+              timestampMs: completedAtForArtifacts,
+              lifecycle: lifecycleRef.current,
+              rawText: acceptedTranscript,
+              normalizedText: normalizedTranscript,
+              responseText: phrase,
+              validationSummary: EMPTY_SETTLEMENT_VALIDATION_SUMMARY,
+            }),
+        );
+      };
+
+      if (fd.front_door_verdict === 'repair_request') {
         const repairedQuery = readRepairedQueryFromSemanticFrontDoor(fd);
         if (repairedQuery) {
           setPendingRepair({ repairedQuery, requestId: reqId });
           setLastFrontDoorOutcome({ requestId: reqId, semanticFrontDoor: fd });
-          const list = REPAIR_REQUEST_RESPONSES;
-          const phrase = pickRandomResponse(list).trim() || list[0] || '';
-          setResponseText(phrase.length > 0 ? phrase : null);
+          setResponseText(phrase);
           setValidationSummary(null);
           previousCommittedResponseRef.current = null;
           previousCommittedValidationRef.current = null;
@@ -2032,41 +2155,7 @@ export function useAgentOrchestrator(
               .catch(() => undefined);
           }
           setTimeout(() => {
-            const completedAtForArtifacts = Date.now();
-            emitContextArtifactDebug(
-              requestDebugSinkRef,
-              {
-                requestId: reqId,
-                timestamp: completedAtForArtifacts,
-              },
-              () =>
-                projectContextArtifact({
-                  requestId: reqId,
-                  timestampMs: completedAtForArtifacts,
-                  rawText: acceptedTranscript,
-                  normalizedText: normalizedTranscript,
-                  domainValid: true,
-                  validationSummary: null,
-                  fallbackUsed: false,
-                }),
-            );
-            emitSettlementArtifactDebug(
-              requestDebugSinkRef,
-              {
-                requestId: reqId,
-                timestamp: completedAtForArtifacts,
-              },
-              () =>
-                projectSettlementArtifact({
-                  requestId: reqId,
-                  timestampMs: completedAtForArtifacts,
-                  lifecycle: lifecycleRef.current,
-                  rawText: acceptedTranscript,
-                  normalizedText: normalizedTranscript,
-                  responseText: phrase,
-                  validationSummary: EMPTY_SETTLEMENT_VALIDATION_SUMMARY,
-                }),
-            );
+            emitFrontDoorArtifacts();
           }, 0);
           return phrase.length > 0 ? phrase : null;
         }
@@ -2076,93 +2165,8 @@ export function useAgentOrchestrator(
           resolverMode: fd.resolver_mode,
           semanticFrontDoor: fd,
         });
-        setProcessingSubstate(null);
-        setMode('idle');
-        setLifecycle('idle');
-        setAudioState('idleReady', { reason: 'semanticFrontDoor' });
-        return null;
-      }
-
-      setPendingRepair(null);
-
-      const scriptedFi = fd.failure_intent;
-      if (scriptedFi === 'restate_request' || scriptedFi === 'ambiguous_entity') {
-        logInfo('AgentOrchestrator', 'semantic front door scripted failure_intent', {
-          requestId: reqId,
-          failure_intent: scriptedFi,
-        });
-        const list = scriptedResponsesForFailureIntent(scriptedFi);
-        const phrase =
-          pickRandomResponse(list).trim() || list[0] || '';
-        setResponseText(phrase.length > 0 ? phrase : null);
-        setValidationSummary(null);
-        previousCommittedResponseRef.current = null;
-        previousCommittedValidationRef.current = null;
-        setLastFrontDoorOutcome({ requestId: reqId, semanticFrontDoor: fd });
-        setProcessingSubstate(null);
-        emitRequestDebug(requestDebugSinkRef, {
-          type: 'processing_substate',
-          requestId: reqId,
-          processingSubstate: null,
-          timestamp: Date.now(),
-        });
-        setError(null);
-        playbackRequestIdRef.current = reqId;
-        if (isLogGateEnabled('playbackHandoff')) {
-          logInfo(
-            'ResponseSurface',
-            'response_surface_playback_bound_to_committed_response',
-            {
-              requestId: reqId,
-              speakingBoundToCommittedResponse: true,
-              committedChars: phrase.length,
-              source: scriptedFi,
-            },
-          );
-        }
-        if (phrase.length > 0) {
-          playTextRef.current
-            ?.(phrase, { posture: 'default' })
-            .catch(() => undefined);
-        }
-        setTimeout(() => {
-          const completedAtForArtifacts = Date.now();
-          emitContextArtifactDebug(
-            requestDebugSinkRef,
-            {
-              requestId: reqId,
-              timestamp: completedAtForArtifacts,
-            },
-            () =>
-              projectContextArtifact({
-                requestId: reqId,
-                timestampMs: completedAtForArtifacts,
-                rawText: acceptedTranscript,
-                normalizedText: normalizedTranscript,
-                domainValid: true,
-                validationSummary: null,
-                fallbackUsed: false,
-              }),
-          );
-          emitSettlementArtifactDebug(
-            requestDebugSinkRef,
-            {
-              requestId: reqId,
-              timestamp: completedAtForArtifacts,
-            },
-            () =>
-              projectSettlementArtifact({
-                requestId: reqId,
-                timestampMs: completedAtForArtifacts,
-                lifecycle: lifecycleRef.current,
-                rawText: acceptedTranscript,
-                normalizedText: normalizedTranscript,
-                responseText: phrase,
-                validationSummary: EMPTY_SETTLEMENT_VALIDATION_SUMMARY,
-              }),
-          );
-        }, 0);
-        return phrase.length > 0 ? phrase : null;
+      } else {
+        setPendingRepair(null);
       }
 
       activeRequestIdRef.current = 0;
@@ -2170,15 +2174,13 @@ export function useAgentOrchestrator(
         requestId: reqId,
         reason: 'semantic_front_door',
       });
-      const committed = committedResponseFromSemanticFrontDoor(fd);
-      const proposed = resolveScriptedAnswerSlot({
-        path: 'front_door',
-        kind: committed.kind,
-        draftText: committed.text,
-      });
-      setResponseText(
-        proposed != null && proposed.trim().length > 0 ? proposed : null,
-      );
+      if (fd.failure_intent === 'restate_request' || fd.failure_intent === 'ambiguous_entity') {
+        logInfo('AgentOrchestrator', 'semantic front door scripted failure_intent', {
+          requestId: reqId,
+          failure_intent: fd.failure_intent,
+        });
+      }
+      setResponseText(phrase);
       setValidationSummary(null);
       previousCommittedResponseRef.current = null;
       previousCommittedValidationRef.current = null;
@@ -2194,14 +2196,37 @@ export function useAgentOrchestrator(
       setLifecycle('idle');
       setAudioState('idleReady', { reason: 'semanticFrontDoor' });
       setError(null);
-      emitRecoverableFailure(
-        recoverableReasonKeyForFrontDoorVerdict(fd.front_door_verdict),
-        {
-          frontDoorVerdict: fd.front_door_verdict,
-          resolverMode: fd.resolver_mode,
-          semanticFrontDoor: fd,
-        },
-      );
+      if (fd.front_door_verdict !== 'repair_request') {
+        emitRecoverableFailure(
+          recoverableReasonKeyForFrontDoorVerdict(fd.front_door_verdict),
+          {
+            frontDoorVerdict: fd.front_door_verdict,
+            resolverMode: fd.resolver_mode,
+            semanticFrontDoor: fd,
+          },
+        );
+      }
+      playbackRequestIdRef.current = reqId;
+      if (isLogGateEnabled('playbackHandoff')) {
+        logInfo(
+          'ResponseSurface',
+          'response_surface_playback_bound_to_committed_response',
+          {
+            requestId: reqId,
+            speakingBoundToCommittedResponse: true,
+            committedChars: phrase.length,
+            source: fd.front_door_verdict,
+          },
+        );
+      }
+      if (phrase.length > 0) {
+        playTextRef.current
+          ?.(phrase, { posture: 'default' })
+          .catch(() => undefined);
+      }
+      setTimeout(() => {
+        emitFrontDoorArtifacts();
+      }, 0);
       emitRequestDebug(requestDebugSinkRef, {
         type: 'request_complete',
         requestId: reqId,
@@ -2220,8 +2245,11 @@ export function useAgentOrchestrator(
       logInfo('AgentOrchestrator', 'active requestId cleared', {
         requestId: reqId,
       });
-      setResponseText(previousCommittedResponseRef.current);
-      setValidationSummary(previousCommittedValidationRef.current);
+      const failNorm = normalizeExecutionFailureToResponse(
+        runResult.classification,
+      );
+      setResponseText(failNorm.message);
+      setValidationSummary(null);
       previousCommittedResponseRef.current = null;
       previousCommittedValidationRef.current = null;
       setProcessingSubstate(null);

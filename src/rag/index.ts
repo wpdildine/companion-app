@@ -423,23 +423,26 @@ export async function ask(
     );
     if (result.frontDoorBlocked && result.semanticFrontDoor) {
       const fd = result.semanticFrontDoor;
-      return {
-        raw: '',
-        nudged: '',
-        validationSummary: {
-          cards: [],
-          rules: [],
-          stats: {
-            cardHitRate: 0,
-            ruleHitRate: 0,
-            unknownCardCount: 0,
-            invalidRuleCount: 0,
+      // Match executeRequest: runtime verdict proceed_to_retrieval is not re-blocked here.
+      if (fd.front_door_verdict !== 'proceed_to_retrieval') {
+        return {
+          raw: '',
+          nudged: '',
+          validationSummary: {
+            cards: [],
+            rules: [],
+            stats: {
+              cardHitRate: 0,
+              ruleHitRate: 0,
+              unknownCardCount: 0,
+              invalidRuleCount: 0,
+            },
           },
-        },
-        frontDoorBlocked: true,
-        semanticFrontDoor: fd,
-        failure_intent: fd.failure_intent,
-      };
+          frontDoorBlocked: true,
+          semanticFrontDoor: fd,
+          failure_intent: fd.failure_intent,
+        };
+      }
     }
     if (skipNudge) {
       const nudgedText = maybeSanitizeCardEffectAnswer(

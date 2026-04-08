@@ -1,6 +1,6 @@
 /**
- * Pure v1 seam: proposed answer-slot text for approved commit insertion points only.
- * Stateless; no I/O. See ANSWER_RESOLUTION.md (W2 settle, W3 front-door).
+ * Pure v1 seam: proposed answer-slot text for the settle path only.
+ * Stateless; no I/O. Front-door UX is owned by `normalizeOutcomeToResponse`.
  */
 
 import type { FailureIntent } from '@atlas/runtime';
@@ -8,20 +8,7 @@ import {
   INSUFFICIENT_CONTEXT_RESPONSES,
   pickRandomResponse,
 } from './scriptedResponses';
-import {
-  SCRIPTED_CLARIFY_ENTITY_PREFIX,
-  SCRIPTED_EMPTY_OUTPUT_MESSAGE,
-} from './v1Copy';
-
-/** Aligns with `CommittedFrontDoorResponse.kind` from frontDoorCommit. */
-export type ScriptedFrontDoorCommitKind = 'clarify' | 'abstain';
-
-export type ScriptedAnswerSlotFrontDoorInput = {
-  path: 'front_door';
-  kind: ScriptedFrontDoorCommitKind;
-  /** Draft from `committedResponseFromSemanticFrontDoor`. */
-  draftText: string;
-};
+import { SCRIPTED_EMPTY_OUTPUT_MESSAGE } from './v1Copy';
 
 export type ScriptedAnswerSlotSettleInput = {
   path: 'settle';
@@ -31,30 +18,9 @@ export type ScriptedAnswerSlotSettleInput = {
   failureIntent?: FailureIntent | null;
 };
 
-export type ScriptedAnswerSlotInput =
-  | ScriptedAnswerSlotFrontDoorInput
-  | ScriptedAnswerSlotSettleInput;
-
 export function resolveScriptedAnswerSlot(
   input: ScriptedAnswerSlotSettleInput,
-): string;
-export function resolveScriptedAnswerSlot(
-  input: ScriptedAnswerSlotFrontDoorInput,
-): string | null;
-export function resolveScriptedAnswerSlot(
-  input: ScriptedAnswerSlotInput,
-): string | null {
-  if (input.path === 'front_door') {
-    if (input.kind === 'abstain') {
-      return null;
-    }
-    const body = input.draftText.trim();
-    if (!body) {
-      return null;
-    }
-    return `${SCRIPTED_CLARIFY_ENTITY_PREFIX}${body}`;
-  }
-
+): string {
   if (input.failureIntent === 'insufficient_context') {
     const line =
       pickRandomResponse(INSUFFICIENT_CONTEXT_RESPONSES).trim() ||

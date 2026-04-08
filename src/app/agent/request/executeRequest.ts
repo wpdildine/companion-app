@@ -349,27 +349,39 @@ export async function executeRequest(
     });
     if (result.frontDoorBlocked && result.semanticFrontDoor) {
       const fd = result.semanticFrontDoor;
-      const recoverable = classifyRecoverableFailure(
-        recoverableReasonKeyForFrontDoorVerdict(fd.front_door_verdict),
-      );
-      requestDebugSink?.({
-        type: 'semantic_front_door',
-        requestId: reqId,
-        frontDoorVerdict: fd.front_door_verdict,
-        resolverMode: fd.resolver_mode,
-        transcriptDecision: fd.transcript_decision,
-        telemetryReason: recoverable.telemetryReason,
-        timestamp: Date.now(),
-      });
-      logInfo('AgentOrchestrator', 'semantic front door blocked request', {
-        requestId: reqId,
-        frontDoorVerdict: fd.front_door_verdict,
-        telemetryReason: recoverable.telemetryReason,
-      });
-      return {
-        status: 'front_door',
-        semanticFrontDoor: fd,
-      };
+      // Runtime semanticFrontDoor is sole authority after retrieval: never re-block or emit
+      // clarify paths when substrate already returned proceed_to_retrieval.
+      if (fd.front_door_verdict === 'proceed_to_retrieval') {
+        if (__DEV__) {
+          logWarn(
+            'AgentOrchestrator',
+            'invariant: ignoring frontDoorBlocked after retrieval when verdict is proceed_to_retrieval',
+            { requestId: reqId },
+          );
+        }
+      } else {
+        const recoverable = classifyRecoverableFailure(
+          recoverableReasonKeyForFrontDoorVerdict(fd.front_door_verdict),
+        );
+        requestDebugSink?.({
+          type: 'semantic_front_door',
+          requestId: reqId,
+          frontDoorVerdict: fd.front_door_verdict,
+          resolverMode: fd.resolver_mode,
+          transcriptDecision: fd.transcript_decision,
+          telemetryReason: recoverable.telemetryReason,
+          timestamp: Date.now(),
+        });
+        logInfo('AgentOrchestrator', 'semantic front door blocked request', {
+          requestId: reqId,
+          frontDoorVerdict: fd.front_door_verdict,
+          telemetryReason: recoverable.telemetryReason,
+        });
+        return {
+          status: 'front_door',
+          semanticFrontDoor: fd,
+        };
+      }
     }
     if (reqId !== activeRequestIdRef.current) {
       previousCommittedResponseRef.current = null;

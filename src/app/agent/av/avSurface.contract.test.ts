@@ -1,16 +1,21 @@
 import {
   runRemoteStopFinalizeMechanics,
   startAvLocalVoiceListeningMechanics,
+  startAvRemoteCaptureListeningMechanics,
 } from './avSurface';
 import type { AvFact } from './avFacts';
 
 describe('avSurface contract guardrails', () => {
-  it('emits mechanical facts for local listening start (no orchestrator ref callbacks)', async () => {
+  it('emits mechanical facts for local listening start', async () => {
     const emitted: AvFact[] = [];
+    let whenReady = -1;
     await startAvLocalVoiceListeningMechanics({
       recordingSessionId: 'rec-1',
       sttProvider: 'local',
       startVoice: async () => undefined,
+      onNativeCaptureReady: () => {
+        whenReady = emitted.length;
+      },
       emitAvFact: fact => {
         emitted.push(fact);
       },
@@ -20,6 +25,7 @@ describe('avSurface contract guardrails', () => {
       logInfo: () => undefined,
     });
 
+    expect(whenReady).toBe(0);
     expect(emitted).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -38,6 +44,36 @@ describe('avSurface contract guardrails', () => {
         }),
       ]),
     );
+  });
+
+  it('invokes onNativeCaptureReady after beginCapture, before listening transition', async () => {
+    const emitted: AvFact[] = [];
+    let whenReady = -1;
+    await startAvRemoteCaptureListeningMechanics({
+      recordingSessionId: 'rec-remote',
+      sttProvider: 'remote',
+      beginCapture: async () => true,
+      onNativeCaptureReady: () => {
+        whenReady = emitted.length;
+      },
+      emitAvFact: fact => emitted.push(fact),
+      getSttProviderForLog: () => 'remote',
+      getSessionSttOverrideApplied: () => false,
+      getRecordingStartAt: () => null,
+      logInfo: () => undefined,
+    });
+
+    expect(whenReady).toBe(0);
+    expect(emitted[0]).toMatchObject({
+      kind: 'av.bookkeeping.listen_path',
+      listenPath: 'remote',
+      recordingSessionId: 'rec-remote',
+    });
+    const listeningIdx = emitted.findIndex(
+      f => f.kind === 'av.session.transitioned' && f.next === 'listening',
+    );
+    expect(listeningIdx).toBeGreaterThanOrEqual(0);
+    expect(listeningIdx).toBeGreaterThan(whenReady);
   });
 
   it('returns non-semantic STT completion fact and emits settling + pending capture facts', async () => {

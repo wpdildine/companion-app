@@ -146,7 +146,7 @@ describe('getOutcomeProjection', () => {
     const fd = {
       requestId: 1,
       semanticFrontDoor: {
-        contract_version: 1,
+        contract_version: 11,
         working_query: 'q',
         resolver_mode: 'resolved' as const,
         transcript_decision: 'pass_through' as const,
@@ -219,7 +219,7 @@ describe('getOutcomeProjection', () => {
     const fd = {
       requestId: 1,
       semanticFrontDoor: {
-        contract_version: 1,
+        contract_version: 11,
         working_query: 'q',
         resolver_mode: 'resolved' as const,
         transcript_decision: 'pass_through' as const,
@@ -256,7 +256,7 @@ describe('getOutcomeProjection', () => {
     const fd = {
       requestId: 1,
       semanticFrontDoor: {
-        contract_version: 1,
+        contract_version: 11,
         working_query: 'q',
         resolver_mode: 'resolved' as const,
         transcript_decision: 'pass_through' as const,
