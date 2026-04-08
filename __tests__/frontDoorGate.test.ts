@@ -21,7 +21,7 @@ describe('frontDoorGate', () => {
       },
       final_context_bundle_canonical: '',
       semanticFrontDoor: {
-        contract_version: 1,
+        contract_version: 11,
         working_query: 'Partner with Kraum',
         resolver_mode: 'none',
         transcript_decision: 'pass_through',
@@ -60,7 +60,7 @@ describe('frontDoorGate', () => {
       },
       final_context_bundle_canonical: '',
       semanticFrontDoor: {
-        contract_version: 1,
+        contract_version: 11,
         working_query: 'layers',
         resolver_mode: 'resolved',
         transcript_decision: 'pass_through',

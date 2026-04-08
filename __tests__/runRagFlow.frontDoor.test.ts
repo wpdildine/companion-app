@@ -72,7 +72,7 @@ describe('runRagFlow pre-retrieval gate', () => {
         Promise.resolve({
           blocked: true,
           semanticFrontDoor: {
-            contract_version: 1,
+            contract_version: 11,
             working_query: 'q',
             resolver_mode: 'none',
             transcript_decision: 'pass_through',
@@ -132,7 +132,7 @@ describe('runRagFlow pre-retrieval gate', () => {
         Promise.resolve({
           blocked: true,
           semanticFrontDoor: {
-            contract_version: 1,
+            contract_version: 11,
             working_query: 'q',
             resolver_mode: 'none',
             transcript_decision: 'pass_through',

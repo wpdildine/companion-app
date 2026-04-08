@@ -9,8 +9,8 @@
  *
  * Startup handoff (react-native-bootsplash): committed snapshots under native-overrides
  * (AppDelegate.mm, BootSplash.storyboard, Colors.xcassets, logo imageset, Android BootTheme
- * drawables, MainActivity). Re-run `pnpm run icon:splash` when changing the source logo, then
- * sync changed generator files into scripts/native-overrides (see repo boundary artifact).
+ * drawables, MainActivity). `pnpm run icon` runs icon:splash, then
+ * `scripts/sync-bootsplash-to-overrides.js`, then icon:app, then this script.
  */
 const fs = require('fs');
 const path = require('path');
@@ -55,9 +55,45 @@ function overrideFiles() {
   ];
 }
 
+/** BootSplash logo imagesets (hash suffix changes when logo/background changes). */
+function bootSplashLogoImagesetRels(iosTarget) {
+  const xcassets = path.join(
+    OVERRIDES,
+    'ios',
+    iosTarget,
+    'Images.xcassets'
+  );
+  if (!fs.existsSync(xcassets)) return [];
+  return fs
+    .readdirSync(xcassets)
+    .filter(
+      (name) =>
+        name.startsWith('BootSplashLogo-') && name.endsWith('.imageset')
+    )
+    .map((name) => `ios/${iosTarget}/Images.xcassets/${name}`);
+}
+
+/** Remove stale BootSplashLogo-* in ios before copying from overrides (suffix may change). */
+function removeBootSplashLogoImagesetsFromIos(iosTarget) {
+  const xcassets = path.join(ROOT, 'ios', iosTarget, 'Images.xcassets');
+  if (!fs.existsSync(xcassets)) return;
+  for (const name of fs.readdirSync(xcassets)) {
+    if (name.startsWith('BootSplashLogo-') && name.endsWith('.imageset')) {
+      const p = path.join(xcassets, name);
+      fs.rmSync(p, { recursive: true, force: true });
+      console.log(
+        '[apply-native-overrides] Removed',
+        path.relative(ROOT, p),
+        '(replaced from overrides)'
+      );
+    }
+  }
+}
+
 /** Directories to copy recursively (e.g. app icon assets). Override must exist. */
 function overrideDirs() {
   const identity = getAppIdentity();
+  const iosTarget = identity.iosTargetName;
   return [
     'android/app/src/main/res/mipmap-mdpi',
     'android/app/src/main/res/mipmap-hdpi',
@@ -65,9 +101,9 @@ function overrideDirs() {
     'android/app/src/main/res/mipmap-xxhdpi',
     'android/app/src/main/res/mipmap-xxxhdpi',
     'android/app/src/main/res/mipmap-anydpi-v26',
-    `ios/${identity.iosTargetName}/Images.xcassets/AppIcon.appiconset`,
-    `ios/${identity.iosTargetName}/Colors.xcassets`,
-    `ios/${identity.iosTargetName}/Images.xcassets/BootSplashLogo-68c383.imageset`,
+    `ios/${iosTarget}/Images.xcassets/AppIcon.appiconset`,
+    `ios/${iosTarget}/Colors.xcassets`,
+    ...bootSplashLogoImagesetRels(iosTarget),
   ];
 }
 
@@ -94,9 +130,11 @@ function copyDirFromOverrides(rel) {
 }
 
 function main() {
+  const identity = getAppIdentity();
   for (const [overrideRel] of overrideFiles()) {
     copyFileFromOverrides(overrideRel);
   }
+  removeBootSplashLogoImagesetsFromIos(identity.iosTargetName);
   for (const rel of overrideDirs()) {
     copyDirFromOverrides(rel);
   }

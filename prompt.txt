@@ -1,0 +1,246 @@
+==============================
+AO GOVERNED LOOP SYSTEM
+==============================
+
+--------------------------------
+LOOP SELECTOR (RUN FIRST)
+--------------------------------
+1. Can this be expressed as ONE lifecycle inconsistency or ONE state-transition violation?
+   YES → EXECUTION LOOP
+   NO  → DISCOVERY LOOP
+
+2. Is there ambiguity in ownership?
+   YES → default owner = useAgentOrchestrator
+
+3. Did previous loop hit STOP?
+   YES → DISCOVERY LOOP (new context)
+
+4. Is this the same lifecycle seam?
+   YES → stay in context
+   NO  → new context
+
+
+--------------------------------
+MODEL ROUTING
+--------------------------------
+DISCOVERY → Codex (audit only)
+PLAN → Composer 2 (Plan mode)
+PATCH / VERIFY → Composer 2 (Build mode)
+
+
+--------------------------------
+CONTEXT POLICY
+--------------------------------
+Stay in context when:
+• same lifecycle seam
+• PLAN → PATCH → VERIFY chain
+• orchestrator invariants unchanged
+
+Start new context when:
+• lifecycle seam changes
+• STOP triggered
+• ownership shifts away from orchestrator
+• prompt exceeds single transition reasoning
+
+
+--------------------------------
+CORE AO INVARIANTS (HARD)
+--------------------------------
+• useAgentOrchestrator is the ONLY durable state owner
+• lifecycle = idle → listening → processing → speaking → idle
+• processingSubstate exists ONLY during processing
+• exactly ONE responseText slot
+• response_settled BEFORE speaking
+• speaking → idle BEFORE request_complete
+• render layers are passive (no semantic inference)
+• visualization is projection only (no control authority)
+
+Violation of any invariant = VALID SEAM
+
+
+--------------------------------
+SEAM DEFINITION (AO-SPECIFIC)
+--------------------------------
+A seam is ONE of:
+
+1. Lifecycle transition violation
+   (incorrect ordering, missing transition, duplicate transition)
+
+2. State ownership violation
+   (state written outside orchestrator)
+
+3. Commitment violation
+   (responseText, settlement, or playback ordering brokeng orchestrator state)
+
+5. Front-door classification error
+   (incorrect routing into processing / abstain)
+
+If more than one category appears → STOP
+
+
+--------------------------------
+MODE: AUDIT (DISCOVERY)
+--------------------------------
+Goal:
+Find FIRST lifecycle divergence.
+
+Do:
+• trace state transitions in order
+• identify earliest invariant break
+• assign owner (default orchestrator)
+
+Do NOT:
+• propose fixes
+• inspect multiple seams
+
+Output:
+• seam type
+• earliest divergence point
+• owning layer (orchestrator unless disproven)
+• STOP if multiple seams
+
+
+--------------------------------
+MODE: PLAN (EXECUTION)
+--------------------------------
+Precondition:
+• one lifecycle seam
+• owner identified
+
+Output:
+• exact transition or state mutation to correct
+• files (usually useAgentOrchestrator.ts)
+• invariant being restored
+• test: one representative flow
+• success criteria: invariant holds end-to-end
+
+Do NOT:
+• include multiple transitions
+• modify projection layers
+
+
+ PATCH (EXECUTION)
+--------------------------------
+Precondition:
+• approved PLAN
+• single transition or state fix
+
+Do:
+• modify orchestrator logic only
+• restore invariant minimally
+• preserve all other transitions
+
+Do NOT:
+• patch UI / visualization / audio directly
+• introduce new states
+• fix downstream symptoms
+
+
+--------------------------------
+MODE: VERIFY (EXECUTION)
+--------------------------------
+Do:
+• run single representative interaction
+• trace lifecycle step-by-step
+• confirm invariant restored
+
+Output:
+• seam moved or not
+• regression present
+• next seam OR STOP
+
+
+--------------------------------
+MODE: STOP (DISCOVERY)
+--------------------------------
+Trigger:
+• multiple lifecycle breaks
+• unclear first divergence
+• ownership unclear
+
+Output:
+• sequence of transitions
+• candidate first divergence points
+• no fix
+
+
+================================
+ARTIFACT SYSTEM (AO)
+================================
+
+.cursor/plans/<seam>.md
+.cursor/loops/<timestamp>.md-------------
+LOOP RECORD (AO)
+--------------------------------
+Seam type:
+Lifecycle stage:
+Owning layer:
+
+Before:
+• transition trace
+
+Patch:
+• state/transition change
+
+After:
+• corrected trace
+
+Invariant restored:
+• yes / no
+
+Regression:
+• none / present
+
+Notes:
+• what caused divergence
+
+
+--------------------------------
+PATTERN (AO)
+--------------------------------
+Name:
+Applies to:
+Trigger:
+Fix:
+Invariant:
+
+
+--------------------------------
+FAILURE (AO)
+--------------------------------
+Name:
+Lifecycle break:
+Root cause:
+Detection signal:
+
+
+--------------------------------
+COMPLETION RULE
+--------------------------------
+No loop is complete without:
+• lifecycle trace before/after
+• artifact written
+
+If missing:
+→ LOOP INVALID
+
+
+================================
+SYSTEM SUMMARY
+================================
+
+You now have:
+
+Execution system:
+• lifecycle-first seam detection
+• orchestrator-first ownership
+• strict loop discipline
+
+Knowledge system:
+• loop records
+• lifecycle pattns
+
+Core principle:
+Fix the transition, not the symptom.
+
+This is a deterministic lifecycle-governed system.

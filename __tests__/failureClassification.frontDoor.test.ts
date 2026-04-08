@@ -66,4 +66,10 @@ describe('recoverableReasonKeyForFrontDoorVerdict', () => {
       'semanticFrontDoorRestates',
     );
   });
+
+  it('maps clarify_no_grounding to noGroundingClarify (telemetry no_grounding_clarify)', () => {
+    expect(recoverableReasonKeyForFrontDoorVerdict('clarify_no_grounding')).toBe(
+      'noGroundingClarify',
+    );
+  });
 });

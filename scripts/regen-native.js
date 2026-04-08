@@ -81,7 +81,7 @@ function main() {
   console.log('  2) pnpm run rag:pack');
   console.log('  3) Run pnpm run deps:reset first if you also need a dependency wipe');
   console.log(
-    '  4) Startup handoff (BootSplash) is re-applied from scripts/native-overrides via apply-native-overrides; to refresh splash assets from the source icon, run pnpm run icon:splash then copy generator outputs into scripts/native-overrides (see .cursor/artifacts/patterns/native-durability-startup-handoff.md).'
+    '  4) Startup handoff (BootSplash) is re-applied from scripts/native-overrides via apply-native-overrides; to refresh splash assets from the source icon, run pnpm run icon (icon:splash + sync-bootsplash-to-overrides + icon:app + apply).'
   );
 }
 

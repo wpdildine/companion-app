@@ -19,7 +19,7 @@ describe('getContextRN land-type rule hydration', () => {
       })),
       normalizeForEntityCatalogKey: jest.fn((s: string) => s.toLowerCase().trim()),
       computeSemanticFrontDoor: jest.fn((input: { working_query: string }) => ({
-        contract_version: 1,
+        contract_version: 11,
         working_query: input.working_query,
         resolver_mode: 'resolved',
         transcript_decision: 'pass_through',
