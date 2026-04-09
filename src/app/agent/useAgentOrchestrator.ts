@@ -970,13 +970,11 @@ export function useAgentOrchestrator(
         const boundRequestId = playbackRequestIdRef.current;
         const isActivePlayback =
           fact.requestId != null && fact.requestId === boundRequestId;
-        const isActiveRequest = fact.requestId === activeRequestIdRef.current;
 
         if (
           isCompatibleState &&
           hasCommittedText &&
-          isActivePlayback &&
-          isActiveRequest
+          isActivePlayback
         ) {
           setProcessingSubstate(null);
           setMode('speaking');

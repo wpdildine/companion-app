@@ -46,6 +46,7 @@ import {
   runPipelineHumanShort,
 } from '@atlas/runtime';
 import type { ValidationSummary } from './validate';
+import { normalizeOracleText } from './normalizeOracleText';
 
 /** Payload shape for request-debug sink (same contract as app requestDebugStore.emit). */
 export type RequestDebugSinkPayload = {
@@ -251,7 +252,7 @@ function extractCardOracleText(
 }
 
 function formatCardEffectAnswer(cardName: string, oracleText: string): string {
-  const cleaned = oracleText.replace(/\s+/g, ' ').trim().replace(/[.]+$/, '');
+  const cleaned = normalizeOracleText(oracleText.replace(/\s+/g, ' ').trim().replace(/[.]+$/, ''));
   const areMatch = cleaned.match(/^(.+?) are (.+)$/i);
   if (areMatch) {
     const subject = areMatch[1]?.trim().toLowerCase();
@@ -402,16 +403,16 @@ export async function ask(
       intent?: string,
     ): string => {
       if ((contextText ?? '').trim().length > 0) {
-        return normalizeHumanShortLines(
+        return normalizeOracleText(normalizeHumanShortLines(
           runPipelineHumanShort(
             rawText,
             contextText ?? '',
             _question,
             intent ?? 'unknown',
           ).finalText,
-        );
+        ));
       }
-      return normalizeHumanShortLines(runHumanShortPipeline(rawText));
+      return normalizeOracleText(normalizeHumanShortLines(runHumanShortPipeline(rawText)));
     };
     const { runRagFlow } = require('./ask') as typeof import('./ask');
     const result = await runRagFlow(
