@@ -65,11 +65,18 @@ function syncPostFxFromSubsystem(
   }
 }
 
-/** Base shaping + optional layer2 desync; only finite numbers; layer2 on Play only. */
+function clampNumber(n: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, n));
+}
+
+/** Base shaping + synth pacing + optional layer2 desync; only finite numbers; layer2 on Play only. */
 function buildTreatedDebugOverridesFromSpeechLab(
   hpStr: string,
   leadStr: string,
   gainStr: string,
+  speechRateStr: string,
+  sentencePauseStr: string,
+  commaPauseStr: string,
   layer2On: boolean,
   layer2DelayStr: string,
   layer2GainStr: string,
@@ -89,6 +96,25 @@ function buildTreatedDebugOverridesFromSpeechLab(
   if (g !== '') {
     const n = Number(g);
     if (Number.isFinite(n)) out.renderPostGainDb = n;
+  }
+  const sr = speechRateStr.trim();
+  if (sr !== '') {
+    const n = Number(sr);
+    if (Number.isFinite(n) && n > 0) out.lengthScale = clampNumber(n, 1.0, 2.5);
+  }
+  const sp = sentencePauseStr.trim();
+  if (sp !== '') {
+    const n = Number(sp);
+    if (Number.isFinite(n)) {
+      out.interSentenceSilenceMs = Math.round(clampNumber(n, 200, 500));
+    }
+  }
+  const cp = commaPauseStr.trim();
+  if (cp !== '') {
+    const n = Number(cp);
+    if (Number.isFinite(n)) {
+      out.interCommaSilenceMs = Math.round(clampNumber(n, 100, 300));
+    }
   }
   if (layer2On) {
     out.renderLayer2Enabled = true;
@@ -150,6 +176,9 @@ export function VizDebugPanel({
   const [hpHz, setHpHz] = useState('');
   const [leadMs, setLeadMs] = useState('');
   const [gainDb, setGainDb] = useState('');
+  const [speechRate, setSpeechRate] = useState('');
+  const [sentencePauseMs, setSentencePauseMs] = useState('');
+  const [commaPauseMs, setCommaPauseMs] = useState('');
   const [layer2Enabled, setLayer2Enabled] = useState(false);
   const [layer2DelayMs, setLayer2DelayMs] = useState('');
   const [layer2GainDb, setLayer2GainDb] = useState('');
@@ -333,8 +362,10 @@ export function VizDebugPanel({
               {speechPosture === 'treated' ? (
                 <>
                   <Text style={styles.speechSubLabel}>Treated overrides</Text>
-                  <Text style={styles.sttHint} numberOfLines={2}>
-                    High-pass (Hz), lead silence (ms), gain (dB). Values apply on Play only.
+                  <Text style={styles.sttHint} numberOfLines={3}>
+                    High-pass (Hz), lead silence (ms), gain (dB). Pacing: speech rate (lengthScale
+                    1.0–2.5), sentence pause (ms 200–500), comma pause (ms 100–300). Apply on Play
+                    only.
                   </Text>
                   <TextInput
                     style={styles.speechOverrideInput}
@@ -362,6 +393,33 @@ export function VizDebugPanel({
                     placeholderTextColor={TEXT_MUTED}
                     keyboardType="numbers-and-punctuation"
                     testID="speech-lab-treated-gain-db"
+                  />
+                  <TextInput
+                    style={styles.speechOverrideInput}
+                    value={speechRate}
+                    onChangeText={setSpeechRate}
+                    placeholder="Speech rate (lengthScale, 1.0–2.5, default ~2.25)"
+                    placeholderTextColor={TEXT_MUTED}
+                    keyboardType="numbers-and-punctuation"
+                    testID="speech-lab-treated-speech-rate"
+                  />
+                  <TextInput
+                    style={styles.speechOverrideInput}
+                    value={sentencePauseMs}
+                    onChangeText={setSentencePauseMs}
+                    placeholder="Sentence pause (ms)"
+                    placeholderTextColor={TEXT_MUTED}
+                    keyboardType="numbers-and-punctuation"
+                    testID="speech-lab-treated-sentence-pause-ms"
+                  />
+                  <TextInput
+                    style={styles.speechOverrideInput}
+                    value={commaPauseMs}
+                    onChangeText={setCommaPauseMs}
+                    placeholder="Comma pause (ms)"
+                    placeholderTextColor={TEXT_MUTED}
+                    keyboardType="numbers-and-punctuation"
+                    testID="speech-lab-treated-comma-pause-ms"
                   />
                   <Text style={styles.speechSubLabel}>Layer 2 desync</Text>
                   <Text style={styles.sttHint} numberOfLines={2}>
@@ -396,6 +454,9 @@ export function VizDebugPanel({
                       setHpHz('');
                       setLeadMs('');
                       setGainDb('');
+                      setSpeechRate('');
+                      setSentencePauseMs('');
+                      setCommaPauseMs('');
                       setLayer2Enabled(false);
                       setLayer2DelayMs('');
                       setLayer2GainDb('');
@@ -444,6 +505,9 @@ export function VizDebugPanel({
                           hpHz,
                           leadMs,
                           gainDb,
+                          speechRate,
+                          sentencePauseMs,
+                          commaPauseMs,
                           layer2Enabled,
                           layer2DelayMs,
                           layer2GainDb,

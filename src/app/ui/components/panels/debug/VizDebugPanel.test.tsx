@@ -149,6 +149,37 @@ describe('VizDebugPanel Speech Lab', () => {
     expect(baseProps.onSpeechLabCancel).toHaveBeenCalledTimes(1);
   });
 
+  it('sends sentence/comma pause overrides on Play when treated and pacing fields are set', () => {
+    let root: TestRenderer.ReactTestRenderer;
+    act(() => {
+      root = TestRenderer.create(<VizDebugPanel {...baseProps} />);
+    });
+    expandSpeechLabSection(root!.root);
+    act(() => {
+      findOnPressSubtreeContainingText(root!.root, 'treated')!.props.onPress?.();
+    });
+    const sentenceInput = findByTestId(root!.root, 'speech-lab-treated-sentence-pause-ms');
+    const commaInput = findByTestId(root!.root, 'speech-lab-treated-comma-pause-ms');
+    expect(sentenceInput).toBeTruthy();
+    expect(commaInput).toBeTruthy();
+    act(() => {
+      sentenceInput!.props.onChangeText?.('320');
+    });
+    act(() => {
+      commaInput!.props.onChangeText?.('175');
+    });
+    act(() => {
+      findOnPressSubtreeContainingText(root!.root, 'Play')!.props.onPress?.();
+    });
+    expect(baseProps.onSpeechLabPlay).toHaveBeenLastCalledWith(expect.any(String), {
+      posture: 'treated',
+      treatedDebugRenderOverrides: {
+        interSentenceSilenceMs: 320,
+        interCommaSilenceMs: 175,
+      },
+    });
+  });
+
   it('sends treatedDebugRenderOverrides on Play when treated and gain field is set', () => {
     let root: TestRenderer.ReactTestRenderer;
     act(() => {

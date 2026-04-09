@@ -6,32 +6,205 @@
 #endif
 
 #import "piper_engine.h"
+#include <algorithm>
+#include <cmath>
+#include <math.h>
 #include <string>
 #include <vector>
-#include <math.h>
 
-/** Prepend lead silence (int16 zeros) and optional post-synth dB gain on int16 PCM. Returns `pcm` unchanged when no work. */
-static NSData *PiperApplyInt16LeadSilenceAndGain(NSData *pcm, unsigned sampleRate, NSDictionary *opts) {
-  if (!pcm.length) return pcm;
-  if (![opts isKindOfClass:[NSDictionary class]]) return pcm;
+namespace {
+
+struct PiperPauseCharEvent {
+  NSUInteger insert_after;
+  NSInteger ms;
+};
+
+struct PiperPauseSampleEvent {
+  size_t pos;
+  NSInteger ms;
+};
+
+/**
+ * Single-pass synthesis only: scan original text for punctuation, map
+ * boundaries to PCM by proportional UTF-16 length, insert int16 silence only
+ * (no amplitude shaping). No multi-segment synthesis.
+ */
+static void PiperApplyPostSynthPunctuationPauses(std::vector<int16_t> &pcm,
+                                                 int sample_rate,
+                                                 NSString *text,
+                                                 NSInteger commaMs,
+                                                 NSInteger sentenceMs) {
+  if (pcm.empty() || sample_rate <= 0)
+    return;
+  if (commaMs <= 0 && sentenceMs <= 0)
+    return;
+  NSUInteger L = text.length;
+  if (L < 2)
+    return;
+  size_t N = pcm.size();
+  if (N < 4)
+    return;
+
+  std::vector<PiperPauseCharEvent> raw;
+  NSUInteger i = 0;
+  while (i < L) {
+    unichar c = [text characterAtIndex:i];
+    if (c >= 0xD800 && c <= 0xDBFF) {
+      i += 2;
+      continue;
+    }
+    if (c == ',') {
+      if (commaMs > 0 && i + 1 < L) {
+        raw.push_back({i + 1, commaMs});
+      }
+      i++;
+      continue;
+    }
+    if (c == 0x2026) {
+      if (sentenceMs > 0 && i + 1 < L) {
+        raw.push_back({i + 1, sentenceMs});
+      }
+      i++;
+      continue;
+    }
+    if (c == '.') {
+      NSUInteger run = 1;
+      while (i + run < L && [text characterAtIndex:i + run] == '.') {
+        run++;
+      }
+      NSUInteger insert_after = i + run;
+      if (run >= 2) {
+        if (sentenceMs > 0 && insert_after < L) {
+          raw.push_back({insert_after, sentenceMs});
+        }
+      } else {
+        if (sentenceMs > 0 && i + 1 < L) {
+          raw.push_back({i + 1, sentenceMs});
+        }
+      }
+      i += run;
+      continue;
+    }
+    if (c == '!' || c == '?') {
+      if (sentenceMs > 0 && i + 1 < L) {
+        raw.push_back({i + 1, sentenceMs});
+      }
+      i++;
+      continue;
+    }
+    i++;
+  }
+
+  if (raw.empty())
+    return;
+
+  std::sort(raw.begin(), raw.end(),
+            [](const PiperPauseCharEvent &a, const PiperPauseCharEvent &b) {
+              return a.insert_after < b.insert_after;
+            });
+  std::vector<PiperPauseCharEvent> dedup;
+  for (const auto &e : raw) {
+    if (!dedup.empty() && dedup.back().insert_after == e.insert_after) {
+      if (e.ms > dedup.back().ms)
+        dedup.back().ms = e.ms;
+    } else {
+      dedup.push_back(e);
+    }
+  }
+
+  std::vector<PiperPauseSampleEvent> sample_events;
+  for (const auto &e : dedup) {
+    size_t pos = (size_t)((unsigned long long)e.insert_after *
+                          (unsigned long long)N / (unsigned long long)L);
+    if (pos == 0 || pos >= N)
+      continue;
+    sample_events.push_back({pos, e.ms});
+  }
+  if (sample_events.empty())
+    return;
+
+  size_t min_gap =
+      (size_t)std::max(240, (int)llround(0.005 * (double)sample_rate));
+  std::sort(sample_events.begin(), sample_events.end(),
+            [](const PiperPauseSampleEvent &a, const PiperPauseSampleEvent &b) {
+              return a.pos < b.pos;
+            });
+  std::vector<PiperPauseSampleEvent> merged;
+  for (const auto &e : sample_events) {
+    if (merged.empty()) {
+      merged.push_back(e);
+      continue;
+    }
+    if (e.pos == merged.back().pos) {
+      if (e.ms > merged.back().ms)
+        merged.back().ms = e.ms;
+    } else if (e.pos - merged.back().pos < min_gap) {
+      if (e.ms > merged.back().ms)
+        merged.back().ms = e.ms;
+    } else {
+      merged.push_back(e);
+    }
+  }
+
+  std::sort(merged.begin(), merged.end(),
+            [](const PiperPauseSampleEvent &a, const PiperPauseSampleEvent &b) {
+              return a.pos > b.pos;
+            });
+
+  for (const auto &ev : merged) {
+    size_t silence_samples =
+        (size_t)llround((double)sample_rate * (double)ev.ms / 1000.0);
+    if (silence_samples == 0)
+      continue;
+    size_t pos = ev.pos;
+    if (pos == 0 || pos >= pcm.size())
+      continue;
+
+    std::vector<int16_t> out;
+    out.reserve(pcm.size() + silence_samples);
+    out.insert(out.end(), pcm.begin(), pcm.begin() + pos);
+    out.insert(out.end(), silence_samples, 0);
+    out.insert(out.end(), pcm.begin() + pos, pcm.end());
+    pcm = std::move(out);
+  }
+
+  RCTLogInfo(
+      @"[PiperTts] post-synth pause overlay: %lu events, %zu samples out",
+      (unsigned long)merged.size(), pcm.size());
+}
+
+} // namespace
+
+/** Prepend lead silence (int16 zeros) and optional post-synth dB gain on int16
+ * PCM. Returns `pcm` unchanged when no work. */
+static NSData *PiperApplyInt16LeadSilenceAndGain(NSData *pcm,
+                                                 unsigned sampleRate,
+                                                 NSDictionary *opts) {
+  if (!pcm.length)
+    return pcm;
+  if (![opts isKindOfClass:[NSDictionary class]])
+    return pcm;
 
   double leadMs = 0;
   id leadObj = opts[@"renderLeadSilenceMs"];
-  if (leadObj && leadObj != [NSNull null] && [leadObj respondsToSelector:@selector(doubleValue)]) {
+  if (leadObj && leadObj != [NSNull null] &&
+      [leadObj respondsToSelector:@selector(doubleValue)]) {
     leadMs = [leadObj doubleValue];
   }
   BOOL hasGainKey = ([opts objectForKey:@"renderPostGainDb"] != nil);
   double gainDb = 0;
   if (hasGainKey) {
     id g = opts[@"renderPostGainDb"];
-    if (g && g != [NSNull null] && [g respondsToSelector:@selector(doubleValue)]) {
+    if (g && g != [NSNull null] &&
+        [g respondsToSelector:@selector(doubleValue)]) {
       gainDb = [g doubleValue];
     }
   }
 
   BOOL needLead = leadMs > 0 && sampleRate > 0;
   BOOL needGain = hasGainKey;
-  if (!needLead && !needGain) return pcm;
+  if (!needLead && !needGain)
+    return pcm;
 
   NSMutableData *work = nil;
   if (needLead) {
@@ -50,13 +223,16 @@ static NSData *PiperApplyInt16LeadSilenceAndGain(NSData *pcm, unsigned sampleRat
 
   if (needGain) {
     double linear = pow(10.0, gainDb / 20.0);
-    if (linear < 0) linear = 0;
+    if (linear < 0)
+      linear = 0;
     int16_t *samples = (int16_t *)work.mutableBytes;
     size_t count = work.length / sizeof(int16_t);
     for (size_t i = 0; i < count; i++) {
       double v = (double)samples[i] * linear;
-      if (v > 32767.0) v = 32767.0;
-      if (v < -32768.0) v = -32768.0;
+      if (v > 32767.0)
+        v = 32767.0;
+      if (v < -32768.0)
+        v = -32768.0;
       samples[i] = (int16_t)lrint(v);
     }
   }
@@ -64,11 +240,16 @@ static NSData *PiperApplyInt16LeadSilenceAndGain(NSData *pcm, unsigned sampleRat
   return work;
 }
 
-static void PiperApplyHighPassFloatMono(float *data, AVAudioFrameCount frameCount, double sampleRate, double cutoffHz) {
-  if (!data || frameCount == 0 || cutoffHz <= 0 || sampleRate <= 0) return;
+static void PiperApplyHighPassFloatMono(float *data,
+                                        AVAudioFrameCount frameCount,
+                                        double sampleRate, double cutoffHz) {
+  if (!data || frameCount == 0 || cutoffHz <= 0 || sampleRate <= 0)
+    return;
   double R = exp(-2.0 * M_PI * cutoffHz / sampleRate);
-  if (R < 0.0) R = 0.0;
-  if (R > 0.999999) R = 0.999999;
+  if (R < 0.0)
+    R = 0.0;
+  if (R > 0.999999)
+    R = 0.999999;
   float x1 = 0.f, y1 = 0.f;
   for (AVAudioFrameCount i = 0; i < frameCount; i++) {
     float x0 = data[i];
@@ -79,76 +260,85 @@ static void PiperApplyHighPassFloatMono(float *data, AVAudioFrameCount frameCoun
   }
 }
 
-static void PiperApplyEndFadeFloatMono(float *data, AVAudioFrameCount frameCount, double sampleRate, double fadeMs) {
-  if (!data || frameCount == 0 || sampleRate <= 0 || fadeMs <= 0) return;
-  AVAudioFrameCount fadeFrames = (AVAudioFrameCount)llround(sampleRate * fadeMs / 1000.0);
-  if (fadeFrames == 0) return;
-  if (fadeFrames > frameCount) fadeFrames = frameCount;
-  AVAudioFrameCount start = frameCount - fadeFrames;
-  for (AVAudioFrameCount i = 0; i < fadeFrames; i++) {
-    double gain = (double)(fadeFrames - i - 1) / (double)fadeFrames;
-    data[start + i] = (float)(data[start + i] * gain);
-  }
-}
-
 static BOOL PiperOptsBoolForLayer2(NSDictionary *opts) {
-  if (![opts isKindOfClass:[NSDictionary class]]) return NO;
+  if (![opts isKindOfClass:[NSDictionary class]])
+    return NO;
   id v = opts[@"renderLayer2Enabled"];
-  if (!v || v == [NSNull null]) return NO;
-  if ([v isKindOfClass:[NSNumber class]]) return [v boolValue];
+  if (!v || v == [NSNull null])
+    return NO;
+  if ([v isKindOfClass:[NSNumber class]])
+    return [v boolValue];
   return NO;
 }
 
-/** Dry + delayed wet (gain on wet only); extends length by delay. Returns nil on alloc failure. */
-static AVAudioPCMBuffer *PiperApplyLayer2DesyncFloatMono(
-  AVAudioPCMBuffer *dry,
-  NSDictionary *opts,
-  AVAudioFormat *format) {
-  if (!dry || dry.frameLength == 0) return dry;
-  if (![opts isKindOfClass:[NSDictionary class]] || !PiperOptsBoolForLayer2(opts)) return dry;
-  if (!format || format.channelCount != 1) return dry;
+/** Dry + delayed wet (gain on wet only); extends length by delay. Returns nil
+ * on alloc failure. */
+static AVAudioPCMBuffer *
+PiperApplyLayer2DesyncFloatMono(AVAudioPCMBuffer *dry, NSDictionary *opts,
+                                AVAudioFormat *format) {
+  if (!dry || dry.frameLength == 0)
+    return dry;
+  if (![opts isKindOfClass:[NSDictionary class]] ||
+      !PiperOptsBoolForLayer2(opts))
+    return dry;
+  if (!format || format.channelCount != 1)
+    return dry;
   float *inCh = dry.floatChannelData[0];
-  if (!inCh) return dry;
+  if (!inCh)
+    return dry;
 
   double delayMs = 0;
   id dObj = opts[@"renderLayer2DelayMs"];
-  if (dObj && dObj != [NSNull null] && [dObj respondsToSelector:@selector(doubleValue)]) {
+  if (dObj && dObj != [NSNull null] &&
+      [dObj respondsToSelector:@selector(doubleValue)]) {
     delayMs = [dObj doubleValue];
   }
-  if (delayMs < 0 || isnan(delayMs)) delayMs = 0;
+  if (delayMs < 0 || isnan(delayMs))
+    delayMs = 0;
 
   double gainDb = 0;
   id gObj = opts[@"renderLayer2GainDb"];
-  if (gObj && gObj != [NSNull null] && [gObj respondsToSelector:@selector(doubleValue)]) {
+  if (gObj && gObj != [NSNull null] &&
+      [gObj respondsToSelector:@selector(doubleValue)]) {
     gainDb = [gObj doubleValue];
   }
-  if (isnan(gainDb) || isinf(gainDb)) gainDb = 0;
+  if (isnan(gainDb) || isinf(gainDb))
+    gainDb = 0;
 
   double sr = format.sampleRate;
-  if (sr <= 0) return dry;
+  if (sr <= 0)
+    return dry;
   AVAudioFrameCount N = dry.frameLength;
   NSInteger D = (NSInteger)llround(delayMs * sr / 1000.0);
-  if (D < 0) D = 0;
-  if (D > 100000) D = 100000;
+  if (D < 0)
+    D = 0;
+  if (D > 100000)
+    D = 100000;
 
   double linear = pow(10.0, gainDb / 20.0);
-  if (linear < 0 || isnan(linear) || isinf(linear)) linear = 0;
+  if (linear < 0 || isnan(linear) || isinf(linear))
+    linear = 0;
 
   AVAudioFrameCount outN = N + (AVAudioFrameCount)D;
-  AVAudioPCMBuffer *outBuf = [[AVAudioPCMBuffer alloc] initWithPCMFormat:format frameCapacity:outN];
-  if (!outBuf || !outBuf.floatChannelData[0]) return nil;
+  AVAudioPCMBuffer *outBuf = [[AVAudioPCMBuffer alloc] initWithPCMFormat:format
+                                                           frameCapacity:outN];
+  if (!outBuf || !outBuf.floatChannelData[0])
+    return nil;
   float *out = outBuf.floatChannelData[0];
   memset(out, 0, sizeof(float) * outN);
 
   for (AVAudioFrameCount i = 0; i < outN; i++) {
     double sum = 0.0;
-    if (i < N) sum += (double)inCh[i];
+    if (i < N)
+      sum += (double)inCh[i];
     NSInteger j = (NSInteger)i - D;
     if (j >= 0 && j < (NSInteger)N) {
       sum += (double)inCh[(AVAudioFrameCount)j] * linear;
     }
-    if (sum > 1.0) sum = 1.0;
-    if (sum < -1.0) sum = -1.0;
+    if (sum > 1.0)
+      sum = 1.0;
+    if (sum < -1.0)
+      sum = -1.0;
     out[i] = (float)sum;
   }
   outBuf.frameLength = outN;
@@ -156,31 +346,31 @@ static AVAudioPCMBuffer *PiperApplyLayer2DesyncFloatMono(
 }
 
 @interface PiperTtsModule ()
-@property (nonatomic, strong) AVAudioEngine *playbackEngine;
-@property (nonatomic, strong) AVAudioPlayerNode *playbackPlayer;
-/** Options set via setOptions(); used by the next speak(). Copy of the last dict. */
-@property (atomic, copy) NSDictionary *lastSpeakOptions;
+@property(nonatomic, strong) AVAudioEngine *playbackEngine;
+@property(nonatomic, strong) AVAudioPlayerNode *playbackPlayer;
+/** Options set via setOptions(); used by the next speak(). Copy of the last
+ * dict. */
+@property(atomic, copy) NSDictionary *lastSpeakOptions;
 /* Last playback buffer/format diagnostics (bubbled to JS via getDebugInfo). */
-@property (nonatomic) NSUInteger lastAudioSampleCount;
-@property (nonatomic) NSUInteger lastSampleRate;
-@property (nonatomic) double lastExpectedDurationSec;
-@property (nonatomic) NSUInteger lastPcmBytes;
-@property (nonatomic) NSUInteger lastPcmLength;
-@property (nonatomic) double lastEngineOutputSampleRate;
-@property (nonatomic) double lastFormatSampleRate;
-@property (nonatomic) uint32_t lastBufferFrameLength;
-@property (nonatomic) double lastBufferFormatSampleRate;
-@property (atomic, assign) BOOL speakAbortRequested;
-@property (nonatomic, copy) RCTPromiseResolveBlock pendingSpeakResolve;
-@property (nonatomic, copy) RCTPromiseRejectBlock pendingSpeakReject;
+@property(nonatomic) NSUInteger lastAudioSampleCount;
+@property(nonatomic) NSUInteger lastSampleRate;
+@property(nonatomic) double lastExpectedDurationSec;
+@property(nonatomic) NSUInteger lastPcmBytes;
+@property(nonatomic) NSUInteger lastPcmLength;
+@property(nonatomic) double lastEngineOutputSampleRate;
+@property(nonatomic) double lastFormatSampleRate;
+@property(nonatomic) uint32_t lastBufferFrameLength;
+@property(nonatomic) double lastBufferFormatSampleRate;
+@property(atomic, assign) BOOL speakAbortRequested;
+@property(nonatomic, copy) RCTPromiseResolveBlock pendingSpeakResolve;
+@property(nonatomic, copy) RCTPromiseRejectBlock pendingSpeakReject;
 @end
 
 @implementation PiperTtsModule
 
 #if __has_include("PiperTts/PiperTts.h")
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:
-    (const facebook::react::ObjCTurboModule::InitParams &)params
-{
+    (const facebook::react::ObjCTurboModule::InitParams &)params {
   return std::make_shared<facebook::react::NativePiperTtsSpecJSI>(params);
 }
 #endif
@@ -196,40 +386,62 @@ static AVAudioPCMBuffer *PiperApplyLayer2DesyncFloatMono(
     RCTLogInfo(@"[PiperTts] model.onnx found in piper/ at %@", path);
     return path;
   }
-  path = [bundle pathForResource:@"model" ofType:@"onnx" inDirectory:@"Resources/piper"];
-  if (path.length) RCTLogInfo(@"[PiperTts] model.onnx found in Resources/piper");
-  if (!path.length) RCTLogWarn(@"[PiperTts] model.onnx not found in bundle %@", bundle.bundlePath);
+  path = [bundle pathForResource:@"model"
+                          ofType:@"onnx"
+                     inDirectory:@"Resources/piper"];
+  if (path.length)
+    RCTLogInfo(@"[PiperTts] model.onnx found in Resources/piper");
+  if (!path.length)
+    RCTLogWarn(@"[PiperTts] model.onnx not found in bundle %@",
+               bundle.bundlePath);
   return path ?: @"";
 }
 
 + (NSString *)piperConfigPathInBundle:(NSBundle *)bundle {
   NSString *path = [bundle pathForResource:@"model.onnx" ofType:@"json"];
-  if (path.length) return path;
-  path = [bundle pathForResource:@"model.onnx" ofType:@"json" inDirectory:@"piper"];
-  if (path.length) return path;
-  path = [bundle pathForResource:@"model.onnx" ofType:@"json" inDirectory:@"Resources/piper"];
+  if (path.length)
+    return path;
+  path = [bundle pathForResource:@"model.onnx"
+                          ofType:@"json"
+                     inDirectory:@"piper"];
+  if (path.length)
+    return path;
+  path = [bundle pathForResource:@"model.onnx"
+                          ofType:@"json"
+                     inDirectory:@"Resources/piper"];
   return path ?: @"";
 }
 
-// Directory containing espeak-ng data (lang/, voices/; phontab if present). Run scripts/download-espeak-ng-data.sh.
-// CocoaPods may place resources under full paths, so we search the bundle for a dir named "espeak-ng-data".
+// Directory containing espeak-ng data (lang/, voices/; phontab if present). Run
+// scripts/download-espeak-ng-data.sh. CocoaPods may place resources under full
+// paths, so we search the bundle for a dir named "espeak-ng-data".
 + (NSString *)espeakDataPathInBundle:(NSBundle *)bundle {
   NSString *dir = nil;
   // 1) Standard locations (flat or under Resources/)
-  NSString *file = [bundle pathForResource:@"phontab" ofType:nil inDirectory:@"espeak-ng-data"];
-  if (file.length) dir = [file stringByDeletingLastPathComponent];
+  NSString *file = [bundle pathForResource:@"phontab"
+                                    ofType:nil
+                               inDirectory:@"espeak-ng-data"];
+  if (file.length)
+    dir = [file stringByDeletingLastPathComponent];
   if (!dir.length) {
-    file = [bundle pathForResource:@"phontab" ofType:nil inDirectory:@"Resources/espeak-ng-data"];
-    if (file.length) dir = [file stringByDeletingLastPathComponent];
+    file = [bundle pathForResource:@"phontab"
+                            ofType:nil
+                       inDirectory:@"Resources/espeak-ng-data"];
+    if (file.length)
+      dir = [file stringByDeletingLastPathComponent];
   }
   if (!dir.length) {
     NSString *res = [bundle resourcePath];
     if (res.length) {
-      NSString *candidate = [res stringByAppendingPathComponent:@"espeak-ng-data"];
-      if ([[NSFileManager defaultManager] fileExistsAtPath:candidate]) dir = candidate;
+      NSString *candidate =
+          [res stringByAppendingPathComponent:@"espeak-ng-data"];
+      if ([[NSFileManager defaultManager] fileExistsAtPath:candidate])
+        dir = candidate;
       if (!dir.length) {
-        candidate = [res stringByAppendingPathComponent:@"ios/Resources/espeak-ng-data"];
-        if ([[NSFileManager defaultManager] fileExistsAtPath:candidate]) dir = candidate;
+        candidate = [res
+            stringByAppendingPathComponent:@"ios/Resources/espeak-ng-data"];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:candidate])
+          dir = candidate;
       }
     }
   }
@@ -252,76 +464,46 @@ static AVAudioPCMBuffer *PiperApplyLayer2DesyncFloatMono(
   if (dir.length) {
     RCTLogInfo(@"[PiperTts] espeak-ng-data found at %@", dir);
   } else {
-    RCTLogWarn(@"[PiperTts] espeak-ng-data not found in bundle %@", bundle.bundlePath);
+    RCTLogWarn(@"[PiperTts] espeak-ng-data not found in bundle %@",
+               bundle.bundlePath);
   }
   return dir ?: @"";
-}
-
-// Pairs of (segment text, silence ms to insert after). Used for comma (125ms) and sentence (250ms) pauses.
-+ (NSArray<NSDictionary<NSString *, id> *> *)segmentsWithSilenceFromText:(NSString *)text
-                                                    interSentenceSilenceMs:(NSInteger)sentenceMs
-                                                      interCommaSilenceMs:(NSInteger)commaMs
-{
-  if (!text.length || (sentenceMs <= 0 && commaMs <= 0)) return @[];
-  NSString *trimmed = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-  if (!trimmed.length) return @[];
-  NSError *err = nil;
-  // Match runs of text ending in , or .!? (with optional trailing space)
-  NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"[^,.!?]+[,.!?]\\s*"
-                                                                         options:0
-                                                                           error:&err];
-  if (err || !regex) {
-    return @[ @{ @"text": trimmed, @"silenceMs": @0 } ];
-  }
-  NSMutableArray<NSDictionary<NSString *, id> *> *result = [NSMutableArray array];
-  NSArray<NSTextCheckingResult *> *matches = [regex matchesInString:trimmed options:0 range:NSMakeRange(0, trimmed.length)];
-  NSUInteger lastEnd = 0;
-  for (NSTextCheckingResult *match in matches) {
-    NSRange r = [match range];
-    NSString *seg = [trimmed substringWithRange:r];
-    seg = [seg stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-    if (!seg.length) { lastEnd = NSMaxRange(r); continue; }
-    unichar lastChar = [seg characterAtIndex:seg.length - 1];
-    NSInteger silence = 0;
-    if (lastChar == ',') silence = commaMs;
-    else if (lastChar == '.' || lastChar == '!' || lastChar == '?') silence = sentenceMs;
-    [result addObject:@{ @"text": seg, @"silenceMs": @(silence) }];
-    lastEnd = NSMaxRange(r);
-  }
-  if (lastEnd < trimmed.length) {
-    NSString *tail = [trimmed substringFromIndex:lastEnd];
-    tail = [tail stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-    if (tail.length) [result addObject:@{ @"text": tail, @"silenceMs": @0 }];
-  }
-  return result;
 }
 
 RCT_EXPORT_MODULE(PiperTts)
 
 // Expose setOptions to the bridge so JS can invoke it (TurboModule + legacy).
-RCT_EXPORT_METHOD(setOptions:(NSDictionary *)options)
-{
+RCT_EXPORT_METHOD(setOptions : (NSDictionary *)options) {
   if (![options isKindOfClass:[NSDictionary class]] || options.count == 0) {
     self.lastSpeakOptions = nil;
     RCTLogInfo(@"[PiperTts] setOptions: cleared (nil or empty)");
     return;
   }
   self.lastSpeakOptions = [options copy];
-  RCTLogInfo(@"[PiperTts] setOptions: stored keys=%@ noiseScale=%@ lengthScale=%@ noiseW=%@ gainDb=%@ interSentenceSilenceMs=%@ interCommaSilenceMs=%@ renderPostGainDb=%@ renderLeadSilenceMs=%@ renderHighPassHz=%@ renderLayer2Enabled=%@ renderLayer2DelayMs=%@ renderLayer2GainDb=%@",
-             [options allKeys], options[@"noiseScale"], options[@"lengthScale"], options[@"noiseW"], options[@"gainDb"], options[@"interSentenceSilenceMs"], options[@"interCommaSilenceMs"], options[@"renderPostGainDb"], options[@"renderLeadSilenceMs"], options[@"renderHighPassHz"], options[@"renderLayer2Enabled"], options[@"renderLayer2DelayMs"], options[@"renderLayer2GainDb"]);
+  RCTLogInfo(
+      @"[PiperTts] setOptions: stored keys=%@ noiseScale=%@ lengthScale=%@ "
+      @"noiseW=%@ gainDb=%@ interSentenceSilenceMs=%@ interCommaSilenceMs=%@ "
+      @"renderPostGainDb=%@ renderLeadSilenceMs=%@ renderHighPassHz=%@ "
+      @"renderLayer2Enabled=%@ renderLayer2DelayMs=%@ renderLayer2GainDb=%@",
+      [options allKeys], options[@"noiseScale"], options[@"lengthScale"],
+      options[@"noiseW"], options[@"gainDb"],
+      options[@"interSentenceSilenceMs"], options[@"interCommaSilenceMs"],
+      options[@"renderPostGainDb"], options[@"renderLeadSilenceMs"],
+      options[@"renderHighPassHz"], options[@"renderLayer2Enabled"],
+      options[@"renderLayer2DelayMs"], options[@"renderLayer2GainDb"]);
 }
 
-// Selectors must match TurboModule spec: resolve:/reject: (not resolver:/rejecter:)
-RCT_EXPORT_METHOD(speak:(NSString *)text
-                  resolve:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject)
-{
+// Selectors must match TurboModule spec: resolve:/reject: (not
+// resolver:/rejecter:)
+RCT_EXPORT_METHOD(speak : (NSString *)text resolve : (RCTPromiseResolveBlock)
+                      resolve reject : (RCTPromiseRejectBlock)reject) {
   if (!text || text.length == 0) {
     RCTLogWarn(@"[PiperTts][E_INVALID] Text is empty");
     reject(@"E_INVALID", @"Text is empty", nil);
     return;
   }
-  // espeak-ng is not thread-safe; run synthesis on main thread to avoid EXC_BAD_ACCESS.
+  // espeak-ng is not thread-safe; run synthesis on main thread to avoid
+  // EXC_BAD_ACCESS.
   RCTLogInfo(@"[PiperTts] speak: dispatching to main (espeak not thread-safe)");
   dispatch_async(dispatch_get_main_queue(), ^{
     self.speakAbortRequested = NO;
@@ -329,15 +511,13 @@ RCT_EXPORT_METHOD(speak:(NSString *)text
   });
 }
 
-RCT_EXPORT_METHOD(stop)
-{
+RCT_EXPORT_METHOD(stop) {
   dispatch_async(dispatch_get_main_queue(), ^{
     [self abortCurrentSpeakPipeline];
   });
 }
 
-- (void)abortCurrentSpeakPipeline
-{
+- (void)abortCurrentSpeakPipeline {
   self.speakAbortRequested = YES;
   AVAudioPlayerNode *player = self.playbackPlayer;
   AVAudioEngine *engine = self.playbackEngine;
@@ -359,25 +539,31 @@ RCT_EXPORT_METHOD(stop)
 
 - (void)speakOffMain:(NSString *)text
             resolver:(RCTPromiseResolveBlock)resolve
-            rejecter:(RCTPromiseRejectBlock)reject
-{
+            rejecter:(RCTPromiseRejectBlock)reject {
   NSBundle *appBundle = [NSBundle mainBundle];
   NSString *modelPath = [PiperTtsModule piperModelPathInBundle:appBundle];
   NSString *configPath = [PiperTtsModule piperConfigPathInBundle:appBundle];
   NSString *espeakDataPath = [PiperTtsModule espeakDataPathInBundle:appBundle];
 
   if (!modelPath.length || !configPath.length) {
-    RCTLogError(@"[PiperTts][E_NO_MODEL] model or config missing: model=%d config=%d", (int)modelPath.length, (int)configPath.length);
-    reject(@"E_NO_MODEL", @"Piper model not found. Run scripts/download-piper-voice.sh", nil);
+    RCTLogError(
+        @"[PiperTts][E_NO_MODEL] model or config missing: model=%d config=%d",
+        (int)modelPath.length, (int)configPath.length);
+    reject(@"E_NO_MODEL",
+           @"Piper model not found. Run scripts/download-piper-voice.sh", nil);
     return;
   }
   if (!espeakDataPath.length) {
-    RCTLogError(@"[PiperTts][E_NO_ESPEAK_DATA] espeak-ng-data not found. Run scripts/download-espeak-ng-data.sh");
-    reject(@"E_NO_ESPEAK_DATA", @"espeak-ng-data not found. Run scripts/download-espeak-ng-data.sh", nil);
+    RCTLogError(@"[PiperTts][E_NO_ESPEAK_DATA] espeak-ng-data not found. Run "
+                @"scripts/download-espeak-ng-data.sh");
+    reject(@"E_NO_ESPEAK_DATA",
+           @"espeak-ng-data not found. Run scripts/download-espeak-ng-data.sh",
+           nil);
     return;
   }
 
-  RCTLogInfo(@"[PiperTts] synthesizing (length %lu) via C++ pipeline", (unsigned long)text.length);
+  RCTLogInfo(@"[PiperTts] synthesizing (length %lu) via C++ pipeline",
+             (unsigned long)text.length);
 
   std::string model_path([modelPath UTF8String]);
   std::string config_path([configPath UTF8String]);
@@ -392,113 +578,107 @@ RCT_EXPORT_METHOD(stop)
   NSDictionary *opts = self.lastSpeakOptions;
   if (opts != nil && opts.count > 0) {
     NSNumber *ns = opts[@"noiseScale"];
-    if (ns != nil && [ns isKindOfClass:[NSNumber class]]) { overrides.noise_scale = [ns floatValue]; useOverrides = true; }
+    if (ns != nil && [ns isKindOfClass:[NSNumber class]]) {
+      overrides.noise_scale = [ns floatValue];
+      useOverrides = true;
+    }
     ns = opts[@"lengthScale"];
-    if (ns != nil && [ns isKindOfClass:[NSNumber class]]) { overrides.length_scale = [ns floatValue]; useOverrides = true; }
+    if (ns != nil && [ns isKindOfClass:[NSNumber class]]) {
+      overrides.length_scale = [ns floatValue];
+      useOverrides = true;
+    }
     ns = opts[@"noiseW"];
-    if (ns != nil && [ns isKindOfClass:[NSNumber class]]) { overrides.noise_w = [ns floatValue]; useOverrides = true; }
+    if (ns != nil && [ns isKindOfClass:[NSNumber class]]) {
+      overrides.noise_w = [ns floatValue];
+      useOverrides = true;
+    }
     ns = opts[@"gainDb"];
-    if (ns != nil && [ns isKindOfClass:[NSNumber class]]) { overrides.gain_db = [ns floatValue]; useOverrides = true; }
+    if (ns != nil && [ns isKindOfClass:[NSNumber class]]) {
+      overrides.gain_db = [ns floatValue];
+      useOverrides = true;
+    }
   }
   NSInteger interSentenceSilenceMs = 0;
   NSInteger interCommaSilenceMs = 0;
   if (opts != nil) {
     NSNumber *n = opts[@"interSentenceSilenceMs"];
-    if (n != nil && [n isKindOfClass:[NSNumber class]]) interSentenceSilenceMs = [n integerValue];
+    if (n != nil && [n isKindOfClass:[NSNumber class]])
+      interSentenceSilenceMs = [n integerValue];
     n = opts[@"interCommaSilenceMs"];
-    if (n != nil && [n isKindOfClass:[NSNumber class]]) interCommaSilenceMs = [n integerValue];
+    if (n != nil && [n isKindOfClass:[NSNumber class]])
+      interCommaSilenceMs = [n integerValue];
   }
-  RCTLogInfo(@"[PiperTts] speakOffMain: lastSpeakOptions=%@ useOverrides=%d noise_scale=%.3f length_scale=%.3f noise_w=%.3f gain_db=%.1f interSentenceSilenceMs=%ld interCommaSilenceMs=%ld",
-             opts != nil ? @"(set)" : @"nil", useOverrides, overrides.noise_scale, overrides.length_scale, overrides.noise_w, overrides.gain_db, (long)interSentenceSilenceMs, (long)interCommaSilenceMs);
-  const piper::SynthesizeOverrides *overridesPtr = useOverrides ? &overrides : nullptr;
+  RCTLogInfo(@"[PiperTts] speakOffMain: lastSpeakOptions=%@ useOverrides=%d "
+             @"noise_scale=%.3f length_scale=%.3f noise_w=%.3f gain_db=%.1f "
+             @"interSentenceSilenceMs=%ld interCommaSilenceMs=%ld",
+             opts != nil ? @"(set)" : @"nil", useOverrides,
+             overrides.noise_scale, overrides.length_scale, overrides.noise_w,
+             overrides.gain_db, (long)interSentenceSilenceMs,
+             (long)interCommaSilenceMs);
+  const piper::SynthesizeOverrides *overridesPtr =
+      useOverrides ? &overrides : nullptr;
 
   if (self.speakAbortRequested) {
     reject(@"E_CANCELLED", @"Playback stopped", nil);
     return;
   }
 
-  BOOL usedSegmentPath = NO;
-  if (interSentenceSilenceMs > 0 || interCommaSilenceMs > 0) {
-    NSArray<NSDictionary<NSString *, id> *> *segments = [PiperTtsModule segmentsWithSilenceFromText:text
-                                                                              interSentenceSilenceMs:interSentenceSilenceMs
-                                                                                interCommaSilenceMs:interCommaSilenceMs];
-    if (segments.count > 1) {
-      usedSegmentPath = YES;
-      std::vector<int16_t> combinedPcm;
-      int combinedRate = 0;
-      for (NSUInteger i = 0; i < segments.count; i++) {
-        NSDictionary<NSString *, id> *seg = segments[i];
-        NSString *segText = seg[@"text"];
-        NSNumber *silenceNum = seg[@"silenceMs"];
-        NSInteger silenceMs = silenceNum != nil ? [silenceNum integerValue] : 0;
-        std::string seg_utf8([segText UTF8String]);
-        std::vector<int16_t> segPcm;
-        int segRate = 0;
-        piper::SynthesizeError segErr = piper::SynthesizeError::kNone;
-        bool segOk = piper::synthesize(model_path, config_path, espeak_path, seg_utf8, segPcm, segRate, &segErr, overridesPtr);
-        if (!segOk || segPcm.empty() || segRate <= 0) {
-          NSString *message = [NSString stringWithFormat:@"Synthesis failed for segment %lu: %@", (unsigned long)(i + 1), segText];
-          RCTLogError(@"[PiperTts][E_SYNTHESIS] %@", message);
-          reject(@"E_SYNTHESIS", message, nil);
-          return;
-        }
-        if (combinedRate == 0) combinedRate = segRate;
-        combinedPcm.insert(combinedPcm.end(), segPcm.begin(), segPcm.end());
-        if (silenceMs > 0) {
-          size_t silenceSamples = (size_t)((double)combinedRate * (double)silenceMs / 1000.0);
-          for (size_t j = 0; j < silenceSamples; j++) combinedPcm.push_back(0);
-        }
-        if (self.speakAbortRequested) {
-          reject(@"E_CANCELLED", @"Playback stopped", nil);
-          return;
-        }
-      }
-      pcm = std::move(combinedPcm);
-      sample_rate = combinedRate;
-      RCTLogInfo(@"[PiperTts] segments: %lu parts, %zu total samples (commas=%@ms, sentences=%@ms)", (unsigned long)segments.count, pcm.size(), @(interCommaSilenceMs), @(interSentenceSilenceMs));
-    }
-  }
-
-  if (!usedSegmentPath) {
-  bool ok = piper::synthesize(model_path, config_path, espeak_path, text_utf8, pcm, sample_rate, &synthError, overridesPtr);
+  bool ok = piper::synthesize(model_path, config_path, espeak_path, text_utf8,
+                              pcm, sample_rate, &synthError, overridesPtr);
   if (!ok || pcm.empty() || sample_rate <= 0) {
     NSString *message = nil;
     switch (synthError) {
-      case piper::SynthesizeError::kEspeakNotLinked:
-        message = @"Piper was built without espeak-ng. Run: PIPER_USE_ESPEAK=1 pod install, then rebuild.";
-        break;
-      case piper::SynthesizeError::kEspeakInitFailed:
-        message = @"espeak-ng init failed. Run scripts/download-espeak-ng-data.sh (with cmake) to build phontab/phondata, then rebuild the app.";
-        break;
-      case piper::SynthesizeError::kEspeakSetVoiceFailed:
-        message = @"espeak-ng set voice failed. Check that espeak-ng-data includes the voice (e.g. en-us).";
-        break;
-      case piper::SynthesizeError::kPhonemeIdsEmpty:
-        message = @"Phonemization produced no phoneme ids. Check espeak-ng-data and config phoneme_id_map.";
-        break;
-      case piper::SynthesizeError::kOrtCreateSessionFailed:
-        message = @"ONNX session creation failed. Check model path and onnxruntime.";
-        break;
-      case piper::SynthesizeError::kOrtRunInferenceFailed:
-        message = @"ONNX inference returned no audio. Check model and phoneme ids.";
-        break;
-      case piper::SynthesizeError::kConfigOpenFailed:
-        message = @"Piper config file could not be opened.";
-        break;
-      case piper::SynthesizeError::kConfigParseFailed:
-        message = @"Piper config file is invalid JSON.";
-        break;
-      case piper::SynthesizeError::kInvalidArgs:
-        message = @"Synthesis invalid arguments (model/config/text path or text empty).";
-        break;
-      default:
-        message = @"Synthesis failed. Run scripts/download-espeak-ng-data.sh with cmake, then rebuild.";
-        break;
+    case piper::SynthesizeError::kEspeakNotLinked:
+      message = @"Piper was built without espeak-ng. Run: PIPER_USE_ESPEAK=1 "
+                @"pod install, then rebuild.";
+      break;
+    case piper::SynthesizeError::kEspeakInitFailed:
+      message =
+          @"espeak-ng init failed. Run scripts/download-espeak-ng-data.sh "
+          @"(with cmake) to build phontab/phondata, then rebuild the app.";
+      break;
+    case piper::SynthesizeError::kEspeakSetVoiceFailed:
+      message = @"espeak-ng set voice failed. Check that espeak-ng-data "
+                @"includes the voice (e.g. en-us).";
+      break;
+    case piper::SynthesizeError::kPhonemeIdsEmpty:
+      message = @"Phonemization produced no phoneme ids. Check espeak-ng-data "
+                @"and config phoneme_id_map.";
+      break;
+    case piper::SynthesizeError::kOrtCreateSessionFailed:
+      message =
+          @"ONNX session creation failed. Check model path and onnxruntime.";
+      break;
+    case piper::SynthesizeError::kOrtRunInferenceFailed:
+      message =
+          @"ONNX inference returned no audio. Check model and phoneme ids.";
+      break;
+    case piper::SynthesizeError::kConfigOpenFailed:
+      message = @"Piper config file could not be opened.";
+      break;
+    case piper::SynthesizeError::kConfigParseFailed:
+      message = @"Piper config file is invalid JSON.";
+      break;
+    case piper::SynthesizeError::kInvalidArgs:
+      message = @"Synthesis invalid arguments (model/config/text path or text "
+                @"empty).";
+      break;
+    default:
+      message = @"Synthesis failed. Run scripts/download-espeak-ng-data.sh "
+                @"with cmake, then rebuild.";
+      break;
     }
     RCTLogError(@"[PiperTts][E_SYNTHESIS] %@", message);
     reject(@"E_SYNTHESIS", message, nil);
     return;
   }
+
+  RCTLogInfo(@"[PiperTts] single-pass synthesize ok: %zu samples @ %d Hz",
+             pcm.size(), sample_rate);
+
+  if (interSentenceSilenceMs > 0 || interCommaSilenceMs > 0) {
+    PiperApplyPostSynthPunctuationPauses(
+        pcm, sample_rate, text, interCommaSilenceMs, interSentenceSilenceMs);
   }
 
   if (self.speakAbortRequested) {
@@ -507,7 +687,8 @@ RCT_EXPORT_METHOD(stop)
   }
 
   NSUInteger sampleCount = pcm.size();
-  NSData *pcmData = [NSData dataWithBytes:pcm.data() length:sampleCount * sizeof(int16_t)];
+  NSData *pcmData = [NSData dataWithBytes:pcm.data()
+                                   length:sampleCount * sizeof(int16_t)];
   double expectedDurationSec = (double)sampleCount / (double)sample_rate;
 
   self.lastAudioSampleCount = sampleCount;
@@ -518,27 +699,33 @@ RCT_EXPORT_METHOD(stop)
   self.lastEngineOutputSampleRate = 0; /* set in playPcm */
 
   NSData *pcmCopy = [pcmData copy];
-  [self playPcm:pcmCopy sampleRate:(unsigned)sample_rate resolver:resolve rejecter:reject];
+  [self playPcm:pcmCopy
+      sampleRate:(unsigned)sample_rate
+        resolver:resolve
+        rejecter:reject];
 }
 
-// Reusable engine/player; resample to ACTUAL engine output sample rate (no hardcoded 48k).
+// Reusable engine/player; resample to ACTUAL engine output sample rate (no
+// hardcoded 48k).
 - (void)playPcm:(NSData *)pcm
      sampleRate:(unsigned)sampleRate
        resolver:(RCTPromiseResolveBlock)resolve
-       rejecter:(RCTPromiseRejectBlock)reject
-{
-  static const double kTailFadeMs = 8.0;
+       rejecter:(RCTPromiseRejectBlock)reject {
   if (!pcm.length || sampleRate == 0) {
     reject(@"E_AUDIO", @"Invalid PCM or sampleRate", nil);
     return;
   }
   if (sampleRate < 8000 || sampleRate > 192000) {
-    reject(@"E_AUDIO", [NSString stringWithFormat:@"Sample rate %u out of range", sampleRate], nil);
+    reject(
+        @"E_AUDIO",
+        [NSString stringWithFormat:@"Sample rate %u out of range", sampleRate],
+        nil);
     return;
   }
 
   NSDictionary *renderOpts = self.lastSpeakOptions;
-  NSData *processedPcm = PiperApplyInt16LeadSilenceAndGain(pcm, sampleRate, renderOpts);
+  NSData *processedPcm =
+      PiperApplyInt16LeadSilenceAndGain(pcm, sampleRate, renderOpts);
   pcm = processedPcm;
   NSUInteger renderedFrames = pcm.length / sizeof(int16_t);
   self.lastAudioSampleCount = renderedFrames;
@@ -554,7 +741,10 @@ RCT_EXPORT_METHOD(stop)
                   mode:AVAudioSessionModeDefault
                options:0
                  error:&err];
-  if (err) { reject(@"E_AUDIO", err.localizedDescription ?: @"setCategory failed", err); return; }
+  if (err) {
+    reject(@"E_AUDIO", err.localizedDescription ?: @"setCategory failed", err);
+    return;
+  }
 
   err = nil;
   [session setPreferredSampleRate:48000.0 error:&err];
@@ -563,7 +753,10 @@ RCT_EXPORT_METHOD(stop)
   [session setActive:YES
          withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation
                error:&err];
-  if (err) { reject(@"E_AUDIO", err.localizedDescription ?: @"setActive failed", err); return; }
+  if (err) {
+    reject(@"E_AUDIO", err.localizedDescription ?: @"setActive failed", err);
+    return;
+  }
 
   // 2) Ensure engine/player exist and are attached
   if (!self.playbackEngine) {
@@ -573,7 +766,8 @@ RCT_EXPORT_METHOD(stop)
     self.playbackPlayer = [[AVAudioPlayerNode alloc] init];
     [self.playbackEngine attachNode:self.playbackPlayer];
   } else {
-    if (![self.playbackEngine.attachedNodes containsObject:self.playbackPlayer]) {
+    if (![self.playbackEngine.attachedNodes
+            containsObject:self.playbackPlayer]) {
       [self.playbackEngine attachNode:self.playbackPlayer];
     }
   }
@@ -582,7 +776,8 @@ RCT_EXPORT_METHOD(stop)
   AVAudioPlayerNode *player = self.playbackPlayer;
   AVAudioMixerNode *mixer = engine.mainMixerNode;
 
-  // 3) Stop engine before reconnecting graph (avoids crash when changing format)
+  // 3) Stop engine before reconnecting graph (avoids crash when changing
+  // format)
   if (engine.isRunning) {
     [player stop];
     [engine stop];
@@ -591,11 +786,14 @@ RCT_EXPORT_METHOD(stop)
   // 4) Connect player to mixer; we'll feed float32 @ 48k so connect with that
   const double kPlaybackRate = 48000.0;
   AVAudioFormat *playbackFormat =
-    [[AVAudioFormat alloc] initWithCommonFormat:AVAudioPCMFormatFloat32
-                                     sampleRate:kPlaybackRate
-                                       channels:1
-                                    interleaved:NO];
-  if (!playbackFormat) { reject(@"E_AUDIO", @"Invalid playback format", nil); return; }
+      [[AVAudioFormat alloc] initWithCommonFormat:AVAudioPCMFormatFloat32
+                                       sampleRate:kPlaybackRate
+                                         channels:1
+                                      interleaved:NO];
+  if (!playbackFormat) {
+    reject(@"E_AUDIO", @"Invalid playback format", nil);
+    return;
+  }
   [engine disconnectNodeOutput:player];
   [engine connect:player to:mixer format:playbackFormat];
 
@@ -606,7 +804,8 @@ RCT_EXPORT_METHOD(stop)
     return;
   }
 
-  // 6) Build SOURCE buffer (Piper PCM): int16 mono at sampleRate (non-interleaved for reliable channelData[0])
+  // 6) Build SOURCE buffer (Piper PCM): int16 mono at sampleRate
+  // (non-interleaved for reliable channelData[0])
   const NSUInteger srcFramesU = pcm.length / sizeof(int16_t);
   if (srcFramesU == 0 || srcFramesU > 0x7FFFFFFF) {
     reject(@"E_AUDIO", @"Invalid PCM frame count", nil);
@@ -615,14 +814,18 @@ RCT_EXPORT_METHOD(stop)
   const AVAudioFrameCount srcFrames = (AVAudioFrameCount)srcFramesU;
 
   AVAudioFormat *srcFormat =
-    [[AVAudioFormat alloc] initWithCommonFormat:AVAudioPCMFormatInt16
-                                     sampleRate:(double)sampleRate
-                                       channels:1
-                                    interleaved:NO];
-  if (!srcFormat) { reject(@"E_AUDIO", @"Invalid source format", nil); return; }
+      [[AVAudioFormat alloc] initWithCommonFormat:AVAudioPCMFormatInt16
+                                       sampleRate:(double)sampleRate
+                                         channels:1
+                                      interleaved:NO];
+  if (!srcFormat) {
+    reject(@"E_AUDIO", @"Invalid source format", nil);
+    return;
+  }
 
   AVAudioPCMBuffer *srcBuffer =
-    [[AVAudioPCMBuffer alloc] initWithPCMFormat:srcFormat frameCapacity:srcFrames];
+      [[AVAudioPCMBuffer alloc] initWithPCMFormat:srcFormat
+                                    frameCapacity:srcFrames];
   if (!srcBuffer) {
     reject(@"E_AUDIO", @"Source buffer alloc failed", nil);
     return;
@@ -635,49 +838,63 @@ RCT_EXPORT_METHOD(stop)
   srcBuffer.frameLength = srcFrames;
   memcpy(channel0, pcm.bytes, pcm.length);
 
-  // 7) Convert Piper PCM (int16 @ sampleRate) -> float32 @ 48k to match connected format
+  // 7) Convert Piper PCM (int16 @ sampleRate) -> float32 @ 48k to match
+  // connected format
   AVAudioPCMBuffer *toPlay = nil;
 
   {
-    AVAudioConverter *converter = [[AVAudioConverter alloc] initFromFormat:srcFormat toFormat:playbackFormat];
-    if (!converter) { reject(@"E_AUDIO", @"AVAudioConverter init failed", nil); return; }
+    AVAudioConverter *converter =
+        [[AVAudioConverter alloc] initFromFormat:srcFormat
+                                        toFormat:playbackFormat];
+    if (!converter) {
+      reject(@"E_AUDIO", @"AVAudioConverter init failed", nil);
+      return;
+    }
 
     const double ratio = playbackFormat.sampleRate / srcFormat.sampleRate;
-    const AVAudioFrameCount dstCap = (AVAudioFrameCount)ceil((double)srcFrames * ratio) + 256;
+    const AVAudioFrameCount dstCap =
+        (AVAudioFrameCount)ceil((double)srcFrames * ratio) + 256;
 
     AVAudioPCMBuffer *dstBuffer =
-      [[AVAudioPCMBuffer alloc] initWithPCMFormat:playbackFormat frameCapacity:dstCap];
+        [[AVAudioPCMBuffer alloc] initWithPCMFormat:playbackFormat
+                                      frameCapacity:dstCap];
     if (!dstBuffer || !dstBuffer.floatChannelData[0]) {
       reject(@"E_AUDIO", @"Destination buffer alloc failed", nil);
       return;
     }
 
     __block BOOL inputProvided = NO;
-    AVAudioConverterInputBlock inputBlock =
-      ^AVAudioBuffer * _Nullable(AVAudioPacketCount inPackets, AVAudioConverterInputStatus *outStatus) {
-        if (inputProvided) {
-          *outStatus = AVAudioConverterInputStatus_EndOfStream;
-          return nil;
-        }
-        inputProvided = YES;
-        *outStatus = AVAudioConverterInputStatus_HaveData;
-        return srcBuffer;
-      };
+    AVAudioConverterInputBlock inputBlock = ^AVAudioBuffer *_Nullable(
+        AVAudioPacketCount inPackets, AVAudioConverterInputStatus *outStatus) {
+      if (inputProvided) {
+        *outStatus = AVAudioConverterInputStatus_EndOfStream;
+        return nil;
+      }
+      inputProvided = YES;
+      *outStatus = AVAudioConverterInputStatus_HaveData;
+      return srcBuffer;
+    };
 
     NSError *convertErr = nil;
     AVAudioConverterOutputStatus status =
-      [converter convertToBuffer:dstBuffer error:&convertErr withInputFromBlock:inputBlock];
+        [converter convertToBuffer:dstBuffer
+                             error:&convertErr
+                withInputFromBlock:inputBlock];
 
     if (status != AVAudioConverterOutputStatus_HaveData &&
         status != AVAudioConverterOutputStatus_EndOfStream) {
       reject(@"E_AUDIO",
-             convertErr.localizedDescription ?: [NSString stringWithFormat:@"convertToBuffer failed (status=%ld)", (long)status],
+             convertErr.localizedDescription
+                 ?: [NSString
+                        stringWithFormat:@"convertToBuffer failed (status=%ld)",
+                                         (long)status],
              convertErr);
       return;
     }
 
     if (dstBuffer.frameLength == 0) {
-      AVAudioFrameCount fallback = (AVAudioFrameCount)ceil((double)srcFrames * ratio);
+      AVAudioFrameCount fallback =
+          (AVAudioFrameCount)ceil((double)srcFrames * ratio);
       dstBuffer.frameLength = fallback < dstCap ? fallback : dstCap;
     }
 
@@ -692,24 +909,24 @@ RCT_EXPORT_METHOD(stop)
   if ([renderOpts isKindOfClass:[NSDictionary class]]) {
     id hpObj = renderOpts[@"renderHighPassHz"];
     double hpHz = 0;
-    if (hpObj && hpObj != [NSNull null] && [hpObj respondsToSelector:@selector(doubleValue)]) {
+    if (hpObj && hpObj != [NSNull null] &&
+        [hpObj respondsToSelector:@selector(doubleValue)]) {
       hpHz = [hpObj doubleValue];
     }
     if (hpHz > 0 && toPlay != nil && toPlay.floatChannelData[0] != NULL) {
-      PiperApplyHighPassFloatMono(toPlay.floatChannelData[0], toPlay.frameLength, playbackFormat.sampleRate, hpHz);
+      PiperApplyHighPassFloatMono(toPlay.floatChannelData[0],
+                                  toPlay.frameLength, playbackFormat.sampleRate,
+                                  hpHz);
     }
 
     if (toPlay != nil && PiperOptsBoolForLayer2(renderOpts)) {
-      AVAudioPCMBuffer *mixed = PiperApplyLayer2DesyncFloatMono(toPlay, renderOpts, playbackFormat);
+      AVAudioPCMBuffer *mixed =
+          PiperApplyLayer2DesyncFloatMono(toPlay, renderOpts, playbackFormat);
       if (mixed != nil) {
         toPlay = mixed;
         self.lastBufferFrameLength = toPlay.frameLength;
       }
     }
-  }
-
-  if (toPlay != nil && toPlay.floatChannelData[0] != NULL) {
-    PiperApplyEndFadeFloatMono(toPlay.floatChannelData[0], toPlay.frameLength, playbackFormat.sampleRate, kTailFadeMs);
   }
 
   if (!toPlay || toPlay.frameLength == 0) {
@@ -734,11 +951,13 @@ RCT_EXPORT_METHOD(stop)
                   atTime:nil
                  options:0
        completionHandler:^{
-         if (didResolve) return;
+         if (didResolve)
+           return;
          didResolve = YES;
          dispatch_async(dispatch_get_main_queue(), ^{
            PiperTtsModule *s = wself;
-           if (!s) return;
+           if (!s)
+             return;
            if (s.speakAbortRequested) {
              s.pendingSpeakResolve = nil;
              s.pendingSpeakReject = nil;
@@ -747,7 +966,8 @@ RCT_EXPORT_METHOD(stop)
            RCTPromiseResolveBlock r = s.pendingSpeakResolve;
            s.pendingSpeakResolve = nil;
            s.pendingSpeakReject = nil;
-           if (r) r(@(YES));
+           if (r)
+             r(@(YES));
          });
        }];
 
@@ -756,11 +976,12 @@ RCT_EXPORT_METHOD(stop)
   }
 }
 
-RCT_EXPORT_METHOD(copyModelToFiles:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject)
-{
-  // On iOS the model is used from the bundle; no copy from assets. Resolve with model dir for API consistency with Android.
-  NSString *modelPath = [PiperTtsModule piperModelPathInBundle:[NSBundle mainBundle]];
+RCT_EXPORT_METHOD(copyModelToFiles : (RCTPromiseResolveBlock)
+                      resolve reject : (RCTPromiseRejectBlock)reject) {
+  // On iOS the model is used from the bundle; no copy from assets. Resolve with
+  // model dir for API consistency with Android.
+  NSString *modelPath =
+      [PiperTtsModule piperModelPathInBundle:[NSBundle mainBundle]];
   if (modelPath.length) {
     resolve([modelPath stringByDeletingLastPathComponent]);
   } else {
@@ -768,71 +989,138 @@ RCT_EXPORT_METHOD(copyModelToFiles:(RCTPromiseResolveBlock)resolve
   }
 }
 
-RCT_EXPORT_METHOD(isModelAvailable:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject)
-{
-  NSString *modelPath = [PiperTtsModule piperModelPathInBundle:[NSBundle mainBundle]];
+RCT_EXPORT_METHOD(isModelAvailable : (RCTPromiseResolveBlock)
+                      resolve reject : (RCTPromiseRejectBlock)reject) {
+  NSString *modelPath =
+      [PiperTtsModule piperModelPathInBundle:[NSBundle mainBundle]];
   resolve(@(modelPath.length > 0));
 }
 
-RCT_EXPORT_METHOD(getDebugInfo:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject)
-{
+RCT_EXPORT_METHOD(getDebugInfo : (RCTPromiseResolveBlock)
+                      resolve reject : (RCTPromiseRejectBlock)reject) {
   NSBundle *main = [NSBundle mainBundle];
   NSMutableArray<NSString *> *lines = [NSMutableArray array];
 
-  [lines addObject:[NSString stringWithFormat:@"Main bundle path: %@", main.bundlePath ?: @"(nil)"]];
-  [lines addObject:[NSString stringWithFormat:@"Resource path: %@", main.resourcePath ?: @"(nil)"]];
+  [lines addObject:[NSString stringWithFormat:@"Main bundle path: %@",
+                                              main.bundlePath ?: @"(nil)"]];
+  [lines addObject:[NSString stringWithFormat:@"Resource path: %@",
+                                              main.resourcePath ?: @"(nil)"]];
 
   NSString *modelFlat = [main pathForResource:@"model" ofType:@"onnx"];
-  [lines addObject:[NSString stringWithFormat:@"model.onnx (flat): %@", modelFlat.length ? modelFlat : @"(not found)"]];
+  [lines
+      addObject:[NSString stringWithFormat:@"model.onnx (flat): %@",
+                                           modelFlat.length ? modelFlat
+                                                            : @"(not found)"]];
 
-  NSString *modelInPiper = [main pathForResource:@"model" ofType:@"onnx" inDirectory:@"piper"];
-  [lines addObject:[NSString stringWithFormat:@"model.onnx (piper/): %@", modelInPiper.length ? modelInPiper : @"(not found)"]];
+  NSString *modelInPiper = [main pathForResource:@"model"
+                                          ofType:@"onnx"
+                                     inDirectory:@"piper"];
+  [lines addObject:[NSString stringWithFormat:@"model.onnx (piper/): %@",
+                                              modelInPiper.length
+                                                  ? modelInPiper
+                                                  : @"(not found)"]];
 
-  NSString *modelInDir = [main pathForResource:@"model" ofType:@"onnx" inDirectory:@"Resources/piper"];
-  [lines addObject:[NSString stringWithFormat:@"model.onnx (Resources/piper): %@", modelInDir.length ? modelInDir : @"(not found)"]];
+  NSString *modelInDir = [main pathForResource:@"model"
+                                        ofType:@"onnx"
+                                   inDirectory:@"Resources/piper"];
+  [lines
+      addObject:[NSString stringWithFormat:@"model.onnx (Resources/piper): %@",
+                                           modelInDir.length ? modelInDir
+                                                             : @"(not found)"]];
 
   NSString *espeakPath = [PiperTtsModule espeakDataPathInBundle:main];
-  [lines addObject:[NSString stringWithFormat:@"espeak-ng-data dir: %@", espeakPath.length ? espeakPath : @"(not found)"]];
+  [lines
+      addObject:[NSString stringWithFormat:@"espeak-ng-data dir: %@",
+                                           espeakPath.length ? espeakPath
+                                                             : @"(not found)"]];
 
   NSArray *onnxInRoot = [main pathsForResourcesOfType:@"onnx" inDirectory:nil];
-  [lines addObject:[NSString stringWithFormat:@"All .onnx in bundle root: %@", onnxInRoot.count ? [onnxInRoot componentsJoinedByString:@", "] : @"(none)"]];
+  [lines
+      addObject:[NSString
+                    stringWithFormat:@"All .onnx in bundle root: %@",
+                                     onnxInRoot.count
+                                         ? [onnxInRoot
+                                               componentsJoinedByString:@", "]
+                                         : @"(none)"]];
 
   NSArray *jsonInRoot = [main pathsForResourcesOfType:@"json" inDirectory:nil];
-  [lines addObject:[NSString stringWithFormat:@"All .json in bundle root: %@", jsonInRoot.count ? [jsonInRoot componentsJoinedByString:@", "] : @"(none)"]];
+  [lines
+      addObject:[NSString
+                    stringWithFormat:@"All .json in bundle root: %@",
+                                     jsonInRoot.count
+                                         ? [jsonInRoot
+                                               componentsJoinedByString:@", "]
+                                         : @"(none)"]];
 
   NSArray *inPiper = [main pathsForResourcesOfType:nil inDirectory:@"piper"];
-  [lines addObject:[NSString stringWithFormat:@"Files in piper/: %@", inPiper.count ? [inPiper componentsJoinedByString:@", "] : @"(none)"]];
+  [lines
+      addObject:[NSString
+                    stringWithFormat:@"Files in piper/: %@",
+                                     inPiper.count
+                                         ? [inPiper
+                                               componentsJoinedByString:@", "]
+                                         : @"(none)"]];
 
-  NSArray *inResourcesPiper = [main pathsForResourcesOfType:nil inDirectory:@"Resources/piper"];
-  [lines addObject:[NSString stringWithFormat:@"Files in Resources/piper: %@", inResourcesPiper.count ? [inResourcesPiper componentsJoinedByString:@", "] : @"(none)"]];
+  NSArray *inResourcesPiper = [main pathsForResourcesOfType:nil
+                                                inDirectory:@"Resources/piper"];
+  [lines
+      addObject:[NSString
+                    stringWithFormat:@"Files in Resources/piper: %@",
+                                     inResourcesPiper.count
+                                         ? [inResourcesPiper
+                                               componentsJoinedByString:@", "]
+                                         : @"(none)"]];
 
   /* List top-level bundle contents to see what actually got copied */
   NSString *bundlePath = main.bundlePath;
   if (bundlePath.length) {
     NSError *err = nil;
-    NSArray<NSString *> *topLevel = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:bundlePath error:&err];
+    NSArray<NSString *> *topLevel =
+        [[NSFileManager defaultManager] contentsOfDirectoryAtPath:bundlePath
+                                                            error:&err];
     if (topLevel.count) {
-      NSArray *filtered = [topLevel filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSString *name, id _) {
-        return [name isEqualToString:@"model.onnx"] || [name isEqualToString:@"model.onnx.json"] || [name isEqualToString:@"piper"] || [name isEqualToString:@"espeak-ng-data"];
-      }]];
+      NSArray *filtered = [topLevel
+          filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(
+                                                       NSString *name, id _) {
+            return [name isEqualToString:@"model.onnx"] ||
+                   [name isEqualToString:@"model.onnx.json"] ||
+                   [name isEqualToString:@"piper"] ||
+                   [name isEqualToString:@"espeak-ng-data"];
+          }]];
       if (filtered.count) {
-        [lines addObject:[NSString stringWithFormat:@"Bundle has (model/piper/espeak): %@", [filtered componentsJoinedByString:@", "]]];
+        [lines
+            addObject:[NSString stringWithFormat:
+                                    @"Bundle has (model/piper/espeak): %@",
+                                    [filtered componentsJoinedByString:@", "]]];
       }
     }
   }
 
-  [lines addObject:@"--- Last playback buffer check (visible in JS via getDebugInfo) ---"];
-  [lines addObject:[NSString stringWithFormat:@"audioSampleCount=%lu sampleRate=%lu expectedDurationSec=%.2f pcmBytes=%lu pcmLength=%lu engineOutputSampleRate=%.0f",
-                    (unsigned long)self.lastAudioSampleCount, (unsigned long)self.lastSampleRate, self.lastExpectedDurationSec,
-                    (unsigned long)self.lastPcmBytes, (unsigned long)self.lastPcmLength, self.lastEngineOutputSampleRate]];
-  double srcDur = (double)self.lastAudioSampleCount / (double)(self.lastSampleRate ?: 1);
-  double dstDur = (double)self.lastBufferFrameLength / (double)(self.lastBufferFormatSampleRate ?: 1);
+  [lines addObject:@"--- Last playback buffer check (visible in JS via "
+                   @"getDebugInfo) ---"];
   [lines addObject:[NSString stringWithFormat:
-    @"durations: src=%.3fs (samples=%lu @ %lu)  dst=%.3fs (frames=%u @ %.0f)",
-    srcDur, (unsigned long)self.lastAudioSampleCount, (unsigned long)self.lastSampleRate,
-    dstDur, (unsigned)self.lastBufferFrameLength, self.lastBufferFormatSampleRate]];
+                                 @"audioSampleCount=%lu sampleRate=%lu "
+                                 @"expectedDurationSec=%.2f pcmBytes=%lu "
+                                 @"pcmLength=%lu engineOutputSampleRate=%.0f",
+                                 (unsigned long)self.lastAudioSampleCount,
+                                 (unsigned long)self.lastSampleRate,
+                                 self.lastExpectedDurationSec,
+                                 (unsigned long)self.lastPcmBytes,
+                                 (unsigned long)self.lastPcmLength,
+                                 self.lastEngineOutputSampleRate]];
+  double srcDur =
+      (double)self.lastAudioSampleCount / (double)(self.lastSampleRate ?: 1);
+  double dstDur = (double)self.lastBufferFrameLength /
+                  (double)(self.lastBufferFormatSampleRate ?: 1);
+  [lines
+      addObject:[NSString
+                    stringWithFormat:@"durations: src=%.3fs (samples=%lu @ "
+                                     @"%lu)  dst=%.3fs (frames=%u @ %.0f)",
+                                     srcDur,
+                                     (unsigned long)self.lastAudioSampleCount,
+                                     (unsigned long)self.lastSampleRate, dstDur,
+                                     (unsigned)self.lastBufferFrameLength,
+                                     self.lastBufferFormatSampleRate]];
 
   resolve([lines componentsJoinedByString:@"\n"]);
 }

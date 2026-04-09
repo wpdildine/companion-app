@@ -57,14 +57,20 @@ describe('avPlaybackCommand contract', () => {
     expect(calm.lengthScale).toBeGreaterThan(def.lengthScale);
   });
 
-  it('maps treated posture to default synth plus post-PCM render keys', () => {
+  it('maps treated posture to slower synth pacing plus post-PCM render keys', () => {
     const treated = mapPlaybackPostureToPiperOptions('treated');
     const def = mapPlaybackPostureToPiperOptions('default');
     expect(treated).toEqual({
       ...def,
-      renderPostGainDb: -1,
-      renderLeadSilenceMs: 40,
-      renderHighPassHz: 80,
+      lengthScale: 1.3,
+      interSentenceSilenceMs: 350,
+      interCommaSilenceMs: 180,
+      renderHighPassHz: 200,
+      renderLeadSilenceMs: 0,
+      renderPostGainDb: 4,
+      renderLayer2Enabled: true,
+      renderLayer2DelayMs: 270,
+      renderLayer2GainDb: -26,
     });
   });
 
@@ -135,6 +141,22 @@ describe('resolvePiperOptions treated debug overrides', () => {
       renderLayer2Enabled: true,
       renderLayer2DelayMs: 50,
       renderLayer2GainDb: -6,
+    });
+  });
+
+  it('treated shallow-merges lengthScale and punctuation pause overrides', () => {
+    const base = mapPlaybackPostureToPiperOptions('treated');
+    expect(
+      resolvePiperOptions('treated', {
+        lengthScale: 1.1,
+        interSentenceSilenceMs: 400,
+        interCommaSilenceMs: 200,
+      }),
+    ).toEqual({
+      ...base,
+      lengthScale: 1.1,
+      interSentenceSilenceMs: 400,
+      interCommaSilenceMs: 200,
     });
   });
 });

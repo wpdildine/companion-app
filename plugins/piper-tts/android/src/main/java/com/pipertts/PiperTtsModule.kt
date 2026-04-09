@@ -15,7 +15,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.ShortBuffer
 import java.util.concurrent.Executors
-import java.util.regex.Pattern
 import kotlin.math.PI
 import kotlin.math.exp
 import kotlin.math.pow
@@ -41,6 +40,9 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
     private var activeAudioTrack: AudioTrack? = null
 
     private val tailFadeMs = 8.0
+
+    /** ~1–3 ms @ 48 kHz; micro-fade at segment join boundaries to prevent clicks. */
+    private val boundaryFadeSamples = 96
 
     init {
         // Copy model from assets to files/piper/ as soon as the module loads so it's on device before any JS or speak().
@@ -141,42 +143,17 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
                 }
                 val sentenceMs = getOptionInt("interSentenceSilenceMs", 0)
                 val commaMs = getOptionInt("interCommaSilenceMs", 0)
-                val segments = segmentsWithSilenceFromText(text.trim(), sentenceMs, commaMs)
-                val (pcm, sampleRate) = if (segments.size > 1 && (sentenceMs > 0 || commaMs > 0)) {
-                    synthesizeSegmentsWithSilence(modelPath, configPath, espeakPath, segments, promise)
-                        ?: run {
-                            activeSpeakPromise = null
-                            return@execute
-                        }
-                } else {
-                    val result = nativeSynthesize(modelPath, configPath, espeakPath, text)
-                    if (result == null || result.size < 2) {
-                        Log.e(TAG, "[E_SYNTHESIS] Native synthesize returned invalid result")
-                        promise.reject("E_SYNTHESIS", "Synthesis failed. Native Piper pipeline returned no result.")
+                val result = nativeSynthesize(modelPath, configPath, espeakPath, text)
+                val parsed = parseNativePcmResult(result, promise, "full text")
+                    ?: run {
                         activeSpeakPromise = null
                         return@execute
                     }
-                    val first = result[0]
-                    val second = result[1]
-                    if (first == null && second is String) {
-                        Log.e(TAG, "[E_SYNTHESIS] $second")
-                        promise.reject("E_SYNTHESIS", second)
-                        activeSpeakPromise = null
-                        return@execute
-                    }
-                    @Suppress("UNCHECKED_CAST")
-                    val pcmBytes = first as? ByteArray ?: run {
-                        promise.reject("E_SYNTHESIS", "Native synthesize returned no audio.")
-                        activeSpeakPromise = null
-                        return@execute
-                    }
-                    val rate = (second as? Number)?.toInt() ?: 0
-                    if (pcmBytes.isEmpty() || rate <= 0) {
-                        promise.reject("E_SYNTHESIS", "Native synthesize returned empty audio")
-                        activeSpeakPromise = null
-                        return@execute
-                    }
-                    Pair(pcmBytes, rate)
+                var pcm = parsed.first
+                val sampleRate = parsed.second
+                Log.d(TAG, "[Piper] single-pass synthesize ok: ${pcm.size / 2} samples @ $sampleRate Hz")
+                if (sentenceMs > 0 || commaMs > 0) {
+                    pcm = insertPostSynthPunctuationPauses(pcm, sampleRate, text.trim(), commaMs, sentenceMs)
                 }
                 playPcm(pcm, sampleRate)
             } catch (e: Exception) {
@@ -193,6 +170,168 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
         espeakPath: String,
         text: String
     ): Array<Any>?
+
+    /**
+     * Parses native [ByteArray, sampleRate] or error string; rejects [promise] on failure.
+     */
+    private fun parseNativePcmResult(result: Array<Any>?, promise: Promise, errLabel: String): Pair<ByteArray, Int>? {
+        if (result == null || result.size < 2) {
+            Log.e(TAG, "[E_SYNTHESIS] Native synthesize returned invalid result ($errLabel)")
+            promise.reject("E_SYNTHESIS", "Synthesis failed. Native Piper pipeline returned no result.")
+            return null
+        }
+        val first = result[0]
+        val second = result[1]
+        if (first == null && second is String) {
+            Log.e(TAG, "[E_SYNTHESIS] $second")
+            promise.reject("E_SYNTHESIS", second)
+            return null
+        }
+        @Suppress("UNCHECKED_CAST")
+        val pcmBytes = first as? ByteArray ?: run {
+            promise.reject("E_SYNTHESIS", "Native synthesize returned no audio.")
+            return null
+        }
+        val rate = (second as? Number)?.toInt() ?: 0
+        if (pcmBytes.isEmpty() || rate <= 0) {
+            promise.reject("E_SYNTHESIS", "Native synthesize returned empty audio")
+            return null
+        }
+        return Pair(pcmBytes, rate)
+    }
+
+    private data class CharPause(val insertAfter: Int, val ms: Int)
+    private data class SamplePause(val pos: Int, val ms: Int)
+
+    /**
+     * Single-pass PCM only: proportional UTF-16 pause overlay (matches iOS). No multi-segment synthesis.
+     */
+    private fun insertPostSynthPunctuationPauses(
+        pcm: ByteArray,
+        sampleRate: Int,
+        text: String,
+        commaMs: Int,
+        sentenceMs: Int,
+    ): ByteArray {
+        if (commaMs <= 0 && sentenceMs <= 0) return pcm
+        val n = pcm.size / 2
+        if (n < 4) return pcm
+        val L = text.length
+        if (L < 2) return pcm
+        val raw = mutableListOf<CharPause>()
+        var i = 0
+        while (i < L) {
+            val c = text[i]
+            if (c in '\uD800'..'\uDBFF') {
+                i += 2
+                continue
+            }
+            when {
+                c == ',' -> {
+                    if (commaMs > 0 && i + 1 < L) raw.add(CharPause(i + 1, commaMs))
+                    i++
+                }
+                c == '\u2026' -> {
+                    if (sentenceMs > 0 && i + 1 < L) raw.add(CharPause(i + 1, sentenceMs))
+                    i++
+                }
+                c == '.' -> {
+                    var run = 1
+                    while (i + run < L && text[i + run] == '.') run++
+                    val insertAfter = i + run
+                    if (run >= 2) {
+                        if (sentenceMs > 0 && insertAfter < L) raw.add(CharPause(insertAfter, sentenceMs))
+                    } else {
+                        if (sentenceMs > 0 && i + 1 < L) raw.add(CharPause(i + 1, sentenceMs))
+                    }
+                    i += run
+                }
+                c == '!' || c == '?' -> {
+                    if (sentenceMs > 0 && i + 1 < L) raw.add(CharPause(i + 1, sentenceMs))
+                    i++
+                }
+                else -> i++
+            }
+        }
+        if (raw.isEmpty()) return pcm
+        raw.sortBy { it.insertAfter }
+        val dedup = mutableListOf<CharPause>()
+        for (e in raw) {
+            val last = dedup.lastOrNull()
+            if (last != null && last.insertAfter == e.insertAfter) {
+                if (e.ms > last.ms) dedup[dedup.size - 1] = CharPause(e.insertAfter, e.ms)
+            } else {
+                dedup.add(e)
+            }
+        }
+        val sampleEvents = mutableListOf<SamplePause>()
+        for (e in dedup) {
+            val pos = (e.insertAfter.toLong() * n / L).toInt()
+            if (pos <= 0 || pos >= n) continue
+            sampleEvents.add(SamplePause(pos, e.ms))
+        }
+        if (sampleEvents.isEmpty()) return pcm
+        val minGap = maxOf(240, (sampleRate * 0.005).roundToInt())
+        sampleEvents.sortBy { it.pos }
+        val merged = mutableListOf<SamplePause>()
+        for (e in sampleEvents) {
+            val last = merged.lastOrNull()
+            if (last == null) {
+                merged.add(e)
+            } else if (e.pos == last.pos) {
+                if (e.ms > last.ms) merged[merged.size - 1] = SamplePause(e.pos, e.ms)
+            } else if (e.pos - last.pos < minGap) {
+                if (e.ms > last.ms) merged[merged.size - 1] = SamplePause(last.pos, e.ms)
+            } else {
+                merged.add(e)
+            }
+        }
+        merged.sortByDescending { it.pos }
+        var work = pcm
+        for (ev in merged) {
+            val silenceSamples = (sampleRate * ev.ms / 1000.0).roundToInt().coerceAtLeast(0)
+            if (silenceSamples == 0) continue
+            work = insertSilenceAtSampleWithFades(work, ev.pos, silenceSamples)
+        }
+        Log.d(TAG, "[Piper] post-synth pause overlay: ${merged.size} events, ${work.size / 2} samples out")
+        return work
+    }
+
+    private fun insertSilenceAtSampleWithFades(pcm: ByteArray, pos: Int, silenceSamples: Int): ByteArray {
+        val n = pcm.size / 2
+        if (pos <= 0 || pos >= n || silenceSamples <= 0) return pcm
+        var fade = minOf(boundaryFadeSamples, pos, n - pos)
+        if (fade <= 0) return pcm
+        val left = pcm.copyOfRange(0, pos * 2)
+        val right = pcm.copyOfRange(pos * 2, pcm.size)
+        val bbL = ByteBuffer.wrap(left).order(ByteOrder.LITTLE_ENDIAN)
+        applyBoundaryFadeInt16(bbL, left.size / 2 - fade, fade, false)
+        val bbR = ByteBuffer.wrap(right).order(ByteOrder.LITTLE_ENDIAN)
+        applyBoundaryFadeInt16(bbR, 0, fade, true)
+        val silence = ByteArray(silenceSamples * 2)
+        return concatBytes(concatBytes(left, silence), right)
+    }
+
+    /** Linear fade on int16 LE PCM; [sampleIndex] is first sample index (not byte). */
+    private fun applyBoundaryFadeInt16(bb: ByteBuffer, sampleIndex: Int, length: Int, fadeIn: Boolean) {
+        if (length <= 0) return
+        bb.order(ByteOrder.LITTLE_ENDIAN)
+        for (i in 0 until length) {
+            val idx = sampleIndex + i
+            val t = i.toDouble() / length.toDouble()
+            val gain = if (fadeIn) t else (1.0 - t)
+            val off = idx * 2
+            val s = bb.getShort(off).toInt()
+            val v = (s * gain).roundToInt().coerceIn(-32768, 32767)
+            bb.putShort(off, v.toShort())
+        }
+    }
+
+    private fun concatBytes(a: ByteArray, b: ByteArray): ByteArray {
+        val out = a.copyOf(a.size + b.size)
+        b.copyInto(out, a.size)
+        return out
+    }
 
     private fun playPcm(pcm: ByteArray, sampleRate: Int) {
         val promise = activeSpeakPromise ?: return
@@ -270,100 +409,6 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
         } catch (e: Exception) {
             promise.resolve(false)
         }
-    }
-
-    /** Pairs of (segment text, silence ms to insert after). Comma -> 125ms, sentence end (.!?) -> 250ms on iOS. */
-    private fun segmentsWithSilenceFromText(
-        text: String,
-        sentenceMs: Int,
-        commaMs: Int
-    ): List<Pair<String, Int>> {
-        if (text.isEmpty() || (sentenceMs <= 0 && commaMs <= 0)) return emptyList()
-        val trimmed = text.trim()
-        if (trimmed.isEmpty()) return emptyList()
-        // Match runs of text ending in , or .!? (with optional trailing space) — same as iOS
-        val regex = Pattern.compile("[^,.!?]+[,.!?]\\s*")
-        val matcher = regex.matcher(trimmed)
-        val result = mutableListOf<Pair<String, Int>>()
-        var lastEnd = 0
-        while (matcher.find()) {
-            val seg = matcher.group()?.trim() ?: continue
-            if (seg.isEmpty()) {
-                lastEnd = matcher.end()
-                continue
-            }
-            val lastChar = seg[seg.length - 1]
-            val silence = when (lastChar) {
-                ',' -> commaMs
-                '.', '!', '?' -> sentenceMs
-                else -> 0
-            }
-            result.add(Pair(seg, silence))
-            lastEnd = matcher.end()
-        }
-        if (lastEnd < trimmed.length) {
-            val tail = trimmed.substring(lastEnd).trim()
-            if (tail.isNotEmpty()) result.add(Pair(tail, 0))
-        }
-        return if (result.isEmpty()) listOf(Pair(trimmed, 0)) else result
-    }
-
-    /** Synthesize each segment, concatenate PCM, insert silence (zero samples) after each segment. Returns null if error (promise already rejected). */
-    private fun synthesizeSegmentsWithSilence(
-        modelPath: String,
-        configPath: String,
-        espeakPath: String,
-        segments: List<Pair<String, Int>>,
-        promise: Promise
-    ): Pair<ByteArray, Int>? {
-        var combinedRate = 0
-        val combined = mutableListOf<ByteArray>()
-        for ((i, seg) in segments.withIndex()) {
-            val (segText, silenceMs) = seg
-            val result = nativeSynthesize(modelPath, configPath, espeakPath, segText)
-                ?: run {
-                    promise.reject("E_SYNTHESIS", "Native synthesize returned null for segment ${i + 1}")
-                    return null
-                }
-            if (result.size < 2) {
-                promise.reject("E_SYNTHESIS", "Synthesis failed for segment ${i + 1}: invalid result")
-                return null
-            }
-            val first = result[0]
-            val second = result[1]
-            if (first == null && second is String) {
-                promise.reject("E_SYNTHESIS", "Segment ${i + 1}: $second")
-                return null
-            }
-            val pcm = first as? ByteArray ?: run {
-                promise.reject("E_SYNTHESIS", "Segment ${i + 1}: no audio")
-                return null
-            }
-            val rate = (second as? Number)?.toInt() ?: 0
-            if (pcm.isEmpty() || rate <= 0) {
-                promise.reject("E_SYNTHESIS", "Segment ${i + 1}: empty audio or invalid sample rate")
-                return null
-            }
-            if (combinedRate == 0) combinedRate = rate
-            combined.add(pcm)
-            if (silenceMs > 0 && combinedRate > 0) {
-                val silenceSamples = (combinedRate.toLong() * silenceMs / 1000).toInt()
-                combined.add(ByteArray(silenceSamples * 2)) // 16-bit = 2 bytes per sample
-            }
-        }
-        if (combinedRate <= 0) {
-            promise.reject("E_SYNTHESIS", "No audio produced")
-            return null
-        }
-        val totalBytes = combined.sumOf { it.size }
-        val out = ByteArray(totalBytes)
-        var offset = 0
-        for (chunk in combined) {
-            chunk.copyInto(out, offset)
-            offset += chunk.size
-        }
-        Log.d(TAG, "segments: ${segments.size} parts, commas=${segments.any { it.second in 1..124 }}, sentences=${segments.any { it.second >= 125 }}")
-        return Pair(out, combinedRate)
     }
 
     private fun getOptionInt(key: String, default: Int): Int {

@@ -14,7 +14,7 @@ import {
 
 export type PlaybackPosture = 'default' | 'calm' | 'treated';
 
-/** Debug-only partial render knobs; merged over treated preset in AV when posture is treated. */
+/** Debug-only partial render + synth pacing knobs; merged over treated preset when posture is treated. */
 export type TreatedDebugRenderOverrides = Partial<{
   renderPostGainDb: number;
   renderLeadSilenceMs: number;
@@ -22,6 +22,10 @@ export type TreatedDebugRenderOverrides = Partial<{
   renderLayer2Enabled: boolean;
   renderLayer2DelayMs: number;
   renderLayer2GainDb: number;
+  /** Piper synthesis: slower articulation (primary pacing control). */
+  lengthScale: number;
+  interSentenceSilenceMs: number;
+  interCommaSilenceMs: number;
 }>;
 
 const PIPER_DEFAULT_SYNTH_OPTIONS = {
@@ -42,6 +46,16 @@ const PIPER_CALM_SYNTH_OPTIONS = {
   interCommaSilenceMs: 140,
 } as const;
 
+/** Core Piper synth keys (numeric; not tied to default posture literals). */
+type PiperBaseSynthOptions = {
+  lengthScale: number;
+  noiseScale: number;
+  noiseW: number;
+  gainDb: number;
+  interSentenceSilenceMs: number;
+  interCommaSilenceMs: number;
+};
+
 /** Optional post-synth render keys Piper understands (layer2 off unless merged from debug overrides). */
 type PiperRenderOptionKeys = Partial<{
   renderPostGainDb: number;
@@ -55,13 +69,16 @@ type PiperRenderOptionKeys = Partial<{
 /** Maps declarative posture to Piper `setOptions` payload (mechanical; no semantics in orchestrator). */
 export function mapPlaybackPostureToPiperOptions(
   posture: PlaybackPosture,
-): typeof PIPER_DEFAULT_SYNTH_OPTIONS & PiperRenderOptionKeys {
+): PiperBaseSynthOptions & PiperRenderOptionKeys {
   switch (posture) {
     case 'calm':
       return { ...PIPER_CALM_SYNTH_OPTIONS };
     case 'treated':
       return {
         ...PIPER_DEFAULT_SYNTH_OPTIONS,
+        lengthScale: 1.3,
+        interSentenceSilenceMs: 350,
+        interCommaSilenceMs: 180,
         renderHighPassHz: 200,
         renderLeadSilenceMs: 0,
         renderPostGainDb: 4,
@@ -91,7 +108,10 @@ export function resolvePiperOptions(
   }
   const o = treatedDebugRenderOverrides;
   const out: PiperSpeakOptions = { ...base };
-  if (typeof o.renderPostGainDb === 'number' && Number.isFinite(o.renderPostGainDb)) {
+  if (
+    typeof o.renderPostGainDb === 'number' &&
+    Number.isFinite(o.renderPostGainDb)
+  ) {
     out.renderPostGainDb = o.renderPostGainDb;
   }
   if (
@@ -100,7 +120,10 @@ export function resolvePiperOptions(
   ) {
     out.renderLeadSilenceMs = o.renderLeadSilenceMs;
   }
-  if (typeof o.renderHighPassHz === 'number' && Number.isFinite(o.renderHighPassHz)) {
+  if (
+    typeof o.renderHighPassHz === 'number' &&
+    Number.isFinite(o.renderHighPassHz)
+  ) {
     out.renderHighPassHz = o.renderHighPassHz;
   }
   if (typeof o.renderLayer2Enabled === 'boolean') {
@@ -113,8 +136,32 @@ export function resolvePiperOptions(
   ) {
     out.renderLayer2DelayMs = o.renderLayer2DelayMs;
   }
-  if (typeof o.renderLayer2GainDb === 'number' && Number.isFinite(o.renderLayer2GainDb)) {
+  if (
+    typeof o.renderLayer2GainDb === 'number' &&
+    Number.isFinite(o.renderLayer2GainDb)
+  ) {
     out.renderLayer2GainDb = o.renderLayer2GainDb;
+  }
+  if (
+    typeof o.lengthScale === 'number' &&
+    Number.isFinite(o.lengthScale) &&
+    o.lengthScale > 0
+  ) {
+    out.lengthScale = o.lengthScale;
+  }
+  if (
+    typeof o.interSentenceSilenceMs === 'number' &&
+    Number.isFinite(o.interSentenceSilenceMs) &&
+    o.interSentenceSilenceMs >= 0
+  ) {
+    out.interSentenceSilenceMs = o.interSentenceSilenceMs;
+  }
+  if (
+    typeof o.interCommaSilenceMs === 'number' &&
+    Number.isFinite(o.interCommaSilenceMs) &&
+    o.interCommaSilenceMs >= 0
+  ) {
+    out.interCommaSilenceMs = o.interCommaSilenceMs;
   }
   return out;
 }
@@ -162,7 +209,6 @@ export type AvPlaybackSpeakResult =
   | { kind: 'fallback_tts_play_failed'; message: string };
 
 function loadPiperDefault(): AvPiperModule {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   return require('piper-tts').default as AvPiperModule;
 }
 
@@ -303,7 +349,6 @@ export async function runAvPlaybackSpeak(args: {
   });
   let Tts: AvTtsModule;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     Tts = require('react-native-tts').default as AvTtsModule;
     deps.ttsModuleRef.current = Tts;
   } catch (e) {
