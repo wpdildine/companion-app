@@ -47,6 +47,11 @@ import {
 } from '@atlas/runtime';
 import type { ValidationSummary } from './validate';
 import { normalizeOracleText } from './normalizeOracleText';
+import { extractCardOracleText, formatCardEffectAnswer } from './cardEffectShaping';
+import {
+  canonicalCardKey,
+  dedupeValidationSummary,
+} from './validationSummaryDedupe';
 
 /** Payload shape for request-debug sink (same contract as app requestDebugStore.emit). */
 export type RequestDebugSinkPayload = {
@@ -134,23 +139,15 @@ function appendSelectedContext(
 
   const cards = [...summary.cards];
   const rules = [...summary.rules];
-  const seenCards = new Set(
-    cards.map(
-      card =>
-        `${card.doc_id ?? ''}::${(card.canonical ?? card.raw).toLowerCase()}`,
-    ),
-  );
+  const seenCards = new Set(cards.map(card => canonicalCardKey(card)));
   const seenRules = new Set(
     rules.map(rule => (rule.canonical ?? rule.raw).toLowerCase()),
   );
 
   for (const card of contextSelection.cards) {
-    const key = `${card.doc_id ?? ''}::${card.name.toLowerCase()}`;
+    const key = canonicalCardKey({ raw: card.name, canonical: card.name });
     const existingIndex = cards.findIndex(
-      existing =>
-        `${existing.doc_id ?? ''}::${(
-          existing.canonical ?? existing.raw
-        ).toLowerCase()}` === key,
+      existing => canonicalCardKey(existing) === key,
     );
     if (existingIndex >= 0) {
       const existing = cards[existingIndex]!;
@@ -191,83 +188,6 @@ function appendSelectedContext(
     cards,
     rules,
   };
-}
-
-function dedupeValidationSummary(
-  summary: ValidationSummary,
-): ValidationSummary {
-  const dedupedCards = new Map<string, ValidationSummary['cards'][number]>();
-  for (const card of summary.cards) {
-    const key = `${card.doc_id ?? ''}::${(card.canonical ?? card.raw)
-      .trim()
-      .toLowerCase()}`;
-    const existing = dedupedCards.get(key);
-    if (!existing) {
-      dedupedCards.set(key, card);
-      continue;
-    }
-    dedupedCards.set(key, {
-      ...existing,
-      doc_id: existing.doc_id ?? card.doc_id,
-      canonical: existing.canonical ?? card.canonical,
-      oracleText: existing.oracleText ?? card.oracleText,
-      status: existing.status === 'in_pack' ? existing.status : card.status,
-    });
-  }
-
-  const dedupedRules = new Map<string, ValidationSummary['rules'][number]>();
-  for (const rule of summary.rules) {
-    const key = (rule.canonical ?? rule.raw).trim().toLowerCase();
-    const existing = dedupedRules.get(key);
-    if (!existing) {
-      dedupedRules.set(key, rule);
-      continue;
-    }
-    dedupedRules.set(key, {
-      ...existing,
-      canonical: existing.canonical ?? rule.canonical,
-      title: existing.title ?? rule.title,
-      excerpt: existing.excerpt ?? rule.excerpt,
-      status: existing.status === 'valid' ? existing.status : rule.status,
-    });
-  }
-
-  return {
-    ...summary,
-    cards: Array.from(dedupedCards.values()),
-    rules: Array.from(dedupedRules.values()),
-  };
-}
-
-function extractCardOracleText(
-  contextText: string | undefined,
-  cardName: string,
-): string | null {
-  if (!contextText?.trim()) return null;
-  const escapedName = cardName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = contextText.match(
-    new RegExp(`\\[Card: ${escapedName}\\]\\n([^\\n]+)`, 'i'),
-  );
-  return match?.[1]?.trim() ?? null;
-}
-
-function formatCardEffectAnswer(cardName: string, oracleText: string): string {
-  const cleaned = normalizeOracleText(oracleText.replace(/\s+/g, ' ').trim().replace(/[.]+$/, ''));
-  const areMatch = cleaned.match(/^(.+?) are (.+)$/i);
-  if (areMatch) {
-    const subject = areMatch[1]?.trim().toLowerCase();
-    const predicate = areMatch[2]?.trim();
-    if (subject && predicate)
-      return `${cardName} turns ${subject} into ${predicate}.`;
-  }
-  const isMatch = cleaned.match(/^(.+?) is (.+)$/i);
-  if (isMatch) {
-    const subject = isMatch[1]?.trim().toLowerCase();
-    const predicate = isMatch[2]?.trim();
-    if (subject && predicate)
-      return `${cardName} makes ${subject} ${predicate}.`;
-  }
-  return `${cardName}: ${cleaned}.`;
 }
 
 function maybeSanitizeCardEffectAnswer(

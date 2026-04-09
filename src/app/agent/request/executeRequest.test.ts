@@ -304,6 +304,46 @@ describe('executeRequest', () => {
         shouldPlay: false,
       });
     });
+
+    it('strips human-short inline rule quote from committedText; leaves validationSummary.rules unchanged', async () => {
+      const ruling = 'The active player responds first.';
+      const excerpt = '603.11. Verbatim rule appendix text.';
+      const validationSummary: ValidationSummary = {
+        cards: [],
+        rules: [
+          {
+            raw: '603.11#seg0',
+            canonical: '603.11#seg0',
+            title: '603.11',
+            excerpt,
+            status: 'valid',
+          },
+        ],
+        stats: {
+          cardHitRate: 0,
+          ruleHitRate: 1,
+          unknownCardCount: 0,
+          invalidRuleCount: 0,
+        },
+      };
+      getMockRagAsk().mockResolvedValue({
+        nudged: `${ruling}\n"${excerpt}"`,
+        raw: 'x',
+        validationSummary,
+      });
+      const options = makeBaseOptions();
+      const result = await executeRequest(options);
+      expect(result).toMatchObject({
+        status: 'completed',
+        committedText: ruling,
+        shouldPlay: true,
+      });
+      if (result.status === 'completed') {
+        expect(result.committedText).not.toMatch(/\n"/);
+        expect(result.validationSummary.rules).toHaveLength(1);
+        expect(result.validationSummary.rules[0]?.canonical).toBe('603.11#seg0');
+      }
+    });
   });
 
   describe('partial-output throttling', () => {

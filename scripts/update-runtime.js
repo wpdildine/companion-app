@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * Update the app to use the latest @atlas/runtime from pack_runtime/runtime-ts.
- * Reads version from the runtime-ts package (single source of truth). Sets
+ * Update the app to use the latest @atlas/runtime from pack_runtime/runtime.
+ * Reads version from the runtime package (single source of truth). Sets
  * package.json file: ref and runs pnpm install so node_modules/@atlas/runtime
  * is fresh. Does not touch assets/content_pack.
  *
@@ -26,17 +26,17 @@ function getMtgRulesPath(cliPath) {
 }
 
 const mtgRoot = getMtgRulesPath(process.argv[2]);
-const runtimePath = path.join(mtgRoot, 'runtime-ts');
+const runtimePath = path.join(mtgRoot, 'runtime');
 
 if (!fs.existsSync(runtimePath)) {
-  console.error('[update-runtime] Error: runtime-ts not found at', runtimePath);
+  console.error('[update-runtime] Error: runtime not found at', runtimePath);
   process.exit(1);
 }
 
 const runtimePkgPath = path.join(runtimePath, 'package.json');
 if (!fs.existsSync(runtimePkgPath)) {
   console.error(
-    '[update-runtime] Error: runtime-ts/package.json not found at',
+    '[update-runtime] Error: runtime/package.json not found at',
     runtimePkgPath,
   );
   process.exit(1);
@@ -76,7 +76,7 @@ if (fs.existsSync(nodeModulesRuntime)) {
 console.log('[update-runtime] Running pnpm install...');
 execSync('pnpm install', { cwd: ROOT, stdio: 'inherit' });
 console.log(
-  '[update-runtime] Done. Linked runtime-ts version',
+  '[update-runtime] Done. Linked runtime version',
   runtimeVersion,
   'from',
   runtimePath,

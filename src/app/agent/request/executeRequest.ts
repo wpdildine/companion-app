@@ -33,6 +33,7 @@ import type { ObservedEvent } from '../semanticEvidenceTypes';
 import type { AgentOrchestratorListeners, ProcessingSubstate } from '../types';
 import { resolveScriptedAnswerSlot } from '../scripted/resolveScriptedAnswerSlot';
 import { SCRIPTED_EMPTY_OUTPUT_MESSAGE } from '../scripted/v1Copy';
+import { stripHumanShortInlineRuleQuoteForCommit } from './stripHumanShortInlineRuleQuoteForCommit';
 
 export const PARTIAL_EMIT_THROTTLE_MS = 400;
 export const RESPONSE_TEXT_UPDATE_THROTTLE_MS = 150;
@@ -398,9 +399,10 @@ export async function executeRequest(
     }
     const nudgedRaw = result.nudged;
     const failureIntent: FailureIntent | null = result.failure_intent ?? null;
+    const nudgedForCommit = stripHumanShortInlineRuleQuoteForCommit(nudgedRaw);
     const committedText = resolveScriptedAnswerSlot({
       path: 'settle',
-      nudgedRaw,
+      nudgedRaw: nudgedForCommit,
       failureIntent,
     });
     const isEmptyOutput = nudgedRaw.trim().length === 0;
