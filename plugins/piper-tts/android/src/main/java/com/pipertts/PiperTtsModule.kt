@@ -227,7 +227,7 @@ class PiperTtsModule(reactContext: ReactApplicationContext) :
                 continue
             }
             when {
-                c == ',' -> {
+                c == ',' || c == ':' -> {
                     if (commaMs > 0 && i + 1 < L) raw.add(CharPause(i + 1, commaMs))
                     i++
                 }

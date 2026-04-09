@@ -27,7 +27,8 @@ struct PiperPauseSampleEvent {
 /**
  * Single-pass synthesis only: scan original text for punctuation, map
  * boundaries to PCM by proportional UTF-16 length, insert int16 silence only
- * (no amplitude shaping). No multi-segment synthesis.
+ * (no amplitude shaping). Comma and colon use interCommaSilenceMs. No
+ * multi-segment synthesis.
  */
 static void PiperApplyPostSynthPunctuationPauses(std::vector<int16_t> &pcm,
                                                  int sample_rate,
@@ -53,7 +54,7 @@ static void PiperApplyPostSynthPunctuationPauses(std::vector<int16_t> &pcm,
       i += 2;
       continue;
     }
-    if (c == ',') {
+    if (c == ',' || c == ':') {
       if (commaMs > 0 && i + 1 < L) {
         raw.push_back({i + 1, commaMs});
       }

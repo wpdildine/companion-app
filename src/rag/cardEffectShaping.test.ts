@@ -118,6 +118,28 @@ describe('formatCardEffectAnswer', () => {
     });
   });
 
+  // ── single-line: self-referential behavior ───────────────────────────────
+
+  describe('single-line: self-referential behavior', () => {
+    it('Lightning Bolt self-referential oracle -> no duplicated prefix', () => {
+      expect(formatCardEffectAnswer('Lightning Bolt', 'Lightning Bolt deals 3 damage to any target.')).toBe(
+        'Lightning Bolt deals 3 damage to any target.',
+      );
+    });
+
+    it('lowercase self-referential oracle -> no duplicated prefix', () => {
+      expect(formatCardEffectAnswer('Lightning Bolt', 'lightning bolt deals 3 damage to any target.')).toBe(
+        'lightning bolt deals 3 damage to any target.',
+      );
+    });
+
+    it('quoted self-referential oracle -> no duplicated prefix', () => {
+      expect(formatCardEffectAnswer('Lightning Bolt', '"Lightning Bolt deals 3 damage to any target."')).toBe(
+        '"Lightning Bolt deals 3 damage to any target."',
+      );
+    });
+  });
+
   // ── single-line: symbol normalization applies ──────────────────────────────
 
   describe('single-line with symbol normalization', () => {

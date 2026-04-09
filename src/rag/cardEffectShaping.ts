@@ -55,6 +55,28 @@ function isKeywordLine(line: string): boolean {
  *
  * MTG brace notation is normalized before any formatting step.
  */
+function prependCardNameSafely(cardName: string, text: string): string {
+  const trimmedName = cardName.trim();
+  const normalizedName = trimmedName.toLowerCase();
+
+  const normalizedForPrefixCheck = text
+    .trim()
+    .replace(/^["“]/, '')
+    .toLowerCase();
+
+  const startsWithName =
+    normalizedForPrefixCheck.startsWith(normalizedName + ' ') ||
+    normalizedForPrefixCheck.startsWith(normalizedName + ':') ||
+    normalizedForPrefixCheck.startsWith(normalizedName + '—') ||
+    normalizedForPrefixCheck.startsWith(normalizedName + '-');
+
+  if (startsWithName) {
+    return /[.!?]["”']?$/.test(text) ? text : `${text}.`;
+  }
+
+  return `${cardName}: ${text}.`;
+}
+
 export function formatCardEffectAnswer(cardName: string, oracleText: string): string {
   // Normalize brace notation on the full block before splitting (preserves line structure).
   const symbolsNormalized = normalizeOracleText(oracleText.trim());
@@ -80,7 +102,7 @@ export function formatCardEffectAnswer(cardName: string, oracleText: string): st
       const predicate = isMatch[2]?.trim();
       if (subject && predicate) return `${cardName} makes ${subject} ${predicate}.`;
     }
-    return `${cardName}: ${cleaned}.`;
+    return prependCardNameSafely(cardName, cleaned);
   }
 
   // Multiline path.
@@ -101,5 +123,5 @@ export function formatCardEffectAnswer(cardName: string, oracleText: string): st
     return `${cardName} has ${keywords.join(' and ')} and ${abilityLines.join(' and ')}.`;
   }
   // Abilities only: join with ". " to preserve sentence structure.
-  return `${cardName}: ${abilityLines.join('. ')}.`;
+  return prependCardNameSafely(cardName, abilityLines.join('. '));
 }
