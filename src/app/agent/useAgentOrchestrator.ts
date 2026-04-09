@@ -958,9 +958,44 @@ export function useAgentOrchestrator(
         return;
       }
       if (fact.kind === 'av.playback.started') {
-        setProcessingSubstate(null);
-        setMode('speaking');
-        setLifecycle('speaking');
+        const isCompatibleState =
+          lifecycleRef.current === 'processing' ||
+          lifecycleRef.current === 'settling' ||
+          lifecycleRef.current === 'idle';
+
+        const hasCommittedText =
+          typeof responseTextRef.current === 'string' &&
+          responseTextRef.current.trim().length > 0;
+
+        const boundRequestId = playbackRequestIdRef.current;
+        const isActivePlayback =
+          fact.requestId != null && fact.requestId === boundRequestId;
+        const isActiveRequest = fact.requestId === activeRequestIdRef.current;
+
+        if (
+          isCompatibleState &&
+          hasCommittedText &&
+          isActivePlayback &&
+          isActiveRequest
+        ) {
+          setProcessingSubstate(null);
+          setMode('speaking');
+          {
+            const prev = prevLifecycleRef.current;
+            if (prev !== 'speaking') {
+              logLifecycle(
+                'AgentOrchestrator',
+                `lifecycle transition ${prev} -> speaking`,
+                {
+                  requestId: fact.requestId,
+                },
+              );
+              prevLifecycleRef.current = 'speaking';
+            }
+          }
+          setLifecycle('speaking');
+        }
+
         emitRequestDebug(requestDebugSinkRef, {
           type: 'tts_start',
           requestId: fact.requestId ?? null,
